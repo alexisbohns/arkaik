@@ -525,6 +525,78 @@ try {
   check("an unknown id lists the readings", unknownId.status === 1 && unknownId.stderr.includes(`have: ${FULL}, ${g1.planId}, ${g2.planId}`), unknownId.stderr);
   refuses(c, "regressions with one plan and nothing before it", ["regressions"], [`only "${cPlan.planId}" exists`]);
 
+  // === An unrecorded audit's scores never enter a plan's record ==================
+  //
+  // The record merges every audit directory through the plan's last part. One that
+  // sorts before it, is not one of its parts, was never recorded and holds scores
+  // would ride into the plan's event while `scope.scored` names only the plan's cells.
+
+  const k = repo();
+  k.ok(["profile", ...SURFACES.flatMap((surface) => ["--surface", surface])]);
+  k.writeScores(FULL, ALL_CELLS, 3);
+  k.ok(["matrix", FULL, "--record"]);
+  const kFull = k.journal().filter((e) => e.type === "quality.audit.completed").at(-1) ?? {};
+  const kA = k.makePlan("SEC:web");
+  const kAPart = kA.parts[0] ?? { cells: [] };
+  // Plan A: two of its six cells at level 0, plus one stray, never recorded.
+  k.writeScores(kAPart.auditId, [...cellsOf(kAPart).slice(0, 2), ["PRV-01", "web"]], 0, "now");
+  const kB = k.makePlan("A11Y:ios");
+  const kBPart = kB.parts[0] ?? { cells: [] };
+  k.writeScores(kBPart.auditId, cellsOf(kBPart), 3, "now");
+  const kRecord = ["matrix", kB.planId, "--record", "--plan"];
+  refuses(k, "another plan's unrecorded, half-scored part sorting before this plan's last part", kRecord, [
+    `plan "${kB.planId}" cannot be recorded`,
+    `${kAPart.auditId}: 3 scores, never recorded`,
+    `a part of plan "${kA.planId}"`,
+    "would enter this plan's record unannounced",
+    "Record each first, or remove its scores",
+  ]);
+  refuses(k, "the preview refuses it too", ["matrix", kB.planId, "--plan"], [`${kAPart.auditId}: 3 scores, never recorded`]);
+
+  // Plan A's half-finished scores removed: plan B records, and its event carries the full audit's web.
+  rmSync(k.at("docs", "quality", "audits", kAPart.auditId, "scores.json"));
+  const kBefore = k.journal().length;
+  const kRecorded = k.run(kRecord);
+  const kEvent = k.journal().slice(kBefore)[0] ?? {};
+  check(
+    "with those scores removed, plan B records, and web is the full audit's, not plan A's",
+    kRecorded.status === 0 && kEvent.audit_id === kB.planId && JSON.stringify(kEvent.scores?.web) === JSON.stringify(kFull.scores?.web),
+    kRecorded.stderr + JSON.stringify({ was: kFull.scores?.web, is: kEvent.scores?.web }),
+  );
+
+  const h = repo();
+  h.ok(["profile", ...SURFACES.flatMap((surface) => ["--surface", surface])]);
+  h.writeScores(FULL, ALL_CELLS, 3);
+  h.ok(["matrix", FULL, "--record"]);
+  // Hand-named, so they sort before any plan made now: one with a score, one empty, one holding only findings.
+  const hand = `${MONTH}-hand`;
+  h.writeScores(hand, [["SEC-01", "web"]], 0);
+  mkdirSync(h.at("docs", "quality", "audits", `${MONTH}-empty`), { recursive: true });
+  h.writeJson(`docs/quality/audits/${MONTH}-findings/findings.json`, {
+    audit_id: `${MONTH}-findings`,
+    framework_version: pack.version,
+    findings: [finding(`F-${MONTH}-PRV-web-01`, "PRV-01", "web")],
+  });
+  const hPlan = h.makePlan("A11Y:ios");
+  const hPart = hPlan.parts[0] ?? { cells: [] };
+  h.writeScores(hPart.auditId, cellsOf(hPart), 3, "now");
+  const hRecord = ["matrix", hPlan.planId, "--record", "--plan"];
+  refuses(h, "an unrecorded hand-named audit holding a score", hRecord, [`${hand}: 1 score, never recorded`, "Record each first, or remove its scores"]);
+  const hMessage = h.run(hRecord).stderr;
+  check(
+    "an empty audit directory, or one holding only findings, is never named",
+    !hMessage.includes(`${MONTH}-empty`) && !hMessage.includes(`${MONTH}-findings`),
+    hMessage,
+  );
+  h.ok(["matrix", hand, "--record", "--scope"]);
+  const hBefore = h.journal().length;
+  const hRecorded = h.run(hRecord);
+  check(
+    "once it is recorded it no longer blocks, and the empty and findings-only directories never did",
+    hRecorded.status === 0 && h.journal().length === hBefore + 1 && h.journal().at(-1)?.audit_id === hPlan.planId,
+    hRecorded.stderr,
+  );
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

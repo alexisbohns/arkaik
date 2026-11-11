@@ -902,6 +902,65 @@ async function run() {
     rmSync(twin, { recursive: true, force: true });
   }
 
+  // --- a plan's record never takes in another audit's unrecorded scores ------------
+
+  const guarded = startSession();
+  try {
+    await guarded.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const audits = (...parts) => path.join(guarded.dir, "docs", "quality", "audits", ...parts);
+    const score = (cell, level, auditId) =>
+      guarded.call("kritik_score", { criterion_id: cell.criterion_id, surface: cell.surface, level, evidence: `${cell.criterion_id}.ts:1`, audit_id: auditId });
+    const planA = (await guarded.call("kritik_plan", { runs: ["SEC:web"] })).json.plan ?? { parts: [] };
+    const partA = planA.parts[0] ?? { cells: [] };
+    for (const cell of partA.cells.slice(0, 2)) await score(cell, 0, partA.auditId);
+    const planB = (await guarded.call("kritik_plan", { runs: ["SEC:supabase"] })).json.plan ?? { parts: [] };
+    const partB = planB.parts[0] ?? { cells: [] };
+    for (const cell of partB.cells) await score(cell, 3, partB.auditId);
+    const before = guarded.journal().length;
+
+    const blocked = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "plan=true refuses while another plan's unrecorded part with scores sorts before its last part",
+      blocked.isError &&
+        blocked.json.message.includes(`${partA.auditId}: 2 scores, never recorded (a part of plan "${planA.planId}")`) &&
+        blocked.json.message.includes("unannounced") &&
+        guarded.journal().length === before,
+      blocked.text.slice(0, 400),
+    );
+    rmSync(audits(partA.auditId), { recursive: true, force: true });
+
+    const hand = `${planB.planId.slice(0, 7)}-hand`;
+    mkdirSync(audits(hand), { recursive: true });
+    writeFileSync(
+      audits(hand, "scores.json"),
+      JSON.stringify({ audit_id: hand, assessments: [{ criterion_id: "PRV-01", surface: "web", level: 1, evidence: "x.ts:1", audit_id: hand }] }),
+    );
+    mkdirSync(audits(`${planB.planId.slice(0, 7)}-empty`), { recursive: true });
+    mkdirSync(audits(`${planB.planId.slice(0, 7)}-findings`), { recursive: true });
+    writeFileSync(audits(`${planB.planId.slice(0, 7)}-findings`, "findings.json"), JSON.stringify({ findings: [] }));
+    const byHand = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "plan=true refuses an unrecorded hand-named audit holding a score, and names no empty or findings-only directory",
+      byHand.isError &&
+        byHand.json.message.includes(`${hand}: 1 score, never recorded`) &&
+        !byHand.json.message.includes("-empty") &&
+        !byHand.json.message.includes("-findings") &&
+        guarded.journal().length === before,
+      byHand.text.slice(0, 400),
+    );
+    const handRecorded = await guarded.call("kritik_matrix", { audit_id: hand, record: true });
+    check("(setup) the hand-named audit records", !handRecorded.isError, handRecorded.text.slice(0, 300));
+    const afterHand = guarded.journal().length;
+    const recorded = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "once recorded it no longer blocks, and the plan records",
+      !recorded.isError && guarded.journal().length === afterHand + 1 && guarded.journal().at(-1)?.audit_id === planB.planId,
+      recorded.text.slice(0, 300),
+    );
+  } finally {
+    guarded.stop();
+  }
+
   // --- hosted mode -------------------------------------------------------------
   //
   // A stub server stands in for the hosted API. It covers: the reads

@@ -33,6 +33,7 @@ import {
   parseRun,
   planCellKey,
   planCells,
+  planIdOfPartId,
   planPartStatuses,
   type KritikPlan,
   type KritikPlanCell,
@@ -170,6 +171,8 @@ const runFlags = (parts: readonly Pick<KritikPlan["parts"][number], "domain" | "
  * its cells or framework version moved since it was made; an audit now sorts after one of its
  * parts (`outsortedBy` — a scoped re-audit or another plan made meanwhile would win the
  * latest-wins merge on every cell both hold, so the recorded matrix would not be the plan's);
+ * an audit directory sorting before the plan's last part, not one of its parts, never recorded
+ * and holding scores (the merge would carry those scores into the record unannounced);
  * a part holds a score outside its cells (refused, not ignored — the merge reads every audit
  * directory, so a stray score would enter the matrix anyway); a plan cell has no score. Then it
  * builds the merged reading through the plan's last part (`loadQualitySectionThrough`,
@@ -236,7 +239,34 @@ export function preparePlanRecord(root: string, planId: string, library: KritikL
     );
   }
 
-  // 5 and 6. Each part scored exactly its cells.
+  // 5. Nothing unrecorded rides in. The record merges every audit directory through the
+  // plan's last part, but names only the plan's own cells as re-scored: an earlier directory
+  // that was never recorded and holds scores — another plan's unfinished part, a hand-named
+  // audit — would enter the recorded matrix unannounced, and the trend would never show it.
+  const last = included.map((part) => part.auditId).sort()[included.length - 1];
+  const ownParts = new Set(included.map((part) => part.auditId));
+  const recordedIds = new Set(recordedAuditIds(events));
+  const unannounced = onDiskIds
+    .filter((id) => id < last && !ownParts.has(id) && !recordedIds.has(id))
+    .map((id) => ({ id, scores: loadScoresOrEmpty(root, id).assessments.length }))
+    .filter((entry) => entry.scores > 0);
+  if (unannounced.length > 0) {
+    throw new Error(
+      `plan "${planId}" cannot be recorded — ${unannounced.length === 1 ? "an audit directory sorts" : "audit directories sort"} before its last part, ` +
+        `${unannounced.length === 1 ? "holds scores and was" : "hold scores and were"} never recorded. The record merges every audit through ` +
+        `the plan's last part but names only the plan's own cells as re-scored, so ${unannounced.length === 1 ? "its scores" : "their scores"} ` +
+        `would enter this plan's record unannounced:\n` +
+        unannounced
+          .map(({ id, scores }) => {
+            const owner = planIdOfPartId(id);
+            return `  ${id}: ${scores} score${scores === 1 ? "" : "s"}, never recorded` + (owner !== null ? ` (a part of plan "${owner}")` : "");
+          })
+          .join("\n") +
+        `\nRecord each first, or remove its scores (docs/quality/audits/<id>/scores.json), then record this plan.`,
+    );
+  }
+
+  // 6 and 7. Each part scored exactly its cells.
   const onDisk = new Set(onDiskIds);
   const scoresByPart: Record<string, QualityAssessment[]> = {};
   for (const part of included) scoresByPart[part.auditId] = loadScoresOrEmpty(root, part.auditId).assessments;
@@ -277,7 +307,6 @@ export function preparePlanRecord(root: string, planId: string, library: KritikL
   }
 
   // The merged reading through the plan's last part, and its marker.
-  const last = included.map((part) => part.auditId).sort()[included.length - 1];
   const section = loadQualitySectionThrough(root, last, library);
   const matrix = deriveQualityMatrix({ quality: section }, library);
   const scored = included.flatMap((part) => part.cells.map((cell) => planCellKey(cell.criterion_id, cell.surface)));
