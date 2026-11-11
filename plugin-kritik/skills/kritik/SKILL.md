@@ -75,7 +75,7 @@ Two richer paths exist when they are available, and both write **the same files*
 
 | Available | Use |
 |---|---|
-| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `issue`, `criterion add` |
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `plan`, `issue`, `criterion add` |
 | `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_burndown`, `kritik_scope`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add

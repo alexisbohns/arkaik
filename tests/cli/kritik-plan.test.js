@@ -49,12 +49,18 @@ const BUNDLE = JSON.stringify({
   edges: [],
 });
 
-// The plan id is built from the local date, the way the CLI builds it.
-const now = new Date();
-const MONTH = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-const DAY = String(now.getDate()).padStart(2, "0");
-const FIRST_PLAN = `${MONTH}-zplan-${DAY}00`;
-const SECOND_PLAN = `${MONTH}-zplan-${DAY}01`;
+// The fixture's hand-named audits only need to sort before any plan made
+// after them, so their month may come from the clock. Plan ids never do: each
+// is read back from the command that made it (--json, or the plan file), so a
+// run across midnight cannot expect a day the plan was not made on.
+const localDate = (date = new Date()) => ({
+  month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+  day: String(date.getDate()).padStart(2, "0"),
+});
+const MONTH = localDate().month;
+const PLAN_ID = /^\d{4}-\d{2}-zplan-\d{4}$/;
+/** A well-formed plan id no test ever makes, for refusals that never read it. */
+const UNMADE_PLAN = "2000-01-zplan-0100";
 const SEC_WEB = ["SEC-01", "SEC-04", "SEC-05", "SEC-06", "SEC-07", "SEC-08"];
 const ESTIMATOR = (flag) => `kritik: --${flag} is not available yet — the estimator ships later, and every plan is counts-only for now.`;
 
@@ -174,31 +180,62 @@ try {
     check(`--${flag} is refused until the estimator ships`, refused.status === 1 && refused.stderr.trim() === ESTIMATOR(flag), refused.stderr);
   }
 
-  const statusAndRun = run(["plan", "--status", FIRST_PLAN, "--run", "SEC:web"]);
+  const statusAndRun = run(["plan", "--status", UNMADE_PLAN, "--run", "SEC:web"]);
   check("--status with --run is refused", statusAndRun.status === 1 && statusAndRun.stderr.includes("--status"), statusAndRun.stderr);
+  const statusAndOut = run(["plan", "--status", UNMADE_PLAN, "--out", path.join(dir, "elsewhere.json")]);
+  check("--status with --out is refused", statusAndOut.status === 1 && statusAndOut.stderr.includes("--status"), statusAndOut.stderr);
+  const statusAndDry = run(["plan", "--status", UNMADE_PLAN, "--dry-run"]);
+  check("--status with --dry-run is refused", statusAndDry.status === 1 && statusAndDry.stderr.includes("--status"), statusAndDry.stderr);
+
+  for (const flag of ["budget", "budget-tokens", "price", "tier"]) {
+    const bare = run(["plan", "--run", "SEC:web", `--${flag}`]);
+    check(`--${flag} given last with no value gets the same refusal`, bare.status === 1 && bare.stderr.trim() === ESTIMATOR(flag), bare.stderr);
+  }
+
+  const dryOut = run(["plan", "--run", "SEC:web", "--dry-run", "--out", path.join(dir, "elsewhere.json")]);
+  check(
+    "--dry-run with --out is refused in one line",
+    dryOut.status === 1 && dryOut.stderr.trim().split("\n").length === 1 && dryOut.stderr.includes("--dry-run") && dryOut.stderr.includes("--out") &&
+      !existsSync(path.join(dir, "elsewhere.json")),
+    dryOut.stderr,
+  );
 
   check("no refusal wrote a plan", !existsSync(plansDir));
 
   // --- --dry-run --------------------------------------------------------------------
 
   const dry = run(["plan", "--run", "SEC:web", "--counts-only", "--dry-run"]);
+  const dryId = (dry.stdout.match(/Plan (\S+)/) ?? [])[1] ?? "";
   check(
     "--dry-run prints the plan and its prompt, and writes nothing",
     dry.status === 0 &&
-      dry.stdout.includes(`Plan ${FIRST_PLAN}`) &&
+      PLAN_ID.test(dryId) &&
       dry.stdout.includes("dry run — nothing written") &&
-      dry.stdout.includes(`Run Kritik plan ${FIRST_PLAN}`) &&
+      dry.stdout.includes(`Run Kritik plan ${dryId}`) &&
       !existsSync(plansDir),
     dry.stdout + dry.stderr,
+  );
+  const dryJson = run(["plan", "--run", "SEC:web", "--dry-run", "--json"]);
+  check(
+    "--dry-run --json prints the plan file and writes nothing",
+    dryJson.status === 0 && PLAN_ID.test(json(dryJson)?.planId ?? "") && json(dryJson).parts.length === 1 && !dryJson.stderr.includes("wrote") && !existsSync(plansDir),
+    dryJson.stdout.slice(0, 300) + dryJson.stderr,
   );
 
   // --- acceptance step 1: a counts-only SEC:web plan -----------------------------------------
 
+  const firstBefore = localDate();
   const first = run(["plan", "--run", "SEC:web", "--counts-only", "--json"]);
+  const firstAfter = localDate();
   const plan = json(first);
   check("plan --json exits 0 and prints the plan", first.status === 0 && plan !== null, first.stdout + first.stderr);
+  const FIRST_PLAN = plan?.planId ?? "missing";
   const planFile = path.join(plansDir, `${FIRST_PLAN}.json`);
-  check("the plan is the day's first: <month>-zplan-<day>00", plan?.planId === FIRST_PLAN, plan?.planId);
+  check(
+    "the plan is the day's first: <month>-zplan-<day>00",
+    [firstBefore, firstAfter].some(({ month, day }) => FIRST_PLAN === `${month}-zplan-${day}00`),
+    FIRST_PLAN,
+  );
   check(
     "it is written to docs/quality/plans/<planId>.json, exactly as printed",
     existsSync(planFile) && JSON.stringify(JSON.parse(readFileSync(planFile, "utf8"))) === JSON.stringify(plan),
@@ -252,7 +289,16 @@ try {
   // --- the human summary, a second plan, duplicates ------------------------------------------------
 
   const second = run(["plan", "--run", "SEC:web", "--run", "AGT:ios", "--run", "sec:web"]);
-  check("a second plan the same day takes the next counter", second.status === 0 && second.stdout.includes(`Plan ${SECOND_PLAN}`), second.stdout + second.stderr);
+  // Read back from the plan files: the one that is not the first.
+  const SECOND_PLAN = readdirSync(plansDir).map((name) => name.replace(/\.json$/, "")).find((id) => id !== FIRST_PLAN) ?? "missing";
+  const sameDay = SECOND_PLAN.slice(0, 16) === FIRST_PLAN.slice(0, 16);
+  check(
+    "a second plan the same day takes the next counter",
+    second.status === 0 &&
+      second.stdout.includes(`Plan ${SECOND_PLAN}`) &&
+      (sameDay ? SECOND_PLAN === `${FIRST_PLAN.slice(0, 16)}01` : PLAN_ID.test(SECOND_PLAN) && SECOND_PLAN > FIRST_PLAN),
+    second.stdout + second.stderr,
+  );
   check(
     "the summary prints each part, the totals against the whole product, and the file it wrote",
     second.stdout.includes(`${SECOND_PLAN}-sec-web`) &&
@@ -413,11 +459,11 @@ try {
     rmSync(path.join(plansDir, `${misnamed}.json`));
   }
 
-  const missing = run(["plan", "--status", `${MONTH}-zplan-${DAY}77`]);
+  const missing = run(["plan", "--status", `${FIRST_PLAN.slice(0, 16)}77`]);
   check("--status on a plan that does not exist is refused", missing.status === 1 && missing.stderr.includes("no plan at"), missing.stderr);
 
   // Last in this repo: a plan file named past every counter blocks later plans.
-  const brokenId = `${MONTH}-zplan-${DAY}99`;
+  const brokenId = `${FIRST_PLAN.slice(0, 16)}99`;
   writeFileSync(path.join(plansDir, `${brokenId}.json`), JSON.stringify({ schema: "arkaik.kritik.plan/9" }));
   const broken = run(["plan", "--status", brokenId]);
   check(
@@ -541,7 +587,8 @@ try {
 
   {
     const { dir: late, run: runLate, plansDir: latePlans } = repo();
-    const ahead = `${MONTH}-zzz`;
+    // Past every counter of the month the plan is made in, read back from a dry run.
+    const ahead = `${(json(runLate(["plan", "--run", "SEC:web", "--dry-run", "--json"]))?.planId ?? MONTH).slice(0, 7)}-zzz`;
     mkdirSync(path.join(late, "docs", "quality", "audits", ahead), { recursive: true });
     const blocked = runLate(["plan", "--run", "SEC:web"]);
     check(

@@ -1603,15 +1603,20 @@ function printPlanSummary(plan: KritikPlan, warnings: readonly string[], written
 }
 
 function runPlan(args: string[], common: CommonOptions): void {
+  const estimatorRefusal = (flag: string) =>
+    `kritik: --${flag} is not available yet — the estimator ships later, and every plan is counts-only for now.`;
+  // Given last with no value, an estimator flag would otherwise fail as "needs
+  // a value" — the same flag gets the same refusal however it is spelled.
+  const last = args[args.length - 1];
+  const bare = ESTIMATOR_FLAGS.find((flag) => last === `--${flag}`);
+  if (bare !== undefined) fail(estimatorRefusal(bare));
   const { single, many, flags } = collect(args, ["run"], ["json", "dry-run", "counts-only"]);
   if (flags.has("help")) {
     console.log(PLAN_USAGE);
     process.exit(0);
   }
   for (const flag of ESTIMATOR_FLAGS) {
-    if (single[flag] !== undefined) {
-      fail(`kritik: --${flag} is not available yet — the estimator ships later, and every plan is counts-only for now.`);
-    }
+    if (single[flag] !== undefined) fail(estimatorRefusal(flag));
   }
 
   if (single.status !== undefined) {
@@ -1647,6 +1652,9 @@ function runPlan(args: string[], common: CommonOptions): void {
   }
 
   if (many.run.length === 0) fail(`kritik: at least one --run DOMAIN:SURFACE is required\n\n${PLAN_USAGE}`);
+  if (flags.has("dry-run") && single.out !== undefined) {
+    fail(`kritik: --dry-run writes nothing, so it takes no --out — drop one of the two.`);
+  }
 
   const library = loadLibraryOrFail(common.root);
   let created: ReturnType<typeof createPlan>;
