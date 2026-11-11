@@ -345,6 +345,93 @@ const throws = (fn) => {
   }
 }
 
+// --- the plan file schema -----------------------------------------------------------
+
+{
+  const { parseKritikPlan, KritikPlanSchema, KritikPlanPartSchema, KRITIK_PLAN_SCHEMA, PLAN_PLANS_DIR } = S;
+  const part = (domain, surface, cells, steps) => ({
+    domain,
+    surface,
+    auditId: `2026-11-zplan-1100-${domain.toLowerCase()}-${surface}`,
+    cells: cells.map((criterion_id) => ({ criterion_id, surface })),
+    steps,
+    estimate: null,
+    status: "included",
+    prompt: `Run part ${domain}:${surface} of Kritik plan 2026-11-zplan-1100.`,
+  });
+  const PLAN = {
+    schema: "arkaik.kritik.plan/1",
+    planId: "2026-11-zplan-1100",
+    createdAt: "2026-11-11T09:30:00.000Z",
+    commit: "3f9c2e1",
+    frameworkVersion: "0.1.0",
+    tier: null,
+    budgetTokens: null,
+    budgetUsd: null,
+    pricePerMTok: null,
+    parts: [part("SEC", "web", ["SEC-01", "SEC-04"], 12), part("AGT", "ios", ["AGT-01"], 5)],
+    totals: { cells: 3, steps: 17, applicableCells: 338, tokens: null, usd: null },
+    prompt: "Run Kritik plan 2026-11-zplan-1100.",
+    recordCommand: "arkaik kritik matrix 2026-11-zplan-1100 --record --plan",
+  };
+  const withPlan = (over) => ({ ...JSON.parse(JSON.stringify(PLAN)), ...over });
+
+  check("the schema constants", KRITIK_PLAN_SCHEMA === "arkaik.kritik.plan/1" && PLAN_PLANS_DIR === "plans");
+  {
+    const result = parseKritikPlan(PLAN);
+    check("a counts-only plan parses and round-trips unchanged", result.ok === true && JSON.stringify(result.plan) === JSON.stringify(PLAN), JSON.stringify(result));
+    const again = parseKritikPlan(JSON.parse(JSON.stringify(result.plan)));
+    check("its serialized form parses to the same plan", again.ok === true && JSON.stringify(again.plan) === JSON.stringify(PLAN));
+  }
+  {
+    const band = { low: 1, mid: 2, high: 3 };
+    const estimated = withPlan({
+      budgetTokens: 400000,
+      budgetUsd: 5,
+      pricePerMTok: 3,
+      tier: "opus",
+      parts: [
+        { ...part("SEC", "web", ["SEC-01"], 6), estimate: { tokens: band, usd: band, inputs: { P: 1, B: 2, c: band, q: band, h: band, V: band }, calibrated: false } },
+        { ...part("AGT", "ios", ["AGT-01"], 5), status: "deferred" },
+      ],
+      totals: { cells: 1, steps: 6, applicableCells: 338, tokens: band, usd: band },
+    });
+    const result = parseKritikPlan(estimated);
+    check("a plan with an estimate, budgets and a deferred part parses", result.ok === true && JSON.stringify(result.plan) === JSON.stringify(estimated), JSON.stringify(result));
+  }
+  {
+    const result = parseKritikPlan(withPlan({ schema: "arkaik.kritik.plan/2" }));
+    check("an unknown schema version is rejected at schema", result.ok === false && result.issue.startsWith("schema: "), JSON.stringify(result));
+  }
+  {
+    const result = parseKritikPlan(withPlan({ extra: 1, parts: [{ ...part("SEC", "web", ["SEC-01"], 6), note: "x" }] }));
+    check("unknown keys are stripped, not kept", result.ok === true && !("extra" in result.plan) && !("note" in result.plan.parts[0]), JSON.stringify(result));
+  }
+  const rejects = (name, value, at) => {
+    const result = parseKritikPlan(value);
+    check(name, result.ok === false && result.issue.startsWith(`${at}: `), JSON.stringify(result));
+  };
+  rejects("a plan with no parts is rejected", withPlan({ parts: [] }), "parts");
+  rejects("a part with no cells is rejected", withPlan({ parts: [part("SEC", "web", [], 0)] }), "parts.0.cells");
+  rejects("a lower-case part domain is rejected", withPlan({ parts: [part("sec", "web", ["SEC-01"], 6)] }), "parts.0.domain");
+  rejects("a six-letter part domain is rejected", withPlan({ parts: [part("SECURE", "web", ["SEC-01"], 6)] }), "parts.0.domain");
+  rejects("an empty part surface is rejected", withPlan({ parts: [part("SEC", "", ["SEC-01"], 6)] }), "parts.0.surface");
+  rejects("a fractional step count is rejected", withPlan({ parts: [part("SEC", "web", ["SEC-01"], 1.5)] }), "parts.0.steps");
+  rejects("an unknown part status is rejected", withPlan({ parts: [{ ...part("SEC", "web", ["SEC-01"], 6), status: "skipped" }] }), "parts.0.status");
+  rejects("a createdAt that is not an ISO datetime is rejected", withPlan({ createdAt: "11 Nov 2026" }), "createdAt");
+  rejects("a zero token budget is rejected", withPlan({ budgetTokens: 0 }), "budgetTokens");
+  rejects("a dollar budget with no price is rejected", withPlan({ budgetUsd: 5 }), "pricePerMTok");
+  rejects("a missing recordCommand is rejected", withPlan({ recordCommand: undefined }), "recordCommand");
+  {
+    const result = parseKritikPlan([PLAN]);
+    check("a value that is not an object reports at (root)", result.ok === false && result.issue.startsWith("(root): "), JSON.stringify(result));
+  }
+  check(
+    "the exported schemas are the ones parseKritikPlan uses",
+    KritikPlanSchema.safeParse(PLAN).success === true && KritikPlanPartSchema.safeParse(PLAN.parts[0]).success === true && KritikPlanPartSchema.safeParse({}).success === false,
+  );
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
