@@ -35,8 +35,7 @@ import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import {
   COMMAND_GROUPS,
   completionSuffix,
-  limitSearchOnly,
-  rankCommands,
+  paletteMatches,
   type CommandActionId,
   type CommandGroupId,
   type CommandIconId,
@@ -183,9 +182,8 @@ function PaletteBody({ commands, onAction, onNode, onClose, placeholder }: Palet
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Capped after ranking, not before: the cap keeps each group's best rows, so
-  // it has to see the order first.
-  const matches = useMemo(() => limitSearchOnly(rankCommands(commands, query)), [commands, query]);
+  // Ranked, then each group's search-only rows capped (`paletteMatches`).
+  const matches = useMemo(() => paletteMatches(commands, query), [commands, query]);
 
   // Groups are laid out by their best result, so the top-ranked command is
   // always the first row of the first section — what Enter is about to run.

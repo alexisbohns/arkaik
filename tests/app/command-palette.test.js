@@ -415,6 +415,39 @@ assert(
   countIn(capTwo, "views") === 2 && countIn(capTwo, "flows") === 2,
   `an explicit cap applies per group (got views ${countIn(capTwo, "views")}, flows ${countIn(capTwo, "flows")})`,
 );
+// paletteMatches: what the overlay renders — rank, then cap the search-only
+// rows. One exported function, so dropping the cap (or capping before ranking)
+// fails here rather than only in a browser.
+const { paletteMatches } = nodePalette;
+const sameMatches = (left, right) =>
+  left.length === right.length &&
+  left.every(
+    (match, index) =>
+      match.command === right[index].command &&
+      match.score === right[index].score &&
+      match.highlight.join(",") === right[index].highlight.join(",") &&
+      match.completion === right[index].completion,
+  );
+assert(typeof paletteMatches === "function", "paletteMatches is exported");
+assert(
+  typeof paletteMatches === "function" && sameMatches(paletteMatches(crowd, "screen"), crowdLimited),
+  "paletteMatches is limitSearchOnly after rankCommands",
+);
+assert(
+  typeof paletteMatches === "function" &&
+    countIn(paletteMatches(crowd, "screen"), "views") === SEARCH_ONLY_PER_GROUP &&
+    paletteMatches(crowd, "screen")
+      .filter((match) => match.command.group === "views")
+      .map((match) => match.command.label)
+      .join(",") === keptViews.join(","),
+  "paletteMatches caps each group at its six best",
+);
+assert(
+  typeof paletteMatches === "function" &&
+    sameMatches(paletteMatches(withHandRows, ""), idleWithRows) &&
+    sameMatches(paletteMatches(withHandRows, "settings"), rankCommands(withHandRows, "settings")),
+  "paletteMatches keeps the idle list, and a list under the cap whole",
+);
 const catalogueA = rankCommands(commands, "a");
 assert(limitSearchOnly(catalogueA).length === catalogueA.length, "a catalogue with no search-only rows passes through whole");
 
@@ -561,9 +594,9 @@ assert(
   `an Admin view is in no flow (got ${pebbleHints["node:V-admin-analytics"]})`,
 );
 
-/** What the overlay ranks: `limitSearchOnly` after `rankCommands`. */
+/** What the overlay renders: `paletteMatches`, the same function it calls. */
 function pebbleRanked(query) {
-  return limitSearchOnly(rankCommands(pebbleCatalogue, query));
+  return paletteMatches(pebbleCatalogue, query);
 }
 function shown(query) {
   return pebbleRanked(query)

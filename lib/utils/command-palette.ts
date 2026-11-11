@@ -291,6 +291,19 @@ export function limitSearchOnly(
   });
 }
 
+/**
+ * What the overlay lists for a query: `rankCommands`, then `limitSearchOnly`.
+ * In that order — the cap keeps each group's best rows, so it has to see the
+ * ranking first. One function so the overlay and its test cannot disagree.
+ */
+export function paletteMatches(
+  commands: readonly PaletteCommand[],
+  query: string,
+  perGroup: number = SEARCH_ONLY_PER_GROUP,
+): CommandMatch[] {
+  return limitSearchOnly(rankCommands(commands, query), perGroup);
+}
+
 /** The ghost suffix drawn after the caret — the completion minus what is
  * already typed, so the two halves concatenate to the candidate exactly. */
 export function completionSuffix(query: string, match: CommandMatch | undefined): string {

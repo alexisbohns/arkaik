@@ -310,9 +310,11 @@ export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes
 // id "node:<id>", label = title, group and icon "flows" | "views", keywords [id],
 // hint "N screens" ("1 screen") | firstFlowTitle | "Not in a flow", searchOnly: true, target { kind: "node", nodeId }
 export function limitSearchOnly(matches: readonly CommandMatch[], perGroup?: number): CommandMatch[];
+/** limitSearchOnly(rankCommands(commands, query), perGroup) — what the overlay lists, and what its test checks. */
+export function paletteMatches(commands: readonly PaletteCommand[], query: string, perGroup?: number): CommandMatch[];
 ```
 
-`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. The overlay applies `limitSearchOnly` after `rankCommands`.
+`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. The overlay lists `paletteMatches(commands, query)`: `limitSearchOnly` after `rankCommands`.
 
 ```ts
 // components/layout/CommandPalette.tsx
