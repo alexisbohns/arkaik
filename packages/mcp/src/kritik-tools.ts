@@ -57,6 +57,7 @@ import {
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
+  isPlanId,
   isPlanPartId,
   domainCodeOf,
   mintFindingId,
@@ -1135,6 +1136,13 @@ export function buildKritikCatalog(ctx: KritikContext): {
         ctx,
         "A plan's parts are audits under docs/quality/audits/, scored against a checkout.",
       );
+      // A status id becomes a path: refuse anything but a plan id before reading anything.
+      if (args.status !== undefined) {
+        const planId = requireString(args, "status");
+        if (!isPlanId(planId)) {
+          throw new ToolError(`"${planId}" is not a plan id — a plan id reads YYYY-MM-zplan-DDNN, as kritik_plan returns it.`);
+        }
+      }
       const graph = await load();
       const recorded = recordedAuditIds(graph.journal);
 

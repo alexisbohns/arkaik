@@ -681,6 +681,24 @@ async function run() {
     );
     const noSuchPlan = await session.call("kritik_plan", { status: "2026-11-zplan-1199" });
     check("kritik_plan status on a missing plan names the path it read", noSuchPlan.isError && noSuchPlan.json.message.includes("no plan at"), noSuchPlan.text);
+    const notAPlanId = await session.call("kritik_plan", { status: "../../../etc/passwd" });
+    check(
+      "kritik_plan status refuses an id that is not a plan id, before reading anything",
+      notAPlanId.isError && notAPlanId.json.message.includes("is not a plan id") && !notAPlanId.json.message.includes("no plan at"),
+      notAPlanId.text,
+    );
+    const misnamedId = `${madePlan.planId.slice(0, -2)}88`;
+    writeFileSync(
+      path.join(session.dir, "docs", "quality", "plans", `${misnamedId}.json`),
+      readFileSync(path.join(session.dir, "docs", "quality", "plans", `${madePlan.planId}.json`), "utf8"),
+    );
+    const misnamed = await session.call("kritik_plan", { status: misnamedId });
+    check(
+      "kritik_plan status refuses a plan file whose planId is not the id it is named for",
+      misnamed.isError && misnamed.json.message.includes(`"${madePlan.planId}"`),
+      misnamed.text,
+    );
+    rmSync(path.join(session.dir, "docs", "quality", "plans", `${misnamedId}.json`));
     const both = await session.call("kritik_plan", { runs: ["SEC:web"], status: madePlan.planId });
     check("kritik_plan refuses runs and status together", both.isError && /status/.test(both.json.message), both.text);
 

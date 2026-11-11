@@ -64,8 +64,21 @@ export function readPlanFile(path: string): KritikPlan {
   return parsed.plan;
 }
 
+/**
+ * The plan `planId`, from `docs/quality/plans/<planId>.json`. Refuses an id
+ * that is not a plan id before touching the disk (it becomes a path), and a
+ * file whose own `planId` is another plan's.
+ */
 export function loadPlan(root: string, planId: string): KritikPlan {
-  return readPlanFile(planPath(root, planId));
+  if (!isPlanId(planId)) {
+    throw new Error(`"${planId}" is not a plan id — a plan id reads YYYY-MM-zplan-DDNN, as \`arkaik kritik plan\` prints it.`);
+  }
+  const path = planPath(root, planId);
+  const plan = readPlanFile(path);
+  if (plan.planId !== planId) {
+    throw new Error(`${path} holds the plan "${plan.planId}", not "${planId}" — a plan file is named for its plan id.`);
+  }
+  return plan;
 }
 
 export function savePlan(path: string, plan: KritikPlan): void {

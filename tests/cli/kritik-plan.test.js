@@ -349,6 +349,27 @@ try {
   );
   check("--status writes nothing", JSON.stringify(JSON.parse(readFileSync(planFile, "utf8"))) === JSON.stringify(plan));
 
+  for (const id of ["../../../etc/passwd", "notes", `${FIRST_PLAN}-sec-web`]) {
+    const notAnId = run(["plan", "--status", id]);
+    check(
+      `--status refuses ${JSON.stringify(id)}, which is not a plan id, before reading anything`,
+      notAnId.status === 1 && notAnId.stderr.includes("is not a plan id") && !notAnId.stderr.includes("no plan at"),
+      notAnId.stderr,
+    );
+  }
+  {
+    // A valid plan file, saved under another plan's name.
+    const misnamed = `${FIRST_PLAN.slice(0, -2)}88`;
+    writeFileSync(path.join(plansDir, `${misnamed}.json`), readFileSync(planFile, "utf8"));
+    const wrongFile = run(["plan", "--status", misnamed]);
+    check(
+      "--status refuses a plan file whose planId is not the id it is named for",
+      wrongFile.status === 1 && wrongFile.stderr.includes(`${misnamed}.json`) && wrongFile.stderr.includes(`"${FIRST_PLAN}"`),
+      wrongFile.stderr,
+    );
+    rmSync(path.join(plansDir, `${misnamed}.json`));
+  }
+
   const missing = run(["plan", "--status", `${MONTH}-zplan-${DAY}77`]);
   check("--status on a plan that does not exist is refused", missing.status === 1 && missing.stderr.includes("no plan at"), missing.stderr);
 
