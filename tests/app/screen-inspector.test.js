@@ -307,17 +307,16 @@ test("past CHIP_MAX: the first CHIP_MAX, then one +N more chip with its own edge
   assert.deepEqual(plan.edges[CHIP_MAX], { id: touchEdgeIdOf(FRAME.id, MORE_CHIP_KEY), source: FRAME.id, target: more.id });
 });
 
+// By hand, for FRAME (x 0, y 56, 448 × 324) and 14 touches → 8 chips and "+6 more":
+// the 9 chips sit at x 0 + 16 + 12 = 28, 220 wide (right edge 248, inside the
+// frame's 448); the first at y 56 + 324 + 16 = 396, each 28 tall on a 34 pitch,
+// so the ninth spans 396 + 8 × 34 = 668 to 696. Bounds: x 0, y 56, 448 wide,
+// 696 − 56 = 640 tall.
 test("the plan's bounds cover the frame and every chip", () => {
   const plan = planChips(FRAME, touches(14));
-  const rects = [FRAME, ...plan.chips.map((chip) => chip.rect)];
-  const left = Math.min(...rects.map((r) => r.x));
-  const top = Math.min(...rects.map((r) => r.y));
-  assert.deepEqual(plan.bounds, {
-    x: left,
-    y: top,
-    width: Math.max(...rects.map((r) => r.x + r.width)) - left,
-    height: Math.max(...rects.map((r) => r.y + r.height)) - top,
-  });
+  assert.deepEqual(plan.chips[0].rect, { x: 28, y: 396, width: 220, height: 28 });
+  assert.deepEqual(plan.chips[8].rect, { x: 28, y: 668, width: 220, height: 28 });
+  assert.deepEqual(plan.bounds, { x: 0, y: 56, width: 448, height: 640 });
 });
 
 test("no touches: no chips, no edges, the frame alone", () => {
@@ -333,10 +332,12 @@ test("frameBoxOf finds frames only", () => {
   assert.equal(frameBoxOf(layout, "V-z@nowhere"), null);
 });
 
+// By hand: the bounds above (0, 56, 448 × 640), widened on the right by the
+// inspector's 16px gap and 320px card: 448 + 16 + 320 = 784.
 test("a selection frames the frame, its chips, and room for the inspector on the right", () => {
   const rect = selectionRect(wallWithTouches, layout, FRAME.id, "V-a");
-  const { bounds } = planChips(FRAME, touches(14));
-  assert.deepEqual(rect, { ...bounds, width: bounds.width + INSPECTOR_GAP + INSPECTOR_W });
+  assert.equal(INSPECTOR_GAP + INSPECTOR_W, 336);
+  assert.deepEqual(rect, { x: 0, y: 56, width: 784, height: 640 });
   assert.equal(selectionRect(wallWithTouches, layout, "V-z@nowhere", "V-a"), null);
 });
 
