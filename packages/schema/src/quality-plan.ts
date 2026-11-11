@@ -263,6 +263,26 @@ export function planId(input: { now: Date; known: readonly string[]; runs: reado
   throw new Error(`no plan id on ${year}-${month}-${day} sorts after "${greatest}"`);
 }
 
+/**
+ * The ids in `known` that now sort after the part `partId` and do not belong
+ * to its plan — each once, ascending. A part is named to sort last when its
+ * plan is made, but a scoped re-audit or a second plan made while it is still
+ * unscored can sort after it; on any cell both hold, the part's later scores
+ * would then lose the latest-wins merge. Sibling parts never share a cell, so
+ * they never count. `[]` when `partId` is not a plan part.
+ */
+export function outsortedBy(partId: string, known: readonly string[]): string[] {
+  const plan = planIdOfPartId(partId);
+  if (plan === null) return [];
+  const after = new Set<string>();
+  for (const id of known) {
+    if (typeof id !== "string" || !(id > partId)) continue;
+    if (planIdOfPartId(id) === plan) continue;
+    after.add(id);
+  }
+  return [...after].sort();
+}
+
 // --- The recorded event's scope marker -------------------------------------------
 
 /** How much of the product a plan record's merged matrix holds a score for. */

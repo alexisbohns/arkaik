@@ -292,6 +292,46 @@ const throws = (fn) => {
   check("500 generated histories: every new part id sorts after every existing id", violations.length === 0, violations.slice(0, 3).join(" | "));
 }
 
+// --- a part that no longer sorts last --------------------------------------------------
+
+{
+  const { outsortedBy } = S;
+  const SEC = "2026-11-zplan-1100-sec-web";
+  const AGT = "2026-11-zplan-1100-agt-ios";
+  const TST = "2026-11-zplan-1100-tst-web";
+
+  check("sibling parts are never returned", outsortedBy(AGT, [SEC, TST, "2026-11-zplan-1100"]).length === 0, JSON.stringify(outsortedBy(AGT, [SEC, TST])));
+  {
+    const known = [AGT, SEC, TST, `${SEC}-scoped`];
+    check(
+      "a scoped id named after a sibling part is returned for the parts that sort before it",
+      JSON.stringify(outsortedBy(AGT, known)) === JSON.stringify([`${SEC}-scoped`]) &&
+        JSON.stringify(outsortedBy(SEC, known)) === JSON.stringify([`${SEC}-scoped`]) &&
+        outsortedBy(TST, known).length === 0,
+      JSON.stringify([outsortedBy(AGT, known), outsortedBy(SEC, known), outsortedBy(TST, known)]),
+    );
+  }
+  {
+    const later = ["2026-11-zplan-1101-agt-ios", "2026-11-zplan-1101", "2026-11-zplan-1101-agt-ios"];
+    check(
+      "a later plan and its parts are returned, each once, sorted",
+      JSON.stringify(outsortedBy(SEC, later)) === JSON.stringify(["2026-11-zplan-1101", "2026-11-zplan-1101-agt-ios"]),
+      JSON.stringify(outsortedBy(SEC, later)),
+    );
+  }
+  check(
+    "an earlier audit is not returned",
+    outsortedBy(SEC, ["2026-11", "2026-11-scoped", "2026-11-sec-web", "2026-10-zplan-3100-sec-web", "2026-11-zplan-1000-sec-web"]).length === 0,
+  );
+  check("a later month is returned", JSON.stringify(outsortedBy(SEC, ["2026-12", "2026-10"])) === JSON.stringify(["2026-12"]));
+  check("an id that is not a plan part is never outsorted", outsortedBy("2026-11", ["2026-12"]).length === 0 && outsortedBy("2026-11-zplan-1100", ["2026-12"]).length === 0 && outsortedBy(`${SEC}-scoped`, ["2026-12"]).length === 0);
+  {
+    const known = Object.freeze(["2026-12", SEC]);
+    outsortedBy(AGT, known);
+    check("known is not mutated", JSON.stringify(known) === JSON.stringify(["2026-12", SEC]));
+  }
+}
+
 // --- the recorded scope marker ------------------------------------------------------
 
 {
