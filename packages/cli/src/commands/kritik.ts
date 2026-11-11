@@ -37,6 +37,7 @@ import {
   formatDelta,
   findingResolvedInput,
   isOpenFinding,
+  isPlanId,
   isPlanPartId,
   mintFindingId,
   orderEvents,
@@ -104,6 +105,7 @@ import {
 import { loadProfile, profilePath, writeJson } from "@arkaik/schema/src/cli/kritik-paths";
 import {
   createPlan,
+  listPlanIds,
   loadPlan,
   planPath,
   planStatus,
@@ -193,6 +195,7 @@ const FINDING_USAGE = `arkaik kritik finding <open|resolve|accept> [options]
     finding, not something that happened to the product.`;
 
 const MATRIX_USAGE = `arkaik kritik matrix [audit-id] [--json] [--record] [--scope]
+arkaik kritik matrix <plan-id> --plan [--record] [--json]
 
 Roll one audit up into its comparative matrix and write matrix.json — the only
 thing that may write that file.
@@ -203,11 +206,20 @@ thing that may write that file.
                     and counts. Do this once per finished audit.
   --scope           Treat the audit as a scoped re-audit even though it was
                     scored without \`score --scope\` (which marks it for you).
+  --plan            The id is a plan from \`arkaik kritik plan\`: read the merged
+                    matrix through its last part, writing nothing; with --record,
+                    append it as one quality.audit.completed under the plan id.
+                    Refused unless every part scored exactly its cells, and
+                    never with --scope.
 
 A scoped re-audit holds only the cells it re-scored, so matrix.json shows just
 those ("how did this audit go"), while --record carries the merged matrix
 through this audit ("where does the product stand") — the reading the trend
-replays. Everything else keeps its last score.`;
+replays. Everything else keeps its last score.
+
+A plan records once, as a whole: a part's own id is refused with --record or
+--scope. Under every table, a coverage line names each surface whose roll-up
+rests on fewer cells than apply to it: "web 62, from 6 of 73 cells".`;
 
 const SIGNALS_USAGE = `arkaik kritik signals [--surface <s>] [--criterion <c>] [--domain <CODE>] [--json]
 arkaik kritik signals --trip <criterion> --surface <s> --signal <index|text> [--detail <d>]
@@ -986,7 +998,32 @@ function runMatrix(args: string[], common: CommonOptions): void {
   const library = loadLibraryOrFail(common.root);
   if (flags.has("plan")) {
     const planId = positionals[0];
-    if (planId === undefined) return fail(`kritik: --plan needs the plan id — \`arkaik kritik matrix <planId> --record --plan\`.`);
+    if (flags.has("scope")) {
+      return fail(`kritik: --plan and --scope cannot be combined — a plan records its own scope marker, measured from the newest full or scoped audit.`);
+    }
+    if (planId === undefined) {
+      const plans = listPlanIds(common.root);
+      return fail(
+        `kritik: --plan needs the plan id — \`arkaik kritik matrix <planId> --record --plan\` ` +
+          `(plans: ${plans.join(", ") || "none — `arkaik kritik plan` makes one"}).`,
+      );
+    }
+    if (isPlanPartId(planId)) {
+      const owner = planIdOfPartId(planId) ?? planId;
+      return fail(`kritik: "${planId}" is one part of plan "${owner}" — pass the plan id: \`arkaik kritik matrix ${owner} --record --plan\`.`);
+    }
+    if (flags.has("record")) {
+      if (!common.journal) {
+        return fail(`kritik: --record --plan appends the plan's reading to the journal, and --no-journal says not to — drop one of them.`);
+      }
+      const journal = resolveJournal(common.root, common.bundlePath);
+      if (!journal.present) {
+        return fail(
+          `kritik: --record --plan needs a journal, and there is no bundle at ${journal.bundlePath} — ` +
+            `a plan's reading exists only as its quality.audit.completed.`,
+        );
+      }
+    }
     return runPlanMatrix(planId, flags, common, library);
   }
   let auditId: string;
@@ -994,6 +1031,23 @@ function runMatrix(args: string[], common: CommonOptions): void {
     auditId = positionals[0] ?? newestAuditId(common.root);
   } catch (error) {
     return fail(`kritik: ${(error as Error).message}`);
+  }
+
+  // Before anything is computed or written, and before `scopedSince`: once a
+  // plan is recorded its parts are recorded ids, and `declaredScopeSince` over
+  // `recordedSinceIds` would no longer catch them.
+  if (isPlanId(auditId)) {
+    return fail(
+      `kritik: "${auditId}" is a plan, not an audit — pass --plan: \`arkaik kritik matrix ${auditId} --plan\` previews its merged reading, ` +
+        `\`arkaik kritik matrix ${auditId} --record --plan\` records it.`,
+    );
+  }
+  if (isPlanPartId(auditId) && (flags.has("record") || flags.has("scope"))) {
+    const owner = planIdOfPartId(auditId) ?? auditId;
+    return fail(
+      `kritik: "${auditId}" is one part of plan "${owner}" — a plan records once, as a whole, and carries its own scope marker: ` +
+        `\`arkaik kritik matrix ${owner} --record --plan\`.`,
+    );
   }
 
   let computed: ReturnType<typeof computeAuditMatrix>;

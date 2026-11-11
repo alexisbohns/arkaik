@@ -377,6 +377,25 @@ try {
   );
   refuses(r, "a plan already recorded", recordArgs, ["already recorded", "make a new plan", "--run SEC:web"]);
 
+  // === The CLI's own refusals around a plan ======================================
+
+  refuses(a, "recording a part id directly", ["matrix", part.auditId, "--record"], [`is one part of plan "${planId}"`, `arkaik kritik matrix ${planId} --record --plan`]);
+  refuses(a, "recording the newest audit when it is a part", ["matrix", "--record"], [`arkaik kritik matrix ${planId} --record --plan`]);
+  refuses(a, "declaring a part scoped", ["matrix", part.auditId, "--scope"], [`is one part of plan "${planId}"`]);
+  refuses(a, "a plan id without --plan", ["matrix", planId], ["is a plan, not an audit", `arkaik kritik matrix ${planId} --plan`]);
+  refuses(a, "--plan with --scope", ["matrix", planId, "--plan", "--scope"], ["cannot be combined"]);
+  refuses(a, "--plan with no plan id", ["matrix", "--plan"], ["--plan needs the plan id", planId]);
+  refuses(a, "--plan with a part id", ["matrix", part.auditId, "--plan"], [`is one part of plan "${planId}"`, `arkaik kritik matrix ${planId} --record --plan`]);
+  refuses(a, "--record --plan with --no-journal", ["matrix", planId, "--record", "--plan", "--no-journal"], ["--no-journal"]);
+  const partTable = a.run(["matrix", part.auditId]);
+  check("a part's own table still prints: only recording or declaring it is refused", partTable.status === 0, partTable.stderr);
+
+  const nb = repo();
+  nb.ok(["profile", ...SURFACES.flatMap((surface) => ["--surface", surface])]);
+  const nbPlan = nb.makePlan("SEC:web");
+  rmSync(nb.at("docs", "arkaik", "bundle.json"));
+  refuses(nb, "--record --plan with no journal to append to", ["matrix", nbPlan.planId, "--record", "--plan"], ["needs a journal", "no bundle at"]);
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
