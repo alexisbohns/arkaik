@@ -65,7 +65,10 @@ change, the change is in § Verified facts and the open questions, not here.
   yet (showing its status); not on this platform. Whether "live from a deploy"
   differs from "live set by hand" is answered in F6; it is shown.
 - **R8 Gaps only.** A switch that fades everything except stale shots and live
-  screens with no shot, with a count.
+  screens with no shot, with a count. With a count of 0 on the lens nothing fades
+  (a whole wall at 15% reads as broken): the switch stays on, shows 0, and a
+  status above the bar says "No gaps on <lens>" ("No gaps on any platform"
+  side by side).
 - **R9 Flow headers** show how many screens are live on the lens and how many
   are stale or missing a shot, on a counts line directly after the
   flow's title (never at the header's far end, which is off screen on arrival
@@ -830,7 +833,8 @@ hidden left handle on each chip.
   one option per platform in `wall.platforms` with `PLATFORM_ICONS`, plus "Side
   by side" (part 3). Hidden when the scope has fewer than two platforms.
 - Gaps (part 3): a toggle `Button` with `aria-pressed`, label "Gaps only" and a
-  count badge.
+  count badge. On with a count of 0, it fades nothing and a `role="status"` pill
+  above the bar, in the top pills' style, reads "No gaps on <lens>".
 - A visually hidden `aria-live="polite"` line announces changes ("Showing iOS.
   4 gaps.").
 - I/W/A (part 3) drive the lens through `usePlatformHotkeys`, mapping `"all"`

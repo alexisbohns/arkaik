@@ -408,7 +408,9 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               onOpenNode={handleOpenNode}
               onJump={jumpToFlow}
               onAspect={reportAspect}
-              gapsOnly={gapsOnly}
+              // Gaps only with nothing to fix fades nothing: a whole wall at
+              // 15% would read as broken. The bar says why instead.
+              gapsOnly={gapsOnly && gaps > 0}
             />
             <WallViewportProbe layout={layout} onStore={handleStore} onStrip={setViewedStrip} />
           </ReactFlowProvider>
@@ -448,7 +450,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               )}
             </div>
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex flex-col items-center gap-2 px-3">
             <ScreensBar
               platforms={wall.platforms}
               lens={lens}
