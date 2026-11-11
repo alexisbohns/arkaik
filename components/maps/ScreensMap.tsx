@@ -8,7 +8,6 @@ import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
 import { WALL_BAR_INSET, WALL_CAMERA_PADDING, type WallCameraRequest } from "@/components/graph/WallCamera";
-import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
@@ -24,18 +23,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { JournalEvent, Node as DataNode } from "@/lib/data/types";
+import { platformLabel, type PlatformId } from "@/lib/config/platforms";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
+import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
 import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { generateNodeId } from "@/lib/utils/id";
-import { platformAvailabilityShape, type ProductGraph } from "@/lib/utils/product-scope";
-import { buildWall, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
+import type { ProductGraph } from "@/lib/utils/product-scope";
+import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
   layoutWall,
@@ -91,6 +92,14 @@ function WallViewportProbe({
   useEffect(() => onStore(store), [onStore, store]);
   useEffect(() => onStrip(stripId), [onStrip, stripId]);
   return null;
+}
+
+const NO_PLATFORMS: readonly PlatformId[] = [];
+
+/** The bar's live line: "Showing iOS. 4 gaps." / "Showing side by side, gaps only. 1 gap." */
+function screensAnnouncement(lens: WallLens, gaps: number, gapsOnly: boolean): string {
+  const shown = lens === "side" ? "side by side" : platformLabel(lens);
+  return `Showing ${shown}${gapsOnly ? ", gaps only" : ""}. ${gaps} ${gaps === 1 ? "gap" : "gaps"}.`;
 }
 
 /**
@@ -162,6 +171,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   );
   const lens = resolveLens(preferences.screensLens, wall);
   const gapsOnly = preferences.screensGapsOnly;
+  const gaps = useMemo(() => gapCount(wall, lens), [wall, lens]);
 
   // Measured proportions, shared by every visit in this tab. `aspectOf`
   // answers only for the slot's current shot, by its fingerprint (see aspect-cache).
@@ -292,6 +302,25 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     [aspectOf, layout, lens, setPreferences, wall],
   );
 
+  const handleGapsOnlyChange = useCallback(
+    (next: boolean) => setPreferences({ screensGapsOnly: next }),
+    [setPreferences],
+  );
+
+  // I / W / A over the lens. "all" is side by side: pressing the platform shown
+  // goes side by side, pressing a platform from side by side shows it
+  // (`nextPlatformFilter`'s toggle). Live only where the wall and the bar are:
+  // a key that cannot act must not be registered as live, or it would
+  // silently rewrite the stored lens. Above the loading early return, because
+  // hooks run on every render.
+  const lensChoices = wall.platforms.length >= 2 && wall.empty !== "nothing" ? wall.platforms : NO_PLATFORMS;
+  usePlatformHotkeys({
+    enabled: lensChoices.length >= 2,
+    available: lensChoices.map((id) => ({ id })),
+    current: lens === "side" ? "all" : lens,
+    onSelect: (next) => handleLensChange(next === "all" ? "side" : next),
+  });
+
   const handleNodeUpdate = useCallback(
     async (nodeId: string, patch: Partial<Omit<DataNode, "id" | "project_id">>) => {
       await updateNode(nodeId, patch);
@@ -333,10 +362,6 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
       />
     );
   }
-
-  const showBar = platformAvailabilityShape(wall.platforms) === "rings";
-  const announcement =
-    lens === "side" ? "Showing every platform side by side." : `Showing ${PLATFORM_LABELS[lens]}.`;
 
   return (
     <PageShell
@@ -423,16 +448,17 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               )}
             </div>
           )}
-          {showBar && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
-              <ScreensBar
-                platforms={wall.platforms}
-                lens={lens}
-                onLensChange={handleLensChange}
-                announcement={announcement}
-              />
-            </div>
-          )}
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
+            <ScreensBar
+              platforms={wall.platforms}
+              lens={lens}
+              onLensChange={handleLensChange}
+              announcement={screensAnnouncement(lens, gaps, gapsOnly)}
+              gapsOnly={gapsOnly}
+              gapCount={gaps}
+              onGapsOnlyChange={handleGapsOnlyChange}
+            />
+          </div>
         </div>
       )}
     </PageShell>
