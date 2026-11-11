@@ -328,5 +328,48 @@ check("one cell moving makes the recorded audit the baseline again", goldenMoved
   check("an empty plan field is not a plan: the scoped marker stands", blank.snapshots[0].plan === undefined && blank.snapshots[0].scope?.since === "2026-10", JSON.stringify(blank.snapshots[0]));
 }
 
+// --- a plan that adds a domain to a surface is coverage, not movement ---------
+//
+// A surface roll-up averages the domains holding a score. When a plan brings a
+// new domain onto a surface, the roll-up moves although nothing that existed
+// before got worse — so a plan row's delta on a surface needs the same domains
+// scored there as the row it is compared with.
+{
+  const planScope = (plan, scored) => ({
+    partial: true,
+    cells: scored.length,
+    plan,
+    parts: [`${plan}-x-web`],
+    scored,
+    coverage: { scored: scored.length, assessed: scored.length, applicable: 338, surfaces: { web: { assessed: scored.length, applicable: 73 } } },
+  });
+  const secPlan = audit("2026-11-zplan-1100", "2026-11-11T00:00:00.000Z", { web: { SEC: 100 } }, { scope: planScope("2026-11-zplan-1100", ["SEC-01::web"]) });
+  const a11yPlan = audit("2026-11-zplan-1101", "2026-11-11T01:00:00.000Z", { web: { SEC: 100, A11Y: 25 } }, { scope: planScope("2026-11-zplan-1101", ["A11Y-01::web"]) });
+  const rows = trendRows(deriveQualityTrend([secPlan, a11yPlan])).rows;
+  check(
+    "a plan that brings a new domain onto a surface shows no delta there, though the roll-up moved",
+    rows[1].cells.web.score !== rows[0].cells.web.score && rows[1].cells.web.delta === null,
+    JSON.stringify(rows.map((row) => row.cells.web)),
+  );
+  const a11y = trendRows(deriveQualityTrend([secPlan, a11yPlan]), { domain: "A11Y" }).rows;
+  check("with a domain filter the rule does not apply: A11Y was never scored above, so no delta either way", a11y[1].cells.web.delta === null && a11y[1].cells.web.score === 25, JSON.stringify(a11y[1].cells));
+
+  const secAgain = audit("2026-11-zplan-1102", "2026-11-11T02:00:00.000Z", { web: { SEC: 50, A11Y: 25 } }, { scope: planScope("2026-11-zplan-1102", ["SEC-01::web"]) });
+  const again = trendRows(deriveQualityTrend([secPlan, a11yPlan, secAgain])).rows;
+  check(
+    "a plan that re-scores a domain already scored there keeps its delta",
+    again[2].cells.web.delta !== null && again[2].cells.web.delta === again[2].cells.web.score - again[1].cells.web.score && again[2].cells.web.delta < 0,
+    JSON.stringify(again.map((row) => row.cells.web)),
+  );
+
+  const full = audit("2026-12", "2026-12-01T00:00:00.000Z", { web: { SEC: 50, A11Y: 25, PRV: 75 } });
+  const after = trendRows(deriveQualityTrend([secPlan, a11yPlan, secAgain, full])).rows;
+  check(
+    "a full audit after plans is unaffected: its delta is read even with a new domain",
+    after[3].cells.web.delta !== null && after[3].cells.web.delta === after[3].cells.web.score - after[2].cells.web.score,
+    JSON.stringify(after.map((row) => row.cells.web)),
+  );
+}
+
 console.log(failures === 0 ? "\nAll quality-trend tests OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

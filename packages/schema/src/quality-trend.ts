@@ -308,6 +308,17 @@ function planScored(plan: PlanScopeReading, surface: string, domain: string | un
 }
 
 /**
+ * Whether two snapshots hold a score for the same domains on `surface`. A surface roll-up averages
+ * the domains that scored, so when a plan brings a new domain onto a surface its roll-up moves
+ * although nothing that existed before got worse: that is coverage growing, not a score moving.
+ */
+function sameDomains(a: AuditSnapshot, b: AuditSnapshot, surface: string): boolean {
+  const left = Object.keys(a.scores[surface] ?? {});
+  const right = new Set(Object.keys(b.scores[surface] ?? {}));
+  return left.length === right.size && left.every((domain) => right.has(domain));
+}
+
+/**
  * The trend as a table, oldest first — what `arkaik kritik trend` prints and
  * `kritik_trend` returns, built once here so the two cannot disagree.
  *
@@ -317,6 +328,10 @@ function planScored(plan: PlanScopeReading, surface: string, domain: string | un
  * above did not score that surface or a major bump sits between the two.
  * Columns are the surfaces in order of first appearance, which is the profile
  * order every `auditCompletedInput` wrote them in.
+ *
+ * A plan row reads a delta only on a surface where it scored a cell (of
+ * `domain`, when given) and, with no `domain`, only where the same domains hold
+ * a score as in the row above — else the roll-up moved because coverage grew.
  */
 export function trendRows(
   trend: Pick<QualityTrend, "snapshots">,
@@ -342,7 +357,10 @@ export function trendRows(
     for (const surface of surfaces) {
       const score = valueOf(snapshot, surface);
       const before = above === null ? null : valueOf(above, surface);
-      const looked = snapshot.plan === undefined || planScored(snapshot.plan, surface, filter.domain);
+      const looked =
+        snapshot.plan === undefined ||
+        (planScored(snapshot.plan, surface, filter.domain) &&
+          (filter.domain !== undefined || above === null || sameDomains(snapshot, above, surface)));
       const delta = looked && snapshot.comparable && score !== null && before !== null ? score - before : null;
       cells[surface] = { score, delta };
     }
