@@ -774,6 +774,10 @@ hidden left handle on each chip.
 
 ### Interaction
 
+- **Arrival.** The first camera puts the first strip's header at the top-left
+  of the canvas, below the top pills and clear of the bottom bar, at the zoom
+  that fits the strip's width within [0.7, 1] (`openingViewport`); a wider
+  strip runs off to the right. Every later move frames with `frameViewport`.
 - **Part 2.** Click or Enter/Space on a frame → `openNode({ nodeId: viewId })`
   and `focus` on that frame (the System map's grammar). Header click → the
   flow's panel. Jump tile → camera to the target strip, `maxZoom` 1, `minZoom`

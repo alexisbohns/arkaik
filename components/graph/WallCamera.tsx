@@ -4,15 +4,30 @@ import { useEffect, useRef } from "react";
 import { useReactFlow, useStore } from "@xyflow/react";
 import { frameViewport, type Rect } from "@/lib/utils/screen-wall-layout";
 
-/** One camera move on the Screens map: show `rect`, zoom kept within [minZoom, maxZoom]. */
-export interface WallCameraRequest {
-  /** Changes once per request; each version applies once. */
-  version: number;
-  /** In flow coordinates: a strip, or a frame with its chip column. */
-  rect: Rect;
-  minZoom: number;
-  maxZoom: number;
-}
+/** A viewport for the canvas's settled size, in screen px and zoom. */
+export type WallViewportFor = (size: { width: number; height: number }) => { x: number; y: number; zoom: number };
+
+/**
+ * One camera move on the Screens map. Either show `rect`, zoom kept within
+ * [minZoom, maxZoom] (`frameViewport`) — jumps, frame and selection framing —
+ * or apply a ready `viewport`, computed for the canvas size the move runs at
+ * (the map's opening camera, `openingViewport`). The controller cannot compute
+ * the viewport itself: only the store knows the canvas size once a panel has
+ * narrowed it.
+ */
+export type WallCameraRequest =
+  | {
+      /** Changes once per request; each version applies once. */
+      version: number;
+      /** In flow coordinates: a strip, or a frame with its chip column. */
+      rect: Rect;
+      minZoom: number;
+      maxZoom: number;
+    }
+  | {
+      version: number;
+      viewport: WallViewportFor;
+    };
 
 /** Space kept around the framed rect, in screen px (`frameViewport`'s `padding`). */
 export const WALL_CAMERA_PADDING = 32;
@@ -22,7 +37,7 @@ export const WALL_BAR_INSET = 72;
 /**
  * Applies the Screens map's camera requests: frames a rectangle — a strip, a
  * selected frame — where `CameraFocus` can only centre a node at the current
- * zoom. `CameraFocus`'s twin in timing: opening a panel narrows the canvas
+ * zoom, or applies a ready viewport (the opening camera). `CameraFocus`'s twin in timing: opening a panel narrows the canvas
  * right after the click, so each request waits 120ms after the last store
  * width/height change and then runs one animation, linear (d3's default
  * interpolation dips the zoom mid-flight). Under reduced motion it jumps.
@@ -40,16 +55,19 @@ export function WallCamera({ request }: { request: WallCameraRequest | null }) {
     const timer = setTimeout(() => {
       handled.current = request.version;
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const viewport = frameViewport(
-        request.rect,
-        { width, height },
-        {
-          padding: WALL_CAMERA_PADDING,
-          bottomInset: WALL_BAR_INSET,
-          minZoom: request.minZoom,
-          maxZoom: request.maxZoom,
-        },
-      );
+      const viewport =
+        "viewport" in request
+          ? request.viewport({ width, height })
+          : frameViewport(
+              request.rect,
+              { width, height },
+              {
+                padding: WALL_CAMERA_PADDING,
+                bottomInset: WALL_BAR_INSET,
+                minZoom: request.minZoom,
+                maxZoom: request.maxZoom,
+              },
+            );
       void reactFlow.setViewport(viewport, { duration: reduce ? 0 : 300, interpolate: "linear" });
     }, 120);
     return () => clearTimeout(timer);

@@ -2799,6 +2799,9 @@ const { chromium } = require("playwright");
 const BASE = process.env.BASE_URL ?? "http://localhost:4343";
 const OUT = __dirname;
 const LOD_ZOOM = 0.35;
+/** openingViewport's padding and zoom floor (lib/utils/screen-wall-layout.ts). */
+const OPENING_PADDING = 32;
+const OPENING_MIN_ZOOM = 0.7;
 const failures = [];
 const consoleErrors = [];
 
@@ -2835,7 +2838,7 @@ async function importBundle(page, file) {
   return decodeURIComponent(page.url().match(/\/project\/([^/?#]+)/)[1]);
 }
 
-/** Opens the Screens map and waits for the first strip's camera to settle. */
+/** Opens the Screens map and waits for the opening camera to settle. */
 async function openScreens(page, projectId, query = "") {
   await page.goto(`${BASE}/project/${encodeURIComponent(projectId)}/maps/screens${query}`);
   await page.locator(".react-flow__node-wallHeader").first().waitFor({ timeout: 90_000 });
@@ -2862,6 +2865,42 @@ async function visibleFrames(page) {
     (box) =>
       box.right > pane.x && box.left < pane.x + pane.width && box.bottom > pane.y && box.top < pane.y + pane.height,
   ).length;
+}
+
+/**
+ * Where the opening camera put the wall: the first header against the canvas's
+ * top-left corner (below the top pills' bottom edge, when they are up), the
+ * zoom, and how many strip headers the canvas shows.
+ */
+async function opening(page) {
+  const pane = await paneBox(page);
+  const header = await page.locator(".react-flow__node-wallHeader").first().boundingBox();
+  const pills = await page
+    .locator('[role="status"]')
+    .filter({ hasText: /No screenshots yet|read the journal/ })
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().bottom));
+  const pillsBottom = pills.length > 0 ? Math.max(...pills) - pane.y : 0;
+  const headers = await page
+    .locator(".react-flow__node-wallHeader")
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON()));
+  const headersShown = headers.filter((box) => box.top >= pane.y && box.bottom <= pane.y + pane.height).length;
+  return {
+    left: header.x - pane.x,
+    top: header.y - pane.y,
+    expectedTop: pillsBottom + OPENING_PADDING,
+    zoom: await zoom(page),
+    headersShown,
+  };
+}
+
+/** The opening camera's checks: the first header at the top-left, a readable zoom, the next strip in view. */
+async function checkOpening(page, label) {
+  const at = await opening(page);
+  check(`${label}: the first strip's header sits at the canvas's top-left, below the pills`,
+    Math.abs(at.left - OPENING_PADDING) <= 2 && Math.abs(at.top - at.expectedTop) <= 2,
+    `header at (${Math.round(at.left)}, ${Math.round(at.top)}), expected (${OPENING_PADDING}, ${Math.round(at.expectedTop)})`);
+  check(`${label}: the opening zoom is readable, in [0.7, 1]`, at.zoom >= OPENING_MIN_ZOOM - 1e-6 && at.zoom <= 1, `zoom ${at.zoom}`);
+  check(`${label}: the next strip's header is in the canvas too`, at.headersShown >= 2, `${at.headersShown} headers wholly in view`);
 }
 
 async function shots(page) {
@@ -2915,8 +2954,7 @@ async function snap(page, name) {
       `${await visibleFrames(page)} visible frames, ${await shots(page)} images`);
     check("the no-shots pill is up", await page.getByText("No screenshots yet.").isVisible());
     check("the lens bar offers three platforms", (await page.getByRole("toolbar", { name: "Screens display" }).getByRole("button").count()) === 3);
-    check("the first camera frames the first strip at a readable zoom", (await zoom(page)) >= 0.4 && (await zoom(page)) <= 1,
-      `zoom ${await zoom(page)}`);
+    await checkOpening(page, "the opening camera");
     await snap(page, "pebbles-1440-light");
 
     const frame = page.locator(".react-flow__node-wallFrame [role=button]").first();
@@ -2945,6 +2983,7 @@ async function snap(page, name) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
         await openScreens(page, id);
         await snap(page, `pebbles-${width}-${colorScheme}`);
+        await checkOpening(page, `${colorScheme} ${width}`);
         const bar = await page.getByRole("toolbar", { name: "Screens display" }).boundingBox();
         const canvas = await paneBox(page);
         check(`${colorScheme} ${width}: the bar sits inside the canvas`, Boolean(bar) &&
@@ -2966,6 +3005,7 @@ async function snap(page, name) {
     await openScreens(page, id);
     check("the self-map draws a ghost wall with the pill", (await shots(page)) === 0 && (await page.getByText("No screenshots yet.").isVisible()));
     check("…and no lens bar (one platform)", (await page.getByRole("toolbar", { name: "Screens display" }).count()) === 0);
+    await checkOpening(page, "self-map opening camera");
     await snap(page, "self-map-1440-light");
 
     await page.locator(".react-flow__controls-fitview").click();
@@ -2999,6 +3039,7 @@ async function snap(page, name) {
 
     await openScreens(page, id);
     await page.waitForTimeout(2000);
+    await checkOpening(page, "with shots, the opening camera");
     const visible = await visibleFrames(page);
     const images = await shots(page);
     check("after load, images ≤ visible frames + 4", images <= visible + 4 && images > 0, `${images} images, ${visible} visible frames`);
@@ -3061,7 +3102,7 @@ async function snap(page, name) {
 
 With the dev server up in the worktree: `BASE_URL=http://localhost:4343 node screens-check.js`
 
-Expected: 38 `PASS:` lines, no `FAIL:`, then `console errors recorded: N (console-errors.txt)` and, last, exactly:
+Expected: 64 `PASS:` lines, no `FAIL:`, then `console errors recorded: N (console-errors.txt)` and, last, exactly:
 
 ```
 SCREENS PART 2: ALL CHECKS PASSED
@@ -3069,7 +3110,7 @@ SCREENS PART 2: ALL CHECKS PASSED
 
 exit 0. Screenshots land beside the script: `pebbles-{1440,900,390}-{light,dark}.png`, `pebbles-1440-light.png`, `pebbles-panel-open.png`, `pebbles-admin.png`, `self-map-1440-light.png`, `self-map-jump.png`, `shots-stale-caption.png`, `shots-1440-light.png`, `shots-fit-view.png`. Open them: ghosts read their words in both themes; the bar spans the canvas at 390; no token is hard-coded beyond the amber quality styles.
 
-What it covers, against the contract's test strategy: the map is listed (sidebar, the Overview card with `68 nodes · 0 edges`, the index without Edit/Delete, ⌘K "screens" first); both seeds draw ghost walls with the no-shots pill; a frame click opens the view's panel (`?node=V-…`) and centres the frame; a self-map jump tile flies to its strip at zoom ≥ 0.4 and rings that header, which clears after 2s; Pebbles' Admin scope shows the Journey pointer above "Not in a flow" and no bar; a covered view (`V-pebble-detail`, iOS) reads "may be stale" after `AC-emotion-palette-on-read` moved; light and dark at 1440, 900 and 390 (bar inside the canvas; Minimap and Controls follow the 60rem/40rem canvas rules); and the performance check — images ≤ visible frames + 4 after load, no long task over 200 ms across the 20 wheel steps (Contract deviation 5), the walk ending on the last strip, and 0 images after the Controls' fit-view below `LOD_ZOOM`.
+What it covers, against the contract's test strategy: the map is listed (sidebar, the Overview card with `68 nodes · 0 edges`, the index without Edit/Delete, ⌘K "screens" first); both seeds draw ghost walls with the no-shots pill; the opening camera (`openingViewport`) puts the first strip's header at the canvas's top-left, 32px below the pills' measured bottom (or the canvas top), at a zoom in [0.7, 1] with the next strip's header in view — on arrival, at every width and theme, on the self-map and with shots; a frame click opens the view's panel (`?node=V-…`) and centres the frame; a self-map jump tile flies to its strip at zoom ≥ 0.4 and rings that header, which clears after 2s; Pebbles' Admin scope shows the Journey pointer above "Not in a flow" and no bar; a covered view (`V-pebble-detail`, iOS) reads "may be stale" after `AC-emotion-palette-on-read` moved; light and dark at 1440, 900 and 390 (bar inside the canvas; Minimap and Controls follow the 60rem/40rem canvas rules); and the performance check — images ≤ visible frames + 4 after load, no long task over 200 ms across the 20 wheel steps (Contract deviation 5), the walk ending on the last strip, and 0 images after the Controls' fit-view below `LOD_ZOOM`.
 
 If a check fails on a hydration warning, restart the dev server and rerun before investigating.
 

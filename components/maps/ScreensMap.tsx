@@ -6,7 +6,7 @@ import { ImageOffIcon, TriangleAlertIcon } from "lucide-react";
 import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
-import type { WallCameraRequest } from "@/components/graph/WallCamera";
+import { WALL_BAR_INSET, type WallCameraRequest } from "@/components/graph/WallCamera";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -34,7 +34,7 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { generateNodeId } from "@/lib/utils/id";
 import { platformAvailabilityShape, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildWall, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
-import { layoutWall, type AspectOf } from "@/lib/utils/screen-wall-layout";
+import { layoutWall, openingViewport, type AspectOf } from "@/lib/utils/screen-wall-layout";
 import { STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot-staleness";
 
 interface ScreensMapProps {
@@ -45,7 +45,7 @@ interface ScreensMapProps {
 /** A failed journal read draws the wall with no events: nothing stale, no proof. */
 const NO_EVENTS: readonly JournalEvent[] = [];
 
-/** The zoom range for framing a whole strip — the first one on arrival, a jump tile's target after. */
+/** The zoom range for framing a whole strip: a jump tile's target. */
 const STRIP_ZOOM = { minZoom: 0.4, maxZoom: 1 } as const;
 
 /** How long a jumped-to strip's header stays rung. */
@@ -134,14 +134,30 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
 
   const ready = !nodesLoading && !edgesLoading && !projectLoading && !journalLoading;
 
-  // The first camera: the first strip, once, as soon as there is one to show.
-  // Adjusted during render rather than in an effect (the derived-state shape
-  // `useProjectPanels` uses): React discards this pass and re-renders with the
-  // request, so the canvas never paints a frame without it.
+  // The pills at the top of the canvas (no shots yet; the journal failed).
+  // Their bottom edge, measured, is the opening camera's top inset, so the
+  // first header never sits under them — they wrap to two lines on a phone.
+  const pillsUp = journalError !== null || !wall.anyShot;
+  const [pillsBottom, setPillsBottom] = useState<number | null>(null);
+  const measurePills = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+    const observer = new ResizeObserver(() => setPillsBottom(element.offsetTop + element.offsetHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // The first camera, and only the first: the first strip's header at the
+  // top-left of the canvas, clear of the pills and the bottom bar, at a
+  // readable zoom (`openingViewport`); jumps and frame clicks frame with
+  // `frameViewport`. Once, as soon as there is a strip to show and the pills
+  // (if up) are measured. Adjusted during render rather than in an effect (the
+  // derived-state shape `useProjectPanels` uses): React discards this pass and
+  // re-renders with the request, so the canvas never paints a frame without it.
   const [camera, setCamera] = useState<WallCameraRequest | null>(null);
-  const firstStripRect = wall.strips.length > 0 ? layout.strips.get(wall.strips[0].id) : undefined;
-  if (ready && camera === null && firstStripRect !== undefined) {
-    setCamera({ version: 1, rect: firstStripRect, ...STRIP_ZOOM });
+  const hasStrip = wall.strips.length > 0 && layout.strips.has(wall.strips[0].id);
+  if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
+    const insets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
+    setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, insets) });
   }
 
   // The frame a click activated, centred in whatever canvas the panel leaves.
@@ -272,8 +288,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
             onJump={jumpToFlow}
             onAspect={reportAspect}
           />
-          {(journalError !== null || !wall.anyShot) && (
-            <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3">
+          {pillsUp && (
+            <div
+              ref={measurePills}
+              className="pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3"
+            >
               {journalError !== null && (
                 <div
                   role="status"
