@@ -15,6 +15,8 @@
  * esbuild drops this module from any plugin script that does not use it.
  */
 
+import { CROSS_SURFACE_ID } from "./quality";
+
 // --- Shapes ------------------------------------------------------------------
 
 /** The plan file's `schema` value. A reader refuses any other. */
@@ -115,4 +117,58 @@ export function isPartialAuditId(id: unknown): boolean {
 /** The plan a part id belongs to, or `null` when `id` is not a plan part. */
 export function planIdOfPartId(id: string): string | null {
   return isPlanPartId(id) ? id.slice(0, PLAN_ID_LENGTH) : null;
+}
+
+// --- The --run grammar -----------------------------------------------------------
+
+/** `DOMAIN:SURFACE`. Domain codes carry digits (`A11Y`); surfaces are profile ids. */
+const RUN_TOKEN = /^([A-Za-z0-9]{2,5}):([A-Za-z0-9_-]+)$/;
+
+/**
+ * The `--run` tokens as parts, in the order given (the priority order a budget
+ * cut will walk). The domain is upper-cased and must be one of
+ * `vocabulary.domains` (the effective library's codes, pack plus overlay); the
+ * surface must equal one of `vocabulary.surfaces` (the profile's ids) exactly,
+ * as `applicableCells` matches it. A duplicate after normalisation collapses
+ * into its first occurrence with one warning. Every other problem throws.
+ */
+export function parseRun(
+  tokens: readonly string[],
+  vocabulary: { domains: readonly string[]; surfaces: readonly string[] },
+): { runs: PlanRun[]; warnings: string[] } {
+  if (tokens.length === 0) throw new Error("at least one --run DOMAIN:SURFACE is required");
+  const surfaces = vocabulary.surfaces.filter((id) => id !== CROSS_SURFACE_ID);
+  const runs: PlanRun[] = [];
+  const warnings: string[] = [];
+  for (const token of tokens) {
+    const match = RUN_TOKEN.exec(token);
+    if (match === null) {
+      throw new Error(
+        `--run "${token}" is not DOMAIN:SURFACE — a domain code of 2 to 5 letters or digits, a colon, ` +
+          `then a surface id of letters, digits, "-" or "_" (for example SEC:web).`,
+      );
+    }
+    const domain = match[1].toUpperCase();
+    const surface = match[2];
+    if (!vocabulary.domains.includes(domain)) {
+      throw new Error(`--run "${token}": ${domain} is not a domain of this library. Domain codes: ${vocabulary.domains.join(", ")}.`);
+    }
+    if (surface === CROSS_SURFACE_ID) {
+      throw new Error(
+        `--run "${token}": ${CROSS_SURFACE_ID} is a lens for findings, not a surface anything is scored on. Plan the surfaces it connects instead.`,
+      );
+    }
+    if (!surfaces.includes(surface)) {
+      throw new Error(
+        `--run "${token}": "${surface}" is not a surface of this project's profile. ` +
+          `Surfaces: ${surfaces.length > 0 ? surfaces.join(", ") : "none declared"}. A surface must match its id exactly, case included.`,
+      );
+    }
+    if (runs.some((run) => run.domain === domain && run.surface === surface)) {
+      warnings.push(`--run ${token} repeats ${domain}:${surface}; the two are one part.`);
+      continue;
+    }
+    runs.push({ domain, surface });
+  }
+  return { runs, warnings };
 }

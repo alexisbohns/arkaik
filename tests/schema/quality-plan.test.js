@@ -70,6 +70,76 @@ const throws = (fn) => {
   check("planCellKey is criterion::surface", planCellKey("SEC-01", "web") === "SEC-01::web");
 }
 
+// --- the --run grammar ------------------------------------------------------------
+
+{
+  const { parseRun } = S;
+  const vocabulary = { domains: DOMAINS, surfaces: [...SURFACES, "cross-surface"] };
+
+  {
+    const { runs, warnings } = parseRun(["SEC:web", "agt:ios", "A11Y:web", "a11y:admin"], vocabulary);
+    check(
+      "valid tokens parse in order, domains upper-cased, surfaces kept",
+      JSON.stringify(runs) ===
+        JSON.stringify([
+          { domain: "SEC", surface: "web" },
+          { domain: "AGT", surface: "ios" },
+          { domain: "A11Y", surface: "web" },
+          { domain: "A11Y", surface: "admin" },
+        ]) && warnings.length === 0,
+      JSON.stringify({ runs, warnings }),
+    );
+  }
+  {
+    const { runs, warnings } = parseRun(["SEC:web", "AGT:ios", "sec:web", "Sec:web"], vocabulary);
+    check(
+      "a duplicate after normalisation collapses into its first occurrence, one warning each",
+      JSON.stringify(runs) === JSON.stringify([{ domain: "SEC", surface: "web" }, { domain: "AGT", surface: "ios" }]) &&
+        warnings.length === 2 &&
+        warnings[0].includes("sec:web") &&
+        warnings[0].includes("SEC:web"),
+      JSON.stringify({ runs, warnings }),
+    );
+  }
+  check("no token refuses", throws(() => parseRun([], vocabulary)) === "at least one --run DOMAIN:SURFACE is required");
+  for (const token of ["SEC", "SEC:", ":web", "SEC:web:x", "S:web", "SECURE:web", "SEC:we b", "SEC:web/app", "SE*:web", ""]) {
+    const message = throws(() => parseRun([token], vocabulary));
+    check(
+      `the malformed token ${JSON.stringify(token)} refuses, showing the grammar and the token`,
+      message !== undefined && message.includes(`"${token}"`) && message.includes("DOMAIN:SURFACE") && message.includes("2 to 5"),
+      message,
+    );
+  }
+  {
+    const message = throws(() => parseRun(["XYZ:web"], vocabulary));
+    check("an unknown domain refuses and lists the codes", message !== undefined && message.includes("XYZ") && message.includes(DOMAINS.join(", ")), message);
+  }
+  {
+    const message = throws(() => parseRun(["SEC:api"], vocabulary));
+    check(
+      "an unknown surface refuses, lists the profile's surfaces and asks for a literal match",
+      message !== undefined && message.includes('"api"') && message.includes(SURFACES.join(", ")) && message.includes("exactly"),
+      message,
+    );
+  }
+  {
+    const message = throws(() => parseRun(["SEC:Web"], vocabulary));
+    check("surfaces match literally: Web is not web", message !== undefined && message.includes('"Web"'), message);
+  }
+  {
+    const message = throws(() => parseRun(["SEC:cross-surface"], vocabulary));
+    check("cross-surface refuses as a findings-only lens", message !== undefined && message.includes("cross-surface") && message.includes("lens"), message);
+  }
+  {
+    const message = throws(() => parseRun(["SEC:web", "SEC"], vocabulary));
+    check("one bad token among good ones still refuses", message !== undefined && message.includes('"SEC"'), message);
+  }
+  {
+    const { runs } = parseRun(["ux1:web"], { domains: ["UX1"], surfaces: ["web"] });
+    check("the domain vocabulary is the caller's (an overlay code)", runs.length === 1 && runs[0].domain === "UX1");
+  }
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
