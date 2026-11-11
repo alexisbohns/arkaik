@@ -1056,3 +1056,39 @@ const EQUIV_EXPECTED = {
   check("…and switching to iOS brings its start back to the left padding",
     nearView(kept, { x: 32 - ios.strips.get(firstId).x, y: atEnd.y, zoom: 1 }), show(kept));
 }
+
+// --- Map counts: the index and the Overview count what the wall draws ------
+// (Screens map stack, part 2.) The screens kind selects every scoped flow and
+// view and no edge, so its card count is exactly the wall's flow strips plus
+// its screens — under every scope, including Pebbles' Admin product, which has
+// views and no flow.
+{
+  const SCREENS = { id: "screens", title: "Screens", kind: "screens" };
+  const bundle = readSeed("pebbles.json");
+  const graph = buildProductGraph(bundle.nodes, bundle.edges);
+  for (const productId of [null, "admin", "app"]) {
+    const scope = resolveProductScope(bundle, productId);
+    const wall = buildWall({
+      nodes: bundle.nodes,
+      edges: bundle.edges,
+      events: [],
+      project: bundle.project,
+      definition: SCREENS,
+      scope,
+      graph,
+    });
+    const flows = wall.strips.filter((strip) => strip.flowId !== null).length;
+    const counts = wallModule.computeMapCounts(SCREENS, {
+      dataNodes: bundle.nodes,
+      dataEdges: bundle.edges,
+      project: bundle.project,
+      scope,
+      graph,
+    });
+    check(
+      `computeMapCounts(screens) under ${productId ?? "All products"} = the wall's flows + views, 0 edges`,
+      counts.nodes === flows + wall.screens.size && counts.edges === 0,
+      `${counts.nodes} nodes / ${counts.edges} edges vs ${flows} flows + ${wall.screens.size} views`,
+    );
+  }
+}

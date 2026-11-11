@@ -109,7 +109,7 @@ interface PlatformScreenshotMeta {
 
 type PlatformScreenshotMetaMap = Partial<Record<PlatformId, PlatformScreenshotMeta>>;
 
-type MapKind = "journey" | "system";
+type MapKind = "journey" | "system" | "screens";
 
 interface MapLayoutHints extends Record<string, unknown> {
   direction?: "DOWN" | "RIGHT" | (string & {});
