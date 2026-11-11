@@ -132,7 +132,15 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   );
   const layout = useMemo(() => layoutWall(wall, lens, aspectOf), [aspectOf, lens, wall]);
 
-  const ready = !nodesLoading && !edgesLoading && !projectLoading && !journalLoading;
+  // Loading shows the loading page only until the map has been shown once.
+  // After that a read going back to loading — an errored journal refetching on
+  // Retry or on window focus — keeps the map up: the wall draws without the
+  // journal, and swapping in the loading page would drop the canvas, its
+  // camera and the reader's place. Latched during render, never in an effect.
+  const loaded = !nodesLoading && !edgesLoading && !projectLoading && !journalLoading;
+  const [shown, setShown] = useState(false);
+  if (loaded && !shown) setShown(true);
+  const ready = loaded || shown;
 
   // The pills at the top of the canvas (no shots yet; the journal failed).
   // Their bottom edge, measured, is the opening camera's top inset, so the
