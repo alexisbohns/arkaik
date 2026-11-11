@@ -42,6 +42,7 @@ const expectedHrefs = [
   "/project/proj-1/maps",
   "/project/proj-1/maps/journey",
   "/project/proj-1/maps/system",
+  "/project/proj-1/maps/screens",
   "/project/proj-1/maps/onboarding",
   "/project/proj-1/library",
   "/project/proj-1/library?species=view",
@@ -93,8 +94,24 @@ assert(topLabel("onboarding") === "Onboarding audit", "custom maps are searchabl
 // An exact word wins over the longer label that merely contains it.
 assert(topLabel("views") === "Views", `"views" → Views (got ${topLabel("views")})`);
 
+// The Screens map owns its own name: an exact label (10000) outranks the
+// Library Views command's "screens" keyword (9000).
+assert(topLabel("screens") === "Screens", `"screens" → Screens (got ${topLabel("screens")})`);
+assert(topLabel("screenshots") === "Screens", `"screenshots" → Screens (got ${topLabel("screenshots")})`);
+assert(
+  commandById("map-screens")?.target.href === "/project/proj-1/maps/screens" &&
+    commandById("map-screens")?.icon === "screens" &&
+    commandById("map-screens")?.group === "maps",
+  "map-screens is a Maps command with its own icon, landing on /maps/screens",
+);
+assert(
+  commands.findIndex((command) => command.id === "map-screens") ===
+    commands.findIndex((command) => command.id === "map-system") + 1,
+  "Screens sits right after System, as in the sidebar",
+);
+
 // Keyword hits: a synonym finds the page even though no label contains it.
-assert(topLabel("screens") === "Views", `"screens" → Views (got ${topLabel("screens")})`);
+assert(topLabel("pages") === "Views", `"pages" → Views (got ${topLabel("pages")})`);
 assert(topLabel("kanban") === "Delivery", `"kanban" → Delivery (got ${topLabel("kanban")})`);
 assert(topLabel("dark mode") === "Toggle theme", `"dark mode" → Toggle theme (got ${topLabel("dark mode")})`);
 
@@ -124,9 +141,9 @@ assert(
     acceptances.highlight.join(",") === "2,3,4,5",
   `"cept" highlights the matched run inside Acceptances (got ${acceptances.highlight.join(",")})`,
 );
-const viaKeyword = rankCommands(commands, "screens")[0];
+const viaKeyword = rankCommands(commands, "pages")[0];
 assert(
-  viaKeyword.highlight.length === 0,
+  viaKeyword.command.id === "library-view" && viaKeyword.highlight.length === 0,
   "a keyword hit highlights nothing — there is no run to underline in the label",
 );
 
@@ -134,7 +151,7 @@ assert(
 assert(completionSuffix("acc", rankCommands(commands, "acc")[0]) === "eptances", "Tab completes acc → Acceptances");
 assert(completionSuffix("J", rankCommands(commands, "J")[0]) === "ourney", "completion is case-insensitive but keeps the label's casing");
 assert(
-  completionSuffix("screen", rankCommands(commands, "screen")[0]) === "s",
+  completionSuffix("page", rankCommands(commands, "page")[0]) === "s",
   "a synonym being typed completes to the synonym, not to the label",
 );
 assert(

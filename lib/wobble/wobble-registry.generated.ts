@@ -78,6 +78,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "folder-open", seed: 0 },
   { name: "folder-tree", seed: 12 },
   { name: "funnel-x", seed: 8 },
+  { name: "gallery-horizontal-end", seed: 12 },
   { name: "gauge", seed: 0 },
   { name: "gem", seed: 8 },
   { name: "gift", seed: 3 },
