@@ -135,6 +135,30 @@ const throws = (fn) => {
     check("one bad token among good ones still refuses", message !== undefined && message.includes('"SEC"'), message);
   }
   {
+    const message = throws(() => parseRun(["pay:web"], { domains: ["SEC", "pay", "PAYMENT"], surfaces: ["web"] }));
+    check(
+      "a declared code that can never be planned is not listed as valid, and is named as unplannable",
+      message !== undefined &&
+        message.includes("PAY is not a domain") &&
+        message.includes("Domain codes: SEC.") &&
+        message.includes("pay, PAYMENT cannot be planned") &&
+        message.includes("2 to 5 upper-case letters or digits"),
+      message,
+    );
+  }
+  {
+    const message = throws(() => parseRun(["pay:web"], { domains: ["pay"], surfaces: ["web"] }));
+    check(
+      "with no plannable code at all, the refusal says so",
+      message !== undefined && message.includes("Domain codes: none that can be planned.") && message.includes("pay cannot be planned"),
+      message,
+    );
+  }
+  {
+    const message = throws(() => parseRun(["XYZ:web"], vocabulary));
+    check("a library whose codes all fit the grammar gets no unplannable sentence", message !== undefined && !message.includes("cannot be planned"), message);
+  }
+  {
     const { runs } = parseRun(["ux1:web"], { domains: ["UX1"], surfaces: ["web"] });
     check("the domain vocabulary is the caller's (an overlay code)", runs.length === 1 && runs[0].domain === "UX1");
   }

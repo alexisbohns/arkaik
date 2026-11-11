@@ -124,6 +124,8 @@ export function planIdOfPartId(id: string): string | null {
 
 /** `DOMAIN:SURFACE`. Domain codes carry digits (`A11Y`); surfaces are profile ids. */
 const RUN_TOKEN = /^([A-Za-z0-9]{2,5}):([A-Za-z0-9_-]+)$/;
+/** A domain code a `--run` token can name once upper-cased. A declared code outside it can never be planned. */
+const PLANNABLE_DOMAIN = /^[A-Z0-9]{2,5}$/;
 
 /**
  * The `--run` tokens as parts, in the order given (the priority order a budget
@@ -139,6 +141,8 @@ export function parseRun(
 ): { runs: PlanRun[]; warnings: string[] } {
   if (tokens.length === 0) throw new Error("at least one --run DOMAIN:SURFACE is required");
   const surfaces = vocabulary.surfaces.filter((id) => id !== CROSS_SURFACE_ID);
+  const plannable = vocabulary.domains.filter((code) => PLANNABLE_DOMAIN.test(code));
+  const unplannable = vocabulary.domains.filter((code) => !PLANNABLE_DOMAIN.test(code));
   const runs: PlanRun[] = [];
   const warnings: string[] = [];
   for (const token of tokens) {
@@ -151,8 +155,14 @@ export function parseRun(
     }
     const domain = match[1].toUpperCase();
     const surface = match[2];
-    if (!vocabulary.domains.includes(domain)) {
-      throw new Error(`--run "${token}": ${domain} is not a domain of this library. Domain codes: ${vocabulary.domains.join(", ")}.`);
+    if (!plannable.includes(domain)) {
+      throw new Error(
+        `--run "${token}": ${domain} is not a domain of this library. ` +
+          `Domain codes: ${plannable.length > 0 ? plannable.join(", ") : "none that can be planned"}.` +
+          (unplannable.length > 0
+            ? ` ${unplannable.join(", ")} cannot be planned: a domain code must be 2 to 5 upper-case letters or digits.`
+            : ""),
+      );
     }
     if (surface === CROSS_SURFACE_ID) {
       throw new Error(
