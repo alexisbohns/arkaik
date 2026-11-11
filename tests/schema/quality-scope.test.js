@@ -687,6 +687,64 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
   check("so does a scoped re-audit's record", scoped.since === "2026-09-scoped" && scoped.cells.length === 0, JSON.stringify(scoped));
 }
 
+// --- rule 5: widened cells ------------------------------------------------------
+
+// Rule 5: widened cells count a node only through a resolution that counts for them.
+{
+  const base = [AUG(), resolved("F-1", T(2))];
+  check(
+    "(precondition) without a plan, F-1's V-home widens SEC-03 x web in",
+    cellIds(deriveAuditScope(base, SECTION, LIBRARY)).join() === "web:SEC-01:direct,web:SEC-03:widened",
+    cellIds(deriveAuditScope(base, SECTION, LIBRARY)).join(),
+  );
+
+  const rescored = deriveAuditScope([...base, planRecord(PLAN, T(10), ["SEC-03::web"])], SECTION, LIBRARY);
+  check(
+    "rule 5: a widened cell the plan re-scored leaves the scope",
+    cellIds(rescored).join() === "web:SEC-01:direct" && rescored.widened === 0,
+    cellIds(rescored).join(),
+  );
+
+  const directOnly = deriveAuditScope([...base, planRecord(PLAN, T(10), ["SEC-01::web"])], SECTION, LIBRARY);
+  check(
+    "rule 5: one it did not re-score stays widened, though the direct cell that pulled it in was cleared",
+    cellIds(directOnly).join() === "web:SEC-03:widened" && directOnly.cells[0].because.join() === "V-home" && directOnly.findings.length === 0,
+    JSON.stringify(directOnly),
+  );
+
+  const later = deriveAuditScope(
+    [...base, planRecord(PLAN, T(10), ["SEC-03::web"]), resolved("F-3", T(11), { node_ids: ["V-home"] })],
+    SECTION,
+    LIBRARY,
+  );
+  check(
+    "rule 5: a later fix touching one of its nodes widens it back in",
+    cellIds(later).join() === "web:SEC-01:direct,web:SEC-03:widened,ios:A11Y-01:direct" &&
+      later.cells.find((cell) => cell.criterion_id === "SEC-03")?.because.join() === "V-home",
+    cellIds(later).join(),
+  );
+
+  // F-1's event before the plan carries V-settings; its resolution after the
+  // plan does not. V-settings dates from the first event, so A11Y-01 x ios —
+  // re-scored by the plan in between — is not widened back by it.
+  const dated = deriveAuditScope(
+    [AUG(), resolved("F-1", T(2), { node_ids: ["V-settings"] }), planRecord(PLAN, T(10), ["A11Y-01::ios"]), resolved("F-1", T(11))],
+    SECTION,
+    LIBRARY,
+  );
+  check(
+    "rule 5: a node an event carried dates from that event, not from the finding's latest resolution",
+    !cellIds(dated).includes("ios:A11Y-01:widened"),
+    cellIds(dated).join(),
+  );
+  const undated = deriveAuditScope(
+    [AUG(), resolved("F-1", T(2), { node_ids: ["V-settings"] }), resolved("F-1", T(11))],
+    SECTION,
+    LIBRARY,
+  );
+  check("(precondition) without the plan, that V-settings does widen A11Y-01 x ios", cellIds(undated).includes("ios:A11Y-01:widened"), cellIds(undated).join());
+}
+
 // --- scopedAuditId (issue #473): the shared naming rule ----------------------
 
 {

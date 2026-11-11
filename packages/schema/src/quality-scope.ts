@@ -240,7 +240,8 @@ export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
  *   read the way the findings board reads it.
  * - **Widening** (default on) is one hop over `node_ids`: any *assessed* cell
  *   whose criterion applies to its surface, and whose findings share a node id
- *   with a resolved finding, joins with `because: [node ids]`. One hop only — a
+ *   with a resolved finding, joins with `because: [node ids]` — counting a
+ *   node only through a resolution that counts for that cell. One hop only — a
  *   second would pull the whole graph in, and a scope that says "everything"
  *   is the comprehensive audit again.
  * - **Reported lists.** `findings` and `resolved_by` hold only the findings
@@ -439,7 +440,10 @@ export function deriveAuditScope(
       // merely might have.
       if (!criterionById.has(assessment.criterion_id)) continue;
       if (!surfaces.includes(assessment.surface) || !scorable(assessment.criterion_id, assessment.surface)) continue;
-      const shared = [...(nodesByCell.get(key) ?? [])].filter((node) => resolvedNodes.has(node)).sort();
+      // Rule 5: a node counts for this cell only through a resolution after
+      // the cell's floor — a plan that re-scored this cell after it holds it.
+      const floor = floorOf(key);
+      const shared = [...(nodesByCell.get(key) ?? [])].filter((node) => (resolvedNodes.get(node) ?? -1) > floor).sort();
       if (shared.length === 0) continue;
       cells.set(key, { criterion_id: assessment.criterion_id, surface: assessment.surface, kind: "widened", because: shared });
       widened++;
