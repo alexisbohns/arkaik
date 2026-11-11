@@ -51,6 +51,21 @@ export function wallDimClass(dimmed: boolean, strength: "strong" | "soft" = "str
   );
 }
 
+/**
+ * The longest word the state column holds at `text-xs`. The column is
+ * `SIDE_WORD_W` (72px), fixed by part 1's `sideGeometry`: "Discovery" and
+ * "Releasing" (9 characters) fit it, "Development" — the longest status label
+ * in lib/config/statuses.ts — does not. A longer word steps down to 11px,
+ * still on one line, so every row's word starts and centres where the
+ * others' do and none is cut to "Developme…" (Geist medium: 75px at 12px,
+ * 66px at 11px with tight tracking).
+ */
+const SIDE_WORD_FIT = 9;
+
+function sideWordSize(word: string): string {
+  return word.length > SIDE_WORD_FIT ? "text-[11px] tracking-tight" : "text-xs";
+}
+
 function sideWordClass(cell: PlatformCell | undefined): string {
   if (!cell) return "text-muted-foreground";
   switch (cell.state) {
@@ -162,7 +177,7 @@ function WallSideBox({ data }: { data: WallFrameData }) {
               />
             </div>
             <span
-              className={cn("truncate text-xs font-medium", sideWordClass(cell))}
+              className={cn("truncate font-medium", sideWordSize(word), sideWordClass(cell))}
               style={{ width: SIDE_WORD_W, marginLeft: SIDE_WORD_GAP }}
             >
               {word}
