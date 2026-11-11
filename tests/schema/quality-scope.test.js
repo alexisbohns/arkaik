@@ -15,7 +15,15 @@
  */
 
 const { loadSchema } = require("./load-schema");
-const { deriveAuditScope, recordedAuditIds, scopeSummary, scopedAuditId } = loadSchema();
+const {
+  deriveAuditScope,
+  isPlanRecord,
+  recordedAuditIds,
+  recordedPlans,
+  recordedSinceIds,
+  scopeSummary,
+  scopedAuditId,
+} = loadSchema();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -394,6 +402,81 @@ const GOLDEN_SINCE_JULY =
     "no plan record: recordedAuditIds is unchanged",
     recordedAuditIds(NO_PLAN_SHUFFLED).join() === "2026-07,2026-08,2026-09-scoped",
     recordedAuditIds(NO_PLAN_SHUFFLED).join(),
+  );
+}
+
+// --- plan records (the Kritik planner): reading them ----------------------------
+//
+// A plan record is a `quality.audit.completed` whose `scope` names a plan
+// (stack contract, "The recorded event"). Built by hand here: this suite needs
+// only the event's shape, not the command that writes it.
+
+const PLAN = "2026-09-zplan-1000";
+const PART_SEC_WEB = `${PLAN}-sec-web`;
+const PART_A11Y_IOS = `${PLAN}-a11y-ios`;
+const planRecord = (planId, ts, scored, parts = [`${planId}-sec-web`]) =>
+  audit(planId, ts, {
+    scope: {
+      partial: true,
+      cells: scored.length,
+      since: "2026-08",
+      plan: planId,
+      parts,
+      scored,
+      coverage: { scored: scored.length, assessed: 7, applicable: 12, surfaces: { web: { assessed: 4, applicable: 5 } } },
+    },
+  });
+const T = (day, hour = 0) => `2026-09-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
+
+{
+  const record = planRecord(PLAN, T(10), ["SEC-01::web", "A11Y-01::ios"], [PART_SEC_WEB, PART_A11Y_IOS]);
+  const scopedRecord = audit("2026-09-scoped", T(11), { scope: { partial: true, cells: 1, since: "2026-08" } });
+  check("a plan record is one", isPlanRecord(record) === true);
+  check("a scoped re-audit's record is not a plan record", isPlanRecord(scopedRecord) === false);
+  check("a plain record is not a plan record", isPlanRecord(AUG()) === false);
+  check("a scope.plan on any other event type is not a plan record", isPlanRecord(resolved("F-1", T(10), { scope: { plan: PLAN } })) === false);
+  check(
+    "an empty or missing plan id is not a plan record, and nothing malformed throws",
+    [null, undefined, 7, "x", {}, audit(PLAN, T(10), { scope: { plan: "" } }), audit(PLAN, T(10), { scope: null })].every(
+      (value) => isPlanRecord(value) === false,
+    ),
+  );
+
+  const journal = [record, AUG(), scopedRecord];
+  check(
+    "recordedAuditIds returns each plan record's parts right after its plan id",
+    recordedAuditIds(journal).join() === `2026-08,${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS},2026-09-scoped`,
+    recordedAuditIds(journal).join(),
+  );
+  check(
+    "a part named by two records is listed once",
+    recordedAuditIds([...journal, planRecord("2026-09-zplan-1100", T(12), ["SEC-03::web"], [PART_SEC_WEB])]).join() ===
+      `2026-08,${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS},2026-09-scoped,2026-09-zplan-1100`,
+  );
+  check("recordedSinceIds leaves plan ids and part ids out", recordedSinceIds(journal).join() === "2026-08,2026-09-scoped", recordedSinceIds(journal).join());
+
+  const plans = recordedPlans(journal);
+  check(
+    "recordedPlans reads the plan, its parts, its scored cells and when",
+    plans.length === 1 &&
+      plans[0].plan === PLAN &&
+      plans[0].parts.join() === `${PART_SEC_WEB},${PART_A11Y_IOS}` &&
+      plans[0].scored.join() === "SEC-01::web,A11Y-01::ios" &&
+      plans[0].ts === T(10),
+    JSON.stringify(plans),
+  );
+  check(
+    "recordedPlans keeps journal order, not array order",
+    recordedPlans([planRecord("2026-09-zplan-1100", T(12), ["SEC-03::web"]), record]).map((plan) => plan.plan).join() ===
+      `${PLAN},2026-09-zplan-1100`,
+  );
+  check("the readers never throw on malformed rows", recordedAuditIds([null, 7, record]).join() === `${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS}`);
+
+  check("no plan record: recordedPlans is empty", recordedPlans(NO_PLAN_SHUFFLED).length === 0);
+  check(
+    "no plan record: recordedSinceIds equals recordedAuditIds",
+    recordedSinceIds(NO_PLAN_SHUFFLED).join() === recordedAuditIds(NO_PLAN_SHUFFLED).join(),
   );
 }
 

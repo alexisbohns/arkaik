@@ -18,12 +18,17 @@
  * the neighbours a fix in a shared view plausibly moved — the auditor can say
  * "unchanged" in two seconds, but has to be pointed there to say it.
  *
+ * **A plan record closes the window per cell** (the Kritik planner, spec "The
+ * window closes per cell"). A `quality.audit.completed` whose `scope` names a
+ * plan re-scored a known list of cells and nothing else, so it is never the
+ * audit a scope is measured from, and it clears only the cells it lists.
+ *
  * Same two disciplines as `quality-regressions.ts` and `quality-trend.ts`:
- * zod-free and fs-free (the runtime imports are `orderEvents` and a constant),
- * and nothing mutates its input. Lenient and total: no events, no recorded
- * audit, no findings — each is an empty scope, never a throw. A scope is a
- * plan; refusing to produce one would only send the auditor back to the
- * comprehensive audit this exists to spare them.
+ * zod-free and fs-free (the runtime imports are `orderEvents`, a constant and
+ * `quality-plan.ts`'s pure readers), and nothing mutates its input. Lenient and
+ * total: no events, no recorded audit, no findings — each is an empty scope,
+ * never a throw. A scope is a plan; refusing to produce one would only send the
+ * auditor back to the comprehensive audit this exists to spare them.
  */
 
 import { orderEvents, type JournalEvent } from "./journal";
@@ -36,7 +41,7 @@ import {
   type QualityFinding,
   type QualitySection,
 } from "./quality";
-import { isPlanId, isPlanPartId } from "./quality-plan";
+import { isPlanId, isPlanPartId, readPlanScope } from "./quality-plan";
 
 /**
  * One cell to re-score.
@@ -104,19 +109,74 @@ const stringsOf = (value: unknown): string[] => rowsOf<unknown>(value).filter(is
 /** Same `criterion::surface` key `quality-regressions.ts` uses, for the same reasons. */
 const cellKey = (criterionId: string, surface: string): string => `${criterionId}::${surface}`;
 
+/** The journal's object rows in `orderEvents` order — the one order every reader here uses. */
+const orderedRows = (events: readonly JournalEvent[] | null | undefined): JournalEvent[] =>
+  orderEvents(rowsOf<JournalEvent>(events).filter((event) => typeof event === "object" && event !== null));
+
+/**
+ * Whether `event` is a plan record: a `quality.audit.completed` whose `scope`
+ * names a plan (`matrix <planId> --record --plan`). Lenient: anything else,
+ * malformed rows included, is not one.
+ */
+export function isPlanRecord(event: unknown): boolean {
+  if (typeof event !== "object" || event === null) return false;
+  const { type, scope } = event as { type?: unknown; scope?: unknown };
+  return type === "quality.audit.completed" && readPlanScope(scope) !== null;
+}
+
+/** One recorded plan, as its event carries it. */
+export interface RecordedPlan {
+  plan: string;
+  /** The plan's part ids, plan order. */
+  parts: string[];
+  /** `criterion::surface` per cell the plan re-scored. */
+  scored: string[];
+  /** When it was recorded; `null` for a row with no `ts`. */
+  ts: string | null;
+}
+
+/** Every plan record in the journal, in journal order, one entry per record. */
+export function recordedPlans(events: readonly JournalEvent[]): RecordedPlan[] {
+  const plans: RecordedPlan[] = [];
+  for (const event of orderedRows(events)) {
+    if (event.type !== "quality.audit.completed") continue;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    if (reading === null) continue;
+    plans.push({ plan: reading.plan, parts: stringsOf(reading.parts), scored: stringsOf(reading.scored), ts: isString(event.ts) ? event.ts : null });
+  }
+  return plans;
+}
+
 /**
  * Every audit id the journal has a `quality.audit.completed` for, in recording
  * order, each once. What a caller names in the refusal when `since` asks for an
  * audit that was never recorded.
+ *
+ * A plan record's parts follow its plan id: each part is an audit directory
+ * whose reading the plan recorded, so a score written into one after the
+ * record would silently rewrite history — every guard that asks "is this id
+ * recorded?" has to see them.
  */
 export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
   const ids: string[] = [];
-  for (const event of orderEvents(rowsOf<JournalEvent>(events))) {
-    if (event?.type !== "quality.audit.completed") continue;
-    const id = (event as { audit_id?: unknown }).audit_id;
+  const note = (id: unknown) => {
     if (isString(id) && !ids.includes(id)) ids.push(id);
+  };
+  for (const event of orderedRows(events)) {
+    if (event.type !== "quality.audit.completed") continue;
+    note((event as { audit_id?: unknown }).audit_id);
+    for (const part of readPlanScope((event as { scope?: unknown }).scope)?.parts ?? []) note(part);
   }
   return ids;
+}
+
+/**
+ * {@link recordedAuditIds} over the records a scope can be measured from: every
+ * one but a plan record, so neither a plan id nor a part id is ever offered as
+ * a `since`.
+ */
+export function recordedSinceIds(events: readonly JournalEvent[]): string[] {
+  return recordedAuditIds(rowsOf<JournalEvent>(events).filter((event) => !isPlanRecord(event)));
 }
 
 /**
