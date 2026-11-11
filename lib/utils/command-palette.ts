@@ -72,7 +72,11 @@ export type CommandTarget =
   | { kind: "href"; href: string; external?: boolean }
   | { kind: "action"; action: CommandActionId }
   /** A page-registered command (`usePageAction`): the page runs it itself. */
-  | { kind: "run"; run: () => void };
+  | { kind: "run"; run: () => void }
+  /** A flow or view of the project (`buildNodeCommands`): the overlay hands the
+   * id to its `onNode` prop, and the page on screen decides what "go to it"
+   * means — fly to it, open its panel, or leave for the Library. */
+  | { kind: "node"; nodeId: string };
 
 export interface PaletteCommand {
   id: string;
@@ -550,6 +554,114 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
   ];
 
   return commands;
+}
+
+/** The node shape `summarizePaletteNodes` reads — structural on purpose, so this
+ * file keeps no imports (its test loader transpiles it alone). */
+interface PaletteNodeInput {
+  id: string;
+  species: string;
+  title: string;
+  metadata?: { playlist?: { entries?: unknown } } | null;
+}
+
+interface PaletteNodeSummary {
+  /** Snapshot order. `screenCount` = distinct views the flow lists. */
+  flows: { id: string; title: string; screenCount: number }[];
+  /** Snapshot order. `firstFlowTitle` = the first flow, in snapshot order, that lists the view. */
+  views: { id: string; title: string; firstFlowTitle: string | null }[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * The view ids a playlist lists, in order, duplicates kept. Walks `view`
+ * entries and the arms of `condition` and `junction`; a `flow` entry is a
+ * sub-flow with its own row, so its views are never counted here (and a flow
+ * that lists itself cannot loop). Anything malformed is skipped, not thrown:
+ * the palette must open on a bundle the validator would warn about.
+ */
+function playlistViewIds(entries: unknown, out: string[] = []): string[] {
+  if (!Array.isArray(entries)) return out;
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    if (entry.type === "view" && typeof entry.view_id === "string") {
+      out.push(entry.view_id);
+    } else if (entry.type === "condition") {
+      playlistViewIds(entry.if_true, out);
+      playlistViewIds(entry.if_false, out);
+    } else if (entry.type === "junction" && Array.isArray(entry.cases)) {
+      for (const branch of entry.cases) {
+        if (isRecord(branch)) playlistViewIds(branch.entries, out);
+      }
+    }
+  }
+  return out;
+}
+
+/** A row needs words: a blank title falls back to the id, which always exists. */
+function rowTitle(node: PaletteNodeInput): string {
+  return typeof node.title === "string" && node.title.trim() !== "" ? node.title : node.id;
+}
+
+/**
+ * The flows and views of a snapshot, as the palette lists them. The caller
+ * scopes `nodes` first: a view listed only by a flow outside the scope reads
+ * "Not in a flow", as it does on the Screens map. Only views present in
+ * `nodes` are counted, so a dangling or out-of-scope reference counts nothing.
+ */
+export function summarizePaletteNodes(nodes: readonly PaletteNodeInput[]): PaletteNodeSummary {
+  const viewIds = new Set(nodes.filter((node) => node.species === "view").map((node) => node.id));
+  const firstFlowTitle = new Map<string, string>();
+  const flows: PaletteNodeSummary["flows"] = [];
+
+  for (const node of nodes) {
+    if (node.species !== "flow") continue;
+    const title = rowTitle(node);
+    const listed = new Set(playlistViewIds(node.metadata?.playlist?.entries).filter((id) => viewIds.has(id)));
+    for (const viewId of listed) {
+      if (!firstFlowTitle.has(viewId)) firstFlowTitle.set(viewId, title);
+    }
+    flows.push({ id: node.id, title, screenCount: listed.size });
+  }
+
+  const views = nodes
+    .filter((node) => node.species === "view")
+    .map((node) => ({ id: node.id, title: rowTitle(node), firstFlowTitle: firstFlowTitle.get(node.id) ?? null }));
+
+  return { flows, views };
+}
+
+/**
+ * One search-only row per flow and per view. The id is a keyword, so a
+ * pasted `V-home` finds its view; the hint says where the row sits — a flow's
+ * size, a view's first flow.
+ */
+export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes>): PaletteCommand[] {
+  return [
+    ...input.flows.map<PaletteCommand>((flow) => ({
+      id: `node:${flow.id}`,
+      label: flow.title,
+      group: "flows",
+      icon: "flows",
+      keywords: [flow.id],
+      hint: flow.screenCount === 1 ? "1 screen" : `${flow.screenCount} screens`,
+      searchOnly: true,
+      target: { kind: "node", nodeId: flow.id },
+    })),
+    ...input.views.map<PaletteCommand>((view) => ({
+      id: `node:${view.id}`,
+      label: view.title,
+      group: "views",
+      icon: "views",
+      keywords: [view.id],
+      hint: view.firstFlowTitle ?? "Not in a flow",
+      searchOnly: true,
+      target: { kind: "node", nodeId: view.id },
+    })),
+  ];
 }
 
 /** One page of the documentation, as the docs shell knows it. Plain data on

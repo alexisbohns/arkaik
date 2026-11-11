@@ -35,6 +35,7 @@ import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import {
   COMMAND_GROUPS,
   completionSuffix,
+  limitSearchOnly,
   rankCommands,
   type CommandActionId,
   type CommandGroupId,
@@ -87,6 +88,12 @@ interface CommandPaletteProps {
   placeholder?: string;
   /** Read to screen readers on open; says what this palette searches. */
   description?: string;
+  /**
+   * Runs a flow or view row (`target.kind === "node"`). Optional: the docs
+   * search shares this overlay and lists no nodes. The project layout decides
+   * what "go to it" means on the page on screen.
+   */
+  onNode?: (nodeId: string) => void;
 }
 
 interface PaletteSection {
@@ -134,6 +141,7 @@ export function CommandPalette({
   onAction,
   placeholder = "Jump to a map, a library, a setting…",
   description = "Search every page and action of this project, then press Enter to go there.",
+  onNode,
 }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,6 +158,7 @@ export function CommandPalette({
         <PaletteBody
           commands={commands}
           onAction={onAction}
+          onNode={onNode}
           onClose={() => onOpenChange(false)}
           placeholder={placeholder}
         />
@@ -161,11 +170,12 @@ export function CommandPalette({
 interface PaletteBodyProps {
   commands: readonly PaletteCommand[];
   onAction: (action: CommandActionId) => void;
+  onNode?: (nodeId: string) => void;
   onClose: () => void;
   placeholder: string;
 }
 
-function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyProps) {
+function PaletteBody({ commands, onAction, onNode, onClose, placeholder }: PaletteBodyProps) {
   const router = useRouter();
   const modKey = useModKeyLabel();
   const listId = useId();
@@ -173,7 +183,9 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const matches = useMemo(() => rankCommands(commands, query), [commands, query]);
+  // Capped after ranking, not before: the cap keeps each group's best rows, so
+  // it has to see the order first.
+  const matches = useMemo(() => limitSearchOnly(rankCommands(commands, query)), [commands, query]);
 
   // Groups are laid out by their best result, so the top-ranked command is
   // always the first row of the first section — what Enter is about to run.
@@ -220,13 +232,19 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
         target.run();
         return;
       }
+      // Before the href branch: `CommandTarget` is a closed union, and what is
+      // left after this is the href target alone.
+      if (target.kind === "node") {
+        onNode?.(target.nodeId);
+        return;
+      }
       if (target.external) {
         window.open(target.href, "_blank", "noopener,noreferrer");
         return;
       }
       router.push(target.href);
     },
-    [onAction, onClose, router],
+    [onAction, onClose, onNode, router],
   );
 
   /** Every edit re-ranks, so the highlight returns to the top suggestion:

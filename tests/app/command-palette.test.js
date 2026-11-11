@@ -390,6 +390,213 @@ assert(
 const catalogueA = rankCommands(commands, "a");
 assert(limitSearchOnly(catalogueA).length === catalogueA.length, "a catalogue with no search-only rows passes through whole");
 
+// --- flows and views as rows: summary, rows, and the Pebbles ranking (part 5) ---
+const { summarizePaletteNodes, buildNodeCommands } = nodePalette;
+
+// summarizePaletteNodes: a small snapshot with every playlist shape.
+const fixtureNodes = [
+  {
+    id: "F-a",
+    species: "flow",
+    title: "Check in",
+    metadata: {
+      playlist: {
+        entries: [
+          { type: "view", view_id: "V-1" },
+          {
+            type: "condition",
+            label: "Has a streak?",
+            if_true: [{ type: "view", view_id: "V-2" }],
+            if_false: [{ type: "view", view_id: "V-1" }],
+          },
+          {
+            type: "junction",
+            label: "Mood",
+            cases: [
+              { label: "Calm", entries: [{ type: "view", view_id: "V-3" }] },
+              { label: "Busy", entries: [] },
+            ],
+          },
+          { type: "flow", flow_id: "F-b" },
+          { type: "view", view_id: "V-missing" },
+        ],
+      },
+    },
+  },
+  {
+    id: "F-b",
+    species: "flow",
+    title: "Streaks",
+    metadata: {
+      playlist: {
+        entries: [
+          { type: "view", view_id: "V-5" },
+          { type: "flow", flow_id: "F-b" },
+        ],
+      },
+    },
+  },
+  { id: "F-c", species: "flow", title: "  ", metadata: null },
+  {
+    id: "F-d",
+    species: "flow",
+    title: "Broken",
+    metadata: {
+      playlist: {
+        entries: [null, 42, { type: "view" }, { type: "junction", label: "x", cases: "nope" }, { type: "condition" }],
+      },
+    },
+  },
+  { id: "V-1", species: "view", title: "Check-in sheet" },
+  { id: "V-2", species: "view", title: "Streak" },
+  { id: "V-3", species: "view", title: "Calm mode" },
+  { id: "V-4", species: "view", title: "Loose screen" },
+  { id: "V-5", species: "view", title: "Streak calendar", metadata: {} },
+  { id: "DM-1", species: "data-model", title: "Mood" },
+];
+const summary = summarizePaletteNodes(fixtureNodes);
+
+assert(
+  JSON.stringify(summary.flows) ===
+    JSON.stringify([
+      { id: "F-a", title: "Check in", screenCount: 3 },
+      { id: "F-b", title: "Streaks", screenCount: 1 },
+      { id: "F-c", title: "F-c", screenCount: 0 },
+      { id: "F-d", title: "Broken", screenCount: 0 },
+    ]),
+  `flows: distinct views through arms, sub-flows never inlined, dangling ids and malformed entries skipped, a blank title falls back to the id (got ${JSON.stringify(summary.flows)})`,
+);
+assert(
+  JSON.stringify(summary.views) ===
+    JSON.stringify([
+      { id: "V-1", title: "Check-in sheet", firstFlowTitle: "Check in" },
+      { id: "V-2", title: "Streak", firstFlowTitle: "Check in" },
+      { id: "V-3", title: "Calm mode", firstFlowTitle: "Check in" },
+      { id: "V-4", title: "Loose screen", firstFlowTitle: null },
+      { id: "V-5", title: "Streak calendar", firstFlowTitle: "Streaks" },
+    ]),
+  `views: the first listing flow in snapshot order, null when no flow lists it, other species ignored (got ${JSON.stringify(summary.views)})`,
+);
+
+// buildNodeCommands: one search-only row per flow and per view, flows first.
+const fixtureRows = buildNodeCommands(summary);
+assert(
+  fixtureRows.map((row) => row.id).join(",") ===
+    "node:F-a,node:F-b,node:F-c,node:F-d,node:V-1,node:V-2,node:V-3,node:V-4,node:V-5",
+  "rows are node:<id>, flows then views, snapshot order",
+);
+const rowA = fixtureRows[0];
+assert(
+  rowA.label === "Check in" &&
+    rowA.group === "flows" &&
+    rowA.icon === "flows" &&
+    JSON.stringify(rowA.keywords) === JSON.stringify(["F-a"]) &&
+    rowA.searchOnly === true &&
+    rowA.target.kind === "node" &&
+    rowA.target.nodeId === "F-a",
+  "a flow row: its title, the Flows group and icon, its id as the keyword, search-only, a node target",
+);
+const rowV1 = fixtureRows.find((row) => row.id === "node:V-1");
+assert(
+  rowV1.group === "views" && rowV1.icon === "views" && rowV1.target.nodeId === "V-1" && rowV1.searchOnly === true,
+  "a view row: the Views group and icon, a node target, search-only",
+);
+const hints = Object.fromEntries(fixtureRows.map((row) => [row.id, row.hint]));
+assert(hints["node:F-a"] === "3 screens", `a flow's hint counts its screens (got ${hints["node:F-a"]})`);
+assert(hints["node:F-b"] === "1 screen", `one screen is singular (got ${hints["node:F-b"]})`);
+assert(hints["node:F-c"] === "0 screens", `an empty flow says 0 screens (got ${hints["node:F-c"]})`);
+assert(hints["node:V-2"] === "Check in", `a view's hint is its first flow (got ${hints["node:V-2"]})`);
+assert(hints["node:V-4"] === "Not in a flow", `a view no flow lists says so (got ${hints["node:V-4"]})`);
+
+// The Pebbles seed, All products: what the layout lists for that project.
+const pebbles = JSON.parse(fs.readFileSync(nodePath.join(__dirname, "..", "..", "seed", "pebbles.json"), "utf8"));
+const pebbleRows = buildNodeCommands(
+  summarizePaletteNodes(pebbles.nodes.filter((node) => node.species === "flow" || node.species === "view")),
+);
+assert(pebbleRows.length === 68, `Pebbles lists 10 flows and 58 views (got ${pebbleRows.length})`);
+const pebbleCatalogue = [...commands, ...pebbleRows];
+assert(
+  pebbleCatalogue.every((command) => groupIds.has(command.group)),
+  "every node row belongs to a declared group",
+);
+assert(
+  new Set(pebbleCatalogue.map((command) => command.id)).size === pebbleCatalogue.length,
+  "node row ids never collide with the catalogue's",
+);
+
+const pebbleHints = Object.fromEntries(pebbleRows.map((row) => [row.id, row.hint]));
+assert(pebbleHints["node:F-onboarding"] === "5 screens", `Onboarding: 5 screens (got ${pebbleHints["node:F-onboarding"]})`);
+assert(pebbleHints["node:F-legal-consent"] === "1 screen", `Legal Consent: 1 screen (got ${pebbleHints["node:F-legal-consent"]})`);
+assert(pebbleHints["node:V-home"] === "Onboarding", `Home sits first in Onboarding (got ${pebbleHints["node:V-home"]})`);
+assert(
+  pebbleHints["node:V-admin-analytics"] === "Not in a flow",
+  `an Admin view is in no flow (got ${pebbleHints["node:V-admin-analytics"]})`,
+);
+
+/** What the overlay ranks: `limitSearchOnly` after `rankCommands`. */
+function pebbleRanked(query) {
+  return limitSearchOnly(rankCommands(pebbleCatalogue, query));
+}
+function shown(query) {
+  return pebbleRanked(query)
+    .map((match) => `${match.command.label} (${match.command.group}, ${match.score})`)
+    .join(" · ");
+}
+const PEBBLES_RANKING = [
+  ["settings", "Settings (project, 10000) · Settings (views, 9500)"],
+  ["home", "Home (views, 9500) · Overview (project, 9000) · All projects (actions, 9000) · Onboarding — Drop a pebble, keep the moment (views, 1494)"],
+  ["onboarding", "Onboarding (flows, 9500) · Onboarding audit (maps, 7994) · Onboarding — Get your pebble (views, 7482) · Onboarding — Qualify and relate (views, 7479) · Onboarding — Your life is a path (views, 7478) · Onboarding — Drop a pebble, keep the moment (views, 7467)"],
+  ["onboard", "Onboarding audit (maps, 7991) · Onboarding (flows, 7497) · Onboarding — Get your pebble (views, 7479) · Onboarding — Qualify and relate (views, 7476) · Onboarding — Your life is a path (views, 7475) · Onboarding — Drop a pebble, keep the moment (views, 7464)"],
+  ["path", "Path (views, 9500) · Onboarding — Your life is a path (views, 5472) · Onboarding — Drop a pebble, keep the moment (views, 1482) · Attach Glyph (views, 492)"],
+  ["V-timeline", "Path (views, 8500)"],
+  ["F-onboarding", "Onboarding (flows, 8500)"],
+  ["record", "Record Pebble (flows, 7493) · Record Pebble (views, 7493) · Record Celebration (views, 7488)"],
+  ["docs", "Documentation (actions, 9000) · Docs Page (views, 7495) · Docs Index (views, 7494) · Legal Notice (views, 4498) · Privacy Policy (views, 4498) · Terms of Service (views, 4498) · Keyboard shortcuts (actions, 1990)"],
+  ["set", "Settings (project, 7995) · Settings (views, 7495) · Set Intensity & Valence (views, 7480) · Legal Consent (flows, 1497) · Mechanic Sheet (views, 1496) · Soul Detail (views, 1493) · Shape Emotion Pearl (views, 1491) · Souls Directory (views, 1489) · Keyboard shortcuts (actions, 996) · Findings (project, 994) · Screens (maps, 991) · All projects (actions, 987)"],
+  ["glyph", "Glyphs (views, 7499) · Glyph Detail (views, 7493) · Glyph Swap Drawer (views, 7488) · Swap Glyph (flows, 5495) · Carve Glyph (views, 5494) · Attach Glyph (views, 5493) · Manage Glyphs (flows, 5493) · Admin · Glyph moderation (views, 5492)"],
+  // The queries the catalogue assertions above pin: node rows join some of
+  // them, and change the first row of none.
+  ["acc", "Acceptances (library, 7992) · Agent tokens (actions, 6996) · Privacy Policy (views, 1492) · Create Collection (views, 1491) · Manage Collections (flows, 1489) · System (maps, 993) · Onboarding — Drop a pebble, keep the moment (views, 490)"],
+  ["jour", "Journey (maps, 7997) · Changelog (project, 6997) · Flows (library, 6996)"],
+  ["deliv", "Delivery (project, 7997)"],
+  ["Journey", "Journey (maps, 10000) · Flows (library, 6999)"],
+  ["views", "Views (library, 10000) · All maps (maps, 6987)"],
+  ["screens", "Screens (maps, 10000) · Views (library, 9000)"],
+  ["pages", "Views (library, 9000)"],
+  ["page", "Views (library, 6999) · Docs Page (views, 5495)"],
+  ["kanban", "Delivery (project, 9000)"],
+  ["dark mode", "Toggle theme (actions, 9000)"],
+  ["chang", "Changelog (project, 7996)"],
+  ["cept", "Acceptances (library, 3998) · Onboarding — Drop a pebble, keep the moment (views, 2484)"],
+  ["dmo", "Data Models (library, 1994) · Documentation (actions, 1989) · Admin · Domains (views, 1492) · Admin · Upload glyph (views, 1490) · Admin · Glyph moderation (views, 1486) · Onboarding — Drop a pebble, keep the moment (views, 1468) · System (maps, 994) · Toggle theme (actions, 994)"],
+  ["zzzqq", ""],
+];
+for (const [query, expected] of PEBBLES_RANKING) {
+  const actual = shown(query);
+  assert(actual === expected, `Pebbles "${query}" ranks as pinned${actual === expected ? "" : `\n    expected: ${expected}\n    got:      ${actual}`}`);
+}
+
+// Highlight and completion on node rows follow the same rules as pages.
+const pathRow = pebbleRanked("path")[0];
+assert(pathRow.highlight.join(",") === "0,1,2,3", `a title hit highlights the title (got ${pathRow.highlight.join(",")})`);
+assert(
+  completionSuffix("V-tim", pebbleRanked("V-tim")[0]) === "eline",
+  "Tab completes a node id being typed",
+);
+assert(
+  completionSuffix("page", pebbleRanked("page")[0]) === "s",
+  "with node rows present, the synonym probe still completes page → pages",
+);
+assert(
+  completionSuffix("onboard", pebbleRanked("onboard")[0]) === "ing audit",
+  "a page's prefix still leads, and completes, over a node's prefix",
+);
+
+// The cap on real data: "set" matches nine Pebbles views and shows six.
+const setUnlimited = rankCommands(pebbleCatalogue, "set");
+assert(countIn(setUnlimited, "views") === 9, `"set" matches nine views before the cap (got ${countIn(setUnlimited, "views")})`);
+assert(countIn(pebbleRanked("set"), "views") === 6, `"set" shows six after it (got ${countIn(pebbleRanked("set"), "views")})`);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 console.log(failures === 0 ? "\nAll command palette tests passed" : `\n${failures} test(s) failed`);
