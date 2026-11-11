@@ -119,7 +119,7 @@ try {
   const quiet = run(["scope"]);
   check(
     "a freshly recorded audit has nothing stale",
-    quiet.status === 0 && quiet.stdout.includes("0 cells to re-score from 0 resolved findings since 2026-08"),
+    quiet.status === 0 && quiet.stdout.includes("0 cells to re-score since 2026-08"),
     quiet.stdout,
   );
 
@@ -297,7 +297,7 @@ try {
   const fresh = run(["scope"]);
   check(
     "recording the scoped audit starts a fresh window, measured from it",
-    fresh.stdout.includes(`0 cells to re-score from 0 resolved findings since ${scoped1}`) && !fresh.stdout.includes("NOPE"),
+    fresh.stdout.includes(`0 cells to re-score since ${scoped1}`) && !fresh.stdout.includes("NOPE"),
     fresh.stdout,
   );
 

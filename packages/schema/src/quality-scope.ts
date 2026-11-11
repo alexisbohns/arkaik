@@ -666,12 +666,16 @@ function suggestedAuditId({ since, month, requested, known, recorded }: ScopedAu
 
 /**
  * The one-line total a run sheet ends on — built here so the CLI and the MCP
- * tool cannot word the same scope two ways.
+ * tool cannot word the same scope two ways. With no driving finding — an
+ * empty scope, or only widened cells left after a plan cleared the direct
+ * ones — the "from N resolved findings" clause is left out rather than read
+ * "from 0".
  */
 export function scopeSummary(scope: AuditScope): string {
   const direct = scope.cells.length - scope.widened;
   const cells = `${scope.cells.length} cell${scope.cells.length === 1 ? "" : "s"} to re-score`;
   const split = scope.widened > 0 ? ` (${direct} direct, ${scope.widened} widened)` : "";
-  const from = `${scope.findings.length} resolved finding${scope.findings.length === 1 ? "" : "s"}`;
-  return `${cells}${split} from ${from}${scope.since !== null ? ` since ${scope.since}` : ""}`;
+  const count = scope.findings.length;
+  const from = count > 0 ? ` from ${count} resolved finding${count === 1 ? "" : "s"}` : "";
+  return `${cells}${split}${from}${scope.since !== null ? ` since ${scope.since}` : ""}`;
 }

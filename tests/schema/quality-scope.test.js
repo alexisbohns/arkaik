@@ -359,6 +359,12 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     "a summary with no widening says nothing about it",
     scopeSummary(deriveAuditScope(events.slice(0, 2), SECTION, LIBRARY, { widen: false })) === "1 cell to re-score from 1 resolved finding since 2026-08",
   );
+  check(
+    "an empty scope's summary drops the finding count and keeps the since",
+    scopeSummary(deriveAuditScope(events.slice(0, 1), SECTION, LIBRARY)) === "0 cells to re-score since 2026-08",
+    scopeSummary(deriveAuditScope(events.slice(0, 1), SECTION, LIBRARY)),
+  );
+  check("with no since either, the summary is the cell count alone", scopeSummary(deriveAuditScope([], SECTION, LIBRARY)) === "0 cells to re-score");
 }
 
 // --- no plan record: exactly as before ------------------------------------------
@@ -753,6 +759,11 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
     "rule 5: one it did not re-score stays widened, though the direct cell that pulled it in was cleared",
     cellIds(directOnly).join() === "web:SEC-03:widened" && directOnly.cells[0].because.join() === "V-home" && directOnly.findings.length === 0,
     JSON.stringify(directOnly),
+  );
+  check(
+    "rule 5: with only a widened cell left, the summary never says it came from 0 resolved findings",
+    scopeSummary(directOnly) === "1 cell to re-score (0 direct, 1 widened) since 2026-08",
+    scopeSummary(directOnly),
   );
 
   const later = deriveAuditScope(
