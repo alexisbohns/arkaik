@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ReactFlowProvider, useStore, useStoreApi } from "@xyflow/react";
 import Link from "next/link";
 import { ImageOffIcon, TriangleAlertIcon } from "lucide-react";
@@ -389,6 +389,25 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
 
   const inspectorRef = useRef<HTMLDivElement | null>(null);
 
+  // The inspector stands aside while a panel is open (below). Opening one from
+  // inside it — a Touches entry, "Open panel" — unmounts the element that had
+  // focus, which would drop focus on the body. Focus moves to the selected
+  // frame instead, which keeps its ring: Escape and Tab carry on from there.
+  // Focus is tracked as it enters and leaves the inspector, because an element
+  // removed from the page fires no blur.
+  const focusInInspector = useRef(false);
+  const inspectorShown = selection !== null && entries.length === 0;
+  useLayoutEffect(() => {
+    if (inspectorShown || !focusInInspector.current) return;
+    focusInInspector.current = false;
+    if (!selection) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    document
+      .querySelector<HTMLElement>(`[data-wall-frame="${CSS.escape(selection.frameId)}"]`)
+      ?.focus({ preventScroll: true });
+  }, [inspectorShown, selection]);
+
   // "Also in …": the same view, selected in another strip, whose header rings.
   const handleGoToStrip = useCallback(
     (stripId: string) => {
@@ -606,8 +625,17 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               says everything it would, and the narrowed canvas would turn it
               into a bottom sheet over the frame and its chips. The ring and the
               chips stay; closing the panel brings it back. */}
-          {selection && entries.length === 0 && (
-            <div ref={inspectorRef} className="contents">
+          {inspectorShown && (
+            <div
+              ref={inspectorRef}
+              className="contents"
+              onFocus={() => {
+                focusInInspector.current = true;
+              }}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) focusInInspector.current = false;
+              }}
+            >
               <ScreenInspector
                 wall={wall}
                 selection={selection}
