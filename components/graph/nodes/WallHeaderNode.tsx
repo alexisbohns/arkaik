@@ -14,6 +14,10 @@ import type { WallHeaderData } from "./wall-node-data";
  * text; with no flow in scope at all it also carries the pointer to the
  * Journey map, drawn just above the header.
  *
+ * The counts line follows the title directly: the header spans its whole
+ * strip, so anything pushed to its far end is off screen on arrival for every
+ * strip wider than the canvas. The rest of the header stays empty.
+ *
  * A jump tile that lands here rings the header: an outline for as long as
  * `ringVersion` is non-zero (the controller clears it after 2s), pulsing only
  * when motion is allowed.
@@ -62,7 +66,7 @@ function WallHeaderNodeComponent({ data }: NodeProps<Node<WallHeaderData, "wallH
             title
           )}
         </h2>
-        <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{countsLine}</span>
+        <span className="-ml-1 shrink-0 text-xs tabular-nums text-muted-foreground">{countsLine}</span>
       </div>
     </div>
   );

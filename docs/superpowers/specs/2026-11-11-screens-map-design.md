@@ -67,7 +67,9 @@ change, the change is in § Verified facts and the open questions, not here.
 - **R8 Gaps only.** A switch that fades everything except stale shots and live
   screens with no shot, with a count.
 - **R9 Flow headers** show how many screens are live on the lens and how many
-  are stale or missing a shot.
+  are stale or missing a shot, on a counts line directly after the
+  flow's title (never at the header's far end, which is off screen on arrival
+  for any strip wider than the canvas).
 - **R10 Quick inspector.** Selecting a frame shows a small card: each
   platform's state, shot date, whether CI or a person recorded it, why a shot
   is stale, how it went live, and a button that opens the node panel.
