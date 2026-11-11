@@ -40,7 +40,7 @@ import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { generateNodeId } from "@/lib/utils/id";
 import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import type { ProductGraph } from "@/lib/utils/product-scope";
-import { frameBoxOf, frameInStrip, selectionRect } from "@/lib/utils/screen-inspector";
+import { coldLoadTarget, frameBoxOf, frameInStrip, selectionRect } from "@/lib/utils/screen-inspector";
 import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
@@ -131,7 +131,7 @@ function screensAnnouncement(lens: WallLens, gaps: number, gapsOnly: boolean): s
  * the reader chooses.
  */
 export function ScreensMap({ projectId, definition }: ScreensMapProps) {
-  const { openNode, entries } = useProjectPanels();
+  const { openNode, entries, addressedNodeId } = useProjectPanels();
   const {
     nodes: dataNodes,
     loading: nodesLoading,
@@ -234,11 +234,23 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // (if up) are measured. Adjusted during render rather than in an effect (the
   // derived-state shape `useProjectPanels` uses): React discards this pass and
   // re-renders with the request, so the canvas never paints a frame without it.
+  //
+  // Part 4: a cold load whose `?node=` names a view or flow on the wall frames
+  // that instead (`frameViewport`) — a view's first frame in strip order,
+  // selected, or a flow's strip. `ProjectPanelsProvider` has already reconciled
+  // the URL during render, so its panel is open too. It sets state directly
+  // rather than calling `selectFrame`, because it runs during render.
   const [camera, setCamera] = useState<WallCameraRequest | null>(null);
   const hasStrip = wall.strips.length > 0 && layout.strips.has(wall.strips[0].id);
   const openingInsets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
   if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
-    setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, openingInsets) });
+    const target = coldLoadTarget(wall, layout, addressedNodeId);
+    if (target) {
+      if (target.kind === "frame") setPicked(target.selection);
+      setCamera({ version: 1, rect: target.rect, ...(target.kind === "frame" ? SELECTION_ZOOM : STRIP_ZOOM) });
+    } else {
+      setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, openingInsets) });
+    }
   }
 
   // Where the reader is, for the lens and scope rules below: the React Flow
