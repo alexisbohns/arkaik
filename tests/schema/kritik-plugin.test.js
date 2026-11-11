@@ -333,5 +333,44 @@ try {
   fs.rmSync(repo, { recursive: true, force: true });
 }
 
+// --- detect-regressions.js reads a plan's parts as one reading -----------------
+{
+  const planned = fs.mkdtempSync(path.join(os.tmpdir(), "kritik-plan-readings-"));
+  try {
+    const write = (relative, value) => {
+      const target = path.join(planned, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, JSON.stringify(value));
+    };
+    write("docs/quality/profile.json", fixture.section.profile);
+    write("docs/quality/audits/2026-08/scores.json", { audit_id: "2026-08", framework_version: fixture.section.framework_version, assessments: fixture.section.assessments });
+    write("docs/quality/audits/2026-08/findings.json", { audit_id: "2026-08", findings: fixture.section.findings });
+    const plan = "2026-09-zplan-0100";
+    const part = (id, criterionId, surface, level) =>
+      write(`docs/quality/audits/${id}/scores.json`, {
+        audit_id: id,
+        framework_version: fixture.section.framework_version,
+        assessments: [{ criterion_id: criterionId, surface, level, evidence: "x.ts:1", audit_id: id, ts: "2026-09-01T00:00:00.000Z" }],
+      });
+    part(`${plan}-agt-ios`, "AGT-01", "ios", 2); // unchanged
+    part(`${plan}-sec-web`, "SEC-01", "web", 1); // 2 -> 1: a level drop
+
+    const byDefault = runReportingExit("detect-regressions.js", ["--root", planned, "--json"], planned);
+    const parsed = JSON.parse(byDefault.stdout || "{}");
+    check("detect-regressions compares a plan's parts as one reading against the reading before it", parsed.from === "2026-08" && parsed.to === plan, `${byDefault.stdout.slice(0, 200)}${byDefault.stderr}`);
+    check(
+      "and reports the drop one of its parts scored",
+      byDefault.status === 1 && (parsed.regressions ?? []).some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01" && r.surface === "web"),
+      byDefault.stdout.slice(0, 300),
+    );
+    const byPart = JSON.parse(runReportingExit("detect-regressions.js", ["--root", planned, "--to", `${plan}-agt-ios`, "--json"], planned).stdout || "{}");
+    check("a part id given as --to reads its whole plan", byPart.to === plan && byPart.from === "2026-08", JSON.stringify({ from: byPart.from, to: byPart.to }));
+    const sameReading = runExpectingFailure("detect-regressions.js", ["--root", planned, "--from", `${plan}-agt-ios`, "--to", `${plan}-sec-web`], planned);
+    check("two parts of one plan are the same reading, refused", sameReading !== null && sameReading.includes(`("${plan}")`), sameReading ?? "");
+  } finally {
+    fs.rmSync(planned, { recursive: true, force: true });
+  }
+}
+
 console.log(failures === 0 ? "\nAll Kritik plugin tests passed" : `\n${failures} Kritik plugin test(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
