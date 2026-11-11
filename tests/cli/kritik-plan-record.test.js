@@ -463,6 +463,37 @@ try {
     cTrend.stdout,
   );
 
+  // === The scope's anchor guard, and an empty scope that says why ================
+
+  refuses(a, "a plan id as --since", ["scope", "--since", planId], ["is a plan record, never a scope's anchor", `recorded: ${FULL}`]);
+  refuses(a, "a part id as --since", ["scope", "--since", part.auditId], ["never a scope's anchor"]);
+
+  // Named from the plan's own month, so it sorts after the plan's part whatever the clock says.
+  const later = `${planId.slice(0, 7)}-zz-later`;
+  a.writeScores(later, [["SEC-04", "ios"]], 3);
+  const declared = a.run(["matrix", later, "--scope"]);
+  check(
+    "a hand-declared scoped audit after a plan is measured from the full audit, never the plan or its part",
+    declared.status === 0 && declared.stdout.includes(`since ${FULL}`) && !declared.stdout.includes(`since ${part.auditId}`) && !declared.stdout.includes(`since ${planId}`),
+    declared.stderr + declared.stdout.slice(-400),
+  );
+  // It sorts after the recorded part, so every writer would now refuse that part as outsorted.
+  rmSync(a.at("docs", "quality", "audits", later), { recursive: true, force: true });
+
+  const cScope = c.run(["scope"]);
+  check(
+    "with only plan records, scope says why it is empty",
+    cScope.status === 0 && cScope.stdout.includes("only plan records") && cScope.stdout.includes(cPlan.planId) && cScope.stdout.includes("never what a scope is measured from"),
+    cScope.stdout,
+  );
+  check("and its JSON carries the same note", (c.scopeJson().note ?? "").includes("only plan records"), String(JSON.stringify(c.scopeJson())).slice(0, 300));
+  refuses(c, "score --scope with only plan records", ["score", "SEC-01", "web", "3", "--evidence", "x.ts:1", "--scope"], ["only plan records", "never what a scope is measured from"]);
+
+  // A recorded plan's parts are recorded audits for every writer (part 3's recordedAuditIds).
+  const intoPart = a.run(["score", "SEC-01", "web", "3", "--evidence", "x.ts:1", "--audit", part.auditId]);
+  check("a plain score into a recorded part warns that it rewrites a recorded reading", intoPart.status === 0 && intoPart.stdout.includes(`${part.auditId} is already recorded`), intoPart.stdout + intoPart.stderr);
+  refuses(a, "a recorded part as a scoped re-audit's target", ["score", "AGT-01", "ios", "3", "--evidence", "x.ts:1", "--scope", "--audit", part.auditId], ["already recorded"]);
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

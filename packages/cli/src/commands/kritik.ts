@@ -49,6 +49,8 @@ import {
   planRecordCommand,
   priorityOf,
   recordedAuditIds,
+  recordedPlans,
+  recordedSinceIds,
   renderIssue,
   resolveFinding,
   scopeSummary,
@@ -307,7 +309,8 @@ This is a work list, not a score: re-score each cell with evidence
 Recording closes the window: a cell left unscored drops out of the next scope.
 
   --since <audit>   Measure from this recorded audit (default: the newest
-                    quality.audit.completed in the journal).
+                    quality.audit.completed that is not a plan's). A plan
+                    record is never what a scope is measured from.
   --no-widen        Only the resolved findings' own cells, no neighbours.
   --json            The scope as JSON (what an agent should read).
 
@@ -646,9 +649,13 @@ function runScore(args: string[], common: CommonOptions): void {
   let scopedFrom: string | undefined;
   let auditId: string;
   if (flags.has("scope")) {
-    const { scope, recorded } = currentScope(common, library, profile);
+    const { scope, recorded, plans } = currentScope(common, library, profile);
     if (scope.since === null) {
-      fail(`kritik: --scope needs a recorded audit to measure from — \`arkaik kritik matrix --record\` writes one.`);
+      fail(
+        plans.length > 0
+          ? `kritik: --scope needs a full or scoped audit to measure from, and ${planOnlyScopeNote(plans)}`
+          : `kritik: --scope needs a recorded audit to measure from — \`arkaik kritik matrix --record\` writes one.`,
+      );
     }
     if (!scope.cells.some((cell) => cell.criterion_id === criterionId && cell.surface === surface)) {
       fail(
@@ -894,7 +901,8 @@ function scopedSince(common: CommonOptions, auditId: string, stamped: string | u
     fail(`kritik: --scope needs the audit this one was scoped from, and there is no journal at ${journal.bundlePath}.`);
   }
   try {
-    return declaredScopeSince(auditId, recordedAuditIds(readFullJournalEvents(journal.journalPath)));
+    // A plan record is never what a scoped audit followed: only full and scoped records count.
+    return declaredScopeSince(auditId, recordedSinceIds(readFullJournalEvents(journal.journalPath)));
   } catch (error) {
     return fail(`kritik: --scope refused — ${(error as Error).message}`);
   }
@@ -1526,12 +1534,24 @@ function scopeReason(cell: ScopeCell, resolvedBy: Readonly<Record<string, string
  * and resolved last week lives in an older findings.json, and its cell's
  * current score may come from any audit on disk.
  */
+/**
+ * Why a scope is empty when the journal holds plan records and nothing else (spec "A first audit
+ * that is a plan"): a plan record is never a scope's anchor, so until a full audit is recorded a
+ * fix is re-checked by running its part again in a new plan.
+ */
+function planOnlyScopeNote(plans: readonly string[]): string {
+  return (
+    `only plan records are in this journal (${plans.join(", ")}) — a plan record is never what a scope is measured from. ` +
+    `Until a full audit is recorded, re-check a fix by running its plan part again: \`arkaik kritik plan --run <DOMAIN:SURFACE>\`, then record that plan.`
+  );
+}
+
 function currentScope(
   common: CommonOptions,
   library: KritikLibrary,
   profile: QualityProfile,
   options: { since?: string; widen?: boolean } = {},
-): { scope: AuditScope; journalPath: string; recorded: string[] } {
+): { scope: AuditScope; journalPath: string; recorded: string[]; plans: string[] } {
   const journal = resolveJournal(common.root, common.bundlePath);
   if (!journal.present) {
     fail(
@@ -1541,12 +1561,21 @@ function currentScope(
   }
   const events = readFullJournalEvents(journal.journalPath);
   const recorded = recordedAuditIds(events);
+  const sinceIds = recordedSinceIds(events);
+  const plans = recordedPlans(events).map((plan) => plan.plan);
 
   if (options.since !== undefined) {
-    if (!recorded.includes(options.since)) {
+    const since = options.since;
+    if (isPlanId(since) || isPlanPartId(since) || (recorded.includes(since) && !sinceIds.includes(since))) {
       fail(
-        `kritik: no recorded audit "${options.since}" in ${journal.journalPath} ` +
-          `(recorded: ${recorded.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
+        `kritik: "${since}" is a plan record, never a scope's anchor — a scope is measured from a full or scoped audit ` +
+          `(recorded: ${sinceIds.join(", ") || "none yet — `arkaik kritik matrix --record` writes one"}).`,
+      );
+    }
+    if (!sinceIds.includes(since)) {
+      fail(
+        `kritik: no recorded audit "${since}" in ${journal.journalPath} ` +
+          `(recorded: ${sinceIds.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
           `A scope is measured from a recorded reading; an audit directory that was never recorded is not one.`,
       );
     }
@@ -1558,7 +1587,7 @@ function currentScope(
   } catch (error) {
     return fail(`kritik: ${(error as Error).message}`);
   }
-  return { scope: deriveAuditScope(events, section, library, options), journalPath: journal.journalPath, recorded };
+  return { scope: deriveAuditScope(events, section, library, options), journalPath: journal.journalPath, recorded, plans };
 }
 
 function runScope(args: string[], common: CommonOptions): void {
@@ -1570,19 +1599,31 @@ function runScope(args: string[], common: CommonOptions): void {
 
   const library = loadLibraryOrFail(common.root);
   const profile = profileOrFail(common.root);
-  const { scope } = currentScope(common, library, profile, {
+  const { scope, plans } = currentScope(common, library, profile, {
     ...(single.since !== undefined ? { since: single.since } : {}),
     widen: !flags.has("no-widen"),
   });
 
   if (flags.has("json")) {
-    console.log(JSON.stringify({ ...scope, summary: scopeSummary(scope) }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...scope,
+          summary: scopeSummary(scope),
+          ...(scope.since === null && plans.length > 0 ? { note: `No full audit recorded yet: ${planOnlyScopeNote(plans)}` } : {}),
+        },
+        null,
+        2,
+      ),
+    );
     process.exit(0);
   }
 
   if (scope.since === null) {
     console.log(
-      `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
+      plans.length > 0
+        ? `\n  no full audit recorded yet: ${planOnlyScopeNote(plans)}\n`
+        : `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
     );
     process.exit(0);
   }
