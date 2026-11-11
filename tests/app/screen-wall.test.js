@@ -777,3 +777,40 @@ const EQUIV_EXPECTED = {
   );
   check("indexed shipped events: every cell's state, stale reasons and proof as before", same(actual, EQUIV_EXPECTED), show(actual));
 }
+
+// --- Live proof ignores an archived covering acceptance (review S2) ---------
+
+{
+  const nodes = [
+    iosView("V-arch-none"),
+    iosView("V-arch-hand"),
+    iosView("V-arch-only"),
+    ac("AC-deployed", ["ios"]),
+    ac("AC-retired", ["ios"], "archived"),
+    ac("AC-retired-hand", ["ios"], "archived"),
+    ac("AC-retired-web", ["ios"], "live", { ios: "archived" }),
+  ];
+  const edges = [
+    edge("AC-deployed", "covers", "V-arch-none"),
+    edge("AC-retired", "covers", "V-arch-none"),
+    edge("AC-deployed", "covers", "V-arch-hand"),
+    edge("AC-retired-hand", "covers", "V-arch-hand"),
+    edge("AC-retired-hand", "covers", "V-arch-only"),
+    edge("AC-deployed", "covers", "V-arch-only"),
+    edge("AC-retired-web", "covers", "V-arch-only"),
+  ];
+  const events = [
+    toLive("e-deployed", "AC-deployed", T2, { platform: "ios", actor: "arkaik-ci" }),
+    toLive("e-retired-hand", "AC-retired-hand", T3, { platform: "ios", actor: "alexis" }),
+    toLive("e-retired-web", "AC-retired-web", T3, { actor: "alexis" }),
+  ];
+  const wall = wallOf({ nodes, edges, events, productId: null, root: null });
+  const cell = (viewId) => wall.screens.get(viewId).cells.ios;
+  const deployed = { kind: "deploy", ts: T2, actor: "arkaik-ci", detail: null };
+  check("proof: a live acceptance deployed and an archived one never moved: deploy",
+    cell("V-arch-none").status === "live" && same(cell("V-arch-none").proof, deployed), show(cell("V-arch-none")));
+  check("proof: an archived acceptance's later move by hand does not decide",
+    cell("V-arch-hand").status === "live" && same(cell("V-arch-hand").proof, deployed), show(cell("V-arch-hand").proof));
+  check("proof: archived on the platform by override counts as archived there",
+    cell("V-arch-only").status === "live" && same(cell("V-arch-only").proof, deployed), show(cell("V-arch-only").proof));
+}

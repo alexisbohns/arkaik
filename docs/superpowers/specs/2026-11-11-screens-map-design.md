@@ -592,7 +592,9 @@ For a live cell on `p`:
    agent or the CLI can set a view's own status; the door refuses views). `ts`,
    `actor`: the view's latest `node.status_changed` to `live` on `p` or
    project-wide, if any.
-2. Otherwise, for each such acceptance, take its latest `node.status_changed`
+2. Otherwise, for each such acceptance whose resolved status on `p` is `live`
+   (an archived one leaves the view live but never decides how it went live),
+   take its latest `node.status_changed`
    with `to: "live"` and (`platform === p` or no platform). None → `unknown`;
    `actor === "arkaik-ci"` or a non-empty `detail` → `deploy`; anything else →
    `hand`.

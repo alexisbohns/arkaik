@@ -1,4 +1,4 @@
-import type { MapDefinition } from "@arkaik/schema";
+import { resolvePlatformStatus, type MapDefinition } from "@arkaik/schema";
 import { PLATFORMS, platformLabel, type PlatformId } from "@/lib/config/platforms";
 import { STATUSES, type StatusId } from "@/lib/config/statuses";
 import type { Edge as DataEdge, JournalEvent, Node as DataNode, PlaylistEntry, Project } from "@/lib/data/types";
@@ -366,6 +366,7 @@ function buildScreens(
         on: onPlatforms.includes(platform),
         status: statuses[platform] ?? null,
         related: stalenessRelatedIds(covering, platform),
+        deciding: covering.filter((ac) => resolvePlatformStatus(ac, platform) === "live").map((ac) => ac.id),
         journal,
       });
     }
@@ -479,12 +480,14 @@ interface CellContext {
   status: StatusId | null;
   /** The covering acceptances that list the platform. */
   related: readonly string[];
+  /** Those of them live on the platform: the only ones that say how the cell went live. */
+  deciding: readonly string[];
   journal: JournalIndex;
 }
 
 /** The state truth table (spec § State truth table) for one view on one platform. */
 function cellOf(viewNode: DataNode, platform: PlatformId, context: CellContext): PlatformCell {
-  const { on, status, related, journal } = context;
+  const { on, status, related, deciding, journal } = context;
   const value = viewNode.metadata?.platformScreenshots?.[platform];
   const meta = viewNode.metadata?.platformScreenshotMeta?.[platform];
   const shot = typeof value === "string" && value !== "" ? shotOf(value, meta) : null;
@@ -493,7 +496,7 @@ function cellOf(viewNode: DataNode, platform: PlatformId, context: CellContext):
   if (!on) return { ...base, state: "absent" };
   if (status !== "live") return { ...base, state: "not-live" };
 
-  const proof = proofOf(viewNode.id, related, platform, journal);
+  const proof = proofOf(viewNode.id, deciding, platform, journal);
   if (!shot) return { ...base, state: "live-no-shot", proof };
 
   // A deliverable naming the view and one of its acceptances is one event, counted once.
@@ -559,18 +562,21 @@ function reasonOf(ev: JournalEvent, viewId: string, ids: ReadonlySet<string>): S
 
 /**
  * How a live cell went live (spec § Live proof). Uncovered: by hand, since the
- * deploy door refuses views. Covered: each listing acceptance's latest move
- * to live on the platform (or project-wide) is a deploy when CI wrote it or it
- * carries `detail`; the cell is a deploy only if every acceptance's is.
+ * deploy door refuses views. Covered: each covering acceptance live on the
+ * platform has its latest move to live there (or project-wide) read — a deploy
+ * when CI wrote it or it carries `detail`; the cell is a deploy only if every
+ * one is. An archived acceptance leaves the view live and decides nothing.
+ * A live covered cell always has one live acceptance (the weakest status of
+ * the listing ones is live), so `deciding` is empty only when uncovered.
  */
-function proofOf(viewId: string, related: readonly string[], platform: PlatformId, journal: JournalIndex): LiveProof {
-  if (related.length === 0) {
+function proofOf(viewId: string, deciding: readonly string[], platform: PlatformId, journal: JournalIndex): LiveProof {
+  if (deciding.length === 0) {
     return { kind: "hand", ...evidenceOf(latestMoveToLive(journal.byNode.get(viewId) ?? [], platform)) };
   }
   const deploys: JournalEvent[] = [];
   const hands: JournalEvent[] = [];
   let unproven = false;
-  for (const id of related) {
+  for (const id of deciding) {
     const ev = latestMoveToLive(journal.byNode.get(id) ?? [], platform);
     if (!ev) unproven = true;
     else if (ev.actor === "arkaik-ci" || (typeof ev.detail === "string" && ev.detail.trim() !== "")) deploys.push(ev);
