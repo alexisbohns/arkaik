@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ImageOffIcon, TriangleAlertIcon } from "lucide-react";
 import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
+import type { WallSelection } from "@/components/graph/nodes/wall-node-data";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
 import { WALL_BAR_INSET, WALL_CAMERA_PADDING, type WallCameraRequest } from "@/components/graph/WallCamera";
 import { PageError } from "@/components/layout/PageError";
@@ -36,13 +37,16 @@ import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { generateNodeId } from "@/lib/utils/id";
 import type { ProductGraph } from "@/lib/utils/product-scope";
+import { frameBoxOf, selectionRect } from "@/lib/utils/screen-inspector";
 import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
   layoutWall,
+  neighbourFrame,
   openingViewport,
   stripNearViewport,
   type AspectOf,
+  type Rect,
   type WallLayout,
 } from "@/lib/utils/screen-wall-layout";
 import { STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot-staleness";
@@ -57,6 +61,9 @@ const NO_EVENTS: readonly JournalEvent[] = [];
 
 /** The zoom range for framing a whole strip: a jump tile's target. */
 const STRIP_ZOOM = { minZoom: 0.4, maxZoom: 1 } as const;
+
+/** The zoom range for framing a selected frame and its chip column. */
+const SELECTION_ZOOM = { minZoom: 0.6, maxZoom: 1 } as const;
 
 /** How long a jumped-to strip's header stays rung. */
 const RING_MS = 2000;
@@ -108,10 +115,11 @@ function screensAnnouncement(lens: WallLens, gaps: number, gapsOnly: boolean): s
  * platform. `SystemMap`'s twin in shape — data hooks, the wall model, the
  * camera and the panel wiring here; drawing in `ScreensCanvas`.
  *
- * Read-only: nothing on the wall writes. A frame opens the view's panel and
- * centres itself (the System map's grammar), a header opens its flow's panel,
- * and the panel is where editing already works — which is why the shell gets
- * the same write props the other maps pass it.
+ * Read-only: nothing on the wall writes. A frame selects itself — the camera
+ * frames it, its touch chips fan out under it and the quick inspector shows —
+ * and a second activation opens the view's panel; a header opens its flow's
+ * panel, and the panel is where editing already works — which is why the shell
+ * gets the same write props the other maps pass it.
  *
  * The lens is a preference of the person reading (`useDisplayPreferences`),
  * not of the product: nothing is written to the bundle and there is no Display
@@ -185,6 +193,15 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   );
   const layout = useMemo(() => layoutWall(wall, lens, aspectOf), [aspectOf, lens, wall]);
 
+  // --- part 4: selection ---
+  // Held as `picked`, read as `selection`: a frame that leaves the layout (a
+  // scope or lens change) drops out here, during render, never in an effect.
+  const [picked, setPicked] = useState<WallSelection | null>(null);
+  const selection = useMemo(
+    () => (picked && frameBoxOf(layout, picked.frameId) && wall.screens.has(picked.viewId) ? picked : null),
+    [layout, picked, wall],
+  );
+
   // Loading shows the loading page only until the map has been shown once.
   // After that a read going back to loading — an errored journal refetching on
   // Retry or on window focus — keeps the map up: the wall draws without the
@@ -244,14 +261,49 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     }
   }
 
-  // The frame a click activated, centred in whatever canvas the panel leaves.
+  // Every camera move after the opening one: show `rect`, zoom kept within
+  // [minZoom, maxZoom] (`frameViewport`, in `WallCamera`).
+  const requestCamera = useCallback((rect: Rect, minZoom: number, maxZoom: number) => {
+    setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, rect, minZoom, maxZoom }));
+  }, []);
+
+  // The frame an arrow key moved to: focused, and panned to if off-screen.
   const [focus, setFocus] = useState<CanvasFocus | null>(null);
-  const handleFrameActivate = useCallback(
-    (frameId: string, viewId: string) => {
-      openNode({ nodeId: viewId });
-      setFocus((previous) => ({ nodeId: frameId, version: (previous?.version ?? 0) + 1 }));
+
+  // The one way to select (contract: part 5's ⌘K handler calls it too): select
+  // the frame, frame it and its chips with the camera, and so show the
+  // inspector. It never opens a panel.
+  const selectFrame = useCallback(
+    (frameId: string, viewId: string, stripId: string): void => {
+      setPicked({ frameId, viewId, stripId });
+      const rect = selectionRect(wall, layout, frameId, viewId);
+      if (rect) requestCamera(rect, SELECTION_ZOOM.minZoom, SELECTION_ZOOM.maxZoom);
     },
-    [openNode],
+    [layout, requestCamera, wall],
+  );
+
+  // Part 4 replaces part 2's click grammar: the first activation selects, a
+  // second activation of the selected frame (click, Enter or Space) opens the panel.
+  const handleFrameActivate = useCallback(
+    (frameId: string, viewId: string, stripId: string) => {
+      if (selection?.frameId === frameId) {
+        openNode({ nodeId: viewId });
+        return;
+      }
+      selectFrame(frameId, viewId, stripId);
+    },
+    [openNode, selectFrame, selection],
+  );
+
+  const handlePaneClick = useCallback(() => setPicked(null), []);
+
+  // Arrow keys move focus only (spec § Keys); the canvas pans if the frame is off-screen.
+  const handleFrameMove = useCallback(
+    (frameId: string, dir: "left" | "right" | "up" | "down") => {
+      const next = neighbourFrame(layout, frameId, dir);
+      if (next) setFocus((previous) => ({ nodeId: next, version: (previous?.version ?? 0) + 1 }));
+    },
+    [layout],
   );
 
   const handleOpenNode = useCallback((nodeId: string) => openNode({ nodeId }), [openNode]);
@@ -411,6 +463,9 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               // Gaps only with nothing to fix fades nothing: a whole wall at
               // 15% would read as broken. The bar says why instead.
               gapsOnly={gapsOnly && gaps > 0}
+              selection={selection}
+              onPaneClick={handlePaneClick}
+              onFrameMove={handleFrameMove}
             />
             <WallViewportProbe layout={layout} onStore={handleStore} onStrip={setViewedStrip} />
           </ReactFlowProvider>

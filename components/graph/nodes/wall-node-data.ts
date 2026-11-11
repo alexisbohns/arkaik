@@ -44,6 +44,10 @@ export type WallFrameData = {
   dimmed: boolean;
   /** Gaps only, side by side, and this frame is a gap: its rows that are not gaps, drawn at 35%. Empty otherwise. */
   dimmedRows: readonly PlatformId[];
+  /** This frame is the selection: the ring and `aria-current`; the touch chips hang off it. */
+  selected: boolean;
+  /** An arrow key on the focused frame; the controller picks the neighbour and moves focus there. */
+  onMove: (frameId: string, dir: "left" | "right" | "up" | "down") => void;
 };
 
 export type WallHeaderData = {

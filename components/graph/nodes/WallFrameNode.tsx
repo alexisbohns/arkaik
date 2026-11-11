@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, type KeyboardEvent } from "react";
-import type { Node, NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { PlatformId } from "@/lib/config/platforms";
 import { cn } from "@/lib/utils";
 import { cellWord, type PlatformCell } from "@/lib/utils/screen-wall";
@@ -19,6 +19,14 @@ import { formatShotDate } from "@/lib/utils/screenshot-ops";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 import type { WallFrameData } from "./wall-node-data";
 import { WallMiniShot, WallShot, useWallDetail } from "./WallShot";
+
+/** Arrow keys on a focused frame → the neighbour direction (spec § Keys). */
+const ARROW_DIRECTIONS: Readonly<Record<string, "left" | "right" | "up" | "down">> = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+};
 
 /** "live, shot current, 11/3/2026" — one platform's reading, for the frame's accessible name. */
 function cellPhrase(cell: PlatformCell | undefined): string {
@@ -229,20 +237,32 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
 
   const activate = () => onActivate(frameId, viewId, stripId);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const direction = ARROW_DIRECTIONS[event.key];
+    if (direction && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      data.onMove(data.frameId, direction);
+      return;
+    }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     activate();
   };
 
   return (
-    <div className={wallDimClass(data.dimmed)} data-dimmed={data.dimmed ? "true" : "false"}>
+    <div className={cn(wallDimClass(data.dimmed), "relative")} data-dimmed={data.dimmed ? "true" : "false"}>
       <div
         role="button"
         tabIndex={0}
         aria-label={label}
+        aria-current={data.selected ? "true" : undefined}
+        data-wall-frame={data.frameId}
         onClick={activate}
         onKeyDown={handleKeyDown}
-        className="group/wall-frame pointer-events-auto flex h-full w-full cursor-pointer flex-col items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
+        className={cn(
+          "group/wall-frame pointer-events-auto flex h-full w-full cursor-pointer flex-col items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+          data.selected && "ring-2 ring-primary ring-offset-4 ring-offset-background",
+        )}
       >
         {platform === null ? (
           <WallSideBox data={data} />
@@ -272,6 +292,7 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
           )}
         </div>
       </div>
+      <Handle type="source" position={Position.Bottom} id="touch" isConnectable={false} className="opacity-0" />
     </div>
   );
 }
