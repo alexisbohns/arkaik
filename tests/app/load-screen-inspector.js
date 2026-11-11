@@ -108,6 +108,7 @@ function loadScreenInspector() {
     LOOSE_STRIP_ID: wallModel.LOOSE_STRIP_ID,
     chipRects: layout.chipRects,
     frameViewport: layout.frameViewport,
+    HEADER_MIN_W: layout.HEADER_MIN_W,
     CHIP_MAX: layout.CHIP_MAX,
     formatShotDate: require(path.join(BUILD_DIR, "screenshot-ops.js")).formatShotDate,
   };

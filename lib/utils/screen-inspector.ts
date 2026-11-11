@@ -27,6 +27,7 @@ import {
 } from "@/lib/utils/screen-wall";
 import {
   CHIP_MAX,
+  HEADER_MIN_W,
   chipRects,
   frameViewport,
   type Rect,
@@ -302,6 +303,13 @@ export function selectionBounds(wall: Wall, layout: WallLayout, frameId: string,
   return planChips(frame, wall.screens.get(viewId)?.touches ?? []).bounds;
 }
 
+/** A strip header's title area: its left end, `HEADER_MIN_W` wide at most. The header's box id is the strip id. */
+export function stripTitleRect(layout: WallLayout, stripId: string): Rect | null {
+  const header = layout.boxes.find((box) => box.kind === "header" && box.id === stripId);
+  if (!header) return null;
+  return { x: header.x, y: header.y, width: Math.min(header.width, HEADER_MIN_W), height: header.height };
+}
+
 export interface SelectionFraming {
   padding: number;
   /** The bottom bar's height plus its gap; the sheet sits on it. */
@@ -310,6 +318,8 @@ export interface SelectionFraming {
   maxZoom: number;
   /** Whether the inspector is shown (no panel open). */
   inspector: boolean;
+  /** "Also in" only: the target strip's title area, joined to the rect when the zoom limits allow. */
+  header?: Rect | null;
 }
 
 /**
@@ -318,20 +328,30 @@ export interface SelectionFraming {
  * widens on the right by the card, as `selectionRect`. With the inspector a
  * bottom sheet, nothing is widened: the sheet's maximum height is kept clear
  * above the bar instead, so the frame is framed in the space above it. With
- * no inspector (a panel is open), neither.
+ * no inspector (a panel is open), neither. A `header` (the strip's title area)
+ * joins the rect only if the joined rect still fits at `minZoom`; otherwise
+ * it is left out, and the frame and its chips are framed as usual.
  */
 export function selectionViewport(
   bounds: Rect,
   size: { width: number; height: number },
   options: SelectionFraming,
 ): { x: number; y: number; zoom: number } {
-  const { padding, barInset, minZoom, maxZoom, inspector } = options;
+  const { padding, barInset, minZoom, maxZoom, inspector, header } = options;
   const sheet = inspector && size.width < INSPECTOR_SHEET_BELOW;
   const beside = inspector && !sheet;
   const bottomInset = sheet ? barInset + size.height * INSPECTOR_SHEET_MAX_H : barInset;
   const room = (rect: Rect): Rect => (beside ? { ...rect, width: rect.width + INSPECTOR_GAP + INSPECTOR_W } : rect);
   const frameOptions = { padding, bottomInset, minZoom, maxZoom };
 
+  if (header) {
+    const joined = room(unionRects([bounds, header]));
+    const fit = Math.min(
+      (size.width - 2 * padding) / joined.width,
+      (size.height - 2 * padding - bottomInset) / joined.height,
+    );
+    if (fit >= minZoom) return frameViewport(joined, size, frameOptions);
+  }
   return frameViewport(room(bounds), size, frameOptions);
 }
 

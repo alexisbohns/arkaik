@@ -46,6 +46,7 @@ import {
   frameInStrip,
   selectionBounds,
   selectionViewport,
+  stripTitleRect,
 } from "@/lib/utils/screen-inspector";
 import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
@@ -304,19 +305,27 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // (`selectionViewport`): beside a side inspector the rect widens by the
   // card; above a bottom sheet (a canvas under 40rem) the sheet's height is
   // kept clear instead; with a panel open there is no inspector to make room
-  // for.
-  const selectFrame = useCallback(
-    (frameId: string, viewId: string, stripId: string): void => {
+  // for. "Also in" passes the target strip's title area to frame with it.
+  const frameSelection = useCallback(
+    (frameId: string, viewId: string, stripId: string, withTitle: boolean): void => {
       setPicked({ frameId, viewId, stripId });
       const bounds = selectionBounds(wall, layout, frameId, viewId);
       if (!bounds) return;
-      const framing = { ...SELECTION_FRAMING, inspector: entries.length === 0 };
+      const framing = {
+        ...SELECTION_FRAMING,
+        inspector: entries.length === 0,
+        header: withTitle ? stripTitleRect(layout, stripId) : null,
+      };
       setCamera((previous) => ({
         version: (previous?.version ?? 0) + 1,
         viewport: (size) => selectionViewport(bounds, size, framing),
       }));
     },
     [entries.length, layout, wall],
+  );
+  const selectFrame = useCallback(
+    (frameId: string, viewId: string, stripId: string): void => frameSelection(frameId, viewId, stripId, false),
+    [frameSelection],
   );
 
   // Part 4 replaces part 2's click grammar: the first activation selects, a
@@ -386,10 +395,10 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
       if (!selection) return;
       const frameId = frameInStrip(wall, stripId, selection.viewId);
       if (!frameId) return;
-      selectFrame(frameId, selection.viewId, stripId);
+      frameSelection(frameId, selection.viewId, stripId, true);
       ringStrip(stripId);
     },
-    [ringStrip, selectFrame, selection, wall],
+    [frameSelection, ringStrip, selection, wall],
   );
 
   const clearSelection = useCallback(() => {

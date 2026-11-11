@@ -32,10 +32,12 @@ const {
   frameDimmed,
   selectionBounds,
   selectionViewport,
+  stripTitleRect,
   INSPECTOR_SHEET_REM,
   INSPECTOR_SHEET_BELOW,
   INSPECTOR_SHEET_MAX_H,
   frameViewport,
+  HEADER_MIN_W,
   TOUCH_TRUNK_X,
   TOUCH_STUB,
   INSPECTOR_W,
@@ -421,6 +423,38 @@ test("no inspector (a panel is open): neither widened nor a sheet reserved, at a
     const expected = frameViewport(bounds, size, { padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1 });
     assert.ok(sameView(view, expected), JSON.stringify(size));
   }
+});
+
+test("stripTitleRect: the header's title area — its left end, HEADER_MIN_W at most", () => {
+  assert.deepEqual(stripTitleRect(layout, "strip:F-weekly"), { x: 0, y: 452, width: HEADER_MIN_W, height: 44 });
+  assert.deepEqual(stripTitleRect(layout, "strip:F-checkin"), { x: 0, y: 0, width: Math.min(448, HEADER_MIN_W), height: 44 });
+  assert.equal(stripTitleRect(layout, "strip:nope"), null);
+});
+
+test("Also in: the strip's title area joins the framed rect when the zoom limits allow", () => {
+  const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
+  const header = stripTitleRect(layout, "strip:F-checkin");
+  const size = { width: 1440, height: 1200 };
+  const view = selectionViewport(bounds, size, { ...OPTS, inspector: true, header });
+  const top = Math.min(bounds.y, header.y);
+  const joined = { x: Math.min(bounds.x, header.x), y: top, width: bounds.width, height: bounds.y + bounds.height - top };
+  const expected = frameViewport({ ...joined, width: joined.width + INSPECTOR_GAP + INSPECTOR_W }, size, {
+    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
+  });
+  assert.ok(sameView(view, expected), JSON.stringify([view, expected]));
+  assert.ok(header.y * view.zoom + view.y >= 0, "the header's title is on screen");
+});
+
+test("Also in: a title area too far away for the zoom limits is left out", () => {
+  // A frame far along a long strip: frame + title area would need a zoom below 0.6.
+  const far = box("V-a@F-long:9", "frame", "strip:F-long", 4000, 56, 448, 324);
+  const longLayout = { ...layout, boxes: [box("strip:F-long", "header", "strip:F-long", 0, 0, 5000, 44), far] };
+  const bounds = planChips(far, []).bounds;
+  const header = stripTitleRect(longLayout, "strip:F-long");
+  const size = { width: 1440, height: 900 };
+  const view = selectionViewport(bounds, size, { ...OPTS, inspector: true, header });
+  const plain = selectionViewport(bounds, size, { ...OPTS, inspector: true });
+  assert.ok(sameView(view, plain));
 });
 
 if (failures) {

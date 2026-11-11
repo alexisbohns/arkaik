@@ -826,7 +826,11 @@ shared trunk and turns right into its chip on one small rounded corner.
   stale reason plus "and N more", the proof line: "Live from a deploy · 3 Nov ·
   <detail>", "Live, set by hand · 3 Nov", or "No record of how this went live"),
   a "Touches" list of the same endpoints and models as the chips (buttons; the
-  keyboard path to them), and "Open panel".
+  keyboard path to them), and "Open panel". "Also in …" selects the view's
+  frame in that strip and rings its header; its camera also frames the
+  header's title area (its left end, up to `HEADER_MIN_W`) with the frame and
+  chips when the joined rect still fits at the selection's minimum zoom (0.6),
+  and leaves it out otherwise (a frame far along a long strip).
 - Chips: up to `CHIP_MAX` (8), then one "+N more" chip that opens the view's
   panel. They are canvas nodes (they move with the camera), `zIndex` 1000 over
   the next strip, on a card background, and `aria-hidden` with `tabIndex={-1}`:
