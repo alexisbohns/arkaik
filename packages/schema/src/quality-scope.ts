@@ -65,6 +65,7 @@ export interface AuditScope {
    * The audit the scope is measured from — `null` when no audit has been
    * recorded, which is an empty scope rather than "everything since the start":
    * with no recorded reading there is nothing for a re-score to be a re-score of.
+   * Never a plan record: a project whose only records are plans has none.
    */
   since: string | null;
   /** When that audit was recorded; `null` whenever `since` names no recorded audit. */
@@ -94,7 +95,11 @@ export interface AuditScope {
 }
 
 export interface AuditScopeOptions {
-  /** The audit to measure from. Default: the newest `quality.audit.completed`. */
+  /**
+   * The audit to measure from. Default: the newest `quality.audit.completed`
+   * that is not a plan record. A plan id or a part id names no anchor, so it
+   * gives an empty scope.
+   */
   since?: string;
   /** Add the one-hop node neighbours. Default: on. */
   widen?: boolean;
@@ -180,6 +185,36 @@ export function recordedSinceIds(events: readonly JournalEvent[]): string[] {
 }
 
 /**
+ * The index in `ordered` of the record a scope is measured from: the newest
+ * `quality.audit.completed` that is not a plan record (rule 1), or the newest
+ * recording of `since` when one is named. `-1` when there is none — and a
+ * `since` naming a plan or a part never matches, because no non-plan record
+ * carries that id.
+ */
+function anchorIndex(ordered: readonly JournalEvent[], since: string | undefined): number {
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const event = ordered[i];
+    if (event.type !== "quality.audit.completed" || isPlanRecord(event)) continue;
+    if (since !== undefined && (event as { audit_id?: unknown }).audit_id !== since) continue;
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * The audit id of the newest record that is not a plan record — the `since` an
+ * unscoped {@link deriveAuditScope} measures from, and the `since` a plan
+ * record carries. `null` when there is none, or when that record names no id.
+ */
+export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
+  const ordered = orderedRows(events);
+  const at = anchorIndex(ordered, undefined);
+  if (at === -1) return null;
+  const id = (ordered[at] as { audit_id?: unknown }).audit_id;
+  return isString(id) ? id : null;
+}
+
+/**
  * The cells a batch of fixes made stale since an audit.
  *
  * - **The window.** Every `quality.finding.resolved` ordered (by `orderEvents`)
@@ -209,17 +244,9 @@ export function deriveAuditScope(
   library: Pick<KritikLibrary, "criteria">,
   options: AuditScopeOptions = {},
 ): AuditScope {
-  const ordered = orderEvents(rowsOf<JournalEvent>(events).filter((event) => typeof event === "object" && event !== null));
-
-  let sinceIndex = -1;
-  for (let i = ordered.length - 1; i >= 0; i--) {
-    const event = ordered[i];
-    if (event.type !== "quality.audit.completed") continue;
-    const id = (event as { audit_id?: unknown }).audit_id;
-    if (options.since !== undefined && id !== options.since) continue;
-    sinceIndex = i;
-    break;
-  }
+  const ordered = orderedRows(events);
+  // Rule 1: the anchor is never a plan record.
+  const sinceIndex = anchorIndex(ordered, options.since);
 
   const empty: AuditScope = {
     since: options.since ?? null,

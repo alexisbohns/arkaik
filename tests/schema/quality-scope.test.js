@@ -21,6 +21,7 @@ const {
   recordedAuditIds,
   recordedPlans,
   recordedSinceIds,
+  scopeAnchorId,
   scopeSummary,
   scopedAuditId,
 } = loadSchema();
@@ -477,6 +478,38 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
   check(
     "no plan record: recordedSinceIds equals recordedAuditIds",
     recordedSinceIds(NO_PLAN_SHUFFLED).join() === recordedAuditIds(NO_PLAN_SHUFFLED).join(),
+  );
+}
+
+// --- rule 1: a plan record is never the audit a scope is measured from ---------
+
+{
+  const events = [AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["A11Y-01::ios"])];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check("rule 1: since skips the plan record", scope.since === "2026-08" && scope.since_ts === "2026-08-31T00:00:00.000Z", JSON.stringify(scope));
+  check("rule 1: a fix before the plan still counts for a cell the plan did not re-score", cellIds(scope).join() === "web:SEC-01:direct", cellIds(scope).join());
+  check("rule 1: scopeAnchorId names the same audit", scopeAnchorId(events) === "2026-08", String(scopeAnchorId(events)));
+
+  const onlyPlans = [planRecord(PLAN, T(10), ["SEC-01::web"]), resolved("F-3", T(11))];
+  const first = deriveAuditScope(onlyPlans, SECTION, LIBRARY);
+  check(
+    "rule 1: with only plan records there is nothing to measure from — an empty scope",
+    first.since === null && first.since_ts === null && first.cells.length === 0 && first.findings.length === 0,
+    JSON.stringify(first),
+  );
+  check("rule 1: scopeAnchorId is null with only plan records", scopeAnchorId(onlyPlans) === null);
+
+  const byPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: PLAN });
+  check("rule 1: since naming a plan finds no anchor", byPlan.since === PLAN && byPlan.since_ts === null && byPlan.cells.length === 0, JSON.stringify(byPlan));
+  const byPart = deriveAuditScope(events, SECTION, LIBRARY, { since: PART_SEC_WEB });
+  check("rule 1: nor does since naming a part", byPart.since === PART_SEC_WEB && byPart.since_ts === null && byPart.cells.length === 0, JSON.stringify(byPart));
+
+  check("no plan record: scopeAnchorId is the scope's since", scopeAnchorId(NO_PLAN_SHUFFLED) === "2026-09-scoped");
+  check("scopeAnchorId of nothing is null, never a throw", scopeAnchorId([]) === null && scopeAnchorId(null) === null && scopeAnchorId([null, 7]) === null);
+  check(
+    "a plan record that re-scored nothing changes nothing",
+    JSON.stringify(deriveAuditScope([...NO_PLAN_JOURNAL, planRecord(PLAN, "2026-09-09T00:00:00.000Z", [])], SECTION, LIBRARY)) === GOLDEN_DEFAULT,
+    JSON.stringify(deriveAuditScope([...NO_PLAN_JOURNAL, planRecord(PLAN, "2026-09-09T00:00:00.000Z", [])], SECTION, LIBRARY)),
   );
 }
 
