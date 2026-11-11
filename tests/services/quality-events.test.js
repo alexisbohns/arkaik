@@ -712,6 +712,44 @@ const PRIOR_BOTH = [RESOLUTION, RESOLUTION_2];
   );
 }
 
+// A restored project whose only recorded event is a plan record: the 2026-08
+// audit sits in the snapshot unrecorded, a part re-scored SEC-01 on web, and
+// F-1 and F-2 were resolved before the plan was recorded. The plan record is
+// not a recorded audit, so the implicit baseline still anchors the scope.
+{
+  const PLAN_ID = "2026-09-zplan-1000";
+  const PART_ID = `${PLAN_ID}-sec-web`;
+  const PLAN_RECORD = {
+    id: "01K0000000000000000000PLN2", ts: "2026-09-10T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: PLAN_ID, framework_version: "1.0.0", scores: {}, counts: {},
+    scope: { partial: true, cells: 1, plan: PLAN_ID, parts: [PART_ID], scored: ["SEC-01::web"] },
+  };
+  const JOURNAL = [RESOLUTION, RESOLUTION_2, PLAN_RECORD];
+  const UNRECORDED = () =>
+    RESTORED({
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e1", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+        { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+        { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e3", audit_id: PART_ID, ts: "2026-09-05T00:00:00.000Z" },
+      ],
+    });
+
+  const scope = schema.deriveAuditScope(schema.withImplicitBaseline(JOURNAL, UNRECORDED(), LIB), foldQualityEvents(UNRECORDED(), JOURNAL), LIB);
+  check(
+    "plan record only (hosted): the implicit baseline still anchors the scope, and the other stale cell is listed",
+    scope.since === "2026-08" && scope.cells.map((cell) => `${cell.surface}:${cell.criterion_id}`).join() === "web:SEC-02",
+    JSON.stringify(scope),
+  );
+  const other = planQualityEvents(UNRECORDED(), JOURNAL, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check(
+    "plan record only (hosted): a score on that cell is accepted, and records the baseline first",
+    typesOf(other) === "quality.audit.completed,quality.assessment.scored" && other.events[0].baseline === true && other.events[0].audit_id === "2026-08",
+    typesOf(other),
+  );
+  const rescored = planQualityEvents(UNRECORDED(), JOURNAL, [SCORE()], "arkaik-agent", NOW);
+  check("plan record only (hosted): the cell the plan re-scored refuses out_of_scope", reasonsOf(rescored) === "out_of_scope", JSON.stringify(rescored));
+}
+
 // --- requiredScopeFor --------------------------------------------------------
 
 {

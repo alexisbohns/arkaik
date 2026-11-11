@@ -295,6 +295,54 @@ check(
   implicitAuditBaseline([], { ...PLAN_SECTION, assessments: PLAN_SECTION.assessments.filter((a) => a.audit_id !== "2026-08") }, LIBRARY) === null,
 );
 
+// --- a plan record is not a recorded audit ------------------------------------------
+//
+// A plan record re-scored a handful of cells; it is never the audit a scope is
+// measured from. A project whose only recorded event is one still needs the
+// restored audit's reading, or it has no anchor at all and every hosted score
+// is refused.
+
+{
+  const PLAN_ID = "2026-09-zplan-1000";
+  const PART_ID = `${PLAN_ID}-sec-web`;
+  const planRecord = (over = {}) => ({
+    id: "01PLAN", ts: "2026-09-10T00:00:00.000Z", type: "quality.audit.completed", audit_id: PLAN_ID, framework_version: "1.4.0",
+    scope: { partial: true, cells: 1, plan: PLAN_ID, parts: [PART_ID], scored: ["SEC-01::web"] },
+    ...over,
+  });
+  // The restored 2026-08 audit, never recorded, plus the plan part's re-score of SEC-01.
+  const section = {
+    ...SECTION,
+    assessments: [...SECTION.assessments, assess("SEC-01", 4, PART_ID, "2026-09-05T00:00:00.000Z")],
+    findings: [finding("F-1", "SEC-01", { status: "resolved" }), finding("F-2", "SEC-02", { status: "resolved" })],
+  };
+  const journal = [resolved("01RES1", "F-1", "2026-08-20T00:00:00.000Z"), resolved("01RES2", "F-2", "2026-08-21T00:00:00.000Z"), planRecord()];
+
+  const fromPlanOnly = implicitAuditBaseline(journal, section, LIBRARY);
+  check(
+    "a plan record is not a recorded audit: the restored one still gets its baseline",
+    fromPlanOnly !== null && fromPlanOnly.audit_id === "2026-08" && fromPlanOnly.ts === "2026-08-05T10:00:00.000Z",
+    JSON.stringify(fromPlanOnly),
+  );
+  const damaged = implicitAuditBaseline([...journal.slice(0, 2), planRecord({ scope: undefined })], section, LIBRARY);
+  check("nor is a damaged plan record (a plan id with no scope.plan)", damaged !== null && damaged.audit_id === "2026-08", JSON.stringify(damaged));
+  check(
+    "a real recorded audit beside the plan record still switches the baseline off",
+    implicitAuditBaseline(
+      [{ id: "01A", ts: "2026-08-06T00:00:00.000Z", type: "quality.audit.completed", audit_id: "2026-08", framework_version: "1.4.0" }, ...journal],
+      section,
+      LIBRARY,
+    ) === null,
+  );
+
+  const planScope = deriveAuditScope(withImplicitBaseline(journal, section, LIBRARY), section, LIBRARY);
+  check(
+    "measured from that baseline, the plan clears the cell it re-scored and the other stale cell is listed",
+    planScope.since === "2026-08" && planScope.cells.map((c) => `${c.criterion_id}:${c.kind}`).join() === "SEC-02:direct",
+    JSON.stringify(planScope),
+  );
+}
+
 // --- stored and folded sections give the same baseline -----------------------------
 //
 // The server folds each decision into the section it serves; the snapshot a

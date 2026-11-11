@@ -54,6 +54,7 @@ import { orderEvents, type JournalEvent } from "./journal";
 import { deriveQualityMatrix, type KritikLibrary, type QualityAssessment, type QualityFinding, type QualitySection } from "./quality";
 import { auditCompletedInput } from "./quality-ops";
 import { isPartialAuditId } from "./quality-plan";
+import { isPlanRecord } from "./quality-scope";
 
 const EPOCH = "1970-01-01T00:00:00.000Z";
 const DECISIONS = new Set(["quality.finding.resolved", "quality.finding.accepted"]);
@@ -107,7 +108,10 @@ type BaselineSection = Pick<QualitySection, "assessments" | "findings"> & Partia
 /**
  * The implicit reading for `section`, or `null` when there is nothing to
  * synthesize: a real `quality.audit.completed` is already in `events`, or the
- * section carries no assessment tied to an audit run.
+ * section carries no assessment tied to an audit run. A plan record
+ * (`isPlanRecord`) is not a real one here: it re-scored a handful of cells and
+ * is never a scope's anchor, so a project whose only record is a plan still
+ * needs the restored audit's reading to measure from.
  */
 export function implicitAuditBaseline(
   events: readonly JournalEvent[] | null | undefined,
@@ -115,7 +119,7 @@ export function implicitAuditBaseline(
   library?: KritikLibrary,
 ): JournalEvent | null {
   const rows = objectRowsOf<JournalEvent>(events);
-  if (rows.some((event) => event.type === "quality.audit.completed")) return null;
+  if (rows.some((event) => event.type === "quality.audit.completed" && !isPlanRecord(event))) return null;
 
   // Every valid assessment row but a partial audit's feeds the matrix below;
   // only the ones tagged with an `audit_id` say anything about *which* audit to
