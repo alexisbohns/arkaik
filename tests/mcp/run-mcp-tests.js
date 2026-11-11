@@ -208,8 +208,8 @@ async function main() {
   check(
     "get_map screens returns the flows and views and no edge",
     JSON.stringify((screensMap.body?.nodes ?? []).map((node) => node.id).sort()) ===
-      JSON.stringify(["F-onboard", "V-profile", "V-welcome"]) && screensMap.body?.edges.length === 0,
-    `screens map: ${JSON.stringify((screensMap.body?.nodes ?? []).map((node) => node.id))} / ${screensMap.body?.edges.length} edges`,
+      JSON.stringify(["F-onboard", "V-profile", "V-welcome"]) && screensMap.body?.edges?.length === 0,
+    `screens map: ${JSON.stringify((screensMap.body?.nodes ?? []).map((node) => node.id))} / ${screensMap.body?.edges?.length} edges`,
   );
 
   // Audience symmetry (issue #319): a product-scoped map answers the same
