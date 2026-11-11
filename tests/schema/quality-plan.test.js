@@ -292,6 +292,59 @@ const throws = (fn) => {
   check("500 generated histories: every new part id sorts after every existing id", violations.length === 0, violations.slice(0, 3).join(" | "));
 }
 
+// --- the recorded scope marker ------------------------------------------------------
+
+{
+  const { readPlanScope } = S;
+  const coverage = { scored: 14, assessed: 152, applicable: 338, surfaces: { web: { assessed: 40, applicable: 71 } } };
+  const full = {
+    partial: true,
+    cells: 14,
+    since: "2026-10",
+    plan: "2026-11-zplan-1100",
+    parts: ["2026-11-zplan-1100-sec-web", "2026-11-zplan-1100-agt-ios"],
+    scored: ["SEC-01::web", "AGT-08::ios"],
+    coverage,
+  };
+  check(
+    "a full marker reads back field for field",
+    JSON.stringify(readPlanScope(full)) ===
+      JSON.stringify({ plan: full.plan, parts: full.parts, scored: full.scored, cells: 14, since: "2026-10", coverage }),
+    JSON.stringify(readPlanScope(full)),
+  );
+  check(
+    "a first audit's marker has no since",
+    readPlanScope({ ...full, since: undefined }).since === null && readPlanScope({ partial: true, plan: "2026-11-zplan-1100" }).since === null,
+  );
+  check(
+    "a scoped re-audit's marker is not a plan",
+    readPlanScope({ partial: true, cells: 12, since: "2026-10" }) === null && readPlanScope({ partial: true, plan: "" }) === null,
+  );
+  check("anything but an object is not a plan", [undefined, null, "2026-11-zplan-1100", 42, true].every((value) => readPlanScope(value) === null));
+  {
+    const reading = readPlanScope({ plan: "2026-11-zplan-1100", parts: ["a", 3, "", null, "b"], scored: "SEC-01::web", cells: -1 });
+    check(
+      "malformed fields are dropped or null, never thrown on",
+      reading !== null && JSON.stringify(reading.parts) === '["a","b"]' && reading.scored.length === 0 && reading.cells === null && reading.coverage === null,
+      JSON.stringify(reading),
+    );
+  }
+  {
+    const reading = readPlanScope({ plan: "p", coverage: { scored: 1, assessed: 2, applicable: 3, surfaces: { web: { assessed: 1, applicable: 2 }, ios: { assessed: "x" }, admin: null } } });
+    check(
+      "a coverage keeps its well-formed surfaces only",
+      JSON.stringify(reading.coverage) === JSON.stringify({ scored: 1, assessed: 2, applicable: 3, surfaces: { web: { assessed: 1, applicable: 2 } } }),
+      JSON.stringify(reading.coverage),
+    );
+  }
+  check("a coverage missing a count is null", readPlanScope({ plan: "p", coverage: { scored: 1, assessed: 2 } }).coverage === null);
+  {
+    const input = JSON.parse(JSON.stringify(full));
+    readPlanScope(input);
+    check("nothing is mutated", JSON.stringify(input) === JSON.stringify(full));
+  }
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);

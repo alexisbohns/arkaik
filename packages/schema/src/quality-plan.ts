@@ -262,3 +262,82 @@ export function planId(input: { now: Date; known: readonly string[]; runs: reado
   }
   throw new Error(`no plan id on ${year}-${month}-${day} sorts after "${greatest}"`);
 }
+
+// --- The recorded event's scope marker -------------------------------------------
+
+/** How much of the product a plan record's merged matrix holds a score for. */
+export interface PlanCoverage {
+  /** Cells this plan re-scored (= `scope.cells`). */
+  scored: number;
+  /** Applicable cells holding a score after the merge. */
+  assessed: number;
+  /** `applicableCellCount` over the profile's surfaces (338 for a Pebbles-like profile). */
+  applicable: number;
+  /** Per profile surface, in profile order. */
+  surfaces: Record<string, { assessed: number; applicable: number }>;
+}
+
+/** The `scope` a plan record carries on its `quality.audit.completed`. */
+export interface PlanAuditScope {
+  partial: true;
+  cells: number;
+  /** The newest recorded audit that is not a plan; absent on a first audit. */
+  since?: string;
+  plan: string;
+  /** Included part ids, plan order. */
+  parts: string[];
+  /** `planCellKey` per cell, plan order then library order. */
+  scored: string[];
+  coverage: PlanCoverage;
+}
+
+/** What `readPlanScope` makes of a recorded `scope`: every field present, `null` where the event did not carry it usably. */
+export interface PlanScopeReading {
+  plan: string;
+  parts: string[];
+  scored: string[];
+  cells: number | null;
+  since: string | null;
+  coverage: PlanCoverage | null;
+}
+
+const isCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
+
+const nonEmptyStrings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item !== "") : [];
+
+/** A recorded `coverage`, or `null` when any of its three counts is missing; a surface entry missing either count is dropped. */
+function readCoverage(value: unknown): PlanCoverage | null {
+  if (typeof value !== "object" || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (!isCount(row.scored) || !isCount(row.assessed) || !isCount(row.applicable)) return null;
+  const surfaces: Record<string, { assessed: number; applicable: number }> = {};
+  if (typeof row.surfaces === "object" && row.surfaces !== null && !Array.isArray(row.surfaces)) {
+    for (const [surface, entry] of Object.entries(row.surfaces as Record<string, unknown>)) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const { assessed, applicable } = entry as Record<string, unknown>;
+      if (isCount(assessed) && isCount(applicable)) surfaces[surface] = { assessed, applicable };
+    }
+  }
+  return { scored: row.scored, assessed: row.assessed, applicable: row.applicable, surfaces };
+}
+
+/**
+ * A lenient reader of an event's `scope`: non-null iff it is an object with a
+ * non-empty string `plan`. Never throws. `parts` and `scored` keep only
+ * non-empty strings; `cells` and the coverage counts must be non-negative
+ * integers, else `null`.
+ */
+export function readPlanScope(scope: unknown): PlanScopeReading | null {
+  if (typeof scope !== "object" || scope === null) return null;
+  const row = scope as Record<string, unknown>;
+  if (typeof row.plan !== "string" || row.plan === "") return null;
+  return {
+    plan: row.plan,
+    parts: nonEmptyStrings(row.parts),
+    scored: nonEmptyStrings(row.scored),
+    cells: isCount(row.cells) ? row.cells : null,
+    since: typeof row.since === "string" && row.since !== "" ? row.since : null,
+    coverage: readCoverage(row.coverage),
+  };
+}
