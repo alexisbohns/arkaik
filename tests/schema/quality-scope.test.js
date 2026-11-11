@@ -578,6 +578,51 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
   );
 }
 
+// --- a part recorded on its own is never the anchor either -----------------------
+//
+// An older CLI or MCP server, or a hand-edited journal, can leave a
+// `quality.audit.completed` under a part id with no plan marker. It is not a
+// plan record, but `--since <partId>` is refused by the id's shape, so the
+// default anchor must agree and skip it too.
+
+{
+  const partAlone = audit(PART_SEC_WEB, T(10));
+  check("(precondition) a part recorded on its own is not a plan record", isPlanRecord(partAlone) === false);
+  const events = [AUG(), resolved("F-1", T(2)), partAlone, resolved("F-3", T(11))];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check(
+    "a part recorded on its own is never the anchor: since stays on the audit before it",
+    scope.since === "2026-08" && scope.since_ts === "2026-08-31T00:00:00.000Z",
+    JSON.stringify(scope),
+  );
+  check(
+    "and a fix before that record still counts",
+    cellIds(scope).join() === "web:SEC-01:direct,ios:A11Y-01:direct",
+    cellIds(scope).join(),
+  );
+  check("scopeAnchorId skips it", scopeAnchorId(events) === "2026-08", String(scopeAnchorId(events)));
+  check("recordedSinceIds leaves it out", recordedSinceIds(events).join() === "2026-08", recordedSinceIds(events).join());
+  check("recordedAuditIds still lists it: it is recorded", recordedAuditIds(events).join() === `2026-08,${PART_SEC_WEB}`, recordedAuditIds(events).join());
+  const only = [resolved("F-1", T(2)), partAlone];
+  check(
+    "with only a part recorded on its own there is no anchor",
+    deriveAuditScope(only, SECTION, LIBRARY).since === null && scopeAnchorId(only) === null && recordedSinceIds(only).length === 0,
+  );
+  const asked = deriveAuditScope(events, SECTION, LIBRARY, { since: PART_SEC_WEB });
+  check("since naming it finds no anchor and names none", asked.since === null && asked.cells.length === 0, JSON.stringify(asked));
+  const scopedPart = audit(`${PART_SEC_WEB}-scoped`, T(12), { scope: { partial: true, cells: 1, since: "2026-08" } });
+  check(
+    "a scoped re-audit named after a part is not a part: it is still an anchor",
+    scopeAnchorId([...events, scopedPart]) === `${PART_SEC_WEB}-scoped` && recordedSinceIds([...events, scopedPart]).includes(`${PART_SEC_WEB}-scoped`),
+  );
+  check(
+    "no such record: the golden scope is unchanged",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)) === GOLDEN_DEFAULT &&
+      recordedSinceIds(NO_PLAN_SHUFFLED).join() === "2026-07,2026-08,2026-09-scoped" &&
+      scopeAnchorId(NO_PLAN_SHUFFLED) === "2026-09-scoped",
+  );
+}
+
 // --- rules 2, 3, 4, 6 and 7: a resolution counts per cell ----------------------
 
 // Rule 2: one clearing rule, in orderEvents order.

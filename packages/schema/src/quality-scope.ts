@@ -97,7 +97,7 @@ export interface AuditScope {
 export interface AuditScopeOptions {
   /**
    * The audit to measure from. Default: the newest `quality.audit.completed`
-   * that is not a plan record. A plan id or a part id names no anchor, so it
+   * that is not a plan record nor a part recorded on its own. A plan id or a part id names no anchor, so it
    * gives an empty scope whose `since` is `null`.
    */
   since?: string;
@@ -184,25 +184,36 @@ export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
 }
 
 /**
+ * Whether `event` is a record a scope can never be measured from: a plan
+ * record, or a record under a plan part's id. The second has no plan marker —
+ * an older CLI or MCP server, or a hand-edited journal, recorded the part on
+ * its own — but a part is never a scope's anchor, and `--since <partId>` is
+ * refused by the id's shape, so the default anchor must agree.
+ */
+function neverAnAnchor(event: unknown): boolean {
+  return isPlanRecord(event) || isPlanPartId((event as { audit_id?: unknown } | null)?.audit_id);
+}
+
+/**
  * {@link recordedAuditIds} over the records a scope can be measured from: every
- * one but a plan record, so neither a plan id nor a part id is ever offered as
- * a `since`.
+ * one but a plan record or a part recorded on its own, so neither a plan id nor
+ * a part id is ever offered as a `since`.
  */
 export function recordedSinceIds(events: readonly JournalEvent[]): string[] {
-  return recordedAuditIds(rowsOf<JournalEvent>(events).filter((event) => !isPlanRecord(event)));
+  return recordedAuditIds(rowsOf<JournalEvent>(events).filter((event) => !neverAnAnchor(event)));
 }
 
 /**
  * The index in `ordered` of the record a scope is measured from: the newest
- * `quality.audit.completed` that is not a plan record (rule 1), or the newest
- * recording of `since` when one is named. `-1` when there is none — and a
- * `since` naming a plan or a part never matches, because no non-plan record
- * carries that id.
+ * `quality.audit.completed` that is not a plan record (rule 1) nor a part
+ * recorded on its own, or the newest recording of `since` when one is named.
+ * `-1` when there is none — and a `since` naming a plan or a part never
+ * matches, because no record an anchor may be carries that id.
  */
 function anchorIndex(ordered: readonly JournalEvent[], since: string | undefined): number {
   for (let i = ordered.length - 1; i >= 0; i--) {
     const event = ordered[i];
-    if (event.type !== "quality.audit.completed" || isPlanRecord(event)) continue;
+    if (event.type !== "quality.audit.completed" || neverAnAnchor(event)) continue;
     if (since !== undefined && (event as { audit_id?: unknown }).audit_id !== since) continue;
     return i;
   }
@@ -225,9 +236,9 @@ function namesPlan(ordered: readonly JournalEvent[], id: string): boolean {
 }
 
 /**
- * The audit id of the newest record that is not a plan record — the `since` an
- * unscoped {@link deriveAuditScope} measures from, and the `since` a plan
- * record carries. `null` when there is none, or when that record names no id.
+ * The audit id of the newest record that is not a plan record, nor a part
+ * recorded on its own — the `since` an unscoped {@link deriveAuditScope}
+ * measures from, and the `since` a plan record carries. `null` when there is none, or when that record names no id.
  */
 export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
   const ordered = orderedRows(events);
@@ -244,7 +255,7 @@ export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
  *   after the `since` audit's recording. A re-recorded audit id is measured
  *   from its latest recording, the reading the trend keeps too. `since`
  *   defaults to the newest recording that is not a plan record; a plan record
- *   is never the audit a scope is measured from.
+ *   — or a part recorded on its own — is never the audit a scope is measured from.
  * - **Per cell, after a plan.** The last plan record whose `scored` lists a
  *   cell sets that cell's floor, and a resolution counts toward the cell only
  *   above it. The floor is when the plan's part scored the cell — the newest
