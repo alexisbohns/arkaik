@@ -175,6 +175,14 @@ const GROUPS: readonly ShortcutGroup[] = [
         altKeys: ["Space"],
         scope: "map",
       },
+      {
+        // Documentation only: the focused frame's own onKeyDown moves between
+        // screens (components/graph/nodes/WallFrameNode.tsx), never a hotkey.
+        id: "wall-move",
+        description: "Move between screens (Screens map)",
+        keys: ["←", "↑", "→", "↓"],
+        scope: "map",
+      },
     ],
   },
   {
