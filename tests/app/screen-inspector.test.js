@@ -22,8 +22,19 @@ const {
   inspectorRows,
   stripLinks,
   frameInStrip,
+  frameBoxOf,
+  planChips,
+  chipIdOf,
+  touchEdgeIdOf,
+  MORE_CHIP_KEY,
+  selectionRect,
+  coldLoadTarget,
+  INSPECTOR_W,
+  INSPECTOR_GAP,
   cellWord,
   formatShotDate,
+  chipRects,
+  CHIP_MAX,
   LOOSE_STRIP_ID,
 } = loadScreenInspector();
 
@@ -193,6 +204,127 @@ test("frameInStrip finds the view's first frame in that strip, past markers", ()
 
 // --- chips, selection and cold load (Task 2) ---
 
+console.log("screen inspector: chips, selection, cold load");
+
+function touch(n, species = n % 2 ? "data-model" : "api-endpoint") {
+  return { nodeId: `${species === "api-endpoint" ? "API" : "DM"}-${n}`, species, title: `Touch ${n}`, status: "live" };
+}
+const touches = (count) => Array.from({ length: count }, (_, i) => touch(i + 1));
+
+function box(id, kind, stripId, x, y, width, height) {
+  return { id, kind, stripId, row: 0, x, y, width, height, shotWidth: kind === "frame" ? width : null };
+}
+const FRAME = box("V-a@F-checkin:0", "frame", "strip:F-checkin", 0, 56, 448, 324);
+const layout = {
+  boxes: [
+    box("strip:F-checkin", "header", "strip:F-checkin", 0, 0, 448, 44),
+    FRAME,
+    box("strip:F-weekly", "header", "strip:F-weekly", 0, 452, 1000, 44),
+    box("arm:F-weekly:0.0", "arm", "strip:F-weekly", 0, 508, 24, 280),
+    box("V-a@F-weekly:0.0.0", "frame", "strip:F-weekly", 48, 508, 144, 324),
+  ],
+  strips: new Map([
+    ["strip:F-checkin", { x: 0, y: 0, width: 448, height: 380 }],
+    ["strip:F-weekly", { x: 0, y: 452, width: 1000, height: 380 }],
+  ]),
+  bounds: { x: 0, y: 0, width: 1000, height: 832 },
+};
+const wallWithTouches = {
+  ...wall,
+  screens: new Map([["V-a", { ...screenA, touches: touches(14) }]]),
+};
+
+test("chip and edge ids follow the contract", () => {
+  assert.equal(chipIdOf("V-a@F-checkin:0", "API-1"), "chip:V-a@F-checkin:0:API-1");
+  assert.equal(touchEdgeIdOf("V-a@F-checkin:0", "API-1"), "touch:V-a@F-checkin:0:API-1");
+  assert.equal(chipIdOf("V-a@F-checkin:0", MORE_CHIP_KEY), "chip:V-a@F-checkin:0:more");
+});
+
+test("a few touches: one chip each, in the model's order, on the layout's chip rects", () => {
+  const plan = planChips(FRAME, touches(3));
+  assert.deepEqual(plan.chips.map((chip) => chip.kind), ["touch", "touch", "touch"]);
+  assert.deepEqual(plan.chips.map((chip) => chip.touch.nodeId), ["DM-1", "API-2", "DM-3"]);
+  assert.deepEqual(plan.chips.map((chip) => chip.rect), chipRects(FRAME, 3));
+  assert.deepEqual(plan.chips.map((chip) => chip.id), ["DM-1", "API-2", "DM-3"].map((id) => chipIdOf(FRAME.id, id)));
+});
+
+test("every chip has one edge from the frame", () => {
+  const plan = planChips(FRAME, touches(3));
+  assert.deepEqual(
+    plan.edges,
+    plan.chips.map((chip) => ({ id: touchEdgeIdOf(FRAME.id, chip.touch.nodeId), source: FRAME.id, target: chip.id })),
+  );
+});
+
+test("exactly CHIP_MAX touches: no more chip", () => {
+  const plan = planChips(FRAME, touches(CHIP_MAX));
+  assert.equal(plan.chips.length, CHIP_MAX);
+  assert.ok(plan.chips.every((chip) => chip.kind === "touch"));
+});
+
+test("past CHIP_MAX: the first CHIP_MAX, then one +N more chip with its own edge", () => {
+  const plan = planChips(FRAME, touches(14));
+  assert.equal(plan.chips.length, CHIP_MAX + 1);
+  const more = plan.chips[CHIP_MAX];
+  assert.equal(more.kind, "more");
+  assert.equal(more.count, 14 - CHIP_MAX);
+  assert.equal(more.id, chipIdOf(FRAME.id, MORE_CHIP_KEY));
+  assert.deepEqual(more.rect, chipRects(FRAME, CHIP_MAX + 1)[CHIP_MAX]);
+  assert.deepEqual(plan.edges[CHIP_MAX], { id: touchEdgeIdOf(FRAME.id, MORE_CHIP_KEY), source: FRAME.id, target: more.id });
+});
+
+test("the plan's bounds cover the frame and every chip", () => {
+  const plan = planChips(FRAME, touches(14));
+  const rects = [FRAME, ...plan.chips.map((chip) => chip.rect)];
+  const left = Math.min(...rects.map((r) => r.x));
+  const top = Math.min(...rects.map((r) => r.y));
+  assert.deepEqual(plan.bounds, {
+    x: left,
+    y: top,
+    width: Math.max(...rects.map((r) => r.x + r.width)) - left,
+    height: Math.max(...rects.map((r) => r.y + r.height)) - top,
+  });
+});
+
+test("no touches: no chips, no edges, the frame alone", () => {
+  const plan = planChips(FRAME, []);
+  assert.deepEqual(plan.chips, []);
+  assert.deepEqual(plan.edges, []);
+  assert.deepEqual(plan.bounds, { x: FRAME.x, y: FRAME.y, width: FRAME.width, height: FRAME.height });
+});
+
+test("frameBoxOf finds frames only", () => {
+  assert.equal(frameBoxOf(layout, FRAME.id), FRAME);
+  assert.equal(frameBoxOf(layout, "strip:F-checkin"), null, "a header is not a frame");
+  assert.equal(frameBoxOf(layout, "V-z@nowhere"), null);
+});
+
+test("a selection frames the frame, its chips, and room for the inspector on the right", () => {
+  const rect = selectionRect(wallWithTouches, layout, FRAME.id, "V-a");
+  const { bounds } = planChips(FRAME, touches(14));
+  assert.deepEqual(rect, { ...bounds, width: bounds.width + INSPECTOR_GAP + INSPECTOR_W });
+  assert.equal(selectionRect(wallWithTouches, layout, "V-z@nowhere", "V-a"), null);
+});
+
+test("cold load on a view: its first frame in strip order, selected in that frame's strip", () => {
+  const target = coldLoadTarget(wallWithTouches, layout, "V-a");
+  assert.equal(target.kind, "frame");
+  assert.deepEqual(target.selection, { frameId: "V-a@F-checkin:0", viewId: "V-a", stripId: "strip:F-checkin" });
+  assert.deepEqual(target.rect, selectionRect(wallWithTouches, layout, "V-a@F-checkin:0", "V-a"));
+});
+
+test("cold load on a flow: its strip", () => {
+  assert.deepEqual(coldLoadTarget(wallWithTouches, layout, "F-weekly"), {
+    kind: "strip",
+    stripId: "strip:F-weekly",
+    rect: layout.strips.get("strip:F-weekly"),
+  });
+});
+
+test("cold load on nothing, or on a node not on the wall: no target", () => {
+  assert.equal(coldLoadTarget(wallWithTouches, layout, null), null);
+  assert.equal(coldLoadTarget(wallWithTouches, layout, "API-1"), null);
+});
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
