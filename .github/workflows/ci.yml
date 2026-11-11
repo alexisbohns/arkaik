@@ -221,6 +221,9 @@ jobs:
       - name: Screens wall model tests (strips, states, layout, seed census)
         run: npm run test:screen-wall
 
+      - name: Screens inspector tests (wording, chips, cold-load target)
+        run: npm run test:screen-inspector
+
       - name: Landing page catalogue, fixtures and slice tests
         run: npm run test:landing
 
