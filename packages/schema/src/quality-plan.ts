@@ -15,7 +15,8 @@
  * esbuild drops this module from any plugin script that does not use it.
  */
 
-import { CROSS_SURFACE_ID } from "./quality";
+import { applicableCells, CROSS_SURFACE_ID, type KritikCriterion, type KritikLibrary } from "./quality";
+import { domainCodeOf } from "./quality-ops";
 
 // --- Shapes ------------------------------------------------------------------
 
@@ -171,4 +172,46 @@ export function parseRun(
     runs.push({ domain, surface });
   }
   return { runs, warnings };
+}
+
+// --- Cells per part ----------------------------------------------------------------
+
+/**
+ * A part's cells: the entries of `applicableCells(library, surfaces)` whose
+ * domain (`domainCodeOf`: the criterion's `domain`, else its id prefix) is
+ * `run.domain` and whose surfaces include `run.surface`, in library order.
+ * `steps` sums those criteria's checklist lengths; a criterion with no
+ * checklist counts 0. Zero cells is not an error here — the plan builder
+ * refuses it, with the reason.
+ *
+ * Not built on `signalRunSheet`: that sheet is one row per signal, skips
+ * criteria without signals and matches `--domain` case-sensitively. On the
+ * shipped pack its distinct cells equal these, which a test pins.
+ */
+export function planCells(
+  library: Pick<KritikLibrary, "criteria">,
+  surfaces: readonly string[],
+  run: PlanRun,
+): { cells: KritikPlanCell[]; steps: number } {
+  const byId = new Map<string, KritikCriterion>();
+  for (const criterion of Array.isArray(library.criteria) ? library.criteria : []) {
+    if (typeof criterion?.id === "string" && !byId.has(criterion.id)) byId.set(criterion.id, criterion);
+  }
+  const cells: KritikPlanCell[] = [];
+  let steps = 0;
+  for (const entry of applicableCells(library, surfaces)) {
+    if (!entry.surfaces.includes(run.surface)) continue;
+    if (domainCodeOf(entry.criterion_id, library as KritikLibrary) !== run.domain) continue;
+    cells.push({ criterion_id: entry.criterion_id, surface: run.surface });
+    const checklist = byId.get(entry.criterion_id)?.checklist;
+    steps += Array.isArray(checklist) ? checklist.length : 0;
+  }
+  return { cells, steps };
+}
+
+/** Every applicable cell over `surfaces` — the whole product a plan is read against (338 for a Pebbles-like profile). */
+export function applicableCellCount(library: Pick<KritikLibrary, "criteria">, surfaces: readonly string[]): number {
+  let count = 0;
+  for (const entry of applicableCells(library, surfaces)) count += entry.surfaces.length;
+  return count;
 }

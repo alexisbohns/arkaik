@@ -140,6 +140,71 @@ const throws = (fn) => {
   }
 }
 
+// --- cells per part -----------------------------------------------------------------
+
+{
+  const { planCells, applicableCellCount, signalRunSheet } = S;
+
+  {
+    const { cells, steps } = planCells(PACK, SURFACES, { domain: "SEC", surface: "web" });
+    check(
+      "SEC on web is 6 cells and 36 steps",
+      cells.length === 6 && steps === 36 && cells.map((cell) => cell.criterion_id).join(",") === "SEC-01,SEC-04,SEC-05,SEC-06,SEC-07,SEC-08" && cells.every((cell) => cell.surface === "web"),
+      JSON.stringify({ cells, steps }),
+    );
+  }
+  {
+    const { cells, steps } = planCells(PACK, SURFACES, { domain: "AGT", surface: "ios" });
+    check("AGT on iOS is 8 cells and 42 steps", cells.length === 8 && steps === 42, JSON.stringify({ count: cells.length, steps }));
+  }
+  check("the Pebbles profile has 338 applicable cells", applicableCellCount(PACK, SURFACES) === 338, String(applicableCellCount(PACK, SURFACES)));
+
+  // The run sheet is one row per signal, and filters on `criterion.domain`
+  // with exact case — so the comparison is over its distinct cells. On the
+  // shipped pack every criterion has signals and none is retired, which is
+  // what makes the two sets equal.
+  const mismatches = [];
+  let total = 0;
+  for (const domain of DOMAINS) {
+    for (const surface of SURFACES) {
+      const planned = planCells(PACK, SURFACES, { domain, surface }).cells.map((cell) => `${cell.criterion_id}::${cell.surface}`);
+      const sheet = [...new Set(signalRunSheet(PACK, PEBBLES, { domain, surface }).map((row) => `${row.criterion_id}::${row.surface}`))];
+      total += planned.length;
+      if (JSON.stringify(planned) !== JSON.stringify(sheet)) mismatches.push(`${domain}:${surface}`);
+    }
+  }
+  check("every domain × surface of the shipped pack gives the run sheet's cells, in the same order", mismatches.length === 0, mismatches.join(", "));
+  check("the parts of every domain × surface add up to the applicable cells", total === 338, String(total));
+
+  const LIB = {
+    criteria: [
+      { id: "SEC-01", domain: "SEC", applies_to: ["web"], checklist: ["a", "b"] },
+      { id: "SEC-02", domain: "SEC", applies_to: ["web"], superseded_by: "SEC-01", checklist: ["a"] },
+      { id: "SEC-03", domain: "SEC", applies_to: ["web"] },
+      { id: "SEC-04", domain: "SEC", applies_to: ["ios"], checklist: ["a"] },
+      { id: "SEC-05", domain: "SEC", checklist: ["a", "b", "c"] },
+      { id: "UX-01", checklist: ["a"] },
+    ],
+  };
+  {
+    const { cells, steps } = planCells(LIB, ["web", "ios"], { domain: "SEC", surface: "web" });
+    check(
+      "retired criteria are out, no applies_to is everywhere, a missing checklist counts 0",
+      cells.map((cell) => cell.criterion_id).join(",") === "SEC-01,SEC-03,SEC-05" && steps === 5,
+      JSON.stringify({ cells, steps }),
+    );
+  }
+  {
+    const { cells } = planCells(LIB, ["web", "ios"], { domain: "UX", surface: "ios" });
+    check("a criterion with no domain belongs to its id prefix", cells.length === 1 && cells[0].criterion_id === "UX-01");
+  }
+  {
+    const result = planCells(LIB, ["web", "ios"], { domain: "SEC", surface: "android" });
+    check("a surface outside the given surfaces gives zero cells, not an error", result.cells.length === 0 && result.steps === 0);
+  }
+  check("cross-surface never counts as an applicable surface", applicableCellCount(LIB, ["web", "cross-surface"]) === applicableCellCount(LIB, ["web"]));
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
