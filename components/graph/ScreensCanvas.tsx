@@ -224,8 +224,11 @@ export function ScreensCanvas({
 
   const kept = useMemo(() => (gapsOnly ? keptViews(wall, lens) : null), [gapsOnly, lens, wall]);
 
-  // Static per wall, lens and layout; the ring is merged below so a jump does
-  // not rebuild every frame's data.
+  // Static per wall, lens, layout and gaps only; the ring and the selection
+  // are merged below, so a jump, a selection or a clear does not rebuild
+  // every frame's data (which would defeat WallFrameNode's memo). Every
+  // callback here is stable across selections: the controller reads the
+  // selection through a ref.
   const baseNodes = useMemo(() => {
     const nodes: Node[] = [];
     const place = (box: WallBox) => ({
@@ -275,9 +278,9 @@ export function ScreensCanvas({
           status: frameStatus(screen, lens, wall.platforms),
           onActivate: onFrameActivate,
           onAspect,
-          dimmed: frameDimmed(kept, item.viewId, item.id, selection),
+          dimmed: frameDimmed(kept, item.viewId, item.id, null),
           dimmedRows: kept !== null && kept.has(item.viewId) ? fadedRows(wall, item.viewId, lens) : NO_ROWS,
-          selected: selection?.frameId === box.id,
+          selected: false,
           onMove: onFrameMove,
         };
         nodes.push({ ...place(box), type: "wallFrame", data });
@@ -324,16 +327,27 @@ export function ScreensCanvas({
       }
     }
     return nodes;
-  }, [itemsById, kept, layout, lens, onAspect, onFrameActivate, onFrameMove, onJump, onOpenNode, selection, stripsById, wall]);
+  }, [itemsById, kept, layout, lens, onAspect, onFrameActivate, onFrameMove, onJump, onOpenNode, stripsById, wall]);
 
+  // The second pass: only the rung header and the selected frame get a new
+  // node and data object; every other node is the base pass's own object, so
+  // React Flow and the frames' memo see nothing new. A selection change
+  // therefore re-renders the frame it leaves (back to its base object) and
+  // the frame it lands on, and no other. The selected frame is never faded
+  // (`frameDimmed`).
   const nodes = useMemo(() => {
-    if (!ring) return baseNodes;
-    return baseNodes.map((node) =>
-      node.type === "wallHeader" && node.id === ring.stripId
-        ? { ...node, data: { ...(node.data as WallHeaderData), ringVersion: ring.version } }
-        : node,
-    );
-  }, [baseNodes, ring]);
+    if (!ring && !selection) return baseNodes;
+    return baseNodes.map((node) => {
+      if (ring && node.type === "wallHeader" && node.id === ring.stripId) {
+        return { ...node, data: { ...(node.data as WallHeaderData), ringVersion: ring.version } };
+      }
+      if (selection && node.type === "wallFrame" && node.id === selection.frameId) {
+        const data = node.data as WallFrameData;
+        return { ...node, data: { ...data, selected: true, dimmed: frameDimmed(kept, data.viewId, node.id, selection) } };
+      }
+      return node;
+    });
+  }, [baseNodes, kept, ring, selection]);
 
   const touchLayer = useMemo<TouchLayer>(() => {
     if (!selection) return NO_TOUCHES;

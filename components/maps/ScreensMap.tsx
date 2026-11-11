@@ -30,6 +30,7 @@ import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { useEdges } from "@/lib/hooks/useEdges";
 import { useJournal } from "@/lib/hooks/useJournal";
+import { useLatest } from "@/lib/hooks/useLatest";
 import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
 import { usePlatformHotkeys } from "@/lib/hooks/usePlatformHotkeys";
 import { useNodes } from "@/lib/hooks/useNodes";
@@ -330,15 +331,19 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
 
   // Part 4 replaces part 2's click grammar: the first activation selects, a
   // second activation of the selected frame (click, Enter or Space) opens the panel.
+  // The selection is read through a ref kept current after each commit
+  // (`useLatest`), so this callback — handed to every frame's data — does not
+  // change with the selection, and selecting never rebuilds every frame.
+  const selectionRef = useLatest(selection);
   const handleFrameActivate = useCallback(
     (frameId: string, viewId: string, stripId: string) => {
-      if (selection?.frameId === frameId) {
+      if (selectionRef.current?.frameId === frameId) {
         openNode({ nodeId: viewId });
         return;
       }
       selectFrame(frameId, viewId, stripId);
     },
-    [openNode, selectFrame, selection],
+    [openNode, selectFrame, selectionRef],
   );
 
   const handlePaneClick = useCallback(() => setPicked(null), []);
