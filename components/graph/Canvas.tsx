@@ -15,6 +15,10 @@ export type { CanvasFocus } from "./CameraFocus";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { ApiEndpointNode, DataModelNode } from "./nodes/SystemLayerNode";
+import { WallFrameNode } from "./nodes/WallFrameNode";
+import { WallHeaderNode } from "./nodes/WallHeaderNode";
+import { WallJumpNode } from "./nodes/WallJumpNode";
+import { WallMarkerNode } from "./nodes/WallMarkerNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
 import { CrossLayerEdge } from "./edges/CrossLayerEdge";
 import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
@@ -25,6 +29,11 @@ const nodeTypes = {
   view: ViewNode,
   dataModel: DataModelNode,
   apiEndpoint: ApiEndpointNode,
+  // The Screens map (ScreensCanvas). Arm, end and empty markers share one type.
+  wallFrame: WallFrameNode,
+  wallHeader: WallHeaderNode,
+  wallMarker: WallMarkerNode,
+  wallJump: WallJumpNode,
 };
 
 const edgeTypes = {
