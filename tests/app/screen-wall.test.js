@@ -259,3 +259,145 @@ function census(wall) {
   check("Self-map census: 39 strips, 56 frames (2 loose), 46 arm + 21 end markers, 14 jump tiles",
     same(selfMap, { strips: 39, frames: 56, loose: 2, arms: 46, ends: 21, jumps: 14, empties: 0 }), show(selfMap));
 }
+
+// --- Cells: the state truth table, shots, stale reasons, live proof --------
+
+const T0 = "2026-11-01T10:00:00.000Z";
+const T1 = "2026-11-01T11:00:00.000Z";
+const T2 = "2026-11-01T12:00:00.000Z";
+const T3 = "2026-11-01T13:00:00.000Z";
+const ac = (id, platforms, status = "live", platformStatuses) =>
+  node(id, "acceptance", id, { status, platforms, metadata: platformStatuses ? { platformStatuses } : {} });
+const toLive = (id, node_id, ts, extra = {}) => ({ id, ts, type: "node.status_changed", node_id, from: "releasing", to: "live", ...extra });
+const iosView = (id) => view(id, id, { status: "idea", platforms: ["ios"] });
+
+const CELL_NODES = [
+  view("V-live", "Live", {
+    metadata: {
+      platformScreenshots: { web: "https://x/web.png", ios: "data:image/png;base64,AAAA" },
+      platformScreenshotMeta: { web: { ts: T0, source: "ci", form: "url", commit: "abc" } },
+    },
+  }),
+  view("V-mixed", "Mixed", {
+    status: "development",
+    metadata: {
+      platformStatuses: { web: "live" },
+      platformScreenshots: { ios: "shots/ios.png" },
+      platformScreenshotMeta: { ios: { ts: T0, source: "manual" } },
+    },
+  }),
+  view("V-covered", "Covered", { status: "idea", metadata: { platformScreenshots: { ios: "http://cdn/x.png" } } }),
+  view("V-admin", "Admin home", { platforms: ["web", "ios"], metadata: { product: "admin" } }),
+  view("V-arch", "Archived", { status: "archived", platforms: ["web"] }),
+  ac("AC-c1", ["web", "ios"]),
+  ac("AC-c2", ["web"], "development"),
+  iosView("V-p-actor"),
+  iosView("V-p-detail"),
+  iosView("V-p-hand"),
+  iosView("V-p-unknown"),
+  iosView("V-p-mixed"),
+  iosView("V-p-partial"),
+  iosView("V-p-both"),
+  ac("AC-pa", ["ios"]),
+  ac("AC-pd", ["ios"]),
+  ac("AC-ph", ["ios"]),
+  ac("AC-pu", ["ios"]),
+  view("V-s", "Stale through", {
+    status: "idea",
+    platforms: ["ios"],
+    metadata: { platformScreenshots: { ios: "https://x/s.png" }, platformScreenshotMeta: { ios: { ts: T0, source: "ci", form: "url" } } },
+  }),
+  ac("AC-s", ["ios"]),
+  ac("AC-other", ["ios"]),
+];
+const CELL_EDGES = [
+  edge("AC-c1", "covers", "V-covered"),
+  edge("AC-c2", "covers", "V-covered"),
+  edge("AC-pa", "covers", "V-p-actor"),
+  edge("AC-pd", "covers", "V-p-detail"),
+  edge("AC-ph", "covers", "V-p-hand"),
+  edge("AC-pu", "covers", "V-p-unknown"),
+  edge("AC-pa", "covers", "V-p-mixed"),
+  edge("AC-ph", "covers", "V-p-mixed"),
+  edge("AC-pa", "covers", "V-p-partial"),
+  edge("AC-pu", "covers", "V-p-partial"),
+  edge("AC-pa", "covers", "V-p-both"),
+  edge("AC-pd", "covers", "V-p-both"),
+  edge("AC-s", "covers", "V-s"),
+];
+const CELL_EVENTS = [
+  toLive("e-live-web", "V-live", T1, { platform: "web", actor: "alexis" }),
+  toLive("e-pa", "AC-pa", T1, { platform: "ios", actor: "arkaik-ci" }),
+  toLive("e-pd", "AC-pd", T2, { actor: "arkaik-app", detail: "build 42" }),
+  toLive("e-ph-old", "AC-ph", T0, { platform: "ios", actor: "arkaik-ci" }),
+  toLive("e-ph", "AC-ph", T1, { platform: "ios", actor: "claude-code" }),
+  toLive("e-pu-web", "AC-pu", T2, { platform: "web", actor: "arkaik-ci" }),
+  { id: "e-s-merge", ts: T3, type: "ref.status_changed", node_id: "AC-s", ref_id: "gh-9", to: "merged", synced_at: T3 },
+  toLive("e-s-status", "AC-s", T2, { platform: "ios", actor: "arkaik-ci", detail: "build 7" }),
+  { id: "e-s-ship", ts: T1, type: "deliverable.shipped", deliverable_id: "d-1", title: "Weekly wrap", node_ids: ["V-s"] },
+  toLive("e-other", "AC-other", T3, { platform: "ios", actor: "claude-code" }),
+];
+
+{
+  const wall = wallOf({ nodes: CELL_NODES, edges: CELL_EDGES, events: CELL_EVENTS, productId: null });
+  const cell = (viewId, platform) => wall.screens.get(viewId).cells[platform];
+  const row = (viewId, platform) => {
+    const c = cell(viewId, platform);
+    return [c.state, c.status];
+  };
+
+  check("every screen has one cell per wall platform",
+    [...wall.screens.values()].every((screen) => same(Object.keys(screen.cells), ["web", "ios", "android"])));
+  check("live, a shot, a later event: live-stale", same(row("V-live", "web"), ["live-stale", "live"]));
+  check("live, a legacy shot: live-current (never stale)", same(row("V-live", "ios"), ["live-current", "live"]));
+  check("live, no shot: live-no-shot", same(row("V-live", "android"), ["live-no-shot", "live"]));
+  check("not live, with a shot: not-live, shot kept", same(row("V-mixed", "ios"), ["not-live", "development"]) && cell("V-mixed", "ios").shot !== null);
+  check("not live, no shot: not-live with its status", same(row("V-mixed", "android"), ["not-live", "development"]));
+  check("a per-platform override makes one platform live", same(row("V-mixed", "web"), ["live-no-shot", "live"]));
+  check("covered: the weakest covering status on a platform", same(row("V-covered", "web"), ["not-live", "development"]));
+  check("covered: a platform no covering acceptance lists has no status", same(row("V-covered", "android"), ["not-live", null]));
+  check("covered: live through its acceptance, unproven shot current", same(row("V-covered", "ios"), ["live-current", "live"]));
+  check("an Admin view under All products is absent where its product does not ship", row("V-admin", "ios")[0] === "absent" && row("V-admin", "android")[0] === "absent");
+  check("an Admin view under All products is live on web", same(row("V-admin", "web"), ["live-no-shot", "live"]));
+  check("archived is not live", same(row("V-arch", "web"), ["not-live", "archived"]));
+  check("absent and not-live cells carry no proof and no reasons",
+    [cell("V-admin", "ios"), cell("V-mixed", "ios"), cell("V-covered", "android")].every((c) => c.proof === null && c.staleBecause.length === 0));
+
+  check("shot: meta's form, source, ts and commit",
+    same(cell("V-live", "web").shot, { value: "https://x/web.png", form: "url", source: "ci", ts: T0, commit: "abc" }), show(cell("V-live", "web").shot));
+  check("shot: a data URI with no meta is data, unattributed",
+    same(cell("V-live", "ios").shot, { value: "data:image/png;base64,AAAA", form: "data", source: null, ts: null, commit: null }));
+  check("shot: anything else is a path", same(cell("V-mixed", "ios").shot, { value: "shots/ios.png", form: "path", source: "manual", ts: T0, commit: null }));
+  check("shot: http is a url", cell("V-covered", "ios").shot.form === "url");
+  check("no shot: null", cell("V-live", "android").shot === null);
+  check("anyShot: true when any slot holds a value", wall.anyShot === true);
+
+  check("stale reason from the view's own move", same(cell("V-live", "web").staleBecause, [
+    { eventId: "e-live-web", ts: T1, kind: "status", nodeId: "V-live", label: "V-live moved to Live on Web" },
+  ]), show(cell("V-live", "web").staleBecause));
+  check("stale reasons through a covering acceptance, newest first; an unrelated acceptance ignored",
+    same(cell("V-s", "ios").staleBecause, [
+      { eventId: "e-s-merge", ts: T3, kind: "merge", nodeId: "AC-s", label: "Pull request merged on AC-s" },
+      { eventId: "e-s-status", ts: T2, kind: "status", nodeId: "AC-s", label: "AC-s moved to Live on iOS" },
+      { eventId: "e-s-ship", ts: T1, kind: "shipped", nodeId: "V-s", label: "Shipped: Weekly wrap" },
+    ]) && cell("V-s", "ios").state === "live-stale",
+    show(cell("V-s", "ios").staleBecause));
+
+  const proof = (viewId, platform = "ios") => cell(viewId, platform).proof;
+  check("proof: uncovered is by hand, from the view's latest move to live on the platform",
+    same(proof("V-live", "web"), { kind: "hand", ts: T1, actor: "alexis", detail: null }));
+  check("proof: uncovered with no matching move is by hand, undated", same(proof("V-live", "ios"), { kind: "hand", ts: null, actor: null, detail: null }));
+  check("proof: deploy by actor", same(proof("V-p-actor"), { kind: "deploy", ts: T1, actor: "arkaik-ci", detail: null }), show(proof("V-p-actor")));
+  check("proof: deploy by detail, from a project-wide move", same(proof("V-p-detail"), { kind: "deploy", ts: T2, actor: "arkaik-app", detail: "build 42" }));
+  check("proof: the latest move decides (a person after CI is by hand)", same(proof("V-p-hand"), { kind: "hand", ts: T1, actor: "claude-code", detail: null }));
+  check("proof: no move to live on the platform is unknown", same(proof("V-p-unknown"), { kind: "unknown", ts: null, actor: null, detail: null }));
+  check("proof: deploy and hand mixed is by hand", same(proof("V-p-mixed"), { kind: "hand", ts: T1, actor: "claude-code", detail: null }));
+  check("proof: deploy and unknown mixed is unknown", proof("V-p-partial").kind === "unknown");
+  check("proof: deploy only if every acceptance is, dated by the newest", same(proof("V-p-both"), { kind: "deploy", ts: T2, actor: "arkaik-app", detail: "build 42" }));
+  check("proof: on live-stale too", same(proof("V-s"), { kind: "deploy", ts: T2, actor: "arkaik-ci", detail: "build 7" }));
+}
+
+{
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  check("anyShot: false when no slot holds a value", wall.anyShot === false);
+}

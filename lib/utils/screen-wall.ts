@@ -1,10 +1,12 @@
 import type { MapDefinition } from "@arkaik/schema";
-import { PLATFORMS, type PlatformId } from "@/lib/config/platforms";
-import type { StatusId } from "@/lib/config/statuses";
+import { PLATFORMS, platformLabel, type PlatformId } from "@/lib/config/platforms";
+import { STATUSES, type StatusId } from "@/lib/config/statuses";
 import type { Edge as DataEdge, JournalEvent, Node as DataNode, PlaylistEntry, Project } from "@/lib/data/types";
 import { createVisualNodeId } from "@/lib/utils/graph-build";
 import { resolveJourneySelection } from "@/lib/utils/journey-graph";
-import type { ProductGraph, ProductScope } from "@/lib/utils/product-scope";
+import { getEffectivePlatformStatuses } from "@/lib/utils/platform-status";
+import { scopedPlatforms, type ProductGraph, type ProductScope } from "@/lib/utils/product-scope";
+import { staleReasons, stalenessRelatedIds } from "@/lib/utils/screenshot-staleness";
 
 /**
  * The Screens map's wall model (docs/superpowers/specs/2026-11-11-screens-map-design.md
@@ -197,8 +199,9 @@ export function buildWall(input: WallInput): Wall {
     strips.push({ id: LOOSE_STRIP_ID, flowId: null, title: LOOSE_TITLE, items, viewIds: loose.map((candidate) => candidate.id) });
   }
 
-  const screens = buildScreens(input, viewsById, strips);
-  return { strips, screens, platforms, empty, anyShot: false };
+  const screens = buildScreens(input, viewsById, strips, platforms);
+  const anyShot = [...screens.values()].some((screen) => Object.values(screen.cells).some((cell) => cell?.shot));
+  return { strips, screens, platforms, empty, anyShot };
 }
 
 /** Every frame id showing the view, strip order then item order; [] if none. */
@@ -339,19 +342,34 @@ function viewIdsOf(items: readonly WallItem[]): string[] {
   return ids;
 }
 
-/** One screen per scoped view, in snapshot order. */
+/** One screen per scoped view, in snapshot order, with a cell per wall platform. */
 function buildScreens(
   input: WallInput,
   viewsById: ReadonlyMap<string, DataNode>,
   strips: readonly WallStrip[],
+  platforms: readonly PlatformId[],
 ): Map<string, WallScreen> {
   const touchesByView = indexTouches(input.nodes, input.edges);
+  const coveringByView = indexCovering(input.nodes, input.edges);
+  const journal = indexEvents(input.events);
   const screens = new Map<string, WallScreen>();
   for (const viewNode of viewsById.values()) {
+    const covering = coveringByView.get(viewNode.id) ?? [];
+    const statuses = getEffectivePlatformStatuses(viewNode, input.nodes, input.edges);
+    const onPlatforms = scopedPlatforms(viewNode, input.scope);
+    const cells: Partial<Record<PlatformId, PlatformCell>> = {};
+    for (const platform of platforms) {
+      cells[platform] = cellOf(viewNode, platform, {
+        on: onPlatforms.includes(platform),
+        status: statuses[platform] ?? null,
+        related: stalenessRelatedIds(covering, platform),
+        journal,
+      });
+    }
     screens.set(viewNode.id, {
       viewId: viewNode.id,
       title: viewNode.title,
-      cells: {},
+      cells,
       touches: touchesByView.get(viewNode.id) ?? [],
       stripIds: strips.filter((strip) => strip.viewIds.includes(viewNode.id)).map((strip) => strip.id),
     });
@@ -387,4 +405,178 @@ function indexTouches(nodes: readonly DataNode[], edges: readonly DataEdge[]): M
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** The journal bucketed once: events by the node they name, plus every shipped deliverable. */
+interface JournalIndex {
+  byNode: ReadonlyMap<string, JournalEvent[]>;
+  shipped: readonly JournalEvent[];
+}
+
+function indexEvents(events: readonly JournalEvent[]): JournalIndex {
+  const byNode = new Map<string, JournalEvent[]>();
+  const shipped: JournalEvent[] = [];
+  for (const ev of events) {
+    if (ev.type === "deliverable.shipped") {
+      shipped.push(ev);
+      continue;
+    }
+    if (typeof ev.node_id !== "string") continue;
+    const bucket = byNode.get(ev.node_id) ?? [];
+    bucket.push(ev);
+    byNode.set(ev.node_id, bucket);
+  }
+  return { byNode, shipped };
+}
+
+/** The acceptances covering each anchor, in snapshot order — `acceptancesCovering`, indexed once. */
+function indexCovering(nodes: readonly DataNode[], edges: readonly DataEdge[]): Map<string, DataNode[]> {
+  const anchorsBySource = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (edge.edge_type !== "covers") continue;
+    const anchors = anchorsBySource.get(edge.source_id) ?? [];
+    if (!anchors.includes(edge.target_id)) anchors.push(edge.target_id);
+    anchorsBySource.set(edge.source_id, anchors);
+  }
+  const byAnchor = new Map<string, DataNode[]>();
+  for (const candidate of nodes) {
+    if (candidate.species !== "acceptance") continue;
+    for (const anchorId of anchorsBySource.get(candidate.id) ?? []) {
+      const covering = byAnchor.get(anchorId) ?? [];
+      covering.push(candidate);
+      byAnchor.set(anchorId, covering);
+    }
+  }
+  return byAnchor;
+}
+
+interface CellContext {
+  /** The platform is in `scopedPlatforms(view, scope)`. */
+  on: boolean;
+  status: StatusId | null;
+  /** The covering acceptances that list the platform. */
+  related: readonly string[];
+  journal: JournalIndex;
+}
+
+/** The state truth table (spec § State truth table) for one view on one platform. */
+function cellOf(viewNode: DataNode, platform: PlatformId, context: CellContext): PlatformCell {
+  const { on, status, related, journal } = context;
+  const value = viewNode.metadata?.platformScreenshots?.[platform];
+  const meta = viewNode.metadata?.platformScreenshotMeta?.[platform];
+  const shot = typeof value === "string" && value !== "" ? shotOf(value, meta) : null;
+  const base = { platform, status, shot, staleBecause: [] as StaleReason[], proof: null };
+
+  if (!on) return { ...base, state: "absent" };
+  if (status !== "live") return { ...base, state: "not-live" };
+
+  const proof = proofOf(viewNode.id, related, platform, journal);
+  if (!shot) return { ...base, state: "live-no-shot", proof };
+
+  const events = [
+    ...(journal.byNode.get(viewNode.id) ?? []),
+    ...related.flatMap((id) => journal.byNode.get(id) ?? []),
+    ...journal.shipped,
+  ];
+  const ids = new Set([viewNode.id, ...related]);
+  const staleBecause = staleReasons(meta, events, viewNode.id, platform, related).map((ev) => reasonOf(ev, viewNode.id, ids));
+  return { ...base, state: staleBecause.length > 0 ? "live-stale" : "live-current", staleBecause, proof };
+}
+
+function shotOf(value: string, meta: { ts?: string; source?: string; form?: string; commit?: string } | undefined): WallShot {
+  const form: ShotForm =
+    meta?.form === "url" || meta?.form === "data" || meta?.form === "path"
+      ? meta.form
+      : value.startsWith("data:image/")
+        ? "data"
+        : /^https?:\/\//i.test(value)
+          ? "url"
+          : "path";
+  return {
+    value,
+    form,
+    source: meta?.source === "ci" || meta?.source === "manual" ? meta.source : null,
+    ts: typeof meta?.ts === "string" ? meta.ts : null,
+    commit: typeof meta?.commit === "string" ? meta.commit : null,
+  };
+}
+
+/** A stale event, in words built from ids, status and platform labels, and a deliverable's own title. */
+function reasonOf(ev: JournalEvent, viewId: string, ids: ReadonlySet<string>): StaleReason {
+  if (ev.type === "deliverable.shipped") {
+    const named = Array.isArray(ev.node_ids) ? ev.node_ids.filter((id): id is string => typeof id === "string") : [];
+    const nodeId = named.includes(viewId) ? viewId : named.find((id) => ids.has(id)) ?? viewId;
+    const title =
+      typeof ev.title === "string" && ev.title.trim() !== ""
+        ? ev.title
+        : typeof ev.deliverable_id === "string"
+          ? ev.deliverable_id
+          : "a deliverable";
+    return { eventId: ev.id, ts: ev.ts, kind: "shipped", nodeId, label: `Shipped: ${title}` };
+  }
+  const nodeId = String(ev.node_id);
+  if (ev.type === "ref.status_changed") {
+    return {
+      eventId: ev.id,
+      ts: ev.ts,
+      kind: "merge",
+      nodeId,
+      label: nodeId === viewId ? "Pull request merged" : `Pull request merged on ${nodeId}`,
+    };
+  }
+  const to = STATUSES.find((entry) => entry.id === ev.to)?.label ?? String(ev.to);
+  const on = ev.platform === undefined ? "" : ` on ${platformLabel(ev.platform)}`;
+  return { eventId: ev.id, ts: ev.ts, kind: "status", nodeId, label: `${nodeId} moved to ${to}${on}` };
+}
+
+/**
+ * How a live cell went live (spec § Live proof). Uncovered: by hand, since the
+ * deploy door refuses views. Covered: each listing acceptance's latest move
+ * to live on the platform (or project-wide) is a deploy when CI wrote it or it
+ * carries `detail`; the cell is a deploy only if every acceptance's is.
+ */
+function proofOf(viewId: string, related: readonly string[], platform: PlatformId, journal: JournalIndex): LiveProof {
+  if (related.length === 0) {
+    return { kind: "hand", ...evidenceOf(latestMoveToLive(journal.byNode.get(viewId) ?? [], platform)) };
+  }
+  const deploys: JournalEvent[] = [];
+  const hands: JournalEvent[] = [];
+  let unproven = false;
+  for (const id of related) {
+    const ev = latestMoveToLive(journal.byNode.get(id) ?? [], platform);
+    if (!ev) unproven = true;
+    else if (ev.actor === "arkaik-ci" || (typeof ev.detail === "string" && ev.detail.trim() !== "")) deploys.push(ev);
+    else hands.push(ev);
+  }
+  if (hands.length > 0) return { kind: "hand", ...evidenceOf(newest(hands)) };
+  if (!unproven) return { kind: "deploy", ...evidenceOf(newest(deploys)) };
+  return { kind: "unknown", ts: null, actor: null, detail: null };
+}
+
+function latestMoveToLive(events: readonly JournalEvent[], platform: PlatformId): JournalEvent | null {
+  return newest(
+    events.filter(
+      (ev) =>
+        ev.type === "node.status_changed" &&
+        ev.to === "live" &&
+        typeof ev.ts === "string" &&
+        (ev.platform === undefined || ev.platform === platform),
+    ),
+  );
+}
+
+function newest(events: readonly JournalEvent[]): JournalEvent | null {
+  let best: JournalEvent | null = null;
+  for (const ev of events) {
+    if (best === null || ev.ts > best.ts || (ev.ts === best.ts && ev.id > best.id)) best = ev;
+  }
+  return best;
+}
+
+function evidenceOf(ev: JournalEvent | null): Omit<LiveProof, "kind"> {
+  return {
+    ts: ev?.ts ?? null,
+    actor: typeof ev?.actor === "string" ? ev.actor : null,
+    detail: typeof ev?.detail === "string" && ev.detail !== "" ? ev.detail : null,
+  };
 }
