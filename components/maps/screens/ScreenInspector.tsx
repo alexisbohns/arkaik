@@ -45,7 +45,9 @@ const TOUCH_KINDS: Record<"api-endpoint" | "data-model", string> = {
  * Not a panel kind: an overlay in the canvas cell, outside React Flow, so the
  * wheel scrolls it instead of zooming the wall. Top-right and 320px wide; in a
  * container narrower than 40rem, a bottom sheet above the bar, at most half the
- * cell tall. It scrolls vertically only (the overscroll trap in globals.css
+ * cell tall — `INSPECTOR_SHEET_REM` and `INSPECTOR_SHEET_MAX_H` in
+ * lib/utils/screen-inspector.ts, which the selection camera reads too (a test
+ * holds these literals to them). It scrolls vertically only (the overscroll trap in globals.css
  * catches `.overflow-x-auto`). Its wording comes from lib/utils/screen-inspector.ts.
  */
 export function ScreenInspector({ wall, selection, onOpenPanel, onGoToStrip }: ScreenInspectorProps) {

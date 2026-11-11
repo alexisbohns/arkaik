@@ -30,6 +30,12 @@ const {
   selectionRect,
   coldLoadTarget,
   frameDimmed,
+  selectionBounds,
+  selectionViewport,
+  INSPECTOR_SHEET_REM,
+  INSPECTOR_SHEET_BELOW,
+  INSPECTOR_SHEET_MAX_H,
+  frameViewport,
   TOUCH_TRUNK_X,
   TOUCH_STUB,
   INSPECTOR_W,
@@ -348,6 +354,73 @@ test("gaps only: a selected frame is never faded", () => {
   assert.equal(frameDimmed(kept, "V-a", "V-a@F-checkin:0", null), true, "not a gap, not selected: faded");
   assert.equal(frameDimmed(kept, "V-a", "V-a@F-checkin:0", selection), false, "not a gap but selected: lit");
   assert.equal(frameDimmed(kept, "V-a", "V-a@F-weekly:2", selection), true, "the same view in another strip is another frame: faded");
+});
+
+// --- The selection's camera: beside the inspector, or above its sheet ---------
+
+const OPTS = { padding: 32, barInset: 72, minZoom: 0.6, maxZoom: 1 };
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+const sameView = (actual, expected) => ["x", "y", "zoom"].every((key) => near(actual[key], expected[key]));
+
+test("the sheet breakpoint is one constant, and the inspector's stylesheet uses it", () => {
+  assert.equal(INSPECTOR_SHEET_BELOW, INSPECTOR_SHEET_REM * 16);
+  const source = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "..", "components/maps/screens/ScreenInspector.tsx"),
+    "utf8",
+  );
+  const queries = [...source.matchAll(/@max-\[(\d+(?:\.\d+)?)rem\]/g)].map((match) => Number(match[1]));
+  assert.ok(queries.length > 0, "the inspector has container queries");
+  assert.ok(queries.every((rem) => rem === INSPECTOR_SHEET_REM), `every query is ${INSPECTOR_SHEET_REM}rem: ${queries}`);
+  assert.ok(source.includes(`@max-[${INSPECTOR_SHEET_REM}rem]:max-h-[${INSPECTOR_SHEET_MAX_H * 100}%]`), "the sheet's max height");
+  assert.ok(source.includes(`@max-[${INSPECTOR_SHEET_REM}rem]:bottom-[72px]`), "the sheet sits on the bar's inset");
+});
+
+test("selectionBounds is the frame and its chip column, unwidened", () => {
+  assert.deepEqual(selectionBounds(wallWithTouches, layout, FRAME.id, "V-a"), planChips(FRAME, touches(14)).bounds);
+  assert.equal(selectionBounds(wallWithTouches, layout, "V-z@nowhere", "V-a"), null);
+});
+
+test("wide canvas, inspector shown: the rect widens on the right by the inspector, as selectionRect", () => {
+  const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
+  const size = { width: 1440, height: 900 };
+  const view = selectionViewport(bounds, size, { ...OPTS, inspector: true });
+  const expected = frameViewport(selectionRect(wallWithTouches, layout, FRAME.id, "V-a"), size, {
+    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
+  });
+  assert.ok(sameView(view, expected), JSON.stringify([view, expected]));
+});
+
+test("narrow canvas: no room kept on the right; the sheet's maximum height is kept clear at the bottom", () => {
+  const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
+  const size = { width: INSPECTOR_SHEET_BELOW - 1, height: 800 };
+  const view = selectionViewport(bounds, size, { ...OPTS, inspector: true });
+  const expected = frameViewport(bounds, size, {
+    padding: 32, bottomInset: 72 + 800 * INSPECTOR_SHEET_MAX_H, minZoom: 0.6, maxZoom: 1,
+  });
+  assert.ok(sameView(view, expected), JSON.stringify([view, expected]));
+  // The frame itself sits above the sheet's top edge.
+  const sheetTop = size.height - 72 - size.height * INSPECTOR_SHEET_MAX_H;
+  assert.ok(FRAME.y * view.zoom + view.y >= 0, "the frame's top is on screen");
+  assert.ok(FRAME.y * view.zoom + view.y < sheetTop, "the frame's top is above the sheet");
+});
+
+test("at exactly the breakpoint the inspector is beside the frame again", () => {
+  const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
+  const size = { width: INSPECTOR_SHEET_BELOW, height: 800 };
+  const view = selectionViewport(bounds, size, { ...OPTS, inspector: true });
+  const expected = frameViewport(selectionRect(wallWithTouches, layout, FRAME.id, "V-a"), size, {
+    padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1,
+  });
+  assert.ok(sameView(view, expected));
+});
+
+test("no inspector (a panel is open): neither widened nor a sheet reserved, at any width", () => {
+  const bounds = selectionBounds(wallWithTouches, layout, FRAME.id, "V-a");
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 700 }]) {
+    const view = selectionViewport(bounds, size, { ...OPTS, inspector: false });
+    const expected = frameViewport(bounds, size, { padding: 32, bottomInset: 72, minZoom: 0.6, maxZoom: 1 });
+    assert.ok(sameView(view, expected), JSON.stringify(size));
+  }
 });
 
 if (failures) {

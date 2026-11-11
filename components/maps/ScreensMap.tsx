@@ -40,7 +40,13 @@ import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { generateNodeId } from "@/lib/utils/id";
 import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import type { ProductGraph } from "@/lib/utils/product-scope";
-import { coldLoadTarget, frameBoxOf, frameInStrip, selectionRect } from "@/lib/utils/screen-inspector";
+import {
+  coldLoadTarget,
+  frameBoxOf,
+  frameInStrip,
+  selectionBounds,
+  selectionViewport,
+} from "@/lib/utils/screen-inspector";
 import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
@@ -49,7 +55,6 @@ import {
   openingViewport,
   stripNearViewport,
   type AspectOf,
-  type Rect,
   type WallLayout,
 } from "@/lib/utils/screen-wall-layout";
 import { STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot-staleness";
@@ -65,8 +70,13 @@ const NO_EVENTS: readonly JournalEvent[] = [];
 /** The zoom range for framing a whole strip: a jump tile's target. */
 const STRIP_ZOOM = { minZoom: 0.4, maxZoom: 1 } as const;
 
-/** The zoom range for framing a selected frame and its chip column. */
-const SELECTION_ZOOM = { minZoom: 0.6, maxZoom: 1 } as const;
+/** Framing a selected frame and its chip column: the zoom range, and WallCamera's padding and bar inset. */
+const SELECTION_FRAMING = {
+  minZoom: 0.6,
+  maxZoom: 1,
+  padding: WALL_CAMERA_PADDING,
+  barInset: WALL_BAR_INSET,
+} as const;
 
 /** How long a jumped-to strip's header stays rung. */
 const RING_MS = 2000;
@@ -245,9 +255,16 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   const openingInsets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
   if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
     const target = coldLoadTarget(wall, layout, addressedNodeId);
-    if (target) {
-      if (target.kind === "frame") setPicked(target.selection);
-      setCamera({ version: 1, rect: target.rect, ...(target.kind === "frame" ? SELECTION_ZOOM : STRIP_ZOOM) });
+    const bounds =
+      target?.kind === "frame"
+        ? selectionBounds(wall, layout, target.selection.frameId, target.selection.viewId)
+        : null;
+    if (target?.kind === "frame" && bounds) {
+      setPicked(target.selection);
+      const inspector = entries.length === 0;
+      setCamera({ version: 1, viewport: (size) => selectionViewport(bounds, size, { ...SELECTION_FRAMING, inspector }) });
+    } else if (target) {
+      setCamera({ version: 1, rect: target.rect, ...STRIP_ZOOM });
     } else {
       setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, openingInsets) });
     }
@@ -276,25 +293,30 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     }
   }
 
-  // Every camera move after the opening one: show `rect`, zoom kept within
-  // [minZoom, maxZoom] (`frameViewport`, in `WallCamera`).
-  const requestCamera = useCallback((rect: Rect, minZoom: number, maxZoom: number) => {
-    setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, rect, minZoom, maxZoom }));
-  }, []);
-
   // The frame an arrow key moved to: focused, and panned to if off-screen.
   const [focus, setFocus] = useState<CanvasFocus | null>(null);
 
   // The one way to select (contract: part 5's ⌘K handler calls it too): select
   // the frame, frame it and its chips with the camera, and so show the
   // inspector. It never opens a panel.
+  //
+  // The camera is computed for the canvas size it runs at
+  // (`selectionViewport`): beside a side inspector the rect widens by the
+  // card; above a bottom sheet (a canvas under 40rem) the sheet's height is
+  // kept clear instead; with a panel open there is no inspector to make room
+  // for.
   const selectFrame = useCallback(
     (frameId: string, viewId: string, stripId: string): void => {
       setPicked({ frameId, viewId, stripId });
-      const rect = selectionRect(wall, layout, frameId, viewId);
-      if (rect) requestCamera(rect, SELECTION_ZOOM.minZoom, SELECTION_ZOOM.maxZoom);
+      const bounds = selectionBounds(wall, layout, frameId, viewId);
+      if (!bounds) return;
+      const framing = { ...SELECTION_FRAMING, inspector: entries.length === 0 };
+      setCamera((previous) => ({
+        version: (previous?.version ?? 0) + 1,
+        viewport: (size) => selectionViewport(bounds, size, framing),
+      }));
     },
-    [layout, requestCamera, wall],
+    [entries.length, layout, wall],
   );
 
   // Part 4 replaces part 2's click grammar: the first activation selects, a

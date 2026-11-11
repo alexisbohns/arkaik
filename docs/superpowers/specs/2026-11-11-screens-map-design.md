@@ -983,13 +983,18 @@ scope does not have, and nothing is written back until the viewer chooses.
 - **Narrow:** the canvas wrapper is an `@container`. Below 60rem of container
   width the Minimap is hidden; below 40rem the Controls are hidden too and the
   inspector becomes a bottom sheet above the bar (max 50% of the cell height,
-  scrolling vertically). Below 33rem — where the labelled bar (about 481px)
-  stops fitting on one line — the bar spans the width with 12px gutters, its
-  lens options show icons only (each keeps its accessible name and a `title`)
-  and the gaps switch keeps its icon and count and drops its word; nothing
-  wraps or overlaps down to a 280px canvas. Every one of these follows the
-  canvas's own width (a panel narrows it), never the window's, so the bar
-  overrides the `SegmentedControl`'s viewport `md` collapse from outside. Touch: tap selects, pinch zooms (React Flow).
+  scrolling vertically). The selection camera follows the same
+  breakpoint (`INSPECTOR_SHEET_BELOW`, one constant): above it the framed rect
+  widens on the right by the inspector card; below it nothing widens, and the
+  sheet's maximum height is kept clear above the bar so the frame sits above
+  the sheet. With a panel open there is no inspector, so neither. Below 33rem —
+  where the labelled bar (about 481px) stops fitting on one line — the bar
+  spans the width with 12px gutters, its lens options show icons only (each
+  keeps its accessible name and a `title`) and the gaps switch keeps its icon
+  and count and drops its word; nothing wraps or overlaps down to a 280px
+  canvas. Every one of these follows the canvas's own width (a panel narrows
+  it), never the window's, so the bar overrides the `SegmentedControl`'s
+  viewport `md` collapse from outside. Touch: tap selects, pinch zooms (React Flow).
   Below 768px the panel stack shows one column, as everywhere.
 
 ## Performance

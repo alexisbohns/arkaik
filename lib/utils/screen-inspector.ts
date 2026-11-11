@@ -25,7 +25,14 @@ import {
   type WallScreen,
   type WallTouch,
 } from "@/lib/utils/screen-wall";
-import { CHIP_MAX, chipRects, type Rect, type WallBox, type WallLayout } from "@/lib/utils/screen-wall-layout";
+import {
+  CHIP_MAX,
+  chipRects,
+  frameViewport,
+  type Rect,
+  type WallBox,
+  type WallLayout,
+} from "@/lib/utils/screen-wall-layout";
 
 /** How a row reads at a glance: a current live shot, a gap to fix, or nothing to act on. */
 export type InspectorTone = "live" | "gap" | "quiet";
@@ -274,6 +281,58 @@ export function selectionRect(wall: Wall, layout: WallLayout, frameId: string, v
   if (!frame) return null;
   const { bounds } = planChips(frame, wall.screens.get(viewId)?.touches ?? []);
   return { ...bounds, width: bounds.width + INSPECTOR_GAP + INSPECTOR_W };
+}
+
+/**
+ * Below this canvas width the inspector is a bottom sheet, not a card beside
+ * the frame: `ScreenInspector`'s `@max-[40rem]` container queries (Tailwind
+ * needs the literal there; tests/app/screen-inspector.test.js holds every
+ * query in that file to this value). The canvas fills the `@container` the
+ * queries resolve against, so the camera compares the canvas width with it.
+ */
+export const INSPECTOR_SHEET_REM = 40;
+export const INSPECTOR_SHEET_BELOW = INSPECTOR_SHEET_REM * 16;
+/** The sheet's maximum height, as a fraction of the cell (`@max-[40rem]:max-h-[50%]`); it sits on the bar's inset. */
+export const INSPECTOR_SHEET_MAX_H = 0.5;
+
+/** The frame and its chip column: what a selection shows, before any room for the inspector. */
+export function selectionBounds(wall: Wall, layout: WallLayout, frameId: string, viewId: string): Rect | null {
+  const frame = frameBoxOf(layout, frameId);
+  if (!frame) return null;
+  return planChips(frame, wall.screens.get(viewId)?.touches ?? []).bounds;
+}
+
+export interface SelectionFraming {
+  padding: number;
+  /** The bottom bar's height plus its gap; the sheet sits on it. */
+  barInset: number;
+  minZoom: number;
+  maxZoom: number;
+  /** Whether the inspector is shown (no panel open). */
+  inspector: boolean;
+}
+
+/**
+ * The selection camera for the canvas size it runs at. With the inspector
+ * beside the frame (a canvas at least `INSPECTOR_SHEET_BELOW` wide), the rect
+ * widens on the right by the card, as `selectionRect`. With the inspector a
+ * bottom sheet, nothing is widened: the sheet's maximum height is kept clear
+ * above the bar instead, so the frame is framed in the space above it. With
+ * no inspector (a panel is open), neither.
+ */
+export function selectionViewport(
+  bounds: Rect,
+  size: { width: number; height: number },
+  options: SelectionFraming,
+): { x: number; y: number; zoom: number } {
+  const { padding, barInset, minZoom, maxZoom, inspector } = options;
+  const sheet = inspector && size.width < INSPECTOR_SHEET_BELOW;
+  const beside = inspector && !sheet;
+  const bottomInset = sheet ? barInset + size.height * INSPECTOR_SHEET_MAX_H : barInset;
+  const room = (rect: Rect): Rect => (beside ? { ...rect, width: rect.width + INSPECTOR_GAP + INSPECTOR_W } : rect);
+  const frameOptions = { padding, bottomInset, minZoom, maxZoom };
+
+  return frameViewport(room(bounds), size, frameOptions);
 }
 
 export type ColdLoadTarget =

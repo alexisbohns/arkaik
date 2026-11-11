@@ -107,6 +107,7 @@ function loadScreenInspector() {
     // The "Not in a flow" strip's id, so no fixture restates its literal.
     LOOSE_STRIP_ID: wallModel.LOOSE_STRIP_ID,
     chipRects: layout.chipRects,
+    frameViewport: layout.frameViewport,
     CHIP_MAX: layout.CHIP_MAX,
     formatShotDate: require(path.join(BUILD_DIR, "screenshot-ops.js")).formatShotDate,
   };
