@@ -1204,6 +1204,37 @@ const { worstOpenFindingFor } = loadQuality();
 
   const notPartial = describeAuditCompleted({ audit_id: "2026-08", scope: { partial: false, cells: 3 } });
   assert(notPartial.text === "Audit 2026-08 completed", `a scope that is not partial reads as a whole audit (got ${notPartial.text})`);
+  const planned = describeAuditCompleted({
+    type: "quality.audit.completed",
+    audit_id: "2026-11-zplan-1100",
+    framework_version: "0.1.0",
+    scope: {
+      partial: true,
+      cells: 14,
+      since: "2026-10",
+      plan: "2026-11-zplan-1100",
+      parts: ["2026-11-zplan-1100-agt-ios", "2026-11-zplan-1100-sec-web"],
+      scored: [],
+      coverage: { scored: 14, assessed: 152, applicable: 338, surfaces: {} },
+    },
+  });
+  assert(planned.text === "Planned partial audit of 14 cells", `a plan record reads as a planned partial audit, never a scoped re-audit (got ${planned.text})`);
+  assert(
+    planned.meta === "2026-11-zplan-1100 · 2 parts · since 2026-10 · Kritik 0.1.0",
+    `its meta names the plan, its parts, what it followed, and the pack (got ${planned.meta})`,
+  );
+  const firstPlan = describeAuditCompleted({
+    audit_id: "2026-11-zplan-1100",
+    scope: { partial: true, cells: 1, plan: "2026-11-zplan-1100", parts: ["2026-11-zplan-1100-sec-web"] },
+  });
+  assert(
+    firstPlan.text === "Planned partial audit of 1 cell" && firstPlan.meta === "2026-11-zplan-1100 · 1 part",
+    `a first audit that is a plan has no since, and one cell is singular (got ${JSON.stringify(firstPlan)})`,
+  );
+  const uncountedPlan = describeAuditCompleted({ audit_id: "2026-11-zplan-1100", scope: { partial: true, cells: "six", plan: "2026-11-zplan-1100", parts: [] } });
+  assert(uncountedPlan.text === "Planned partial audit 2026-11-zplan-1100", `a malformed count falls back to the plan id (got ${JSON.stringify(uncountedPlan)})`);
+  const blankPlan = describeAuditCompleted({ audit_id: "2026-09-scoped", scope: { partial: true, cells: 3, since: "2026-08", plan: "" } });
+  assert(blankPlan.text === "Scoped re-audit of 3 cells", `an empty plan field is not a plan (got ${blankPlan.text})`);
   assert(describeAuditCompleted({}).text === "Audit ? completed", "an event with nothing on it still renders");
 }
 
