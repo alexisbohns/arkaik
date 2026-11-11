@@ -12,6 +12,7 @@ import { WALL_BAR_INSET, WALL_CAMERA_PADDING, type WallCameraRequest } from "@/c
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
+import { ScreenInspector } from "@/components/maps/screens/ScreenInspector";
 import { ScreensBar } from "@/components/maps/screens/ScreensBar";
 import {
   aspectFrom,
@@ -35,9 +36,11 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
+import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { generateNodeId } from "@/lib/utils/id";
+import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import type { ProductGraph } from "@/lib/utils/product-scope";
-import { frameBoxOf, selectionRect } from "@/lib/utils/screen-inspector";
+import { frameBoxOf, frameInStrip, selectionRect } from "@/lib/utils/screen-inspector";
 import { buildWall, gapCount, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
 import {
   keepStripViewport,
@@ -128,7 +131,7 @@ function screensAnnouncement(lens: WallLens, gaps: number, gapsOnly: boolean): s
  * the reader chooses.
  */
 export function ScreensMap({ projectId, definition }: ScreensMapProps) {
-  const { openNode } = useProjectPanels();
+  const { openNode, entries } = useProjectPanels();
   const {
     nodes: dataNodes,
     loading: nodesLoading,
@@ -312,23 +315,68 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // and kept a plain controller function, because later parts call it from
   // inside this controller too (⌘K flies to a flow through it). The ring
   // clears itself from a timer started here — never from an effect — and only
-  // if no later jump replaced it. Part 4 adds `selectFrame` beside it.
+  // if no later ring replaced it. `ringStrip` is that ring alone: "Also in …"
+  // rings the strip it moves the selection to.
   const [ring, setRing] = useState<{ stripId: string; version: number } | null>(null);
   const ringSequence = useRef(0);
+  const ringStrip = useCallback((stripId: string) => {
+    ringSequence.current += 1;
+    const version = ringSequence.current;
+    setRing({ stripId, version });
+    window.setTimeout(() => {
+      setRing((current) => (current?.version === version ? null : current));
+    }, RING_MS);
+  }, []);
   const jumpToFlow = useCallback(
     (flowId: string): void => {
       const stripId = stripIdOf(flowId);
       const rect = layout.strips.get(stripId);
       if (!rect) return;
       setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, rect, ...STRIP_ZOOM }));
-      ringSequence.current += 1;
-      const version = ringSequence.current;
-      setRing({ stripId, version });
-      window.setTimeout(() => {
-        setRing((current) => (current?.version === version ? null : current));
-      }, RING_MS);
+      ringStrip(stripId);
     },
-    [layout],
+    [layout, ringStrip],
+  );
+
+  const inspectorRef = useRef<HTMLDivElement | null>(null);
+
+  // "Also in …": the same view, selected in another strip, whose header rings.
+  const handleGoToStrip = useCallback(
+    (stripId: string) => {
+      if (!selection) return;
+      const frameId = frameInStrip(wall, stripId, selection.viewId);
+      if (!frameId) return;
+      selectFrame(frameId, selection.viewId, stripId);
+      ringStrip(stripId);
+    },
+    [ringStrip, selectFrame, selection, wall],
+  );
+
+  const clearSelection = useCallback(() => {
+    if (!selection) return;
+    const focusWasInInspector = inspectorRef.current?.contains(document.activeElement) ?? false;
+    setPicked(null);
+    if (focusWasInInspector) {
+      document
+        .querySelector<HTMLElement>(`[data-wall-frame="${CSS.escape(selection.frameId)}"]`)
+        ?.focus({ preventScroll: true });
+    }
+  }, [selection]);
+
+  // Escape clears the selection only with no panel open: while one is, Escape
+  // is the panel stack's (PanelStack), which closes the top panel first. The
+  // guards mirror PanelStack's, so Escape in a field, an open menu or the ⌘K
+  // dialog is theirs.
+  useShortcut(
+    "close",
+    (event) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (isEditableElement(event.target)) return;
+      if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
+      event.preventDefault();
+      clearSelection();
+    },
+    { ...GUARDED_HOTKEY, enabled: selection !== null && entries.length === 0 },
   );
 
   // A lens change reshapes every strip (Web is about three times as wide as
@@ -503,6 +551,16 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+          {selection && (
+            <div ref={inspectorRef} className="contents">
+              <ScreenInspector
+                wall={wall}
+                selection={selection}
+                onOpenPanel={handleOpenNode}
+                onGoToStrip={handleGoToStrip}
+              />
             </div>
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex flex-col items-center gap-2 px-3">
