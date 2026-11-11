@@ -809,9 +809,13 @@ shared trunk and turns right into its chip on one small rounded corner.
   frame again, or Enter on it, opens the panel. The inspector's "Open panel"
   does the same. A chip → `openNode({ nodeId })`. Pane click or Escape clears
   the selection; so does its frame leaving the wall (a product-scope change, the
-  view deleted) — cleared, not hidden, so going back never re-selects it. Escape is `useShortcut("close", …, { ...GUARDED_HOTKEY,
-  enabled: selection !== null && entries.length === 0 })`: while any panel is
-  open, Escape stays the panel stack's (`PanelStack.tsx:169-183`).
+  view deleted) — cleared, not hidden, so going back never re-selects it.
+  Escape is the `close` row, `{ ...GUARDED_HOTKEY, enabled: selection !== null
+  && entries.length === 0, conflictBehavior: "allow" }`: while any panel is
+  open, Escape stays the panel stack's (`PanelStack.tsx:169-183`). The two are
+  exclusive, so the map's registration allows the overlap, and it is made once
+  the wall's cell is attached, after the panel stack's, so TanStack never
+  warns.
 - The panel stack and the wall stay independent: opening a panel narrows the
   canvas, and `WallCamera` waits for the size to settle (120ms, as
   `CameraFocus`). Whenever the canvas's settled width changes while a frame is

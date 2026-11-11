@@ -42,7 +42,7 @@ import { useNodes } from "@/lib/hooks/useNodes";
 import { useProject } from "@/lib/hooks/useProject";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
-import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
+import { GUARDED_HOTKEY, useShortcuts } from "@/lib/hooks/useShortcut";
 import { generateNodeId } from "@/lib/utils/id";
 import { isEditableElement, OPEN_OVERLAY_SELECTOR } from "@/lib/utils/keyboard";
 import type { ProductGraph } from "@/lib/utils/product-scope";
@@ -496,20 +496,50 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     }
   }, [selection]);
 
+  // Whether the wall's cell is in the page (see Escape below).
+  const [wallUp, setWallUp] = useState(false);
+  const attachWall = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+    setWallUp(true);
+    return () => setWallUp(false);
+  }, []);
+
   // Escape clears the selection only with no panel open: while one is, Escape
   // is the panel stack's (PanelStack), which closes the top panel first. The
   // guards mirror PanelStack's, so Escape in a field, an open menu or the ⌘K
   // dialog is theirs.
-  useShortcut(
-    "close",
-    (event) => {
-      if (event.defaultPrevented || event.repeat) return;
-      if (isEditableElement(event.target)) return;
-      if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
-      event.preventDefault();
-      clearSelection();
-    },
-    { ...GUARDED_HOTKEY, enabled: selection !== null && entries.length === 0 },
+  //
+  // Two handlers on one key, on purpose: this one and PanelStack's are
+  // mutually exclusive through whether any panel is open (`enabled` here,
+  // `entries.length > 0` there), so at most one ever acts. TanStack warns when
+  // a key is registered a second time unless that second registration says
+  // the overlap is meant — `conflictBehavior: "allow"`, which keeps both
+  // (`"replace"` would unregister the panel stack's). The check runs on the
+  // later registration only, so this one must come second: it is made only
+  // once the wall's cell is attached (`wallUp`, set from its ref callback, so
+  // a commit after the one that mounted the shell and the PanelStack inside
+  // it — after StrictMode's replay of that mount, too). Registered from the
+  // loading page instead, it came first and PanelStack's own warned.
+  useShortcuts(
+    wallUp
+      ? [
+          {
+            id: "close",
+            callback: (event) => {
+              if (event.defaultPrevented || event.repeat) return;
+              if (isEditableElement(event.target)) return;
+              if (document.querySelector(OPEN_OVERLAY_SELECTOR)) return;
+              event.preventDefault();
+              clearSelection();
+            },
+            options: {
+              ...GUARDED_HOTKEY,
+              enabled: selection !== null && entries.length === 0,
+              conflictBehavior: "allow",
+            },
+          },
+        ]
+      : [],
   );
 
   // A lens change reshapes every strip (Web is about three times as wide as
@@ -635,7 +665,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
           />
         </div>
       ) : (
-        <div className="@container relative h-full w-full">
+        <div ref={attachWall} className="@container relative h-full w-full">
           {/* The canvas's own React Flow store, lifted so the probe beside it can
               read where the camera is. Only the canvas: a panel's graph must
               never share it. */}
