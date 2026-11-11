@@ -658,6 +658,19 @@ async function run() {
       findingBlocked.text.slice(0, 400),
     );
 
+    // A plan file is never overwritten. Only a race reaches an existing path (the
+    // id is chosen after every plan file); a directory named like the next plan
+    // file stands in for it, since listPlanIds skips it.
+    const nextPlan = await session.call("kritik_plan", { runs: ["SEC:web"], dry_run: true });
+    mkdirSync(nextPlan.json.path, { recursive: true });
+    const taken = await session.call("kritik_plan", { runs: ["SEC:web"] });
+    check(
+      "kritik_plan refuses when the plan file's path already exists",
+      taken.isError && taken.json.message.includes(`${nextPlan.json.plan.planId}.json already exists`),
+      taken.text.slice(0, 300),
+    );
+    rmSync(nextPlan.json.path, { recursive: true, force: true });
+
     const noRuns = await session.call("kritik_plan", { runs: [] });
     check("kritik_plan without runs is an actionable tool error", noRuns.isError && /runs/.test(noRuns.json.message), noRuns.text);
     const badSurfacePlan = await session.call("kritik_plan", { runs: ["SEC:android"] });

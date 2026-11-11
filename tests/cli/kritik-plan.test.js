@@ -286,6 +286,11 @@ try {
       !existsSync(path.join(plansDir, `${outPlan.planId}.json`)),
     out.stdout + out.stderr,
   );
+  check(
+    "--out says the id is reserved only once the file is under docs/quality/plans/",
+    out.stdout.includes(`${outPlan?.planId} is reserved only once the file is under docs/quality/plans/`),
+    out.stdout,
+  );
   const outStatus = run(["plan", "--status", outPlan?.planId ?? "missing"]);
   check("--status reads only docs/quality/plans/", outStatus.status === 1 && outStatus.stderr.includes("no plan at"), outStatus.stderr);
   const outAgain = run(["plan", "--run", "AGT:ios", "--out", outside]);
@@ -424,6 +429,25 @@ try {
         blocked.stderr.includes(earlier?.planId) &&
         !existsSync(path.join(d, "docs", "quality", "audits", earlierPart)),
       blocked.stderr,
+    );
+  }
+
+  // --- a plan file is never overwritten ---------------------------------------------------------
+  //
+  // listPlanIds keeps the plan id of every file, so the only way onto an
+  // existing path is a race (another session writing the same id between this
+  // one's read and its write). A directory named like the next plan file stands
+  // in for it: listPlanIds skips it, the write would land on it.
+
+  {
+    const { run: runTaken, plansDir: takenPlans } = repo();
+    const next = json(runTaken(["plan", "--run", "SEC:web", "--dry-run", "--json"]))?.planId;
+    mkdirSync(path.join(takenPlans, `${next}.json`), { recursive: true });
+    const taken = runTaken(["plan", "--run", "SEC:web"]);
+    check(
+      "a plan whose default path already exists is refused, naming the path",
+      taken.status === 1 && taken.stderr.includes(`${next}.json already exists`) && readdirSync(takenPlans).length === 1,
+      taken.stderr + taken.stdout,
     );
   }
 

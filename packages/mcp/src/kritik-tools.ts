@@ -110,6 +110,7 @@ import {
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
 import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import { existsSync } from "node:fs";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store } from "./store";
@@ -1163,6 +1164,13 @@ export function buildKritikCatalog(ctx: KritikContext): {
       }
       const path = planPath(root, created.plan.planId);
       const written = args.dry_run !== true;
+      // The id was chosen after every plan file on disk, so a file here means
+      // another session wrote this id in between. Never overwrite it.
+      if (written && existsSync(path)) {
+        throw new ToolError(
+          `${path} already exists — a plan file is written once, and another plan took ${created.plan.planId} meanwhile. Call kritik_plan again for the next id.`,
+        );
+      }
       if (written) savePlan(path, created.plan);
       return { plan: created.plan, path, written, warnings: created.warnings };
     },

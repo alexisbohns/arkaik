@@ -1572,6 +1572,7 @@ function printPlanSummary(plan: KritikPlan, warnings: readonly string[], written
     console.log(`  wrote ${written}`);
     if (resolve(written) !== resolve(home)) {
       console.log(`  --status and the record step read only ${home} — move the file there before recording.`);
+      console.log(`  ${plan.planId} is reserved only once the file is under docs/quality/plans/ — until then, another plan can take the same id.`);
     }
   }
   console.log(`\nPaste into one agent session. For one session per part, each part's own prompt is parts[].prompt in the plan file (--json prints it).\n`);
@@ -1630,6 +1631,11 @@ function runPlan(args: string[], common: CommonOptions): void {
     if (single.out !== undefined && existsSync(target)) {
       fail(`kritik: ${target} already exists — a plan file is written once. Pick another --out.`);
     }
+    // The id was chosen after every plan file on disk, so a file here means
+    // another session wrote this id in between. Never overwrite it.
+    if (existsSync(target)) {
+      fail(`kritik: ${target} already exists — a plan file is written once, and another plan took ${plan.planId} meanwhile. Run the command again for the next id.`);
+    }
     savePlan(target, plan);
     written = target;
   }
@@ -1641,6 +1647,7 @@ function runPlan(args: string[], common: CommonOptions): void {
       console.error(`wrote ${written}`);
       if (resolve(written) !== resolve(home)) {
         console.error(`--status and the record step read only ${home} — move the file there before recording.`);
+        console.error(`${plan.planId} is reserved only once the file is under docs/quality/plans/ — until then, another plan can take the same id.`);
       }
     }
   } else {
