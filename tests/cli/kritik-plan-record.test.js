@@ -494,6 +494,37 @@ try {
   check("a plain score into a recorded part warns that it rewrites a recorded reading", intoPart.status === 0 && intoPart.stdout.includes(`${part.auditId} is already recorded`), intoPart.stdout + intoPart.stderr);
   refuses(a, "a recorded part as a scoped re-audit's target", ["score", "AGT-01", "ios", "3", "--evidence", "x.ts:1", "--scope", "--audit", part.auditId], ["already recorded"]);
 
+  // === regressions reads a plan's parts as one reading ===========================
+
+  const g = auditedRepo();
+  const g1 = g.makePlan("SEC:web");
+  g.writeScores(g1.parts[0]?.auditId, cellsOf(g1.parts[0]), 4);
+  const g2 = g.makePlan("AGT:ios", "SEC:ios");
+  const [agtIos, secIos] = g2.parts;
+  g.writeScores(agtIos?.auditId, cellsOf(agtIos), 1); // AGT on iOS drops from 2 to 1
+  g.writeScores(secIos?.auditId, cellsOf(secIos), 2);
+
+  const pair = g.run(["regressions", "--json"]);
+  const pairJson = JSON.parse(pair.stdout || "{}");
+  check(
+    "regressions defaults to the newest plan against the reading before it, never two parts of one plan",
+    pairJson.from === g1.planId && pairJson.to === g2.planId,
+    JSON.stringify({ from: pairJson.from, to: pairJson.to }) + pair.stderr,
+  );
+  check(
+    "and finds the drop one of the plan's parts scored",
+    pair.status === 1 && (pairJson.regressions ?? []).some((x) => x.kind === "level-drop" && x.criterion_id === "AGT-01" && x.surface === "ios"),
+    pair.stdout.slice(0, 400),
+  );
+  const byPart = JSON.parse(g.run(["regressions", "--to", agtIos?.auditId, "--json"]).stdout || "{}");
+  check("--to naming a part resolves to its plan", byPart.to === g2.planId && byPart.from === g1.planId, JSON.stringify({ from: byPart.from, to: byPart.to }));
+  refuses(g, "two parts of one plan as --from and --to", ["regressions", "--from", agtIos?.auditId, "--to", secIos?.auditId], ["name the same audit", g2.planId]);
+  const earlier = g.run(["regressions", "--from", FULL, "--to", g1.planId, "--json"]);
+  check("the full audit against the first plan: nothing regressed", earlier.status === 0 && JSON.parse(earlier.stdout || "{}").total === 0, earlier.stdout.slice(0, 300) + earlier.stderr);
+  const unknownId = g.run(["regressions", "--from", "nope"]);
+  check("an unknown id lists the readings", unknownId.status === 1 && unknownId.stderr.includes(`have: ${FULL}, ${g1.planId}, ${g2.planId}`), unknownId.stderr);
+  refuses(c, "regressions with one plan and nothing before it", ["regressions"], [`only "${cPlan.planId}" exists`]);
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

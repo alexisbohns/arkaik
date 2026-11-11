@@ -28,6 +28,7 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  auditReadings,
   coverageNotes,
   coverageOf,
   deriveAuditScope,
@@ -48,6 +49,7 @@ import {
   planIdOfPartId,
   planRecordCommand,
   priorityOf,
+  readingOf,
   recordedAuditIds,
   recordedPlans,
   recordedSinceIds,
@@ -64,6 +66,7 @@ import {
   upsertAssessment,
   upsertFinding,
   type AuditCompletedScope,
+  type AuditReading,
   type AuditScope,
   type JournalEvent,
   type KritikCriterion,
@@ -252,8 +255,10 @@ not a regression.
 Exits 1 when anything regressed, which is what makes it usable as a CI step or a
 scheduled routine.
 
-  --from <audit>    The older reading (default: the audit before --to).
+  --from <audit>    The older reading (default: the reading before --to).
   --to <audit>      The newer reading (default: the newest on disk).
+                    A plan's parts are one reading: a plan id, or any of its
+                    part ids, names the state through the plan's last part.
   --record          Append one quality.signal.tripped per regression.
   --json            The full list as JSON.`;
 
@@ -1235,33 +1240,43 @@ function runSignals(args: string[], common: CommonOptions): void {
 
 // --- regressions --------------------------------------------------------------
 
-/** The two audits to compare, or a refusal saying why there is no pair. */
-function auditPair(root: string, from?: string, to?: string): { from: string; to: string } {
-  const audits = listAuditIds(root);
-  if (audits.length < 2) {
+/** The audit directory a reading's state runs through: its last member. */
+const lastAuditOf = (reading: AuditReading): string => reading.auditIds[reading.auditIds.length - 1];
+
+/**
+ * The two readings to compare, or a refusal saying why there is no pair. A plan's parts are one
+ * reading (`auditReadings`): ids accepted are reading ids or member ids, the default `to` is the
+ * last reading and the default `from` the one before.
+ */
+function auditPair(root: string, from?: string, to?: string): { from: AuditReading; to: AuditReading } {
+  const readings = auditReadings(listAuditIds(root));
+  if (readings.length < 2) {
     fail(
       `kritik: regressions needs two audits to compare — ` +
-        `${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}.\n` +
+        `${readings.length === 0 ? "docs/quality/audits/ holds none" : `only "${readings[0].id}" exists`}.\n` +
         `A regression is the difference between two readings; one reading is a baseline.`,
     );
   }
-  const known = (id: string): string => {
-    if (!audits.includes(id)) fail(`kritik: no audit "${id}" under docs/quality/audits/ (have: ${audits.join(", ")})`);
-    return id;
+  const known = (id: string): AuditReading => {
+    const reading = readingOf(readings, id);
+    if (reading === undefined) {
+      return fail(`kritik: no audit "${id}" under docs/quality/audits/ (have: ${readings.map((r) => r.id).join(", ")})`);
+    }
+    return reading;
   };
-  const newer = to === undefined ? audits[audits.length - 1] : known(to);
-  const older = from === undefined ? audits[audits.indexOf(newer) - 1] : known(from);
+  const newer = to === undefined ? readings[readings.length - 1] : known(to);
+  const older = from === undefined ? readings[readings.indexOf(newer) - 1] : known(from);
   if (older === undefined) {
-    fail(`kritik: "${newer}" is the oldest audit — there is nothing before it to compare against.`);
+    fail(`kritik: "${newer.id}" is the oldest audit — there is nothing before it to compare against.`);
   }
   if (older === newer) {
-    fail(`kritik: --from and --to name the same audit ("${newer}") — a regression needs two readings.`);
+    fail(`kritik: --from and --to name the same audit ("${newer.id}") — a regression needs two readings.`);
   }
   // Order is the whole verdict: `detectRegressions` reads its first argument as
   // the EARLIER reading, so a hand-swapped pair reports a clean run where a real
   // regression exists — a false green in the CI step this verb exists to be.
-  if (audits.indexOf(older) > audits.indexOf(newer)) {
-    fail(`kritik: --from "${older}" is newer than --to "${newer}" — swap them, or the comparison inverts.`);
+  if (readings.indexOf(older) > readings.indexOf(newer)) {
+    fail(`kritik: --from "${older.id}" is newer than --to "${newer.id}" — swap them, or the comparison inverts.`);
   }
   return { from: older, to: newer };
 }
@@ -1275,7 +1290,9 @@ function runRegressions(args: string[], common: CommonOptions): void {
 
   const library = loadLibraryOrFail(common.root);
   profileOrFail(common.root);
-  const { from, to } = auditPair(common.root, single.from, single.to);
+  const pair = auditPair(common.root, single.from, single.to);
+  const from = pair.from.id;
+  const to = pair.to.id;
 
   let regressions: Regression[];
   try {
@@ -1283,8 +1300,8 @@ function runRegressions(args: string[], common: CommonOptions): void {
     // the cells it re-scored, and each must be compared with the last reading
     // before it — which may live in an audit older than \`from\`.
     regressions = detectRegressions(
-      loadQualitySectionThrough(common.root, from, library),
-      loadQualitySectionThrough(common.root, to, library),
+      loadQualitySectionThrough(common.root, lastAuditOf(pair.from), library),
+      loadQualitySectionThrough(common.root, lastAuditOf(pair.to), library),
       library,
     );
   } catch (error) {
