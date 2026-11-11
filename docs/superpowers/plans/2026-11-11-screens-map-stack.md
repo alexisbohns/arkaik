@@ -307,14 +307,14 @@ export function summarizePaletteNodes(nodes: readonly {
   views: { id: string; title: string; firstFlowTitle: string | null }[];  // first listing flow, snapshot order
 };
 export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes>): PaletteCommand[];
-// id "node:<id>", label = title, group and icon "flows" | "views", keywords [id],
+// id "node:<id>", label = title, group and icon "flows" | "views", keywords [id without its species prefix] ("V-home" → "home"),
 // hint "N screens" ("1 screen") | firstFlowTitle | "Not in a flow", searchOnly: true, target { kind: "node", nodeId }
 export function limitSearchOnly(matches: readonly CommandMatch[], perGroup?: number): CommandMatch[];
 /** limitSearchOnly(rankCommands(commands, query), perGroup) — what the overlay lists, and what its test checks. */
 export function paletteMatches(commands: readonly PaletteCommand[], query: string, perGroup?: number): CommandMatch[];
 ```
 
-`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. The overlay lists `paletteMatches(commands, query)`: `limitSearchOnly` after `rankCommands`.
+`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. A query containing a hyphen also scores (and completes) a node row's full id, read from its `node` target, as a keyword — so a pasted `V-home` finds its view, while a bare "v" or "f" matches no row by its species prefix. The overlay lists `paletteMatches(commands, query)`: `limitSearchOnly` after `rankCommands`.
 
 ```ts
 // components/layout/CommandPalette.tsx

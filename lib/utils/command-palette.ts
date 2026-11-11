@@ -197,6 +197,18 @@ function scoreCandidate(candidate: string, query: string): CandidateScore | null
   return null;
 }
 
+/**
+ * The keywords a query is scored against. A node row's own keyword is its id
+ * without the species prefix (`buildNodeCommands`): every view id starts `V-`
+ * and every flow id `F-`, so the full id as a keyword would let a bare "v" or
+ * "f" match every row. The full id joins only for a query with a hyphen in it
+ * — someone typing or pasting an id — so `V-home` still finds its view.
+ */
+function keywordsFor(command: PaletteCommand, query: string): readonly string[] {
+  if (command.target.kind !== "node" || !query.includes("-")) return command.keywords;
+  return [...command.keywords, command.target.nodeId];
+}
+
 /** The candidate the query is a live prefix of — what Tab should fill in. The
  * label is preferred, so typing "acc" completes to "Acceptances" rather than
  * to a synonym that happens to start the same way. */
@@ -206,7 +218,7 @@ function completionFor(command: PaletteCommand, query: string): string | null {
   // The label is typed out in full: there is nothing left to help with, and
   // ghosting a synonym on top of a finished word only adds noise.
   if (command.label.toLowerCase() === needle) return null;
-  const candidates = [command.label, ...command.keywords];
+  const candidates = [command.label, ...keywordsFor(command, query)];
   for (const candidate of candidates) {
     if (candidate.length > query.length && candidate.toLowerCase().startsWith(needle)) {
       return candidate;
@@ -240,7 +252,7 @@ export function rankCommands(
     let best: CandidateScore | null = labelScore;
     let highlight: number[] = labelScore ? labelScore.indices : [];
 
-    for (const keyword of command.keywords) {
+    for (const keyword of keywordsFor(command, trimmed)) {
       const keywordScore = scoreCandidate(keyword, trimmed);
       if (!keywordScore) continue;
       const adjusted = keywordScore.score - KEYWORD_PENALTY;
@@ -647,10 +659,17 @@ export function summarizePaletteNodes(nodes: readonly PaletteNodeInput[]): Palet
   return { flows, views };
 }
 
+/** An id's own words: `V-home` → `home`. An id that is all prefix keeps itself. */
+function idStem(id: string): string {
+  return id.replace(/^[A-Za-z]+-/, "") || id;
+}
+
 /**
- * One search-only row per flow and per view. The id is a keyword, so a
- * pasted `V-home` finds its view; the hint says where the row sits — a flow's
- * size, a view's first flow.
+ * One search-only row per flow and per view. The id without its species
+ * prefix is the keyword, so "home" finds `V-home` and a bare "v" matches
+ * nothing by it; `rankCommands` reads the full id from the node target for a
+ * query with a hyphen, so a pasted `V-home` still finds its view. The hint
+ * says where the row sits — a flow's size, a view's first flow.
  */
 export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes>): PaletteCommand[] {
   return [
@@ -659,7 +678,7 @@ export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes
       label: flow.title,
       group: "flows",
       icon: "flows",
-      keywords: [flow.id],
+      keywords: [idStem(flow.id)],
       hint: flow.screenCount === 1 ? "1 screen" : `${flow.screenCount} screens`,
       searchOnly: true,
       target: { kind: "node", nodeId: flow.id },
@@ -669,7 +688,7 @@ export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes
       label: view.title,
       group: "views",
       icon: "views",
-      keywords: [view.id],
+      keywords: [idStem(view.id)],
       hint: view.firstFlowTitle ?? "Not in a flow",
       searchOnly: true,
       target: { kind: "node", nodeId: view.id },

@@ -295,17 +295,19 @@ assert(
   "the two new groups read Flows and Views",
 );
 
-/** A search-only row by hand: the shape a node row has, with an href target. */
+/** A search-only row by hand, in the shape `buildNodeCommands` gives one: the
+ * id without its species prefix as the keyword, and a node target, which is
+ * where the full id is read from for a query with a hyphen. */
 function searchRow(nodeId, label, group = "views") {
   return {
     id: `test:${nodeId}`,
     label,
     group,
     icon: group,
-    keywords: [nodeId],
+    keywords: [nodeId.replace(/^[A-Z]+-/, "")],
     hint: "test row",
     searchOnly: true,
-    target: { kind: "href", href: `/test/${nodeId}` },
+    target: { kind: "node", nodeId },
   };
 }
 const handRows = [
@@ -361,6 +363,22 @@ assert(
 assert(
   rankCommands(withHandRows, "v-home")[0].highlight.length === 0,
   "an id hit highlights nothing — the id is a keyword",
+);
+// The species prefix is no keyword: every view id starts "V-" and every flow
+// id "F-", so a bare "v" or "f" would match every row. The id's own words are
+// one ("home" still finds V-home), and the full id is matched only once the
+// query has a hyphen in it.
+assert(
+  !ranked("v").some((row) => row.startsWith("test:")) && !ranked("f").some((row) => row.startsWith("test:")),
+  `"v" and "f" match no hand row by its species prefix (got ${[...ranked("v"), ...ranked("f")].filter((row) => row.startsWith("test:")).join(" ")})`,
+);
+assert(
+  ranked("checkin")[0] === "test:F-checkin@8500",
+  `an id's words find its node as an exact keyword, at 8500 (got ${ranked("checkin")[0]})`,
+);
+assert(
+  ranked("f-check")[0] === "test:F-checkin@6498",
+  `a hyphenated query reaches the full id: "f-check" is its prefix (got ${ranked("f-check")[0]})`,
 );
 
 // limitSearchOnly: at most six search-only rows per group, every other row kept.
@@ -551,11 +569,11 @@ assert(
   rowA.label === "Check in" &&
     rowA.group === "flows" &&
     rowA.icon === "flows" &&
-    JSON.stringify(rowA.keywords) === JSON.stringify(["F-a"]) &&
+    JSON.stringify(rowA.keywords) === JSON.stringify(["a"]) &&
     rowA.searchOnly === true &&
     rowA.target.kind === "node" &&
     rowA.target.nodeId === "F-a",
-  "a flow row: its title, the Flows group and icon, its id as the keyword, search-only, a node target",
+  "a flow row: its title, the Flows group and icon, its id without the species prefix as the keyword, search-only, a node target",
 );
 const rowV1 = fixtureRows.find((row) => row.id === "node:V-1");
 assert(
@@ -613,11 +631,12 @@ function shown(query) {
 // - "record": a flow and a view with the same title tie, and the flow comes
 //   first on authored order (flows are declared before views).
 // - "docs": a page's exact keyword outranks node titles, and an id's words
-//   find views whose titles do not contain the query (Legal Notice, ...).
+//   (`V-docs-terms` → `docs-terms`) find views whose titles do not contain
+//   the query, ranked by how much of the id is left (Terms of Service, ...).
 const PEBBLES_RANKING = [
   ["set", "Settings (project, 7995) · Settings (views, 7495) · Set Intensity & Valence (views, 7480) · Legal Consent (flows, 1497) · Mechanic Sheet (views, 1496) · Soul Detail (views, 1493) · Shape Emotion Pearl (views, 1491) · Souls Directory (views, 1489) · Keyboard shortcuts (actions, 996) · Findings (project, 994) · Screens (maps, 991) · All projects (actions, 987)"],
   ["record", "Record Pebble (flows, 7493) · Record Pebble (views, 7493) · Record Celebration (views, 7488)"],
-  ["docs", "Documentation (actions, 9000) · Docs Page (views, 7495) · Docs Index (views, 7494) · Legal Notice (views, 4498) · Privacy Policy (views, 4498) · Terms of Service (views, 4498) · Keyboard shortcuts (actions, 1990)"],
+  ["docs", "Documentation (actions, 9000) · Docs Page (views, 7495) · Docs Index (views, 7494) · Terms of Service (views, 6494) · Privacy Policy (views, 6492) · Legal Notice (views, 6487) · Keyboard shortcuts (actions, 1990)"],
 ];
 for (const [query, expected] of PEBBLES_RANKING) {
   const actual = shown(query);
@@ -631,6 +650,29 @@ for (const query of ["acc", "jour", "deliv", "Journey", "views", "screens", "pag
   const without = rankCommands(commands, query)[0]?.command.id;
   assert(withNodes === without, `with node rows present, "${query}" still runs ${without} first (got ${withNodes})`);
 }
+
+// One letter on real data: "v" and "f" list only rows whose own words carry the
+// letter — a title, or an id after its species prefix — never all of them.
+for (const letter of ["v", "f"]) {
+  const nodeRows = pebbleRanked(letter).filter((match) => match.command.searchOnly);
+  const stray = nodeRows.filter(
+    (match) =>
+      !`${match.command.label} ${match.command.target.nodeId.replace(/^[A-Z]+-/, "")}`.toLowerCase().includes(letter),
+  );
+  assert(stray.length === 0, `"${letter}" lists no node by its species prefix alone (got ${stray.map((match) => match.command.id).join(", ")})`);
+  assert(
+    !pebbleRanked(letter)[0].command.searchOnly,
+    `"${letter}" runs a page first (got ${pebbleRanked(letter)[0].command.id})`,
+  );
+}
+assert(
+  shown("timeline") === "Changelog (project, 9000) · Path (views, 8500)",
+  `an id's words find a view whose title shares none of them, below a page's exact keyword (got ${shown("timeline")})`,
+);
+assert(
+  shown("V-timeline") === "Path (views, 8500)" && shown("F-onboarding") === "Onboarding (flows, 8500)",
+  `the full id still finds its node (got ${shown("V-timeline")} / ${shown("F-onboarding")})`,
+);
 
 // Highlight and completion on node rows follow the same rules as pages.
 const pathRow = pebbleRanked("path")[0];
