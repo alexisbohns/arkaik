@@ -525,6 +525,28 @@ try {
   check("an unknown id lists the readings", unknownId.status === 1 && unknownId.stderr.includes(`have: ${FULL}, ${g1.planId}, ${g2.planId}`), unknownId.stderr);
   refuses(c, "regressions with one plan and nothing before it", ["regressions"], [`only "${cPlan.planId}" exists`]);
 
+  // A scoped re-audit named after the plan's first part, made while its second part was
+  // unscored, sorts between the two. The plan's state runs through its last part, so the
+  // scoped re-audit is the earlier reading and the default pair compares it with the plan.
+  const v = auditedRepo();
+  const vPlan = v.makePlan("AGT:ios", "SEC:web");
+  const [vAgt, vSec] = vPlan.parts;
+  v.writeScores(vAgt?.auditId, cellsOf(vAgt), 2);
+  v.writeScores(`${vAgt?.auditId}-scoped`, [["AGT-01", "ios"]], 2);
+  v.writeScores(vSec?.auditId, cellsOf(vSec), 1); // SEC on web drops from 2 to 1
+  const vPair = v.run(["regressions", "--json"]);
+  const vJson = JSON.parse(vPair.stdout || "{}");
+  check(
+    "a scoped re-audit sorting between a plan's parts is the earlier reading, the plan the later",
+    vJson.from === `${vAgt?.auditId}-scoped` && vJson.to === vPlan.planId,
+    JSON.stringify({ from: vJson.from, to: vJson.to }) + vPair.stderr,
+  );
+  check(
+    "so the default pair finds the drop the plan's later part scored",
+    vPair.status === 1 && (vJson.regressions ?? []).some((x) => x.kind === "level-drop" && x.criterion_id === "SEC-01" && x.surface === "web"),
+    vPair.stdout.slice(0, 400),
+  );
+
   // === An unrecorded audit's scores never enter a plan's record ==================
   //
   // The record merges every audit directory through the plan's last part. One that

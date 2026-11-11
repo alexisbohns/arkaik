@@ -139,7 +139,7 @@ export function coverageOf(
 /** One line per surface whose assessed < applicable: `web 62, from 6 of 71 cells` (score "—" when null). */
 export function coverageNotes(coverage: PlanCoverage, overall: Readonly<Record<string, number | null>>): string[];
 export interface AuditReading { id: string; auditIds: string[] }   // id: the plan id for a plan's parts, else the audit id
-export function auditReadings(auditIds: readonly string[]): AuditReading[];   // ordered by first audit id
+export function auditReadings(auditIds: readonly string[]): AuditReading[];   // ordered by last audit id (a reading's state runs through it)
 export function readingOf(readings: readonly AuditReading[], id: string): AuditReading | undefined; // by reading id or member id
 ```
 

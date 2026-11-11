@@ -961,6 +961,40 @@ async function run() {
     guarded.stop();
   }
 
+  // --- readings are ordered by their last member ------------------------------------
+  //
+  // A scoped re-audit named after a plan's first part, made while a sibling part was
+  // unscored, sorts between the parts; the plan's state runs through its last part.
+
+  const interleaved = startSession();
+  try {
+    await interleaved.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const P = "2026-09-zplan-0100";
+    const write = (auditId, rows) => {
+      const dir = path.join(interleaved.dir, "docs", "quality", "audits", auditId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "scores.json"),
+        JSON.stringify({
+          audit_id: auditId,
+          assessments: rows.map(([criterion_id, level]) => ({ criterion_id, surface: "web", level, evidence: "x.ts:1", audit_id: auditId, ts: "2026-09-01T00:00:00.000Z" })),
+        }),
+      );
+    };
+    write("2026-08", [["PRV-01", 2], ["SEC-01", 2]]);
+    write(`${P}-prv-web`, [["PRV-01", 2]]);
+    write(`${P}-prv-web-scoped`, [["PRV-01", 2]]);
+    write(`${P}-sec-web`, [["SEC-01", 1]]); // 2 -> 1
+    const pair = await interleaved.call("kritik_regressions", {});
+    check(
+      "kritik_regressions: a scoped re-audit sorting between a plan's parts is the earlier reading, the plan the later",
+      pair.json.from === `${P}-prv-web-scoped` && pair.json.to === P && (pair.json.regressions ?? []).some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01"),
+      pair.text.slice(0, 400),
+    );
+  } finally {
+    interleaved.stop();
+  }
+
   // --- hosted mode -------------------------------------------------------------
   //
   // A stub server stands in for the hosted API. It covers: the reads

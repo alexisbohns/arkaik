@@ -881,6 +881,23 @@ const throws = (fn) => {
   check("readingOf finds a plan's reading by any of its part ids", readingOf(readings, "2026-11-zplan-1100-agt-ios")?.id === "2026-11-zplan-1100");
   check("readingOf answers undefined for an id no reading holds", readingOf(readings, "2026-07") === undefined);
   check("auditReadings of nothing is nothing", auditReadings([]).length === 0);
+
+  // A scoped re-audit named after a part, made while a later sibling part was still
+  // unscored, sorts BETWEEN the plan's parts. The plan's state runs through its last
+  // part, so the plan's reading comes after it: readings are ordered by their last member.
+  const interleaved = auditReadings([
+    "2026-08",
+    "2026-11-zplan-1100-agt-ios",
+    "2026-11-zplan-1100-agt-ios-scoped",
+    "2026-11-zplan-1100-sec-web",
+  ]);
+  check(
+    "auditReadings: a reading sorting between a plan's parts comes before the plan, whose state runs through its last part",
+    JSON.stringify(interleaved.map((reading) => reading.id)) ===
+      JSON.stringify(["2026-08", "2026-11-zplan-1100-agt-ios-scoped", "2026-11-zplan-1100"]) &&
+      JSON.stringify(interleaved[2].auditIds) === JSON.stringify(["2026-11-zplan-1100-agt-ios", "2026-11-zplan-1100-sec-web"]),
+    JSON.stringify(interleaved),
+  );
 }
 
 // --- summary ------------------------------------------------------------------------

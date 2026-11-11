@@ -637,24 +637,32 @@ export interface AuditReading {
  * The audits on disk as readings (spec "`regressions` after a plan", decision 14). A plan's parts
  * are scored in parallel and recorded once, so two of them are never two readings: each part id
  * folds into its plan's reading, and every other id — full, scoped, hand-named, a scoped re-audit
- * named after a part — stays its own. Ordered by each reading's first audit id. A reading's state
- * is every audit through its last member, merged latest-wins (`loadQualitySectionThrough`).
+ * named after a part — stays its own. A reading's state is every audit through its last member,
+ * merged latest-wins (`loadQualitySectionThrough`), so readings are ordered by their last member:
+ * a scoped re-audit named after a plan's first part, made while a sibling part was unscored, sorts
+ * between the parts, and its state is the earlier one. With no reading sorting between another's
+ * members, this is the order of first members.
  */
 export function auditReadings(auditIds: readonly string[]): AuditReading[] {
   const readings: AuditReading[] = [];
   const byId = new Map<string, AuditReading>();
-  for (const auditId of auditIds) {
+  /** Each reading's last member's position in `auditIds`. */
+  const lastAt = new Map<AuditReading, number>();
+  auditIds.forEach((auditId, index) => {
     const id = planIdOfPartId(auditId) ?? auditId;
     const existing = byId.get(id);
     if (existing !== undefined) {
       existing.auditIds.push(auditId);
-      continue;
+      lastAt.set(existing, index);
+      return;
     }
     const reading: AuditReading = { id, auditIds: [auditId] };
     byId.set(id, reading);
+    lastAt.set(reading, index);
     readings.push(reading);
-  }
-  return readings;
+  });
+  // Array.prototype.sort is stable, and no two readings share a last position.
+  return readings.sort((a, b) => (lastAt.get(a) ?? 0) - (lastAt.get(b) ?? 0));
 }
 
 /** The reading `id` names: a reading id first, else the reading holding `id` as a member. */

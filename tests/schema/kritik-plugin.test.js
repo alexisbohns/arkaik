@@ -367,6 +367,18 @@ try {
     check("a part id given as --to reads its whole plan", byPart.to === plan && byPart.from === "2026-08", JSON.stringify({ from: byPart.from, to: byPart.to }));
     const sameReading = runExpectingFailure("detect-regressions.js", ["--root", planned, "--from", `${plan}-agt-ios`, "--to", `${plan}-sec-web`], planned);
     check("two parts of one plan are the same reading, refused", sameReading !== null && sameReading.includes(`("${plan}")`), sameReading ?? "");
+
+    // A scoped re-audit named after the first part, made while the second was unscored,
+    // sorts between them; the plan's state runs through its last part, so it is the later reading.
+    part(`${plan}-agt-ios-scoped`, "AGT-01", "ios", 2);
+    const interleaved = runReportingExit("detect-regressions.js", ["--root", planned, "--json"], planned);
+    const pair = JSON.parse(interleaved.stdout || "{}");
+    check(
+      "a scoped re-audit sorting between a plan's parts is the earlier reading: the default pair compares it with the plan",
+      pair.from === `${plan}-agt-ios-scoped` && pair.to === plan && interleaved.status === 1 &&
+        (pair.regressions ?? []).some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01" && r.surface === "web"),
+      `${interleaved.stdout.slice(0, 300)}${interleaved.stderr}`,
+    );
   } finally {
     fs.rmSync(planned, { recursive: true, force: true });
   }
