@@ -462,6 +462,41 @@ const throws = (fn) => {
   rejects("a zero token budget is rejected", withPlan({ budgetTokens: 0 }), "budgetTokens");
   rejects("a dollar budget with no price is rejected", withPlan({ budgetUsd: 5 }), "pricePerMTok");
   rejects("a missing recordCommand is rejected", withPlan({ recordCommand: undefined }), "recordCommand");
+  // The ids must fit together: the plan id, each part's audit id, each cell's surface.
+  {
+    const result = parseKritikPlan(withPlan({}));
+    check("a plan whose ids fit together still parses", result.ok === true, JSON.stringify(result));
+  }
+  rejects("a planId that is not a plan id is rejected", withPlan({ planId: "2026-11" }), "planId");
+  rejects(
+    "a part whose auditId is not planPartId(planId, domain, surface) is rejected",
+    withPlan({ parts: [part("SEC", "web", ["SEC-01"], 6), { ...part("AGT", "ios", ["AGT-01"], 5), auditId: "2026-11-zplan-1100-agt-web" }] }),
+    "parts.1.auditId",
+  );
+  rejects(
+    "a part of another plan is rejected",
+    withPlan({ parts: [{ ...part("SEC", "web", ["SEC-01"], 6), auditId: "2026-11-zplan-1101-sec-web" }] }),
+    "parts.0.auditId",
+  );
+  rejects(
+    "a part whose surface planPartId refuses is a mismatch, not a throw",
+    withPlan({ parts: [part("SEC", "scoped", ["SEC-01"], 6)] }),
+    "parts.0.auditId",
+  );
+  rejects(
+    "two parts with the same auditId are rejected",
+    withPlan({ parts: [part("SEC", "web", ["SEC-01"], 6), part("SEC", "web", ["SEC-04"], 6)] }),
+    "parts.1.auditId",
+  );
+  rejects(
+    "a cell whose surface is not its part's is rejected",
+    withPlan({ parts: [{ ...part("SEC", "web", ["SEC-01", "SEC-04"], 12), cells: [{ criterion_id: "SEC-01", surface: "web" }, { criterion_id: "SEC-04", surface: "ios" }] }] }),
+    "parts.0.cells.1.surface",
+  );
+  {
+    const result = parseKritikPlan(withPlan({ parts: [part("SEC", "web", ["SEC-01"], 6), { ...part("AGT", "ios", ["AGT-01"], 5), auditId: "2026-11-zplan-1100-agt-web" }] }));
+    check("an auditId mismatch names the id it expected", result.ok === false && result.issue.includes('"2026-11-zplan-1100-agt-ios"'), JSON.stringify(result));
+  }
   {
     const result = parseKritikPlan([PLAN]);
     check("a value that is not an object reports at (root)", result.ok === false && result.issue.startsWith("(root): "), JSON.stringify(result));

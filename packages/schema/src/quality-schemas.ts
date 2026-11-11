@@ -27,7 +27,7 @@ import type {
   QualitySection,
   SurfaceDef,
 } from "./quality";
-import { KRITIK_PLAN_SCHEMA, type KritikPlan, type KritikPlanPart } from "./quality-plan";
+import { isPlanId, KRITIK_PLAN_SCHEMA, planPartId, type KritikPlan, type KritikPlanPart } from "./quality-plan";
 
 const GradeSchema = z.enum(["A", "B", "C", "D", "E"]);
 
@@ -254,6 +254,45 @@ export const KritikPlanSchema: z.ZodType<KritikPlan> = z
     if (plan.budgetUsd !== null && plan.pricePerMTok === null) {
       ctx.addIssue({ code: "custom", path: ["pricePerMTok"], message: "required when budgetUsd is set" });
     }
+    // The ids must fit together: a part scores into planPartId(planId, domain,
+    // surface), so a hand edit that breaks the link would score, read or record
+    // a directory the plan never named.
+    if (!isPlanId(plan.planId)) {
+      ctx.addIssue({ code: "custom", path: ["planId"], message: "not a plan id (YYYY-MM-zplan-DDNN)" });
+      return;
+    }
+    const seen = new Map<string, number>();
+    plan.parts.forEach((part, index) => {
+      let expected: string | null;
+      try {
+        expected = planPartId(plan.planId, part.domain, part.surface);
+      } catch {
+        expected = null;
+      }
+      if (part.auditId !== expected) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["parts", index, "auditId"],
+          message:
+            expected === null
+              ? `the surface "${part.surface}" cannot be planned, so no audit id fits this part`
+              : `not this part's audit id: expected "${expected}"`,
+        });
+      } else if (seen.has(part.auditId)) {
+        ctx.addIssue({ code: "custom", path: ["parts", index, "auditId"], message: `repeats the audit id of part ${seen.get(part.auditId)}` });
+      } else {
+        seen.set(part.auditId, index);
+      }
+      part.cells.forEach((cell, cellIndex) => {
+        if (cell.surface !== part.surface) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["parts", index, "cells", cellIndex, "surface"],
+            message: `not the part's surface "${part.surface}"`,
+          });
+        }
+      });
+    });
   });
 
 /** A plan file's content, parsed — or its first problem as `<path>: <message>` (`(root)` when the value itself is wrong). */
