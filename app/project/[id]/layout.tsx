@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { isBuiltInMapId } from "@arkaik/schema";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
@@ -88,7 +89,15 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     const stored = project?.project.metadata?.maps;
     if (!Array.isArray(stored)) return [];
     return stored
-      .filter((definition) => typeof definition?.id === "string" && typeof definition?.title === "string")
+      // A stored map with a reserved id is shadowed by the built-in (listMaps
+      // skips it too): listing it would add a second sidebar entry and a
+      // duplicate ⌘K row, both leading to the built-in.
+      .filter(
+        (definition) =>
+          typeof definition?.id === "string" &&
+          typeof definition?.title === "string" &&
+          !isBuiltInMapId(definition.id),
+      )
       .map((definition) => ({ id: definition.id, title: definition.title }));
   }, [project]);
 

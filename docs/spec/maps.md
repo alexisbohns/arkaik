@@ -38,7 +38,7 @@ interface MapDefinition extends Record<string, unknown> {
 | Rule | Detail |
 |---|---|
 | Defaults by kind | `journey`: `species: ["flow","view"]`, `edge_types: ["composes"]`. `system`: `species: ["view","api-endpoint","data-model"]`, `edge_types: ["calls","displays","queries"]`. `screens`: `species: ["flow","view"]`, `edge_types: []` |
-| Reserved ids | `journey`, `system` and `screens` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
+| Reserved ids | `journey`, `system` and `screens` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`). One that does is shadowed by the built-in: it is not listed anywhere — the sidebar, the Overview, the maps index or ⌘K — and its id opens the built-in |
 | `product` | Scopes the map to one product ([bundle-format.md](bundle-format.md) § Products); absent selects every product. It composes with `root_node_id` rather than competing with it: the product restricts which nodes exist for this map, and the anchor then scopes the walk through them — a `journey` is scoped by **both**, and an anchor outside the product is no anchor at all. Full semantics in § Product Scope below |
 | Unknown fields | Preserved and ignored, like every other format object (`Record<string, unknown>`) |
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
