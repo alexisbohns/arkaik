@@ -161,6 +161,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     [dataEdges, dataNodes, definition, events, productGraph, projectBundle?.project, scope],
   );
   const lens = resolveLens(preferences.screensLens, wall);
+  const gapsOnly = preferences.screensGapsOnly;
 
   // Measured proportions, shared by every visit in this tab. `aspectOf`
   // answers only for the slot's current shot, by its fingerprint (see aspect-cache).
@@ -382,6 +383,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               onOpenNode={handleOpenNode}
               onJump={jumpToFlow}
               onAspect={reportAspect}
+              gapsOnly={gapsOnly}
             />
             <WallViewportProbe layout={layout} onStore={handleStore} onStrip={setViewedStrip} />
           </ReactFlowProvider>

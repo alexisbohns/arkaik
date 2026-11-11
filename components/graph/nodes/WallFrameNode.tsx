@@ -3,6 +3,7 @@
 import { memo, type KeyboardEvent } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import type { PlatformId } from "@/lib/config/platforms";
+import { cn } from "@/lib/utils";
 import { cellWord, type PlatformCell } from "@/lib/utils/screen-wall";
 import { CAPTION_GAP, CAPTION_H, FRAME_H } from "@/lib/utils/screen-wall-layout";
 import { formatShotDate } from "@/lib/utils/screenshot-ops";
@@ -25,6 +26,20 @@ function cellPhrase(cell: PlatformCell | undefined): string {
 /** Ends a clause with a full stop unless it already ends in punctuation ("Has a streak?"). */
 function sentence(text: string): string {
   return /[.?!]$/.test(text) ? text : `${text}.`;
+}
+
+/**
+ * Gaps only (spec § Parts, part 3): what is not a gap fades — frames, markers
+ * and jump tiles to 15% and greyscale, a header whose strip holds no gap to
+ * 40%. Nothing becomes unclickable, and focus inside lifts the fade, so a
+ * faded node never hides its focus ring.
+ */
+export function wallDimClass(dimmed: boolean, strength: "strong" | "soft" = "strong"): string {
+  return cn(
+    "h-full w-full transition-[opacity,filter] duration-200 motion-reduce:transition-none",
+    dimmed && (strength === "strong" ? "opacity-15 grayscale" : "opacity-40"),
+    dimmed && "focus-within:opacity-100 focus-within:grayscale-0",
+  );
 }
 
 /**
@@ -64,38 +79,40 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
   };
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={label}
-      onClick={activate}
-      onKeyDown={handleKeyDown}
-      className="group/wall-frame pointer-events-auto flex h-full w-full cursor-pointer flex-col items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
-    >
-      <div className="shrink-0 rounded-md shadow-sm transition-shadow group-hover/wall-frame:shadow-md">
-        <WallShot
-          viewId={viewId}
-          platform={platform}
-          cell={cell}
-          width={shotWidth}
-          height={FRAME_H}
-          onAspect={onAspect}
-        />
-      </div>
+    <div className={wallDimClass(data.dimmed)} data-dimmed={data.dimmed ? "true" : "false"}>
       <div
-        className="flex w-full min-w-0 flex-col justify-center gap-0.5 px-1"
-        style={{ marginTop: CAPTION_GAP, height: CAPTION_H }}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        onClick={activate}
+        onKeyDown={handleKeyDown}
+        className="group/wall-frame pointer-events-auto flex h-full w-full cursor-pointer flex-col items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
       >
-        {detailed && (
-          <>
-            <span className="truncate text-xs font-medium leading-tight" title={screen.title}>
-              {screen.title}
-            </span>
-            <span className="truncate text-[11px] leading-tight text-muted-foreground">
-              {date && cell?.shot ? `${word} · ${date}` : word}
-            </span>
-          </>
-        )}
+        <div className="shrink-0 rounded-md shadow-sm transition-shadow group-hover/wall-frame:shadow-md">
+          <WallShot
+            viewId={viewId}
+            platform={platform}
+            cell={cell}
+            width={shotWidth}
+            height={FRAME_H}
+            onAspect={onAspect}
+          />
+        </div>
+        <div
+          className="flex w-full min-w-0 flex-col justify-center gap-0.5 px-1"
+          style={{ marginTop: CAPTION_GAP, height: CAPTION_H }}
+        >
+          {detailed && (
+            <>
+              <span className="truncate text-xs font-medium leading-tight" title={screen.title}>
+                {screen.title}
+              </span>
+              <span className="truncate text-[11px] leading-tight text-muted-foreground">
+                {date && cell?.shot ? `${word} · ${date}` : word}
+              </span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
