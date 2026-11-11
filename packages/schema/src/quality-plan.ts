@@ -625,3 +625,39 @@ export function coverageNotes(coverage: PlanCoverage, overall: Readonly<Record<s
   }
   return notes;
 }
+
+/** One reading for `regressions`: a plan's parts under the plan id, any other audit under its own id. */
+export interface AuditReading {
+  id: string;
+  /** The audit directories that make the reading, in the order given (oldest first from `listAuditIds`). */
+  auditIds: string[];
+}
+
+/**
+ * The audits on disk as readings (spec "`regressions` after a plan", decision 14). A plan's parts
+ * are scored in parallel and recorded once, so two of them are never two readings: each part id
+ * folds into its plan's reading, and every other id — full, scoped, hand-named, a scoped re-audit
+ * named after a part — stays its own. Ordered by each reading's first audit id. A reading's state
+ * is every audit through its last member, merged latest-wins (`loadQualitySectionThrough`).
+ */
+export function auditReadings(auditIds: readonly string[]): AuditReading[] {
+  const readings: AuditReading[] = [];
+  const byId = new Map<string, AuditReading>();
+  for (const auditId of auditIds) {
+    const id = planIdOfPartId(auditId) ?? auditId;
+    const existing = byId.get(id);
+    if (existing !== undefined) {
+      existing.auditIds.push(auditId);
+      continue;
+    }
+    const reading: AuditReading = { id, auditIds: [auditId] };
+    byId.set(id, reading);
+    readings.push(reading);
+  }
+  return readings;
+}
+
+/** The reading `id` names: a reading id first, else the reading holding `id` as a member. */
+export function readingOf(readings: readonly AuditReading[], id: string): AuditReading | undefined {
+  return readings.find((reading) => reading.id === id) ?? readings.find((reading) => reading.auditIds.includes(id));
+}

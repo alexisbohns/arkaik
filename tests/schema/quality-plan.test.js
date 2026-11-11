@@ -851,6 +851,38 @@ const throws = (fn) => {
   check("and reads back as a plan record", readPlanScope(stamped.scope)?.plan === "2026-11-zplan-1100" && readPlanScope(stamped.scope)?.coverage?.applicable === 338);
 }
 
+// --- part 4: a plan's parts are one reading ----------------------------------
+{
+  const { auditReadings, readingOf } = require("./load-schema").loadSchema();
+  const ids = [
+    "2026-08",
+    "2026-09-scoped",
+    "2026-11-sec-web",
+    "2026-11-zplan-1100-agt-ios",
+    "2026-11-zplan-1100-sec-web",
+    "2026-11-zplan-1100-sec-web-scoped",
+    "2026-11-zplan-1101-prv-web",
+  ];
+  const readings = auditReadings(ids);
+  check(
+    "auditReadings: a plan's parts are one reading under the plan id; every other id is its own",
+    JSON.stringify(readings) ===
+      JSON.stringify([
+        { id: "2026-08", auditIds: ["2026-08"] },
+        { id: "2026-09-scoped", auditIds: ["2026-09-scoped"] },
+        { id: "2026-11-sec-web", auditIds: ["2026-11-sec-web"] },
+        { id: "2026-11-zplan-1100", auditIds: ["2026-11-zplan-1100-agt-ios", "2026-11-zplan-1100-sec-web"] },
+        { id: "2026-11-zplan-1100-sec-web-scoped", auditIds: ["2026-11-zplan-1100-sec-web-scoped"] },
+        { id: "2026-11-zplan-1101", auditIds: ["2026-11-zplan-1101-prv-web"] },
+      ]),
+    JSON.stringify(readings),
+  );
+  check("readingOf finds a reading by its id", readingOf(readings, "2026-11-zplan-1100")?.auditIds.length === 2);
+  check("readingOf finds a plan's reading by any of its part ids", readingOf(readings, "2026-11-zplan-1100-agt-ios")?.id === "2026-11-zplan-1100");
+  check("readingOf answers undefined for an id no reading holds", readingOf(readings, "2026-07") === undefined);
+  check("auditReadings of nothing is nothing", auditReadings([]).length === 0);
+}
+
 // --- summary ------------------------------------------------------------------------
 
 console.log(failures === 0 ? "\nAll quality-plan checks passed." : `\n${failures} check(s) failed.`);
