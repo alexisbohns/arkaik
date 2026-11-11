@@ -15,6 +15,7 @@ import {
   SIDE_WORD_GAP,
   SIDE_WORD_W,
 } from "@/lib/utils/screen-wall-layout";
+import { TOUCH_TRUNK_X } from "@/lib/utils/screen-inspector";
 import { formatShotDate } from "@/lib/utils/screenshot-ops";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 import type { WallFrameData } from "./wall-node-data";
@@ -292,7 +293,15 @@ function WallFrameNodeComponent({ data }: NodeProps<Node<WallFrameData, "wallFra
           )}
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} id="touch" isConnectable={false} className="opacity-0" />
+      {/* The touch edges' trunk: on the bottom edge, TOUCH_TRUNK_X in from the left corner. */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="touch"
+        isConnectable={false}
+        className="opacity-0"
+        style={{ left: TOUCH_TRUNK_X }}
+      />
     </div>
   );
 }

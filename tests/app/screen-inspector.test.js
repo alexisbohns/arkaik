@@ -30,6 +30,8 @@ const {
   selectionRect,
   coldLoadTarget,
   frameDimmed,
+  TOUCH_TRUNK_X,
+  TOUCH_STUB,
   INSPECTOR_W,
   INSPECTOR_GAP,
   cellWord,
@@ -241,11 +243,23 @@ test("chip and edge ids follow the contract", () => {
   assert.equal(chipIdOf("V-a@F-checkin:0", MORE_CHIP_KEY), "chip:V-a@F-checkin:0:more");
 });
 
-test("a few touches: one chip each, in the model's order, on the layout's chip rects", () => {
+// The touch edges are a tidy tree: one trunk straight down from the frame's
+// bottom edge, TOUCH_TRUNK_X in from its left corner, and a TOUCH_STUB-long
+// stub right into each chip. So the layout's chip column moves right by both.
+const onTree = (rects) => rects.map((rect) => ({ ...rect, x: rect.x + TOUCH_TRUNK_X + TOUCH_STUB }));
+
+test("the trunk sits 16px in from the frame's left corner, 12px clear of the chip column", () => {
+  assert.equal(TOUCH_TRUNK_X, 16);
+  assert.equal(TOUCH_STUB, 12);
+  const plan = planChips(FRAME, touches(14));
+  assert.ok(plan.chips.every((chip) => chip.rect.x - (FRAME.x + TOUCH_TRUNK_X) === TOUCH_STUB));
+});
+
+test("a few touches: one chip each, in the model's order, on the layout's chip rects moved right of the trunk", () => {
   const plan = planChips(FRAME, touches(3));
   assert.deepEqual(plan.chips.map((chip) => chip.kind), ["touch", "touch", "touch"]);
   assert.deepEqual(plan.chips.map((chip) => chip.touch.nodeId), ["DM-1", "API-2", "DM-3"]);
-  assert.deepEqual(plan.chips.map((chip) => chip.rect), chipRects(FRAME, 3));
+  assert.deepEqual(plan.chips.map((chip) => chip.rect), onTree(chipRects(FRAME, 3)));
   assert.deepEqual(plan.chips.map((chip) => chip.id), ["DM-1", "API-2", "DM-3"].map((id) => chipIdOf(FRAME.id, id)));
 });
 
@@ -270,7 +284,7 @@ test("past CHIP_MAX: the first CHIP_MAX, then one +N more chip with its own edge
   assert.equal(more.kind, "more");
   assert.equal(more.count, 14 - CHIP_MAX);
   assert.equal(more.id, chipIdOf(FRAME.id, MORE_CHIP_KEY));
-  assert.deepEqual(more.rect, chipRects(FRAME, CHIP_MAX + 1)[CHIP_MAX]);
+  assert.deepEqual(more.rect, onTree(chipRects(FRAME, CHIP_MAX + 1))[CHIP_MAX]);
   assert.deepEqual(plan.edges[CHIP_MAX], { id: touchEdgeIdOf(FRAME.id, MORE_CHIP_KEY), source: FRAME.id, target: more.id });
 });
 

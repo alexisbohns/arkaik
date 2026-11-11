@@ -199,7 +199,7 @@ export type WallChipData =                 // (4) rendered aria-hidden, tabIndex
   | { kind: "more"; frameId: string; viewId: string; count: number; onOpen: (nodeId: string) => void };
 ```
 
-Node `type` strings: `wallFrame`, `wallHeader`, `wallMarker` (arm, end and empty), `wallJump`, `wallChip`. Chip ids `chip:<frameId>:<nodeId>` and `chip:<frameId>:more`, `zIndex: 1000`. Touch edges (part 4): id `touch:<frameId>:<nodeId>`, React Flow's built-in `default` type, from a hidden `source` handle at the frame's bottom to a hidden `target` handle at the chip's left.
+Node `type` strings: `wallFrame`, `wallHeader`, `wallMarker` (arm, end and empty), `wallJump`, `wallChip`. Chip ids `chip:<frameId>:<nodeId>` and `chip:<frameId>:more`, `zIndex: 1000`. Touch edges (part 4): id `touch:<frameId>:<nodeId>`, React Flow's built-in `smoothstep` type with `pathOptions: { offset: 0, borderRadius: 6 }`, from a hidden `source` handle on the frame's bottom edge `TOUCH_TRUNK_X` (16px) in from its left corner to a hidden `target` handle at the chip's left; `planChips` moves `chipRects`' column right by `TOUCH_TRUNK_X + TOUCH_STUB` (16 + 12), so the edges share one vertical trunk and each chip gets a 12px stub.
 
 ### Part 2 — controller, canvas, camera, bar
 

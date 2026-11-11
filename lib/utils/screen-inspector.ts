@@ -221,14 +221,28 @@ function unionRects(rects: readonly Rect[]): Rect {
 }
 
 /**
+ * The touch edges' trunk: one source point on the frame's bottom edge, this
+ * far in from its left corner. Every edge runs straight down from it and turns
+ * right into its chip, so the edges read as one tidy tree.
+ */
+export const TOUCH_TRUNK_X = 16;
+/** How far the chip column's left edge sits right of the trunk: each chip's horizontal stub. */
+export const TOUCH_STUB = 12;
+
+/**
  * The touch chips under a selected frame: the first `CHIP_MAX` touches in the
  * model's order (endpoints, then models, each by title), then one "+N more"
- * chip when there are more. Rects come from `chipRects`; one edge per chip.
+ * chip when there are more. Rects come from `chipRects`, moved right so the
+ * column starts `TOUCH_STUB` clear of the trunk at `TOUCH_TRUNK_X`; one edge
+ * per chip.
  */
 export function planChips(frame: WallBox, touches: readonly WallTouch[]): ChipPlan {
   const overflow = touches.length > CHIP_MAX;
   const shown = overflow ? touches.slice(0, CHIP_MAX) : touches;
-  const rects = chipRects(frame, shown.length + (overflow ? 1 : 0));
+  const rects = chipRects(frame, shown.length + (overflow ? 1 : 0)).map((rect) => ({
+    ...rect,
+    x: rect.x + TOUCH_TRUNK_X + TOUCH_STUB,
+  }));
   const chips: PlannedChip[] = shown.map((touch, index) => ({
     id: chipIdOf(frame.id, touch.nodeId),
     kind: "touch",

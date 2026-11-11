@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useReactFlow, useStoreApi, type Edge, type Node } from "@xyflow/react";
+import { useReactFlow, useStoreApi, type BuiltInEdge, type Edge, type Node } from "@xyflow/react";
 import { Canvas, type CanvasFocus } from "@/components/graph/Canvas";
 import { WALL_BAR_INSET, WallCamera, type WallCameraRequest } from "@/components/graph/WallCamera";
 import type {
@@ -364,13 +364,18 @@ export function ScreensCanvas({
         };
       }),
       edges: plan.edges.map(
-        (edge): Edge => ({
+        (edge): BuiltInEdge => ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
           sourceHandle: "touch",
           targetHandle: "touch",
-          type: "default",
+          // A tidy tree: the frame's handle sits TOUCH_TRUNK_X in from its left
+          // corner and every chip TOUCH_STUB to the right of it, so React
+          // Flow's step edge with no offset runs straight down the shared trunk
+          // and turns right into the chip on one rounded corner.
+          type: "smoothstep",
+          pathOptions: { offset: 0, borderRadius: 6 },
           zIndex: 1000,
           focusable: false,
           selectable: false,

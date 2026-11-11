@@ -773,9 +773,13 @@ node carries `width` and `height` from the layout (so the Minimap and
 focus lives on the element inside. `ScreensCanvas` passes no `onConnect` or
 `onEdgeClick`, `spotlight` off, `minimapColor: "status"`, and `data.status` on
 each frame = the lens status (side by side: the highest-ranked status across
-rows, `getRollupDisplayStatus` order). Touch edges (part 4) use React Flow's
-built-in `default` edge between a hidden bottom handle on the frame and a
-hidden left handle on each chip.
+rows, `getRollupDisplayStatus` order). Touch edges (part 4) are a tidy tree:
+React Flow's built-in `smoothstep` edge (`pathOptions: { offset: 0,
+borderRadius: 6 }`, one muted stroke, `--muted-foreground`) from a hidden
+handle on the frame's bottom edge, 16px in from its left corner
+(`TOUCH_TRUNK_X`), to a hidden left handle on each chip. The chip column sits
+12px (`TOUCH_STUB`) right of that trunk, so every edge runs straight down the
+shared trunk and turns right into its chip on one small rounded corner.
 
 ### Interaction
 
