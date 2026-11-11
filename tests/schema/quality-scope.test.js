@@ -48,7 +48,7 @@ const find = (id, criterion, surface, over = {}) => ({
 
 let seq = 0;
 const ev = (type, ts, payload = {}) => ({ id: `01EV${String(++seq).padStart(4, "0")}`, ts, type, actor: "test", ...payload });
-const audit = (auditId, ts) => ev("quality.audit.completed", ts, { audit_id: auditId, framework_version: "1.0.0" });
+const audit = (auditId, ts, payload = {}) => ev("quality.audit.completed", ts, { audit_id: auditId, framework_version: "1.0.0", ...payload });
 const resolved = (findingId, ts, payload = {}) => ev("quality.finding.resolved", ts, { finding_id: findingId, ...payload });
 
 const SECTION = {
@@ -349,6 +349,51 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
   check(
     "a summary with no widening says nothing about it",
     scopeSummary(deriveAuditScope(events.slice(0, 2), SECTION, LIBRARY, { widen: false })) === "1 cell to re-score from 1 resolved finding since 2026-08",
+  );
+}
+
+// --- no plan record: exactly as before ------------------------------------------
+//
+// The two literals were printed by deriveAuditScope on main, before the planner
+// existed, over this same journal: a July audit, a scoped re-audit's
+// record, a re-resolved finding, an unknown id, a retired criterion, an
+// accepted risk, a cross-surface finding and event-carried node ids. Every
+// change the planner makes to the scope must leave them byte-identical.
+
+const NO_PLAN_JOURNAL = [
+  audit("2026-07", "2026-07-31T00:00:00.000Z"),
+  resolved("F-7", "2026-08-05T00:00:00.000Z"),
+  audit("2026-08", "2026-08-31T00:00:00.000Z"),
+  audit("2026-09-scoped", "2026-09-01T00:00:00.000Z", { scope: { partial: true, cells: 1, since: "2026-08" } }),
+  resolved("F-1", "2026-09-02T00:00:00.000Z", { resolved_by: "https://pr/1" }),
+  resolved("F-3", "2026-09-03T00:00:00.000Z", { node_ids: ["V-login"] }),
+  resolved("F-4", "2026-09-04T00:00:00.000Z"),
+  resolved("F-5", "2026-09-05T00:00:00.000Z"),
+  resolved("F-404", "2026-09-06T00:00:00.000Z"),
+  resolved("F-6", "2026-09-07T00:00:00.000Z", { resolved_by: "https://pr/6" }),
+  resolved("F-1", "2026-09-08T00:00:00.000Z"),
+];
+const NO_PLAN_SHUFFLED = [...NO_PLAN_JOURNAL].reverse();
+const GOLDEN_DEFAULT =
+  "{\"since\":\"2026-09-scoped\",\"since_ts\":\"2026-09-01T00:00:00.000Z\",\"cells\":[{\"criterion_id\":\"SEC-01\",\"surface\":\"web\",\"kind\":\"direct\",\"because\":[\"F-1\",\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-03\",\"surface\":\"web\",\"kind\":\"widened\",\"because\":[\"V-home\",\"V-login\"],\"current\":{\"level\":1,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-3\"],\"current\":{\"level\":3,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-02\",\"surface\":\"supabase\",\"kind\":\"widened\",\"because\":[\"V-login\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-6\"]}],\"findings\":[\"F-1\",\"F-3\",\"F-6\"],\"resolved_by\":{\"F-1\":\"https://pr/1\",\"F-6\":\"https://pr/6\"},\"unknown\":[\"F-404\"],\"unscorable\":[\"F-4\"],\"widened\":2}";
+const GOLDEN_SINCE_JULY =
+  "{\"since\":\"2026-07\",\"since_ts\":\"2026-07-31T00:00:00.000Z\",\"cells\":[{\"criterion_id\":\"SEC-01\",\"surface\":\"web\",\"kind\":\"direct\",\"because\":[\"F-1\",\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-03\",\"surface\":\"web\",\"kind\":\"widened\",\"because\":[\"V-home\",\"V-login\"],\"current\":{\"level\":1,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-3\"],\"current\":{\"level\":3,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-02\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-7\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-6\"]}],\"findings\":[\"F-7\",\"F-1\",\"F-3\",\"F-6\"],\"resolved_by\":{\"F-1\":\"https://pr/1\",\"F-6\":\"https://pr/6\"},\"unknown\":[\"F-404\"],\"unscorable\":[\"F-4\"],\"widened\":1}";
+
+{
+  check(
+    "no plan record: the default scope is byte-identical to main's",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)) === GOLDEN_DEFAULT,
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)),
+  );
+  check(
+    "no plan record: an explicit since is byte-identical to main's",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY, { since: "2026-07" })) === GOLDEN_SINCE_JULY,
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY, { since: "2026-07" })),
+  );
+  check(
+    "no plan record: recordedAuditIds is unchanged",
+    recordedAuditIds(NO_PLAN_SHUFFLED).join() === "2026-07,2026-08,2026-09-scoped",
+    recordedAuditIds(NO_PLAN_SHUFFLED).join(),
   );
 }
 
