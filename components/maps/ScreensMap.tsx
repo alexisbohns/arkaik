@@ -571,7 +571,11 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
               )}
             </div>
           )}
-          {selection && (
+          {/* The inspector stands aside while any panel is open: the panel already
+              says everything it would, and the narrowed canvas would turn it
+              into a bottom sheet over the frame and its chips. The ring and the
+              chips stay; closing the panel brings it back. */}
+          {selection && entries.length === 0 && (
             <div ref={inspectorRef} className="contents">
               <ScreenInspector
                 wall={wall}

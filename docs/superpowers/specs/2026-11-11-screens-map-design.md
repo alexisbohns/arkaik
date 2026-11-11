@@ -812,6 +812,11 @@ shared trunk and turns right into its chip on one small rounded corner.
   canvas, and `WallCamera` waits for the size to settle (120ms, as
   `CameraFocus`). A cold load with `?node=` naming a view or flow on the wall
   frames it (part 4; a view is also selected).
+- The inspector (part 4) is not rendered while any panel is open: the panel
+  already says everything it would, and the narrowed canvas would otherwise
+  turn it into a bottom sheet over the frame and its chips (what a cold load
+  with `?node=` showed). The selection ring and the chips stay; closing the
+  last panel brings the inspector back for the selected frame.
 - The inspector (part 4) is a `<section aria-label="<view> on the wall">`
   absolutely positioned in the canvas cell, top-right, 320px wide, outside
   React Flow (so the wheel scrolls it, not the canvas). Contents: title, the

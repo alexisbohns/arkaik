@@ -273,6 +273,8 @@ Storage key unchanged: `localStorage["arkaik:display-prefs:<projectId>"]`, one J
 
 Registry row in group `map` of `lib/utils/keyboard-shortcuts.ts`: `{ id: "wall-move", description: "Move between screens (Screens map)", keys: ["←", "↑", "→", "↓"], scope: "map" }`, no `hotkeys` (documentation only; handled by the frame's `onKeyDown`, never passed to `useShortcut`). Escape: `useShortcut("close", handler, { ...GUARDED_HOTKEY, enabled: selection !== null && entries.length === 0 })`, `entries` from `useProjectPanels()`; while a panel is open, Escape stays `PanelStack`'s (`PanelStack.tsx:169-183`).
 
+The inspector renders only while `selection !== null && entries.length === 0`: with any panel open it is not rendered at all (the panel says the same, and the narrowed canvas would make it a bottom sheet over the frame); the ring and chips stay, and closing the panel brings it back.
+
 ```ts
 // components/maps/screens/ScreenInspector.tsx — <section aria-label={`${title} on the wall`}>, outside React Flow
 export interface ScreenInspectorProps {
