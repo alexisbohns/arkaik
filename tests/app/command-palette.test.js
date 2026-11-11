@@ -326,9 +326,17 @@ assert(
     idleWithRows.every((match, index) => match.command.id === commands[index].id),
   "an empty query drops every search-only row and keeps the catalogue's order",
 );
+const blankWithRows = rankCommands(withHandRows, "   ");
 assert(
-  rankCommands(withHandRows, "   ").every((match) => !match.command.searchOnly),
-  "a blank query is an empty one",
+  blankWithRows.length === idleWithRows.length &&
+    blankWithRows.every(
+      (match, index) =>
+        match.command === idleWithRows[index].command &&
+        match.score === 0 &&
+        match.highlight.length === 0 &&
+        match.completion === null,
+    ),
+  `a blank query is an empty one: the idle list, row for row (got ${blankWithRows.length} rows, idle has ${idleWithRows.length})`,
 );
 
 // NODE_PENALTY: a page beats a node title of the same shape…
@@ -356,9 +364,24 @@ assert(
 );
 
 // limitSearchOnly: at most six search-only rows per group, every other row kept.
+// The nine views are declared worst first: each label is shorter than the one
+// before it, so each scores higher on "screen" (a shorter prefix remainder, and
+// the last one exact). Capping before ranking would keep the first six declared
+// — the six worst — and fail "the six kept are the group's six best" below.
+const CROWD_VIEW_LABELS = [
+  "Screen with the longest name",
+  "Screen with a long name",
+  "Screen with a name",
+  "Screen settings",
+  "Screen picker",
+  "Screen lock",
+  "Screen map",
+  "Screen 2",
+  "Screen",
+];
 const crowd = [
   ...commands,
-  ...Array.from({ length: 9 }, (_, index) => searchRow(`V-screen-${index}`, `Screen ${index}`)),
+  ...CROWD_VIEW_LABELS.map((label, index) => searchRow(`V-screen-${index}`, label)),
   searchRow("F-screen-a", "Screen flow a", "flows"),
   searchRow("F-screen-b", "Screen flow b", "flows"),
 ];
@@ -377,10 +400,15 @@ assert(
     crowdLimited.every((match, index) => crowdRanked.filter((kept) => crowdLimited.includes(kept))[index] === match),
   "the cap drops only the surplus and keeps the ranked order",
 );
+const crowdViewScores = crowdRanked.filter((match) => match.command.group === "views").map((match) => match.score);
 assert(
-  crowdLimited.filter((match) => match.command.group === "views").map((match) => match.command.label).join(",") ===
-    "Screen 0,Screen 1,Screen 2,Screen 3,Screen 4,Screen 5",
-  "the six kept are the group's six best",
+  new Set(crowdViewScores).size === crowdViewScores.length,
+  `the nine view labels score nine different values on "screen" (got ${crowdViewScores.join(",")})`,
+);
+const keptViews = crowdLimited.filter((match) => match.command.group === "views").map((match) => match.command.label);
+assert(
+  keptViews.join(",") === "Screen,Screen 2,Screen map,Screen lock,Screen picker,Screen settings",
+  `the six kept are the group's six best, not its six first declared (got ${keptViews.join(",")})`,
 );
 const capTwo = limitSearchOnly(crowdRanked, 2);
 assert(
@@ -542,38 +570,33 @@ function shown(query) {
     .map((match) => `${match.command.label} (${match.command.group}, ${match.score})`)
     .join(" · ");
 }
+// Three seed rows only. The hand-made rows above pin the rules (the penalty's
+// tiers, the per-group cap, an id as a keyword); these three pin what only a
+// real catalogue shows, and nothing a hand-made row already proves:
+// - "set": the cap applied after ranking on real data. Nine views match; the
+//   six shown include Settings and Mechanic Sheet, which are declared after
+//   two of the dropped views (Add Soul, Edit Soul), so a cap applied before
+//   ranking would show those two instead. Pages of four groups interleave.
+// - "record": a flow and a view with the same title tie, and the flow comes
+//   first on authored order (flows are declared before views).
+// - "docs": a page's exact keyword outranks node titles, and an id's words
+//   find views whose titles do not contain the query (Legal Notice, ...).
 const PEBBLES_RANKING = [
-  ["settings", "Settings (project, 10000) · Settings (views, 9500)"],
-  ["home", "Home (views, 9500) · Overview (project, 9000) · All projects (actions, 9000) · Onboarding — Drop a pebble, keep the moment (views, 1494)"],
-  ["onboarding", "Onboarding (flows, 9500) · Onboarding audit (maps, 7994) · Onboarding — Get your pebble (views, 7482) · Onboarding — Qualify and relate (views, 7479) · Onboarding — Your life is a path (views, 7478) · Onboarding — Drop a pebble, keep the moment (views, 7467)"],
-  ["onboard", "Onboarding audit (maps, 7991) · Onboarding (flows, 7497) · Onboarding — Get your pebble (views, 7479) · Onboarding — Qualify and relate (views, 7476) · Onboarding — Your life is a path (views, 7475) · Onboarding — Drop a pebble, keep the moment (views, 7464)"],
-  ["path", "Path (views, 9500) · Onboarding — Your life is a path (views, 5472) · Onboarding — Drop a pebble, keep the moment (views, 1482) · Attach Glyph (views, 492)"],
-  ["V-timeline", "Path (views, 8500)"],
-  ["F-onboarding", "Onboarding (flows, 8500)"],
+  ["set", "Settings (project, 7995) · Settings (views, 7495) · Set Intensity & Valence (views, 7480) · Legal Consent (flows, 1497) · Mechanic Sheet (views, 1496) · Soul Detail (views, 1493) · Shape Emotion Pearl (views, 1491) · Souls Directory (views, 1489) · Keyboard shortcuts (actions, 996) · Findings (project, 994) · Screens (maps, 991) · All projects (actions, 987)"],
   ["record", "Record Pebble (flows, 7493) · Record Pebble (views, 7493) · Record Celebration (views, 7488)"],
   ["docs", "Documentation (actions, 9000) · Docs Page (views, 7495) · Docs Index (views, 7494) · Legal Notice (views, 4498) · Privacy Policy (views, 4498) · Terms of Service (views, 4498) · Keyboard shortcuts (actions, 1990)"],
-  ["set", "Settings (project, 7995) · Settings (views, 7495) · Set Intensity & Valence (views, 7480) · Legal Consent (flows, 1497) · Mechanic Sheet (views, 1496) · Soul Detail (views, 1493) · Shape Emotion Pearl (views, 1491) · Souls Directory (views, 1489) · Keyboard shortcuts (actions, 996) · Findings (project, 994) · Screens (maps, 991) · All projects (actions, 987)"],
-  ["glyph", "Glyphs (views, 7499) · Glyph Detail (views, 7493) · Glyph Swap Drawer (views, 7488) · Swap Glyph (flows, 5495) · Carve Glyph (views, 5494) · Attach Glyph (views, 5493) · Manage Glyphs (flows, 5493) · Admin · Glyph moderation (views, 5492)"],
-  // The queries the catalogue assertions above pin: node rows join some of
-  // them, and change the first row of none.
-  ["acc", "Acceptances (library, 7992) · Agent tokens (actions, 6996) · Privacy Policy (views, 1492) · Create Collection (views, 1491) · Manage Collections (flows, 1489) · System (maps, 993) · Onboarding — Drop a pebble, keep the moment (views, 490)"],
-  ["jour", "Journey (maps, 7997) · Changelog (project, 6997) · Flows (library, 6996)"],
-  ["deliv", "Delivery (project, 7997)"],
-  ["Journey", "Journey (maps, 10000) · Flows (library, 6999)"],
-  ["views", "Views (library, 10000) · All maps (maps, 6987)"],
-  ["screens", "Screens (maps, 10000) · Views (library, 9000)"],
-  ["pages", "Views (library, 9000)"],
-  ["page", "Views (library, 6999) · Docs Page (views, 5495)"],
-  ["kanban", "Delivery (project, 9000)"],
-  ["dark mode", "Toggle theme (actions, 9000)"],
-  ["chang", "Changelog (project, 7996)"],
-  ["cept", "Acceptances (library, 3998) · Onboarding — Drop a pebble, keep the moment (views, 2484)"],
-  ["dmo", "Data Models (library, 1994) · Documentation (actions, 1989) · Admin · Domains (views, 1492) · Admin · Upload glyph (views, 1490) · Admin · Glyph moderation (views, 1486) · Onboarding — Drop a pebble, keep the moment (views, 1468) · System (maps, 994) · Toggle theme (actions, 994)"],
-  ["zzzqq", ""],
 ];
 for (const [query, expected] of PEBBLES_RANKING) {
   const actual = shown(query);
   assert(actual === expected, `Pebbles "${query}" ranks as pinned${actual === expected ? "" : `\n    expected: ${expected}\n    got:      ${actual}`}`);
+}
+
+// The catalogue's own probes (above): node rows may join their lists, but never
+// change which row Enter runs.
+for (const query of ["acc", "jour", "deliv", "Journey", "views", "screens", "pages", "page", "kanban", "dark mode", "chang", "cept", "dmo"]) {
+  const withNodes = pebbleRanked(query)[0]?.command.id;
+  const without = rankCommands(commands, query)[0]?.command.id;
+  assert(withNodes === without, `with node rows present, "${query}" still runs ${without} first (got ${withNodes})`);
 }
 
 // Highlight and completion on node rows follow the same rules as pages.
