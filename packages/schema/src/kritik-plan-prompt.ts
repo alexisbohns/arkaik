@@ -27,6 +27,13 @@ const SKILL_STEP =
 
 const USAGE_READOUT = "this session's usage readout: model, tokens in and out, duration, number of agents.";
 
+/** `signals` exits 1 when anything tripped since the last recorded audit (its CI use); an agent must not read that as a failure. */
+const SIGNALS_EXIT =
+  "It exits 1 when a signal has tripped since the last recorded audit: that is information for this audit, not an error.";
+
+/** The flags `arkaik kritik finding open` requires, in its usage order, so the command runs as written. */
+const FINDING_FLAGS = '--title "<one line>" --impact <1-5> --likelihood <1-5> --cost <S|M|L|XL> --evidence "<file:line …>"';
+
 /** The one command that records a plan, printed by `plan` and run once at the end. */
 export function planRecordCommand(planId: string): string {
   return `arkaik kritik matrix ${planId} --record --plan`;
@@ -64,13 +71,13 @@ function scopeSentence(cells: number, steps: number): string {
 function partSteps(part: PromptPart, first: number): string[] {
   const audit = `--audit ${part.auditId}`;
   return [
-    `${first}. Get the run sheet: \`arkaik kritik signals --domain ${part.domain} --surface ${part.surface}\``,
+    `${first}. Get the run sheet: \`arkaik kritik signals --domain ${part.domain} --surface ${part.surface}\`. ${SIGNALS_EXIT}`,
     `${first + 1}. Score exactly these cells and no others:`,
     ...part.cells.map(
       (cell) =>
         `   - ${cell.criterion_id} on ${cell.surface}: \`arkaik kritik score ${cell.criterion_id} ${cell.surface} <level> --evidence "<file:line …>" ${audit}\``,
     ),
-    `${first + 2}. Open every finding on this part's audit: \`arkaik kritik finding open <criterion> ${part.surface} … ${audit}\`. ` +
+    `${first + 2}. Open every finding on this part's audit: \`arkaik kritik finding open <criterion> ${part.surface} ${FINDING_FLAGS} ${audit}\`. ` +
       `Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.`,
   ];
 }

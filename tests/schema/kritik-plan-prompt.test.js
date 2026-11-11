@@ -61,7 +61,7 @@ const SEC_WEB_PROMPT = [
   "Audit id for this part: 2026-11-zplan-1100-sec-web",
   "",
   '1. Follow the Kritik skill (SKILL.md), section "A planned partial audit". Run it in the repository checkout: a hosted session cannot score a plan part.',
-  "2. Get the run sheet: `arkaik kritik signals --domain SEC --surface web`",
+  "2. Get the run sheet: `arkaik kritik signals --domain SEC --surface web`. It exits 1 when a signal has tripped since the last recorded audit: that is information for this audit, not an error.",
   "3. Score exactly these cells and no others:",
   '   - SEC-01 on web: `arkaik kritik score SEC-01 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-04 on web: `arkaik kritik score SEC-04 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
@@ -69,7 +69,7 @@ const SEC_WEB_PROMPT = [
   '   - SEC-06 on web: `arkaik kritik score SEC-06 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-07 on web: `arkaik kritik score SEC-07 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-08 on web: `arkaik kritik score SEC-08 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
-  "4. Open every finding on this part's audit: `arkaik kritik finding open <criterion> web … --audit 2026-11-zplan-1100-sec-web`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
+  "4. Open every finding on this part's audit: `arkaik kritik finding open <criterion> web --title \"<one line>\" --impact <1-5> --likelihood <1-5> --cost <S|M|L|XL> --evidence \"<file:line …>\" --audit 2026-11-zplan-1100-sec-web`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
   "5. Do not record this part. The plan is recorded once, after every part is scored, with the plan's own command.",
   "6. Finish by printing this session's usage readout: model, tokens in and out, duration, number of agents.",
 ].join("\n");
@@ -81,7 +81,7 @@ const PLAN_PROMPT = [
   '1. Follow the Kritik skill (SKILL.md), section "A planned partial audit". Run it in the repository checkout: a hosted session cannot score a plan part. Do not record a part on its own.',
   "",
   "Part SEC:web, audit id 2026-11-zplan-1100-sec-web (6 cells, 36 checklist steps):",
-  "2. Get the run sheet: `arkaik kritik signals --domain SEC --surface web`",
+  "2. Get the run sheet: `arkaik kritik signals --domain SEC --surface web`. It exits 1 when a signal has tripped since the last recorded audit: that is information for this audit, not an error.",
   "3. Score exactly these cells and no others:",
   '   - SEC-01 on web: `arkaik kritik score SEC-01 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-04 on web: `arkaik kritik score SEC-04 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
@@ -89,10 +89,10 @@ const PLAN_PROMPT = [
   '   - SEC-06 on web: `arkaik kritik score SEC-06 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-07 on web: `arkaik kritik score SEC-07 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
   '   - SEC-08 on web: `arkaik kritik score SEC-08 web <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-sec-web`',
-  "4. Open every finding on this part's audit: `arkaik kritik finding open <criterion> web … --audit 2026-11-zplan-1100-sec-web`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
+  "4. Open every finding on this part's audit: `arkaik kritik finding open <criterion> web --title \"<one line>\" --impact <1-5> --likelihood <1-5> --cost <S|M|L|XL> --evidence \"<file:line …>\" --audit 2026-11-zplan-1100-sec-web`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
   "",
   "Part AGT:ios, audit id 2026-11-zplan-1100-agt-ios (8 cells, 42 checklist steps):",
-  "5. Get the run sheet: `arkaik kritik signals --domain AGT --surface ios`",
+  "5. Get the run sheet: `arkaik kritik signals --domain AGT --surface ios`. It exits 1 when a signal has tripped since the last recorded audit: that is information for this audit, not an error.",
   "6. Score exactly these cells and no others:",
   '   - AGT-01 on ios: `arkaik kritik score AGT-01 ios <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-agt-ios`',
   '   - AGT-02 on ios: `arkaik kritik score AGT-02 ios <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-agt-ios`',
@@ -102,7 +102,7 @@ const PLAN_PROMPT = [
   '   - AGT-06 on ios: `arkaik kritik score AGT-06 ios <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-agt-ios`',
   '   - AGT-07 on ios: `arkaik kritik score AGT-07 ios <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-agt-ios`',
   '   - AGT-08 on ios: `arkaik kritik score AGT-08 ios <level> --evidence "<file:line …>" --audit 2026-11-zplan-1100-agt-ios`',
-  "7. Open every finding on this part's audit: `arkaik kritik finding open <criterion> ios … --audit 2026-11-zplan-1100-agt-ios`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
+  "7. Open every finding on this part's audit: `arkaik kritik finding open <criterion> ios --title \"<one line>\" --impact <1-5> --likelihood <1-5> --cost <S|M|L|XL> --evidence \"<file:line …>\" --audit 2026-11-zplan-1100-agt-ios`. Give file-and-line evidence, and verify every Critical and High finding adversarially before you open it.",
   "",
   "8. Check that every part is scored: `arkaik kritik plan --status 2026-11-zplan-1100`",
   "9. Print this session's usage readout: model, tokens in and out, duration, number of agents.",
@@ -148,7 +148,23 @@ for (const part of [SEC_WEB, AGT_IOS]) {
     JSON.stringify(scoreLines.map((line) => line.trim().split(" ")[1])) === JSON.stringify(part.cells.map((cell) => cell.criterion_id)),
   );
   check(`${part.domain}:${part.surface}: a part prompt never records`, !prompt.includes("--record"));
-  check(`${part.domain}:${part.surface}: findings open on the part's audit`, prompt.includes(`finding open <criterion> ${part.surface} … --audit ${part.auditId}`));
+  const findingLine = prompt.split("\n").find((line) => line.includes("kritik finding open")) ?? "";
+  check(
+    `${part.domain}:${part.surface}: findings open on the part's audit`,
+    findingLine.includes(`finding open <criterion> ${part.surface} `) && findingLine.includes(`--audit ${part.auditId}\``),
+    findingLine,
+  );
+  check(
+    `${part.domain}:${part.surface}: the finding command carries every flag \`finding open\` requires`,
+    ["--title", "--impact", "--likelihood", "--cost", "--evidence"].every((flag) => findingLine.includes(` ${flag} `)) && !findingLine.includes(" … --audit"),
+    findingLine,
+  );
+  const signalsLine = prompt.split("\n").find((line) => line.includes("kritik signals")) ?? "";
+  check(
+    `${part.domain}:${part.surface}: the signals step says its exit 1 on a trip is information, not an error`,
+    signalsLine.includes("exits 1 when a signal has tripped since the last recorded audit") && signalsLine.includes("not an error"),
+    signalsLine,
+  );
 }
 
 const planLines = planPrompt.split("\n");

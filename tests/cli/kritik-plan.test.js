@@ -311,6 +311,19 @@ try {
   const [, criterion, surface, audit] = line.match(/arkaik kritik score (\S+) (\S+) <level> --evidence "<file:line …>" --audit (\S+)`/) ?? [];
   ok(["score", criterion, surface, "2", "--evidence", "app/auth.ts:12", "--audit", audit], "the prompt's first score line");
   ok(["score", "PRV-01", "web", "3", "--evidence", "app/privacy.ts:4", "--audit", partId], "a stray score");
+  // And its finding line, placeholders filled: every flag it needs is spelled out.
+  {
+    const findingCommand = ((part?.prompt ?? "").match(/`arkaik kritik (finding open [^`]+)`/) ?? [])[1] ?? "";
+    const filled = findingCommand
+      .replace("<criterion>", criterion)
+      .replace('"<one line>"', '"Session cookie lacks SameSite"')
+      .replace(/<1-5>/g, "2")
+      .replace("<S|M|L|XL>", "S")
+      .replace('"<file:line …>"', '"app/auth.ts:30"');
+    const argv = [...filled.matchAll(/"([^"]*)"|(\S+)/g)].map((match) => match[1] ?? match[2]);
+    const opened = run(argv);
+    check("the prompt's finding command runs as written once its placeholders are filled", opened.status === 0 && opened.stdout.includes(partId), opened.stderr + filled);
+  }
 
   const started = statusJson(FIRST_PLAN);
   check(
