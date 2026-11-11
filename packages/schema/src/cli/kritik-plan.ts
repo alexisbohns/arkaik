@@ -168,7 +168,7 @@ const runFlags = (parts: readonly Pick<KritikPlan["parts"][number], "domain" | "
  * It reads the plan file, the profile, the audit directories and the given journal events,
  * and throws `Error` at the first refusal, in this order: the plan file is missing or invalid
  * (`loadPlan`, which also refuses an id that is not a plan id); the plan is already recorded;
- * its cells or framework version moved since it was made; an audit now sorts after one of its
+ * one of its parts was recorded on its own; its cells or framework version moved since it was made; an audit now sorts after one of its
  * parts (`outsortedBy` — a scoped re-audit or another plan made meanwhile would win the
  * latest-wins merge on every cell both hold, so the recorded matrix would not be the plan's);
  * an audit directory sorting before the plan's last part, not one of its parts, never recorded
@@ -196,6 +196,22 @@ export function preparePlanRecord(root: string, planId: string, library: KritikL
   const included = plan.parts.filter((part) => part.status === "included");
   if (included.length === 0) {
     throw new Error(`plan "${planId}" includes no part — every part was deferred, so there is nothing to record.`);
+  }
+
+  // A part recorded on its own — by an older CLI or MCP server, or a hand-edited journal — is
+  // history already. Read from the events themselves: `recordedAuditIds` also lists the parts of
+  // recorded plans, and the plan-already-recorded refusal above has run.
+  const recordedAlone = included.filter((part) =>
+    events.some((event) => event?.type === "quality.audit.completed" && (event as { audit_id?: unknown }).audit_id === part.auditId),
+  );
+  if (recordedAlone.length > 0) {
+    const [first] = recordedAlone;
+    throw new Error(
+      `plan "${planId}" cannot be recorded — its part "${first.auditId}" was already recorded on its own` +
+        (recordedAlone.length > 1 ? ` (and ${recordedAlone.slice(1).map((part) => `"${part.auditId}"`).join(", ")})` : "") +
+        `, and a part recorded on its own cannot be folded into a plan record: its reading is history, and the journal is append-only. ` +
+        `To record these cells as a plan, make a new plan: \`arkaik kritik plan ${runFlags(plan.parts)}\`.`,
+    );
   }
 
   // 3. The cells as the library and the profile make them now, against the plan's, as sets.

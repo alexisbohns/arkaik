@@ -27,7 +27,7 @@
  */
 
 const { spawnSync } = require("child_process");
-const { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs");
+const { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 const { loadSchema } = require("../schema/load-schema");
@@ -630,6 +630,29 @@ try {
     hRecorded.status === 0 && h.journal().length === hBefore + 1 && h.journal().at(-1)?.audit_id === hPlan.planId,
     hRecorded.stderr,
   );
+
+  // === A part recorded on its own cannot be folded into its plan's record ========
+  //
+  // An older CLI or MCP server, or a hand-edited journal, can hold a record under a
+  // part id. The part's reading is then history; folding it into the plan would record it twice.
+
+  const w = auditedRepo();
+  const wPlan = w.makePlan("SEC:web");
+  const wPart = wPlan.parts[0] ?? { cells: [] };
+  w.writeScores(wPart.auditId, cellsOf(wPart), 4, "now");
+  const wFull = w.journal().find((e) => e.type === "quality.audit.completed") ?? {};
+  appendFileSync(
+    w.at("docs", "arkaik", "journal.jsonl"),
+    `${JSON.stringify({ ...wFull, id: `${String(wFull.id).slice(0, -1)}Z`, ts: new Date().toISOString(), audit_id: wPart.auditId })}\n`,
+  );
+  const wRecord = ["matrix", wPlan.planId, "--record", "--plan"];
+  refuses(w, "a plan one of whose parts was recorded on its own", wRecord, [
+    `part "${wPart.auditId}" was already recorded on its own`,
+    "cannot be folded into a plan record",
+    "make a new plan",
+    "--run SEC:web",
+  ]);
+  refuses(w, "its preview refuses too", ["matrix", wPlan.planId, "--plan"], [`part "${wPart.auditId}" was already recorded on its own`]);
 
   // ── later sections are inserted above this line ──
 } finally {

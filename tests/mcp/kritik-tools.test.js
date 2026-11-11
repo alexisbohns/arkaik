@@ -16,7 +16,7 @@
 
 const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
-const { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
+const { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 const readline = require("readline");
@@ -956,6 +956,26 @@ async function run() {
       "once recorded it no longer blocks, and the plan records",
       !recorded.isError && guarded.journal().length === afterHand + 1 && guarded.journal().at(-1)?.audit_id === planB.planId,
       recorded.text.slice(0, 300),
+    );
+
+    // A part recorded on its own (an older server, a hand-edited journal) cannot be folded into its plan.
+    const planC = (await guarded.call("kritik_plan", { runs: ["PRV:web"] })).json.plan ?? { parts: [] };
+    const partC = planC.parts[0] ?? { cells: [] };
+    for (const cell of partC.cells) await score(cell, 3, partC.auditId);
+    const template = guarded.journal().at(-1) ?? {};
+    appendFileSync(
+      path.join(guarded.dir, "docs", "arkaik", "journal.jsonl"),
+      `${JSON.stringify({ ...template, id: `${String(template.id).slice(0, -1)}Z`, ts: new Date().toISOString(), audit_id: partC.auditId, scope: undefined })}\n`,
+    );
+    const beforeC = guarded.journal().length;
+    const alone = await guarded.call("kritik_matrix", { audit_id: planC.planId, plan: true, record: true });
+    check(
+      "plan=true refuses a plan one of whose parts was recorded on its own",
+      alone.isError &&
+        alone.json.message.includes(`part "${partC.auditId}" was already recorded on its own`) &&
+        alone.json.message.includes("cannot be folded into a plan record") &&
+        guarded.journal().length === beforeC,
+      alone.text.slice(0, 400),
     );
   } finally {
     guarded.stop();
