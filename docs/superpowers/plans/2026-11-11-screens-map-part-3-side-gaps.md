@@ -341,7 +341,7 @@ const canvas = () =>
     isGapCell: W.isGapCell, isGapFrame: W.isGapFrame, lensPlatforms: W.lensPlatforms, NO_ROWS,
   });
 const frame = () =>
-  compile("components/graph/nodes/WallFrameNode.tsx", ["sentence", "sideSpokenWord", "sideAriaLabel", "sideStateLine"], {
+  compile("components/graph/nodes/WallFrameNode.tsx", ["sentence", "frameSubject", "sideSpokenWord", "sideAriaLabel", "sideStateLine"], {
     cellWord: W.cellWord, PLATFORM_LABELS,
   });
 const controller = () => compile("components/maps/ScreensMap.tsx", ["screensAnnouncement"], { platformLabel });
@@ -425,15 +425,23 @@ check("a header stays lit only when its strip holds a kept view", () => {
 });
 
 console.log("\nWallFrameNode — side by side");
-const frameData = (viewId, armContext = null) => ({ screen: wall.screens.get(viewId), platforms: wall.platforms, armContext });
+// The frame's strip, as ScreensCanvas fills stripTitle: the first strip that shows the view.
+const stripTitleOf = (viewId) => wall.strips.find((strip) => strip.viewIds.includes(viewId)).title;
+const frameData = (viewId, armContext = null) => ({
+  screen: wall.screens.get(viewId),
+  stripTitle: stripTitleOf(viewId),
+  platforms: wall.platforms,
+  armContext,
+});
 check("side aria label", () => {
   const { sideAriaLabel } = frame();
   const title = wall.screens.get("V-soul-detail").title;
-  equal(sideAriaLabel(frameData("V-soul-detail")), `${title}. Web: live. iOS: stale. Android: live.`, "V-soul-detail");
+  // T10: the strip title follows the view's title, as in the single-platform label.
+  equal(sideAriaLabel(frameData("V-soul-detail")), `${title}, ${stripTitleOf("V-soul-detail")}. Web: live. iOS: stale. Android: live.`, "V-soul-detail");
   const intro = wall.screens.get("V-onboarding-intro").title;
   equal(
     sideAriaLabel(frameData("V-onboarding-intro", "in Yes of Has a streak?")),
-    `${intro}, in Yes of Has a streak? Web: not on this platform. iOS: development. Android: not on this platform.`,
+    `${intro}, ${stripTitleOf("V-onboarding-intro")}, in Yes of Has a streak? Web: not on this platform. iOS: development. Android: not on this platform.`,
     "V-onboarding-intro",
   );
 });

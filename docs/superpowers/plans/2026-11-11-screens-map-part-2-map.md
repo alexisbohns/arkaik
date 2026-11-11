@@ -2675,7 +2675,7 @@ Create `~/screens-check/make-bundles.js`:
 ```js
 #!/usr/bin/env node
 /**
- * Writes the three bundles the Screens map check imports, into this directory:
+ * Writes the four bundles the Screens map check imports, into this directory:
  *   pebbles.json        — seed/pebbles.json, unchanged (ghost wall, Admin scope)
  *   self-map.json       — seed/arkaik-self-map.json, unchanged (ghost wall, jump tiles)
  *   pebbles-shots.json  — Pebbles with a data-URI PNG in every (view, platform) slot
@@ -2683,6 +2683,8 @@ Create `~/screens-check/make-bundles.js`:
  *                         on V-pebble-detail's iOS slot recorded after all of its own
  *                         events and a later move on a covering acceptance — so only the
  *                         covering-acceptance rule can call that shot stale.
+ *   pebbles-custom.json — Pebbles storing three custom maps: one with the reserved id
+ *                         `screens`, a screens-kind map and a journey map (T2, T8).
  * Usage: node make-bundles.js <worktree>
  */
 const fs = require("fs");
@@ -2775,6 +2777,25 @@ shots.journal.push({
 const out = JSON.stringify(shots);
 fs.writeFileSync(path.join(__dirname, "pebbles-shots.json"), out);
 console.log(`pebbles-shots.json: ${slots} shots, ${(out.length / 1024 / 1024).toFixed(2)} MB`);
+
+// T2 / T8: Pebbles storing custom maps — one with the reserved id `screens`
+// (shadowed by the built-in), a screens-kind map the editor cannot produce,
+// and a journey map it can.
+const custom = JSON.parse(JSON.stringify(pebbles));
+custom.project.id = "pebbles-custom";
+custom.project.title = "Pebbles (custom maps)";
+for (const node of custom.nodes) node.project_id = custom.project.id;
+for (const edge of custom.edges) if ("project_id" in edge) edge.project_id = custom.project.id;
+custom.project.metadata = {
+  ...(custom.project.metadata ?? {}),
+  maps: [
+    { id: "screens", title: "Stored screens", kind: "journey" },
+    { id: "my-wall", title: "My wall", kind: "screens" },
+    { id: "my-journey", title: "My journey", kind: "journey" },
+  ],
+};
+fs.writeFileSync(path.join(__dirname, "pebbles-custom.json"), JSON.stringify(custom));
+console.log("pebbles-custom.json: three stored custom maps, one with the reserved id screens");
 ```
 
 Run: `node make-bundles.js <absolute path of the worktree>`
@@ -2803,6 +2824,8 @@ const LOD_ZOOM = 0.35;
 const OPENING_PADDING = 32;
 const OPENING_MIN_ZOOM = 0.7;
 const failures = [];
+/** SECTIONS=4,5 runs only those sections (default: all). */
+const wanted = (section) => !process.env.SECTIONS || process.env.SECTIONS.split(",").includes(String(section));
 const consoleErrors = [];
 
 function check(name, ok, detail = "") {
@@ -2903,6 +2926,99 @@ async function checkOpening(page, label) {
   check(`${label}: the next strip's header is in the canvas too`, at.headersShown >= 2, `${at.headersShown} headers wholly in view`);
 }
 
+/** T6: the first header's counts line follows its title and is wholly in the canvas on arrival. */
+async function checkCountsLine(page, label) {
+  const pane = await paneBox(page);
+  const header = page.locator(".react-flow__node-wallHeader").first();
+  const title = await header.locator("h2").boundingBox();
+  const counts = await header.locator("[data-counts]").boundingBox();
+  const fits = (box) => box.x >= pane.x - 1 && box.x + box.width <= pane.x + pane.width + 1;
+  const gap = counts.x - (title.x + title.width);
+  check(`${label}: the first header's counts line follows its title, in view`,
+    fits(counts) && gap >= 4 && gap <= 12,
+    `counts at ${Math.round(counts.x - pane.x)}–${Math.round(counts.x + counts.width - pane.x)} of ${Math.round(pane.width)}, ${Math.round(gap)}px after the title`);
+}
+
+/** The camera, read from React Flow's viewport element. */
+async function viewport(page) {
+  const transform = await page.locator(".react-flow__viewport").evaluate((element) => element.style.transform);
+  const match = /translate\((-?[\d.]+)px, ?(-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(transform);
+  return match ? { x: Number(match[1]), y: Number(match[2]), zoom: Number(match[3]) } : null;
+}
+
+/** Drags the empty pane so the camera moves by (dx, dy) screen px, in steps that start and end on bare pane. */
+async function panBy(page, dx, dy) {
+  const pane = await paneBox(page);
+  let restX = dx;
+  let restY = dy;
+  for (let guard = 0; guard < 60 && (Math.abs(restX) > 1 || Math.abs(restY) > 1); guard += 1) {
+    const stepX = Math.max(-300, Math.min(300, restX));
+    const stepY = Math.max(-220, Math.min(220, restY));
+    const start = await page.evaluate(
+      ({ pane, stepX, stepY }) => {
+        const inside = (x, y) => x > pane.x + 8 && x < pane.x + pane.width - 8 && y > pane.y + 8 && y < pane.y + pane.height - 90;
+        for (let y = pane.y + 12; y < pane.y + pane.height - 90; y += 6) {
+          for (let x = pane.x + 12; x < pane.x + pane.width - 12; x += 10) {
+            if (!inside(x - stepX, y - stepY)) continue;
+            const element = document.elementFromPoint(x, y);
+            if (element && element.classList.contains("react-flow__pane")) return { x, y };
+          }
+        }
+        return null;
+      },
+      { pane, stepX, stepY },
+    );
+    if (!start) throw new Error("no bare pane to drag from");
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x - stepX, start.y - stepY, { steps: 6 });
+    await page.mouse.up();
+    restX -= stepX;
+    restY -= stepY;
+  }
+  await page.waitForTimeout(400);
+}
+
+async function chooseLens(page, name) {
+  await page.getByRole("toolbar", { name: "Screens display" }).getByRole("button", { name, exact: true }).click();
+  await page.waitForTimeout(1000);
+}
+
+/**
+ * T1: what React Flow should have mounted, from the minimap's own rects (flow
+ * coordinates) against the viewport in flow coordinates — and what it did.
+ */
+async function mountedVersusExpected(page, frameWidth) {
+  const pane = await paneBox(page);
+  const view = await viewport(page);
+  const flow = { x: -view.x / view.zoom, y: -view.y / view.zoom, width: pane.width / view.zoom, height: pane.height / view.zoom };
+  const rects = await page.locator(".react-flow__minimap-node").evaluateAll((nodes) =>
+    nodes.map((node) => ({ x: +node.getAttribute("x"), y: +node.getAttribute("y"), width: +node.getAttribute("width"), height: +node.getAttribute("height") })),
+  );
+  const headers = rects.filter((r) => r.height === 44).sort((a, b) => a.y - b.y);
+  const stripRight = (header) => {
+    const next = headers.find((other) => other.y > header.y)?.y ?? Infinity;
+    const items = rects.filter((r) => r.height !== 44 && r.y > header.y && r.y < next);
+    return Math.max(header.x + 360, ...items.map((r) => r.x + (r.height === 324 ? frameWidth : r.width)));
+  };
+  const hits = (r) => r.x < flow.x + flow.width && r.x + r.width > flow.x && r.y < flow.y + flow.height && r.y + r.height > flow.y;
+  const onScreen = async (selector) => {
+    const boxes = await page.locator(selector).evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON()));
+    return boxes.filter((box) => box.right > pane.x && box.left < pane.x + pane.width && box.bottom > pane.y && box.top < pane.y + pane.height).length;
+  };
+  return {
+    view,
+    heights: [...new Set(rects.map((r) => r.height))],
+    frameWidths: [...new Set(rects.filter((r) => r.height === 324).map((r) => r.width))],
+    // The lens's own frame width, not the minimap's: a stale size there is the bug.
+    expectedFrames: rects.filter((r) => r.height === 324 && hits({ ...r, width: frameWidth })).length,
+    // A header spans its strip: from its x to the strip's right-most item, frames at the lens's width.
+    expectedHeaders: headers.filter((r) => hits({ ...r, width: stripRight(r) - r.x })).length,
+    mountedFrames: await onScreen(".react-flow__node-wallFrame"),
+    mountedHeaders: await onScreen(".react-flow__node-wallHeader"),
+  };
+}
+
 async function shots(page) {
   return page.locator("img[data-wall-shot]").count();
 }
@@ -2918,7 +3034,7 @@ async function snap(page, name) {
   const browser = await chromium.launch();
 
   // --- 1. Pebbles: listed everywhere, ghost wall, frame click, Admin scope ---
-  {
+  if (wanted(1)) {
     const { context, page } = await open(browser);
     const id = await importBundle(page, "pebbles.json");
 
@@ -2953,27 +3069,40 @@ async function snap(page, name) {
     check("Pebbles draws a ghost wall: frames, no image", (await visibleFrames(page)) > 0 && (await shots(page)) === 0,
       `${await visibleFrames(page)} visible frames, ${await shots(page)} images`);
     check("the no-shots pill is up", await page.getByText("No screenshots yet.").isVisible());
-    check("the lens bar offers three platforms", (await page.getByRole("toolbar", { name: "Screens display" }).getByRole("button").count()) === 3);
+    // Part 3 added "Side by side" to the lens group and the gaps switch beside it.
+    const lensNames = await page.getByRole("toolbar", { name: "Screens display" }).getByRole("group", { name: "Platform lens" })
+      .getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? button.textContent.trim()));
+    check("the lens bar offers three platforms (and part 3's Side by side)",
+      JSON.stringify(lensNames) === JSON.stringify(["Web", "iOS", "Android", "Side by side"]), lensNames.join(", "));
     await checkOpening(page, "the opening camera");
+    await checkCountsLine(page, "the opening camera");
     await snap(page, "pebbles-1440-light");
 
+    // Part 4's grammar replaced part 2's: the first activation selects (and the
+    // selection camera frames the frame), the second opens the panel.
     const frame = page.locator(".react-flow__node-wallFrame [role=button]").first();
     const label = await frame.getAttribute("aria-label");
+    await frame.click();
+    await page.waitForTimeout(900);
+    check("a first frame click selects it without opening a panel (part 4)",
+      !/[?&]node=/.test(page.url()) && (await frame.getAttribute("aria-current")) === "true", label ?? "");
     await frame.click();
     await page.waitForURL(/[?&]node=/);
     await page.waitForTimeout(900);
     const pane = await paneBox(page);
     const box = await frame.boundingBox();
+    check("a second click opens its view's panel", /[?&]node=V-/.test(page.url()), label ?? "");
+    // Kept as part 2 wrote it: part 4 no longer moves the camera when the panel opens.
     const dx = Math.abs(box.x + box.width / 2 - (pane.x + pane.width / 2));
     const dy = Math.abs(box.y + box.height / 2 - (pane.y + pane.height / 2));
-    check("a frame click opens its view's panel", /[?&]node=V-/.test(page.url()), label ?? "");
     check("…and centres the frame in the narrowed canvas", dx < 40 && dy < 40, `off by ${Math.round(dx)}, ${Math.round(dy)}`);
     await snap(page, "pebbles-panel-open");
 
     await openScreens(page, id, "?product=admin");
     check("Admin scope: the Journey pointer line", await page.getByText("No flows yet, so these screens aren't lined up.").isVisible());
     check("…above the \"Not in a flow\" strip", await page.getByRole("heading", { name: "Not in a flow" }).isVisible());
-    check("…and no lens bar (Admin is web-only)", (await page.getByRole("toolbar", { name: "Screens display" }).count()) === 0);
+    // Part 3: the bar always shows (the gaps switch); a one-platform scope has no lens group in it.
+    check("…and no platform lens (Admin is web-only)", (await page.getByRole("group", { name: "Platform lens" }).count()) === 0);
     await snap(page, "pebbles-admin");
 
     // Themes and widths.
@@ -2984,6 +3113,7 @@ async function snap(page, name) {
         await openScreens(page, id);
         await snap(page, `pebbles-${width}-${colorScheme}`);
         await checkOpening(page, `${colorScheme} ${width}`);
+        await checkCountsLine(page, `${colorScheme} ${width}`);
         const bar = await page.getByRole("toolbar", { name: "Screens display" }).boundingBox();
         const canvas = await paneBox(page);
         check(`${colorScheme} ${width}: the bar sits inside the canvas`, Boolean(bar) &&
@@ -2999,12 +3129,12 @@ async function snap(page, name) {
   }
 
   // --- 2. Self-map: ghost wall, single platform, jump tile flies and rings ---
-  {
+  if (wanted(2)) {
     const { context, page } = await open(browser);
     const id = await importBundle(page, "self-map.json");
     await openScreens(page, id);
     check("the self-map draws a ghost wall with the pill", (await shots(page)) === 0 && (await page.getByText("No screenshots yet.").isVisible()));
-    check("…and no lens bar (one platform)", (await page.getByRole("toolbar", { name: "Screens display" }).count()) === 0);
+    check("…and no platform lens (one platform; part 3's bar keeps only the gaps switch)", (await page.getByRole("group", { name: "Platform lens" }).count()) === 0);
     await checkOpening(page, "self-map opening camera");
     await snap(page, "self-map-1440-light");
 
@@ -3026,7 +3156,7 @@ async function snap(page, name) {
   }
 
   // --- 3. Pebbles with shots: covering-acceptance staleness, then performance ---
-  {
+  if (wanted(3)) {
     const { context, page } = await open(browser);
     const id = await importBundle(page, "pebbles-shots.json");
 
@@ -3078,6 +3208,98 @@ async function snap(page, name) {
     await context.close();
   }
 
+  // --- 4. T1 and T7 on the Pebbles ghost wall: lens switches and the camera ---
+  if (wanted(4)) {
+    const WEB_W = 448; // FRAME_H × DEFAULT_ASPECT.web: every Pebbles ghost frame on Web
+    const IOS_W = 144; // FRAME_MIN_W: every Pebbles ghost frame on iOS (280 × 0.4615 is narrower)
+    const { context, page } = await open(browser);
+    const id = await importBundle(page, "pebbles.json");
+    await openScreens(page, id);
+    const pane = await paneBox(page);
+
+    // T1, the reproduction: iOS, down three screens and back; Web; right ~1100px and down three screens.
+    // "Three screens" down = three strip pitches (HEADER_H + HEADER_GAP + FRAME_NODE_H + STRIP_GAP = 452) at this zoom.
+    const pitch = 452 * (await viewport(page)).zoom;
+    await chooseLens(page, "iOS");
+    await panBy(page, 0, 3 * pitch);
+    await panBy(page, 0, -3 * pitch);
+    await chooseLens(page, "Web");
+    await panBy(page, 1100, 0);
+    await panBy(page, 0, 3 * pitch);
+    await page.waitForTimeout(600);
+    const t1 = await mountedVersusExpected(page, WEB_W);
+    check("T1: after iOS → Web and a pan, every header the camera covers is mounted",
+      t1.expectedHeaders > 0 && t1.mountedHeaders >= t1.expectedHeaders, JSON.stringify(t1));
+    check("T1: …and every frame it covers", t1.expectedFrames > 0 && t1.mountedFrames >= t1.expectedFrames, JSON.stringify(t1));
+    check("T1: the minimap draws every frame at the Web lens's width, none at iOS's",
+      JSON.stringify(t1.frameWidths) === JSON.stringify([WEB_W]), `frame widths in the minimap: ${t1.frameWidths.join(", ")} (iOS is ${IOS_W})`);
+    await snap(page, "t1-after-lens-pan-1440-light");
+
+    // T7: at the far end of a long Web strip, iOS keeps the reader in that strip.
+    await openScreens(page, id);
+    const nearest = async () => {
+      const boxes = await page.locator(".react-flow__node-wallHeader").evaluateAll((elements) =>
+        elements.map((element) => ({ id: element.getAttribute("data-id"), ...element.getBoundingClientRect().toJSON() })),
+      );
+      const centre = pane.y + pane.height / 2;
+      return boxes.sort((a, b) => Math.abs(a.top - centre) - Math.abs(b.top - centre))[0];
+    };
+    const framesOnScreen = async () => visibleFrames(page);
+    // Pan until the viewport's centre is 100px short of the reader's strip's end on Web.
+    const strip = await nearest();
+    await panBy(page, strip.right - 100 - (pane.x + pane.width / 2), 0);
+    const before = await viewport(page);
+    check("T7 setup: far along a Web strip (wider than the canvas), frames on screen",
+      strip.width > pane.width && (await framesOnScreen()) > 0, `${strip.id}: ${Math.round(strip.width)}px wide`);
+    await chooseLens(page, "iOS");
+    const after = await viewport(page);
+    const header = await nearest();
+    check("T7: switching to iOS keeps the zoom and the height",
+      Math.abs(after.zoom - before.zoom) < 1e-6 && Math.abs(after.y - before.y) < 1, `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+    check("T7: …and pans along the strip to its start, at the left padding",
+      Boolean(header) && Math.abs(header.left - pane.x - 32) <= 2, `${header?.id} header at x ${Math.round((header?.left ?? NaN) - pane.x)}`);
+    check("T7: …with frames on screen, not empty canvas", (await framesOnScreen()) > 0, `${await framesOnScreen()} frames`);
+    await snap(page, "t7-ios-kept-strip-1440-light");
+    const kept = await viewport(page);
+    await chooseLens(page, "Web");
+    const back = await viewport(page);
+    check("T7: back to Web, the centre is still inside the strip: the camera does not move",
+      Math.abs(back.x - kept.x) < 1 && Math.abs(back.y - kept.y) < 1 && Math.abs(back.zoom - kept.zoom) < 1e-6,
+      `${JSON.stringify(kept)} → ${JSON.stringify(back)}`);
+    await context.close();
+  }
+
+  // --- 5. T2 and T8: stored custom maps, one with the reserved id `screens` ---
+  if (wanted(5)) {
+    const { context, page } = await open(browser);
+    const errorsBefore = consoleErrors.length;
+    const id = await importBundle(page, "pebbles-custom.json");
+    await openScreens(page, id);
+    const sidebar = page.locator('[data-sidebar="sidebar"]').first();
+    const sidebarLinks = await sidebar.locator(`a[href="/project/${id}/maps/screens"]`).count();
+    check("T2: one sidebar entry for /maps/screens", sidebarLinks === 1, `${sidebarLinks} entries`);
+    check("T2: the stored map named Stored screens is not listed", (await sidebar.getByText("Stored screens").count()) === 0);
+    check("T2: …while the other stored maps are", (await sidebar.getByText("My wall").count()) === 1 && (await sidebar.getByText("My journey").count()) === 1);
+    check("T2: …and the built-in still draws at /maps/screens", (await page.locator(".react-flow__node-wallFrame").count()) > 0);
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByRole("combobox").fill("screens");
+    await page.getByRole("option").first().waitFor();
+    const options = await page.getByRole("option").evaluateAll((items) => items.map((item) => item.innerText.replace(/\s+/g, " ").trim()));
+    check("T2: ⌘K lists Screens once and no stored map under the reserved id",
+      options.filter((text) => /^Screens\b/.test(text)).length === 1 && !options.some((text) => text.includes("Stored screens")), options.join(" | "));
+    await page.keyboard.press("Escape");
+    const keyWarnings = consoleErrors.slice(errorsBefore).filter((text) => /same key|unique "key"/i.test(text));
+    check("T2: no React duplicate-key warning", keyWarnings.length === 0, keyWarnings.slice(0, 2).join(" | "));
+
+    await page.goto(`${BASE}/project/${encodeURIComponent(id)}/maps`);
+    await page.getByText("My wall").first().waitFor();
+    check("T8: a stored screens-kind map has Delete and no Edit",
+      (await page.getByRole("button", { name: "Edit My wall" }).count()) === 0 && (await page.getByRole("button", { name: "Delete My wall" }).count()) === 1);
+    check("T8: …a stored journey map keeps both",
+      (await page.getByRole("button", { name: "Edit My journey" }).count()) === 1 && (await page.getByRole("button", { name: "Delete My journey" }).count()) === 1);
+    await context.close();
+  }
+
   await browser.close();
 
   fs.writeFileSync(path.join(OUT, "console-errors.txt"), consoleErrors.join("\n"));
@@ -3113,6 +3335,8 @@ exit 0. Screenshots land beside the script: `pebbles-{1440,900,390}-{light,dark}
 What it covers, against the contract's test strategy: the map is listed (sidebar, the Overview card with `68 nodes · 0 edges`, the index without Edit/Delete, ⌘K "screens" first); both seeds draw ghost walls with the no-shots pill; the opening camera (`openingViewport`) puts the first strip's header at the canvas's top-left, 32px below the pills' measured bottom (or the canvas top), at a zoom in [0.7, 1] with the next strip's header in view — on arrival, at every width and theme, on the self-map and with shots; a frame click opens the view's panel (`?node=V-…`) and centres the frame; a self-map jump tile flies to its strip at zoom ≥ 0.4 and rings that header, which clears after 2s; Pebbles' Admin scope shows the Journey pointer above "Not in a flow" and no bar; a covered view (`V-pebble-detail`, iOS) reads "may be stale" after `AC-emotion-palette-on-read` moved; light and dark at 1440, 900 and 390 (bar inside the canvas; Minimap and Controls follow the 60rem/40rem canvas rules); and the performance check — images ≤ visible frames + 4 after load, no long task over 200 ms across the 20 wheel steps (Contract deviation 5), the walk ending on the last strip, and 0 images after the Controls' fit-view below `LOD_ZOOM`.
 
 If a check fails on a hydration warning, restart the dev server and rerun before investigating.
+
+**As last run, after the review fixes, on the stack's top (`feat/screens-inspect`, `BASE_URL=http://localhost:4371`).** The script above is that version: it also checks T1 (after an iOS → Web switch and a pan, every header and frame the camera covers is mounted and the minimap draws every frame at Web's width — it fails on the pre-fix `Canvas`), T2 and T8 (`pebbles-custom.json`: one sidebar entry and one ⌘K row for Screens, no duplicate-key warning; no Edit on a stored screens-kind map), T6 (the counts line follows the title, in view, at every width and theme) and T7 (at the far end of a Web strip, iOS keeps the zoom and height and brings the strip's start to the left padding; back to Web, nothing moves). Parts 3 and 4 changed three of part 2's checks by design, adapted inline: the lens group also offers "Side by side"; a one-platform scope has no lens group but keeps the bar (the gaps switch); a frame's first click selects and the second opens the panel. `SECTIONS=4,5` runs only the new sections. Last result: 87 `PASS:` lines and one `FAIL:` — "…and centres the frame in the narrowed canvas" (off by 125, 194), kept as written: part 4 frames the selection before the panel opens and does not re-centre when the panel narrows the canvas, so the frame ends partly behind the panel.
 
 ---
 

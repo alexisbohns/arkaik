@@ -2007,7 +2007,7 @@ Create `$SCRATCH/check-part4.js`:
  *
  * Run from a scratch directory where `npm i playwright` and
  * `npx playwright install chromium` were run, against this worktree's
- * `PORT=4343 npm run dev`. Prints one `ok N - …` line per check and stops at
+ * `PORT=4371 npm run dev` (any free port). Prints one `ok N - …` line per check and stops at
  * the first `not ok`. Screenshots go to <outDir>.
  */
 
@@ -2073,8 +2073,9 @@ async function run(page, consoleErrors) {
   // --- cold load with ?node= on a view: selected, framed, panel open ---
   await page.goto(`${baseUrl}/project/${projectId}/maps/screens?node=${EDITOR}`, { timeout: 120000 });
   const editorInspector = page.locator('section[aria-label="Quick Pebble Editor on the wall"]');
-  await editorInspector.waitFor({ timeout: 120000 });
-  ok(true, "a cold load with ?node= selects the view and shows its inspector");
+  // T13: with the ?node= panel open the inspector is not rendered; the selection, its ring and its chips are.
+  await page.locator(`[data-wall-frame^="${EDITOR}@"][aria-current="true"]`).waitFor({ timeout: 120000 });
+  ok(true, "a cold load with ?node= selects the view");
   ok(
     nodeParam() === EDITOR && (await page.locator('section[aria-labelledby$="-heading"]').count()) >= 1,
     "…and its node panel is open",
@@ -2083,6 +2084,15 @@ async function run(page, consoleErrors) {
   const frame = page.locator(`[data-wall-frame="${frameId}"]`);
   ok((await frame.getAttribute("aria-current")) === "true", `the selected frame ${frameId} carries aria-current`);
   await settle();
+  ok((await page.locator('section[aria-label$=" on the wall"]').count()) === 0, "T13: …with the panel open, no inspector is rendered");
+  ok((await page.locator(`[data-testid^="rf__node-chip:${frameId}:"]`).count()) === 9, "T13: …while the selection's chips stay");
+  const coldPane = await page.locator(".react-flow").first().boundingBox();
+  const coldFrame = await frame.boundingBox();
+  ok(
+    coldFrame.x >= coldPane.x - 1 && coldFrame.x + coldFrame.width <= coldPane.x + coldPane.width + 1 &&
+      coldFrame.y >= coldPane.y - 1 && coldFrame.y + coldFrame.height <= coldPane.y + coldPane.height + 1,
+    `T13: …and the frame is wholly in the canvas the panel leaves (${JSON.stringify({ coldFrame, coldPane })})`,
+  );
   await shot("01-cold-load-1440-light.png");
 
   // --- Escape with a panel open closes the panel only ---
@@ -2129,33 +2139,62 @@ async function run(page, consoleErrors) {
     chipPrefix,
   );
   ok(JSON.stringify(chipKeys.slice(0, 8)) === JSON.stringify(touchIds.slice(0, 8)), "the chips list the inspector's first 8 touches, in order");
+  // T12: a tidy tree — one trunk from the frame's bottom edge 16px in from its left
+  // corner, straight down, and a short stub right into each chip (12px at zoom 1).
   const geometry = await page.evaluate(
     ({ frame: id, keys }) => {
       const frameRect = document.querySelector(`[data-testid="rf__node-${id}"]`).getBoundingClientRect();
-      return keys.map((key) => {
-        const edge = document.querySelector(`[data-testid="rf__edge-touch:${id}:${key}"] path.react-flow__edge-path`);
-        const chip = document.querySelector(`[data-testid="rf__node-chip:${id}:${key}"]`).getBoundingClientRect();
-        if (!edge) return { key, missing: true };
-        const ctm = edge.getScreenCTM();
-        const at = (length) => {
-          const point = edge.getPointAtLength(length);
-          return new DOMPoint(point.x, point.y).matrixTransform(ctm);
-        };
-        const start = at(0);
-        const end = at(edge.getTotalLength());
-        return {
-          key,
-          fromFrame: Math.hypot(start.x - (frameRect.left + frameRect.width / 2), start.y - frameRect.bottom),
-          toChip: Math.hypot(end.x - chip.left, end.y - (chip.top + chip.height / 2)),
-        };
-      });
+      const zoom = Number(/scale\(([\d.]+)\)/.exec(document.querySelector(".react-flow__viewport").style.transform)[1]);
+      const trunkX = frameRect.left + 16 * zoom;
+      return {
+        zoom,
+        edges: keys.map((key) => {
+          const edge = document.querySelector(`[data-testid="rf__edge-touch:${id}:${key}"] path.react-flow__edge-path`);
+          const chip = document.querySelector(`[data-testid="rf__node-chip:${id}:${key}"]`).getBoundingClientRect();
+          if (!edge) return { key, missing: true };
+          const ctm = edge.getScreenCTM();
+          const total = edge.getTotalLength();
+          const at = (length) => {
+            const point = edge.getPointAtLength(length);
+            return new DOMPoint(point.x, point.y).matrixTransform(ctm);
+          };
+          const start = at(0);
+          const end = at(total);
+          const chipMid = chip.top + chip.height / 2;
+          // Every point lies on the trunk or on the chip's stub, give or take the 6px corner.
+          let offTree = 0;
+          for (let i = 0; i <= 40; i += 1) {
+            const p = at((total * i) / 40);
+            const off = Math.min(Math.abs(p.x - trunkX), Math.abs(p.y - chipMid));
+            if (off > 6 * zoom + 1 || p.x < trunkX - 1 || p.x > chip.left + 1) offTree += 1;
+          }
+          return {
+            key,
+            fromTrunk: Math.hypot(start.x - trunkX, start.y - frameRect.bottom),
+            toChip: Math.hypot(end.x - chip.left, end.y - chipMid),
+            stub: (chip.left - trunkX) / zoom,
+            offTree,
+            stroke: getComputedStyle(edge).stroke,
+          };
+        }),
+      };
     },
     { frame: frameId, keys: chipKeys },
   );
+  const edges = geometry.edges;
   ok(
-    geometry.every((edge) => !edge.missing && edge.fromFrame <= 12 && edge.toChip <= 12),
-    `every chip has a touch edge from the frame's bottom to the chip's left (${JSON.stringify(geometry.filter((e) => e.missing || e.fromFrame > 12 || e.toChip > 12))})`,
+    edges.every((edge) => !edge.missing && edge.fromTrunk <= 4 && edge.toChip <= 4),
+    `every chip has a touch edge from the trunk on the frame's bottom edge, 16px in, to the chip's left (${JSON.stringify(edges.filter((e) => e.missing || e.fromTrunk > 4 || e.toChip > 4))})`,
   );
+  ok(
+    edges.every((edge) => edge.offTree === 0),
+    `T12: every edge runs down the shared trunk and turns right into its chip (${JSON.stringify(edges.filter((e) => e.offTree > 0))})`,
+  );
+  ok(
+    edges.every((edge) => Math.abs(edge.stub - 12) <= 0.5),
+    `T12: the trunk sits 12px clear of the chip column (${JSON.stringify(edges.map((e) => Math.round(e.stub * 10) / 10))})`,
+  );
+  ok(new Set(edges.map((edge) => edge.stroke)).size === 1, `T12: one stroke colour for every edge (${edges[0].stroke})`);
   ok(
     await chips.evaluateAll((nodes) =>
       nodes.every((node) => {
@@ -2183,8 +2222,17 @@ async function run(page, consoleErrors) {
   await frame.click();
   await waitForNode(EDITOR);
   ok(true, "a second click on the selected frame opens its panel");
+  await settle();
+  ok(
+    (await editorInspector.count()) === 0 &&
+      (await frame.getAttribute("aria-current")) === "true" &&
+      (await page.locator(`[data-testid^="rf__node-chip:${frameId}:"]`).count()) === 9,
+    "T13: while the panel is open the inspector is gone, the ring and the chips stay",
+  );
   await page.keyboard.press("Escape");
   await waitForNoNode();
+  await editorInspector.waitFor({ timeout: 5000 });
+  ok(true, "T13: closing the panel brings the inspector back for the selected frame");
 
   await editorInspector.getByRole("button", { name: "Open panel" }).click();
   await waitForNode(EDITOR);
@@ -2269,9 +2317,50 @@ async function run(page, consoleErrors) {
   await settle();
   await shot("04-selected-1440-dark.png");
 
+  // --- T11: gaps only never fades the selected frame, even with focus in the inspector ---
+  await page.emulateMedia({ colorScheme: "light" });
+  const gapsSwitch = page.getByRole("button", { name: /^Gaps only/ });
+  await gapsSwitch.click();
+  await settle();
+  await editorInspector.locator("button[data-touch]").first().focus();
+  await settle();
+  const dim = await page.evaluate((id) => {
+    const wrap = document.querySelector(`[data-wall-frame="${id}"]`).parentElement;
+    return {
+      selectedDimmed: wrap.getAttribute("data-dimmed"),
+      opacity: getComputedStyle(wrap).opacity,
+      filter: getComputedStyle(wrap).filter,
+      othersDimmed: document.querySelectorAll('[data-dimmed="true"] [data-wall-frame]').length,
+      focusInInspector: Boolean(document.activeElement?.closest('section[aria-label$=" on the wall"]')),
+    };
+  }, frameId);
+  ok(
+    dim.focusInInspector && dim.othersDimmed > 0 && dim.selectedDimmed === "false" && dim.opacity === "1" && dim.filter === "none",
+    `T11: under gaps only the selected (non-gap) frame stays lit while focus is in the inspector (${JSON.stringify(dim)})`,
+  );
+  await shot("08-gaps-selected-inspector-focus-1440-light.png");
+  await gapsSwitch.click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await settle();
+
   // --- 390px: a bottom sheet above the bar ---
   await page.setViewportSize({ width: 390, height: 844 });
   await settle();
+  // T14: select again at this width — the camera keeps the frame above the sheet, not beside a card.
+  await page.keyboard.press("Escape");
+  await editorInspector.waitFor({ state: "detached", timeout: 5000 });
+  await frame.focus();
+  await page.keyboard.press("Enter");
+  await editorInspector.waitFor({ timeout: 5000 });
+  await settle();
+  const narrowFrame = await frame.boundingBox();
+  const narrowSheet = await editorInspector.boundingBox();
+  const narrowPane = await page.locator(".react-flow").first().boundingBox();
+  ok(
+    narrowFrame.x >= narrowPane.x - 1 && narrowFrame.x + narrowFrame.width <= narrowPane.x + narrowPane.width + 1 &&
+      narrowFrame.y >= narrowPane.y - 1 && narrowFrame.y + narrowFrame.height <= narrowSheet.y + 1,
+    `T14: at 390px a selection frames the frame wholly above the sheet (${JSON.stringify({ narrowFrame, narrowSheet, narrowPane })})`,
+  );
   const sheet = await editorInspector.boundingBox();
   const bar = await page.getByRole("toolbar", { name: "Screens display" }).boundingBox();
   const narrowCell = await surface.boundingBox();
@@ -2291,6 +2380,7 @@ async function run(page, consoleErrors) {
   await waitForNode(EDITOR);
   ok(true, "at 390px Open panel still opens the panel");
   await settle();
+  ok((await editorInspector.count()) === 0, "T13: at 390px, with the panel open, no inspector sheet is rendered");
   await shot("07-panel-390-light.png");
   await page.keyboard.press("Escape");
   await waitForNoNode();
@@ -2334,8 +2424,10 @@ Run, from `$SCRATCH`: `node check-part4.js http://localhost:4343 "$SCRATCH/scree
 Expected on success: 40 lines `ok 1 - …` to `ok 40 - …`, the last being `ok 40 - no console errors`, then exactly:
 
 ```
-PASS screens-part-4: 40 checks, 0 console errors
+PASS screens-part-4: 51 checks, 0 console errors
 ```
+
+(51 since the review fixes — T11 gaps only, T12 the touch tree, T13 no inspector while a panel is open, T14 the narrow camera; the script above is the version last run, on `feat/screens-inspect`.)
 
 and exit 0. On failure it prints `not ok N - <check>` with what it saw, any console errors, saves `99-failure.png`, and exits 1.
 
@@ -2365,7 +2457,7 @@ npm run generate && git status --porcelain   # prints nothing
 npm run build
 ```
 
-- Task 9's script prints `PASS screens-part-4: 40 checks, 0 console errors`, and the screenshots were looked at.
+- Task 9's script prints `PASS screens-part-4: 51 checks, 0 console errors`, and the screenshots were looked at.
 - The PR is opened with the `gh-stack` skill on top of part 3. Title:
 
 ```
