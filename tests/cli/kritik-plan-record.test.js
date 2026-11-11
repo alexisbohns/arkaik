@@ -140,6 +140,22 @@ function repo() {
     }
     return JSON.parse(readFileSync(at("docs", "quality", "plans", `${made[0]}.json`), "utf8"));
   };
+  /** Every file under docs/quality with its content, sorted: what a read-only command must leave as it found it. */
+  const qualityTree = () => {
+    const files = [];
+    const walk = (dir) => {
+      if (!existsSync(dir)) return;
+      for (const name of readdirSync(dir, { withFileTypes: true }).sort((x, y) => (x.name < y.name ? -1 : 1))) {
+        const full = path.join(dir, name.name);
+        if (name.isDirectory()) {
+          files.push(`${path.relative(at("docs", "quality"), full)}/`);
+          walk(full);
+        } else files.push(`${path.relative(at("docs", "quality"), full)}\n${readFileSync(full, "utf8")}`);
+      }
+    };
+    walk(at("docs", "quality"));
+    return files.join("\n---\n");
+  };
   const scopeJson = () => {
     try {
       return JSON.parse(run(["scope", "--json"]).stdout);
@@ -148,7 +164,7 @@ function repo() {
     }
   };
   const scopeKeys = () => (scopeJson().cells ?? []).map((cell) => `${cell.criterion_id}::${cell.surface}`).sort();
-  return { dir, at, run, ok, writeJson, writeScores, journal, findingsText, makePlan, scopeJson, scopeKeys };
+  return { dir, at, run, ok, writeJson, writeScores, journal, findingsText, makePlan, qualityTree, scopeJson, scopeKeys };
 }
 
 const finding = (id, criterionId, surface) => ({
@@ -247,15 +263,19 @@ try {
   a.writeScores(part.auditId, cellsOf(part), 4, "now");
   const findingsBefore = a.findingsText();
   const journalBefore = a.journal().length;
+  const treeBefore = a.qualityTree();
 
   const preview = a.run(["matrix", planId, "--plan"]);
   check(
-    "a preview (`matrix <planId> --plan`) prints the plan's reading and writes nothing",
-    preview.status === 0 &&
-      preview.stdout.includes(`planned partial audit ${planId}: 6 cells re-scored in 1 part since ${FULL}`) &&
-      a.journal().length === journalBefore &&
-      !existsSync(a.at("docs", "quality", "audits", planId)),
+    "a preview (`matrix <planId> --plan`) prints the plan's reading",
+    preview.status === 0 && preview.stdout.includes(`planned partial audit ${planId}: 6 cells re-scored in 1 part since ${FULL}`),
     preview.stderr + preview.stdout.slice(-600),
+  );
+  check("a preview appends no journal line", a.journal().length === journalBefore, `${a.journal().length} vs ${journalBefore}`);
+  check(
+    "a preview writes no matrix.json in its part's directory, and leaves every file under docs/quality as it was",
+    !existsSync(a.at("docs", "quality", "audits", part.auditId, "matrix.json")) && a.qualityTree() === treeBefore,
+    a.qualityTree().slice(0, 600),
   );
 
   const recorded = a.run(["matrix", planId, "--record", "--plan"]);
@@ -267,7 +287,11 @@ try {
     appended.length === 1 && event.type === "quality.audit.completed" && event.audit_id === planId,
     JSON.stringify(appended.map((e) => [e.type, e.audit_id])),
   );
-  check("5. the record writes no audit directory for the plan", !existsSync(a.at("docs", "quality", "audits", planId)));
+  check(
+    "5. the record writes nothing under docs/quality: no matrix.json in its part's directory, no audit directory for the plan",
+    !existsSync(a.at("docs", "quality", "audits", part.auditId, "matrix.json")) && a.qualityTree() === treeBefore,
+    a.qualityTree().slice(0, 600),
+  );
 
   // 6. The event.
   const scope = event.scope ?? {};
@@ -360,6 +384,10 @@ try {
   ]);
   rmSync(r.at("docs", "quality", "audits", foreign), { recursive: true, force: true });
 
+  writeFileSync(planFile, JSON.stringify({ ...rPlan, parts: rPlan.parts.map((p) => ({ ...p, status: "deferred" })) }, null, 2));
+  refuses(r, "a plan whose every part was deferred", recordArgs, [`plan "${rPlan.planId}" includes no part`, "every part was deferred"]);
+  writeFileSync(planFile, planText);
+
   // A file whose name is a plan id it was never written under: the schema refuses it.
   const broken = "2000-01-zplan-3198";
   r.writeJson(`docs/quality/plans/${broken}.json`, { schema: "arkaik.kritik.plan/9" });
@@ -376,6 +404,7 @@ try {
     JSON.stringify(r.scopeKeys()),
   );
   refuses(r, "a plan already recorded", recordArgs, ["already recorded", "make a new plan", "--run SEC:web"]);
+  refuses(r, "previewing a plan already recorded", ["matrix", rPlan.planId, "--plan"], [`plan "${rPlan.planId}" is already recorded`]);
 
   // === The CLI's own refusals around a plan ======================================
 
@@ -419,7 +448,13 @@ try {
   const webLine = new RegExp(`web \\d+, from 6 of ${APPLICABLE.web} cells`);
   const iosLine = `ios —, from 0 of ${APPLICABLE.ios} cells`;
 
+  const cTreeBefore = c.qualityTree();
   const cPreview = c.run(["matrix", cPlan.planId, "--plan"]);
+  check(
+    "a first plan's preview writes no journal line and no matrix.json in its part's directory",
+    c.journal().length === 0 && !existsSync(c.at("docs", "quality", "audits", cPart.auditId, "matrix.json")) && c.qualityTree() === cTreeBefore,
+    c.qualityTree().slice(0, 400),
+  );
   check(
     "first audit as a plan: the preview prints coverage beside the roll-ups",
     cPreview.status === 0 && cPreview.stdout.includes("coverage —") && webLine.test(cPreview.stdout) && cPreview.stdout.includes(iosLine),
