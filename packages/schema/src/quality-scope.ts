@@ -98,7 +98,7 @@ export interface AuditScopeOptions {
   /**
    * The audit to measure from. Default: the newest `quality.audit.completed`
    * that is not a plan record. A plan id or a part id names no anchor, so it
-   * gives an empty scope.
+   * gives an empty scope whose `since` is `null`.
    */
   since?: string;
   /** Add the one-hop node neighbours. Default: on. */
@@ -210,6 +210,21 @@ function anchorIndex(ordered: readonly JournalEvent[], since: string | undefined
 }
 
 /**
+ * Whether `id` names a plan or one of its parts: by its shape, or because a
+ * plan record in `ordered` carries it as its `audit_id`, its `scope.plan` or
+ * one of its `parts`. Such an id is never a scope's `since`.
+ */
+function namesPlan(ordered: readonly JournalEvent[], id: string): boolean {
+  if (isPlanId(id) || isPlanPartId(id)) return true;
+  return ordered.some((event) => {
+    if (!isPlanRecord(event)) return false;
+    if ((event as { audit_id?: unknown }).audit_id === id) return true;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    return reading !== null && (reading.plan === id || reading.parts.includes(id));
+  });
+}
+
+/**
  * The audit id of the newest record that is not a plan record — the `since` an
  * unscoped {@link deriveAuditScope} measures from, and the `since` a plan
  * record carries. `null` when there is none, or when that record names no id.
@@ -272,8 +287,11 @@ export function deriveAuditScope(
   // Rule 1: the anchor is never a plan record.
   const sinceIndex = anchorIndex(ordered, options.since);
 
+  // An unrecorded `since` is echoed back, so the caller can say which audit
+  // it never found — unless it names a plan or a part, which `since` never is.
+  const asked = options.since;
   const empty: AuditScope = {
-    since: options.since ?? null,
+    since: asked === undefined || namesPlan(ordered, asked) ? null : asked,
     since_ts: null,
     cells: [],
     findings: [],

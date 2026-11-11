@@ -546,10 +546,28 @@ const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
   );
   check("rule 1: scopeAnchorId is null with only plan records", scopeAnchorId(onlyPlans) === null);
 
+  // AuditScope.since is never a plan record, so an empty scope asked from a
+  // plan or a part says null rather than echoing the id back.
   const byPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: PLAN });
-  check("rule 1: since naming a plan finds no anchor", byPlan.since === PLAN && byPlan.since_ts === null && byPlan.cells.length === 0, JSON.stringify(byPlan));
+  check("rule 1: since naming a plan finds no anchor, and names none", byPlan.since === null && byPlan.since_ts === null && byPlan.cells.length === 0, JSON.stringify(byPlan));
   const byPart = deriveAuditScope(events, SECTION, LIBRARY, { since: PART_SEC_WEB });
-  check("rule 1: nor does since naming a part", byPart.since === PART_SEC_WEB && byPart.since_ts === null && byPart.cells.length === 0, JSON.stringify(byPart));
+  check("rule 1: nor does since naming a part", byPart.since === null && byPart.since_ts === null && byPart.cells.length === 0, JSON.stringify(byPart));
+  const unrecordedPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: "2026-12-zplan-0100" });
+  check("rule 1: a plan-shaped id never recorded names none either", unrecordedPlan.since === null && unrecordedPlan.cells.length === 0, JSON.stringify(unrecordedPlan));
+  const oddlyNamed = [
+    AUG(),
+    resolved("F-1", T(2)),
+    audit("custom-plan", T(10), { scope: { partial: true, cells: 0, plan: "custom-plan", parts: ["custom-part"], scored: [] } }),
+  ];
+  check(
+    "rule 1: nor does the id or a part of a recorded plan whose ids are not plan-shaped",
+    ["custom-plan", "custom-part"].every((since) => {
+      const scope = deriveAuditScope(oddlyNamed, SECTION, LIBRARY, { since });
+      return scope.since === null && scope.since_ts === null && scope.cells.length === 0;
+    }),
+  );
+  const notAPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: "2026-01" });
+  check("rule 1: an unrecorded id that is not a plan's still names itself", notAPlan.since === "2026-01" && notAPlan.since_ts === null, JSON.stringify(notAPlan));
 
   check("no plan record: scopeAnchorId is the scope's since", scopeAnchorId(NO_PLAN_SHUFFLED) === "2026-09-scoped");
   check("scopeAnchorId of nothing is null, never a throw", scopeAnchorId([]) === null && scopeAnchorId(null) === null && scopeAnchorId([null, 7]) === null);
