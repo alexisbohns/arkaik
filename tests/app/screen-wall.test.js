@@ -586,3 +586,50 @@ const COUNT_EVENTS = [toLive("e-1-web", "V-1", T1, { platform: "web", actor: "al
     check(`${name}: buildWall + layoutWall under 25 ms on average (${mean.toFixed(2)} ms)`, mean < 25);
   }
 }
+
+// --- Camera, keyboard neighbours, chips (spec § Layout helpers) -----------
+
+{
+  const L = wallModule;
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const nearView = (actual, expected) => ["x", "y", "zoom"].every((key) => near(actual[key], expected[key]));
+  const viewport = { width: 1000, height: 800 };
+  const options = { padding: 32, bottomInset: 72, minZoom: 0.4, maxZoom: 1 };
+
+  const fits = L.frameViewport({ x: 100, y: 200, width: 400, height: 300 }, viewport, options);
+  check("frameViewport: a rect that fits is centred above the bottom inset, at maxZoom", nearView(fits, { x: 200, y: 14, zoom: 1 }), show(fits));
+  const between = L.frameViewport({ x: 0, y: 0, width: 1200, height: 400 }, viewport, options);
+  check("frameViewport: zoom is the tighter of the two fits", nearView(between, { x: 32, y: (728 - 400 * 0.78) / 2, zoom: 0.78 }), show(between));
+  const wide = L.frameViewport({ x: 0, y: 452, width: 5000, height: 380 }, viewport, options);
+  check("frameViewport: a strip wider than the view starts at the left edge, at minZoom",
+    nearView(wide, { x: 32, y: (728 - 380 * 0.4) / 2 - 452 * 0.4, zoom: 0.4 }), show(wide));
+  const tall = L.frameViewport({ x: 10, y: 100, width: 300, height: 2000 }, viewport, options);
+  check("frameViewport: a rect taller than the view starts at the top edge",
+    nearView(tall, { x: (1000 - 300 * 0.4) / 2 - 10 * 0.4, y: 32 - 100 * 0.4, zoom: 0.4 }), show(tall));
+
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  const layout = L.layoutWall(wall, "web", () => undefined);
+  const move = (id, dir) => L.neighbourFrame(layout, id, dir);
+  check("neighbourFrame: right and left skip markers and jump tiles",
+    move("V-a@F-a:0", "right") === "V-b@F-a:2.0.0" && move("V-b@F-a:2.0.0", "left") === "V-a@F-a:0");
+  check("neighbourFrame: null at a row's ends", move("V-a@F-a:0", "left") === null && move("V-a@F-a:3", "right") === null);
+  check("neighbourFrame: down skips strips with no frames, to the nearest centre", move("V-a@F-a:0", "down") === "V-d@F-e:0");
+  check("neighbourFrame: up to the nearest centre in the previous row", move("V-d@F-e:0", "up") === "V-a@F-a:0");
+  check("neighbourFrame: null above the first row and below the last",
+    move("V-a@F-a:0", "up") === null && move("V-home@loose", "down") === null);
+  check("neighbourFrame: null for anything but a frame", move("jump:F-a:1", "right") === null && move("nope", "down") === null);
+
+  const looseWall = wallOf({ nodes: Array.from({ length: 10 }, (_, i) => view(`V-${String(i).padStart(2, "0")}`, `View ${i}`)), productId: "app" });
+  const looseLayout = L.layoutWall(looseWall, "web", () => undefined);
+  check("neighbourFrame: wrapped rows are rows",
+    L.neighbourFrame(looseLayout, "V-02@loose", "down") === "V-09@loose" && L.neighbourFrame(looseLayout, "V-09@loose", "up") === "V-01@loose");
+
+  const frame = { id: "V-a@F-a:0", kind: "frame", stripId: "strip:F-a", row: 0, x: 100, y: 56, width: 448, height: 324, shotWidth: 448 };
+  check("chipRects: a column at the frame's x, CHIP_OFFSET below it",
+    same(L.chipRects(frame, 3), [
+      { x: 100, y: 396, width: 220, height: 28 },
+      { x: 100, y: 430, width: 220, height: 28 },
+      { x: 100, y: 464, width: 220, height: 28 },
+    ]) && same(L.chipRects(frame, 0), []),
+    show(L.chipRects(frame, 3)));
+}

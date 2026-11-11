@@ -195,3 +195,81 @@ export function layoutWall(wall: Wall, lens: WallLens, aspectOf: AspectOf): Wall
 
   return { boxes, strips, bounds: { x: 0, y: 0, width: maxWidth, height: y } };
 }
+
+/* --- Camera, keyboard neighbours, chips ------------------------------------ */
+
+/**
+ * The viewport that shows `rect`: zoom = clamp(min((W − 2p) / w, (H − 2p −
+ * bottomInset) / h), minZoom, maxZoom). On each axis the rect is centred in
+ * the space above the bottom inset, or start-aligned (left, top) at the
+ * padding when it overflows that space at this zoom.
+ */
+export function frameViewport(
+  rect: Rect,
+  viewport: { width: number; height: number },
+  options: { padding: number; bottomInset: number; minZoom: number; maxZoom: number },
+): { x: number; y: number; zoom: number } {
+  const { padding, bottomInset, minZoom, maxZoom } = options;
+  const roomW = viewport.width - 2 * padding;
+  const roomH = viewport.height - 2 * padding - bottomInset;
+  const fit = Math.min(roomW / rect.width, roomH / rect.height);
+  const zoom = Math.min(maxZoom, Math.max(minZoom, fit));
+  const w = rect.width * zoom;
+  const h = rect.height * zoom;
+  const x = w > roomW ? padding - rect.x * zoom : (viewport.width - w) / 2 - rect.x * zoom;
+  const y = h > roomH ? padding - rect.y * zoom : (viewport.height - bottomInset - h) / 2 - rect.y * zoom;
+  return { x, y, zoom };
+}
+
+/**
+ * The arrow-key neighbour among frames only: left/right within the row;
+ * up/down to the frame in the previous/next row (or strip) whose centre x is
+ * nearest, skipping rows with no frame. null at the edges, and for an id that
+ * is not a frame.
+ */
+export function neighbourFrame(layout: WallLayout, frameId: string, dir: "left" | "right" | "up" | "down"): string | null {
+  const rows: WallBox[][] = [];
+  let rowKey: string | null = null;
+  for (const box of layout.boxes) {
+    if (box.kind !== "frame") continue;
+    const key = `${box.stripId}\u0000${box.row}`;
+    if (key !== rowKey) {
+      rows.push([]);
+      rowKey = key;
+    }
+    rows[rows.length - 1].push(box);
+  }
+
+  const rowIndex = rows.findIndex((row) => row.some((box) => box.id === frameId));
+  if (rowIndex < 0) return null;
+  const row = rows[rowIndex];
+  const current = row.find((box) => box.id === frameId)!;
+
+  if (dir === "left" || dir === "right") {
+    const index = row.indexOf(current);
+    return row[dir === "left" ? index - 1 : index + 1]?.id ?? null;
+  }
+
+  const target = rows[dir === "up" ? rowIndex - 1 : rowIndex + 1];
+  if (!target) return null;
+  const centre = current.x + current.width / 2;
+  let best = target[0];
+  for (const box of target) {
+    if (Math.abs(box.x + box.width / 2 - centre) < Math.abs(best.x + best.width / 2 - centre)) best = box;
+  }
+  return best.id;
+}
+
+/** Chip rects under a frame node: a column at the frame's x, `CHIP_OFFSET` below it. */
+export function chipRects(frame: WallBox, count: number): Rect[] {
+  const rects: Rect[] = [];
+  for (let index = 0; index < count; index += 1) {
+    rects.push({
+      x: frame.x,
+      y: frame.y + frame.height + CHIP_OFFSET + index * (CHIP_H + CHIP_GAP),
+      width: CHIP_W,
+      height: CHIP_H,
+    });
+  }
+  return rects;
+}
