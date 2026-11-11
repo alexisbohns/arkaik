@@ -3,7 +3,7 @@
 /** `isScreenshotStale` (lib/utils/screenshot-staleness.ts): derived, never stored (spec § 5). */
 
 const { loadScreenshotStaleness } = require("./load-screenshot-staleness");
-const { isScreenshotStale } = loadScreenshotStaleness();
+const { isScreenshotStale, staleReasons, stalenessRelatedIds, STALENESS_EVENT_TYPES } = loadScreenshotStaleness();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -32,5 +32,50 @@ check("a shipped deliverable on another platform: not stale", isScreenshotStale(
 check("a shipped deliverable naming another node: not stale", isScreenshotStale(meta, [shipped(after, ["V-other"])], "V-home", "ios") === false);
 check("an event at exactly meta.ts: not stale", isScreenshotStale(meta, [status(T0, "ios")], "V-home", "ios") === false);
 check("a ref closed (not merged): not stale", isScreenshotStale(meta, [{ ...merged(after), to: "closed" }], "V-home", "ios") === false);
+
+// --- Related ids: a view's covering acceptances (screens map spec F4) -------
+// A deploy moves the acceptance, never the view, so the view's shot has to
+// stale on the acceptance's events under the same three rules as its own.
+const acStatus = (ts, platform, to = "live") => ({ id: `a${ts}`, ts, type: "node.status_changed", node_id: "AC-home", from: "releasing", to, ...(platform ? { platform } : {}) });
+const acMerged = (ts) => ({ ...merged(ts), id: `m${ts}`, node_id: "AC-home" });
+
+check("the event types are the three the rule reads, in order",
+  JSON.stringify(STALENESS_EVENT_TYPES) === JSON.stringify(["node.status_changed", "ref.status_changed", "deliverable.shipped"]));
+check("related: a later status change on this platform stales the shot", isScreenshotStale(meta, [acStatus(after, "ios")], "V-home", "ios", ["AC-home"]) === true);
+check("related: a later project-wide status change stales the shot", isScreenshotStale(meta, [acStatus(after)], "V-home", "ios", ["AC-home"]) === true);
+check("related: a status change on another platform does not", isScreenshotStale(meta, [acStatus(after, "web")], "V-home", "ios", ["AC-home"]) === false);
+check("related: a later merged ref stales the shot", isScreenshotStale(meta, [acMerged(after)], "V-home", "ios", ["AC-home"]) === true);
+check("related: a later shipped deliverable naming it stales the shot", isScreenshotStale(meta, [shipped(after, ["AC-home"])], "V-home", "ios", ["AC-home"]) === true);
+check("related: a shipped deliverable on another platform does not", isScreenshotStale(meta, [shipped(after, ["AC-home"], "web")], "V-home", "ios", ["AC-home"]) === false);
+check("related: an event before the shot does not", isScreenshotStale(meta, [acStatus(before, "ios")], "V-home", "ios", ["AC-home"]) === false);
+check("an id that is not related does not stale the shot", isScreenshotStale(meta, [acStatus(after, "ios")], "V-home", "ios", ["AC-other"]) === false);
+check("no related ids: an acceptance's event is ignored, as before", isScreenshotStale(meta, [acStatus(after, "ios")], "V-home", "ios") === false);
+check("an empty related list reads as no related ids", isScreenshotStale(meta, [acStatus(after, "ios")], "V-home", "ios", []) === false);
+
+const T1 = "2026-11-01T12:00:00.000Z";
+const reasons = staleReasons(
+  meta,
+  [
+    status(after, "ios"),
+    acStatus(T1, "ios"),
+    { ...status(T1, "ios"), id: "z-same-ts" },
+    status(before, "ios"),
+    { ...acStatus(after, "web"), id: "other-platform" },
+  ],
+  "V-home",
+  "ios",
+  ["AC-home"],
+);
+check("staleReasons: every counting event, newest first, id descending on a tie",
+  JSON.stringify(reasons.map((ev) => ev.id)) === JSON.stringify(["z-same-ts", `a${T1}`, after]),
+  JSON.stringify(reasons.map((ev) => ev.id)));
+check("staleReasons: none for a legacy shot", staleReasons(undefined, [status(after, "ios")], "V-home", "ios").length === 0);
+check("staleReasons: none when nothing came after", staleReasons(meta, [status(before, "ios")], "V-home", "ios").length === 0);
+
+const ac = (id, platforms, platformStatuses) => ({ id, species: "acceptance", status: "live", platforms, metadata: platformStatuses ? { platformStatuses } : {} });
+check("stalenessRelatedIds: the acceptances that list the platform, in input order",
+  JSON.stringify(stalenessRelatedIds([ac("AC-b", ["web", "ios"]), ac("AC-a", ["web"]), ac("AC-c", ["ios"], { ios: "development" })], "ios")) === JSON.stringify(["AC-b", "AC-c"]));
+check("stalenessRelatedIds: none for a platform no acceptance lists", stalenessRelatedIds([ac("AC-a", ["web"])], "android").length === 0);
+check("stalenessRelatedIds: none for no acceptances", stalenessRelatedIds([], "web").length === 0);
 
 process.exit(failures > 0 ? 1 : 0);
