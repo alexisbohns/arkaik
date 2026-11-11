@@ -1,0 +1,398 @@
+#!/usr/bin/env node
+
+/**
+ * `arkaik kritik plan` end to end (docs/superpowers/specs/2026-11-11-kritik-planner-design.md):
+ * acceptance steps 1 to 3 (a counts-only SEC:web plan, a part id that sorts
+ * after every audit on disk, a prompt that names exactly its cells and never
+ * records), every plan refusal in the spec's error table, the estimator flags
+ * refused, `--json`, `--dry-run`, `--out` and `--status`.
+ *
+ * Drives the BUILT CLI in mkdtemp repos against the shipped criteria pack, like
+ * kritik-scope.test.js beside it. The fixture is synthetic: a five-surface
+ * profile like Pebbles', one recorded full audit of all 338 applicable cells
+ * (generated from the pack, written as a file), plus a hand-named
+ * `<month>-sec-web` and a `<month>-scoped` audit. Dates are computed, never
+ * hard-coded, and plan ids are read back from `--json`.
+ */
+
+const { spawnSync } = require("child_process");
+const { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = require("fs");
+const { tmpdir } = require("os");
+const path = require("path");
+const { loadSchema } = require("../schema/load-schema");
+
+const ROOT = path.join(__dirname, "..", "..");
+const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
+
+if (!existsSync(CLI)) {
+  console.error(`CLI not built at ${CLI}. Run \`npm run build -w arkaik\` first.`);
+  process.exit(1);
+}
+
+const { applicableCells } = loadSchema();
+const PACK = JSON.parse(readFileSync(path.join(ROOT, "packages", "kritik-library", "framework.json"), "utf8"));
+const SURFACES = ["web", "ios", "android", "admin", "supabase"];
+
+let failures = 0;
+function check(name, cond, detail) {
+  if (cond) console.log(`PASS: ${name}`);
+  else {
+    failures++;
+    console.log(`FAIL: ${name}${detail ? `\n${detail}` : ""}`);
+  }
+}
+
+const BUNDLE = JSON.stringify({
+  schema_version: 3,
+  project: { id: "demo", title: "Demo", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+  nodes: [{ id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] }],
+  edges: [],
+});
+
+// The plan id is built from the local date, the way the CLI builds it.
+const now = new Date();
+const MONTH = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+const DAY = String(now.getDate()).padStart(2, "0");
+const FIRST_PLAN = `${MONTH}-zplan-${DAY}00`;
+const SECOND_PLAN = `${MONTH}-zplan-${DAY}01`;
+const SEC_WEB = ["SEC-01", "SEC-04", "SEC-05", "SEC-06", "SEC-07", "SEC-08"];
+const ESTIMATOR = (flag) => `kritik: --${flag} is not available yet — the estimator ships later, and every plan is counts-only for now.`;
+
+const dirs = [];
+function repo({ bundle = true, surfaces = SURFACES } = {}) {
+  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-kritik-plan-"));
+  dirs.push(dir);
+  if (bundle) {
+    mkdirSync(path.join(dir, "docs", "arkaik"), { recursive: true });
+    writeFileSync(path.join(dir, "docs", "arkaik", "bundle.json"), BUNDLE);
+  }
+  const run = (args) => spawnSync(process.execPath, [CLI, "kritik", ...args], { encoding: "utf8", cwd: dir });
+  if (surfaces !== null) {
+    const profile = run(["profile", ...surfaces.flatMap((surface) => ["--surface", surface])]);
+    if (profile.status !== 0) {
+      failures++;
+      console.log(`FAIL: setup — profile\n${profile.stderr}`);
+    }
+  }
+  const plansDir = path.join(dir, "docs", "quality", "plans");
+  const writeScores = (auditId, assessments, extra = {}) => {
+    mkdirSync(path.join(dir, "docs", "quality", "audits", auditId), { recursive: true });
+    writeFileSync(
+      path.join(dir, "docs", "quality", "audits", auditId, "scores.json"),
+      JSON.stringify({ audit_id: auditId, framework_version: PACK.version, ...extra, assessments }, null, 2),
+    );
+  };
+  return { dir, run, plansDir, writeScores };
+}
+
+const assessment = (criterion_id, surface, auditId) => ({
+  criterion_id, surface, level: 2, evidence: `${criterion_id}.ts:1`, audit_id: auditId, ts: "2026-08-20T00:00:00.000Z",
+});
+/** Every applicable cell of the shipped pack over the five surfaces: a full audit. */
+const fullAudit = (auditId) =>
+  applicableCells(PACK, SURFACES).flatMap(({ criterion_id, surfaces }) => surfaces.map((surface) => assessment(criterion_id, surface, auditId)));
+const json = (result) => {
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+};
+
+try {
+  // --- no profile --------------------------------------------------------------
+
+  {
+    const { run, plansDir } = repo({ surfaces: null });
+    const noProfile = run(["plan", "--run", "SEC:web"]);
+    check(
+      "with no profile, plan refuses and points at `arkaik kritik profile`",
+      noProfile.status === 1 && noProfile.stderr.includes("arkaik kritik profile") && !existsSync(plansDir),
+      noProfile.stderr,
+    );
+  }
+
+  // --- the fixture ---------------------------------------------------------------
+
+  const { dir, run, plansDir, writeScores } = repo();
+  const ok = (args, label) => {
+    const result = run(args);
+    if (result.status !== 0) {
+      failures++;
+      console.log(`FAIL: setup — ${label ?? args.join(" ")}\n${result.stderr}${result.stdout}`);
+    }
+    return result;
+  };
+
+  const full = fullAudit("2026-08");
+  check("the fixture's full audit is 338 cells", full.length === 338, String(full.length));
+  writeScores("2026-08", full, { commit: "abc1234" });
+  ok(["matrix", "2026-08", "--record"]);
+  writeScores(`${MONTH}-sec-web`, [assessment("SEC-01", "web", `${MONTH}-sec-web`)]);
+  writeScores(`${MONTH}-scoped`, [assessment("SEC-04", "web", `${MONTH}-scoped`)], { scope: { since: "2026-08" } });
+
+  // --- refusals: each exits 1 and writes nothing ---------------------------------------
+
+  const help = run(["plan", "--help"]);
+  check("plan --help prints its usage", help.status === 0 && help.stdout.includes("--run D:S") && help.stdout.includes("--status <id>"), help.stdout);
+
+  const noRun = run(["plan"]);
+  check("no --run is refused", noRun.status === 1 && noRun.stderr.includes("at least one --run"), noRun.stderr);
+
+  for (const token of ["SEC", "SEC:", "SEC:web:x"]) {
+    const bad = run(["plan", "--run", token]);
+    check(`a malformed token (${token}) is refused, showing the token`, bad.status === 1 && bad.stderr.includes(token), bad.stderr);
+  }
+
+  const unknownDomain = run(["plan", "--run", "XYZ:web"]);
+  check(
+    "an unknown domain is refused, listing the codes",
+    unknownDomain.status === 1 && unknownDomain.stderr.includes("XYZ") && unknownDomain.stderr.includes("A11Y") && unknownDomain.stderr.includes("AGT"),
+    unknownDomain.stderr,
+  );
+
+  const unknownSurface = run(["plan", "--run", "SEC:api"]);
+  check(
+    "a surface the profile does not declare is refused, listing the profile's surfaces",
+    unknownSurface.status === 1 && unknownSurface.stderr.includes("api") && unknownSurface.stderr.includes("supabase"),
+    unknownSurface.stderr,
+  );
+
+  const wrongCase = run(["plan", "--run", "SEC:Web"]);
+  check("a surface is matched literally: Web is not web", wrongCase.status === 1 && wrongCase.stderr.includes("Web"), wrongCase.stderr);
+
+  const lens = run(["plan", "--run", "SEC:cross-surface"]);
+  check("cross-surface is refused as a findings-only lens", lens.status === 1 && lens.stderr.includes("cross-surface") && lens.stderr.includes("lens"), lens.stderr);
+
+  for (const flag of ["budget", "budget-tokens", "price", "tier"]) {
+    const refused = run(["plan", "--run", "SEC:web", `--${flag}`, "5"]);
+    check(`--${flag} is refused until the estimator ships`, refused.status === 1 && refused.stderr.trim() === ESTIMATOR(flag), refused.stderr);
+  }
+
+  const statusAndRun = run(["plan", "--status", FIRST_PLAN, "--run", "SEC:web"]);
+  check("--status with --run is refused", statusAndRun.status === 1 && statusAndRun.stderr.includes("--status"), statusAndRun.stderr);
+
+  check("no refusal wrote a plan", !existsSync(plansDir));
+
+  // --- --dry-run --------------------------------------------------------------------
+
+  const dry = run(["plan", "--run", "SEC:web", "--counts-only", "--dry-run"]);
+  check(
+    "--dry-run prints the plan and its prompt, and writes nothing",
+    dry.status === 0 &&
+      dry.stdout.includes(`Plan ${FIRST_PLAN}`) &&
+      dry.stdout.includes("dry run — nothing written") &&
+      dry.stdout.includes(`Run Kritik plan ${FIRST_PLAN}`) &&
+      !existsSync(plansDir),
+    dry.stdout + dry.stderr,
+  );
+
+  // --- acceptance step 1: a counts-only SEC:web plan -----------------------------------------
+
+  const first = run(["plan", "--run", "SEC:web", "--counts-only", "--json"]);
+  const plan = json(first);
+  check("plan --json exits 0 and prints the plan", first.status === 0 && plan !== null, first.stdout + first.stderr);
+  const planFile = path.join(plansDir, `${FIRST_PLAN}.json`);
+  check("the plan is the day's first: <month>-zplan-<day>00", plan?.planId === FIRST_PLAN, plan?.planId);
+  check(
+    "it is written to docs/quality/plans/<planId>.json, exactly as printed",
+    existsSync(planFile) && JSON.stringify(JSON.parse(readFileSync(planFile, "utf8"))) === JSON.stringify(plan),
+  );
+  const part = plan?.parts?.[0];
+  check(
+    "one part: SEC:web, 6 cells, 36 steps, included, no estimate",
+    plan?.parts?.length === 1 &&
+      part.domain === "SEC" && part.surface === "web" &&
+      part.cells.length === 6 && part.steps === 36 &&
+      part.status === "included" && part.estimate === null,
+    JSON.stringify(part ?? null).slice(0, 300),
+  );
+  check(
+    "the totals count the whole product: 6 of 338",
+    plan?.totals?.cells === 6 && plan.totals.steps === 36 && plan.totals.applicableCells === 338 && plan.totals.tokens === null,
+    JSON.stringify(plan?.totals),
+  );
+  check(
+    "a plan made outside git carries no commit, and the library's version",
+    plan?.commit === null && plan.frameworkVersion === PACK.version && plan.schema === "arkaik.kritik.plan/1",
+  );
+  check("the record command names the plan", plan?.recordCommand === `arkaik kritik matrix ${FIRST_PLAN} --record --plan`);
+
+  // --- acceptance step 2: the part id sorts last ------------------------------------------------
+
+  const partId = `${FIRST_PLAN}-sec-web`;
+  check("the part's audit id is <planId>-sec-web", part?.auditId === partId, part?.auditId);
+  const audits = readdirSync(path.join(dir, "docs", "quality", "audits"));
+  check(
+    "it sorts after every audit in the fixture, the hand-named and the scoped one included",
+    audits.includes(`${MONTH}-sec-web`) && audits.includes(`${MONTH}-scoped`) && audits.every((id) => partId > id),
+    audits.join(", "),
+  );
+
+  // --- acceptance step 3: the part prompt -----------------------------------------------------
+
+  const scoreLines = (part?.prompt ?? "").split("\n").filter((line) => line.includes("kritik score"));
+  check(
+    "the part prompt names exactly the 6 cells",
+    JSON.stringify(scoreLines.map((line) => line.trim().split(" ")[1])) === JSON.stringify(SEC_WEB),
+    scoreLines.join("\n"),
+  );
+  check("every score line passes --audit <partId>", scoreLines.every((line) => line.includes(`--audit ${partId}`)), scoreLines.join("\n"));
+  check("the part prompt never records", !(part?.prompt ?? "--record").includes("--record"));
+  check(
+    "the combined prompt records once, last",
+    (plan?.prompt ?? "").split("--record").length === 2 && plan.prompt.trimEnd().endsWith(`\`${plan.recordCommand}\``),
+  );
+
+  // --- the human summary, a second plan, duplicates ------------------------------------------------
+
+  const second = run(["plan", "--run", "SEC:web", "--run", "AGT:ios", "--run", "sec:web"]);
+  check("a second plan the same day takes the next counter", second.status === 0 && second.stdout.includes(`Plan ${SECOND_PLAN}`), second.stdout + second.stderr);
+  check(
+    "the summary prints each part, the totals against the whole product, and the file it wrote",
+    second.stdout.includes(`${SECOND_PLAN}-sec-web`) &&
+      second.stdout.includes(`${SECOND_PLAN}-agt-ios`) &&
+      second.stdout.includes("of 338 applicable cells") &&
+      // tmpdir() may sit behind a symlink (macOS /var -> /private/var), so match the tail.
+      second.stdout.includes(path.join("docs", "quality", "plans", `${SECOND_PLAN}.json`)) &&
+      second.stdout.includes("  wrote "),
+    second.stdout,
+  );
+  check("a duplicate --run is merged, with a note", second.stdout.includes("note:"), second.stdout);
+  const secondPlan = JSON.parse(readFileSync(path.join(plansDir, `${SECOND_PLAN}.json`), "utf8"));
+  check(
+    "the duplicate collapsed: two parts, 14 cells, 78 steps",
+    secondPlan.parts.length === 2 && secondPlan.totals.cells === 14 && secondPlan.totals.steps === 78,
+    JSON.stringify(secondPlan.totals),
+  );
+  check(
+    "the summary ends with the combined prompt and the record command",
+    second.stdout.includes(secondPlan.prompt) && second.stdout.includes(`After every part is scored:  ${secondPlan.recordCommand}`),
+  );
+
+  // --- --out -------------------------------------------------------------------------------
+
+  const outside = path.join(dir, "elsewhere", "plan.json");
+  const out = run(["plan", "--run", "AGT:ios", "--out", outside]);
+  const outPlan = existsSync(outside) ? JSON.parse(readFileSync(outside, "utf8")) : null;
+  check(
+    "--out writes the plan there, and says where it must be before recording",
+    out.status === 0 && outPlan !== null && out.stdout.includes("move the file there before recording") &&
+      !existsSync(path.join(plansDir, `${outPlan.planId}.json`)),
+    out.stdout + out.stderr,
+  );
+  const outStatus = run(["plan", "--status", outPlan?.planId ?? "missing"]);
+  check("--status reads only docs/quality/plans/", outStatus.status === 1 && outStatus.stderr.includes("no plan at"), outStatus.stderr);
+  const outAgain = run(["plan", "--run", "AGT:ios", "--out", outside]);
+  check("--out never overwrites a file", outAgain.status === 1 && outAgain.stderr.includes("already exists"), outAgain.stderr);
+
+  // --- --status ------------------------------------------------------------------------------
+
+  const statusJson = (id) => json(run(["plan", "--status", id, "--json"]));
+  const fresh = statusJson(FIRST_PLAN);
+  check(
+    "--status: an unscored part is not started",
+    fresh?.plan_id === FIRST_PLAN && fresh.recorded === false && fresh.parts[0].progress === "not started" && fresh.parts[0].scored === 0,
+    JSON.stringify(fresh),
+  );
+
+  // Run the prompt's own score line, so its shape is proven to be a real command.
+  const line = scoreLines[0];
+  const [, criterion, surface, audit] = line.match(/arkaik kritik score (\S+) (\S+) <level> --evidence "<file:line …>" --audit (\S+)`/) ?? [];
+  ok(["score", criterion, surface, "2", "--evidence", "app/auth.ts:12", "--audit", audit], "the prompt's first score line");
+  ok(["score", "PRV-01", "web", "3", "--evidence", "app/privacy.ts:4", "--audit", partId], "a stray score");
+
+  const started = statusJson(FIRST_PLAN);
+  check(
+    "--status: one plan cell scored is in progress, 1 of 6",
+    started?.parts[0].progress === "in progress" && started.parts[0].scored === 1 && started.parts[0].missing.length === 5,
+    JSON.stringify(started?.parts[0]),
+  );
+  check(
+    "--status: a score outside the plan is reported as stray",
+    JSON.stringify(started?.parts[0].stray) === JSON.stringify([{ criterion_id: "PRV-01", surface: "web" }]),
+    JSON.stringify(started?.parts[0].stray),
+  );
+  const startedText = run(["plan", "--status", FIRST_PLAN]);
+  check(
+    "--status prints progress, the cells still to score, and the stray to remove",
+    startedText.status === 0 &&
+      startedText.stdout.includes("not recorded") &&
+      startedText.stdout.includes("in progress") &&
+      startedText.stdout.includes("1 of 6") &&
+      startedText.stdout.includes("SEC-04 on web") &&
+      startedText.stdout.includes("outside the plan") &&
+      startedText.stdout.includes("PRV-01 on web"),
+    startedText.stdout,
+  );
+
+  for (const id of SEC_WEB.slice(1)) ok(["score", id, "web", "3", "--evidence", `${id}.ts:1`, "--audit", partId], `score ${id}`);
+  const partScores = path.join(dir, "docs", "quality", "audits", partId, "scores.json");
+  const scoresFile = JSON.parse(readFileSync(partScores, "utf8"));
+  writeFileSync(partScores, JSON.stringify({ ...scoresFile, assessments: scoresFile.assessments.filter((a) => a.criterion_id !== "PRV-01") }, null, 2));
+  const done = run(["plan", "--status", FIRST_PLAN]);
+  check(
+    "--status: every plan cell scored and nothing stray says to record, naming the command",
+    done.status === 0 && done.stdout.includes("scored") && done.stdout.includes("6 of 6") && done.stdout.includes("every part is scored") &&
+      done.stdout.includes(`arkaik kritik matrix ${FIRST_PLAN} --record --plan`),
+    done.stdout,
+  );
+  check("--status writes nothing", JSON.stringify(JSON.parse(readFileSync(planFile, "utf8"))) === JSON.stringify(plan));
+
+  const missing = run(["plan", "--status", `${MONTH}-zplan-${DAY}77`]);
+  check("--status on a plan that does not exist is refused", missing.status === 1 && missing.stderr.includes("no plan at"), missing.stderr);
+
+  // Last in this repo: a plan file named past every counter blocks later plans.
+  const brokenId = `${MONTH}-zplan-${DAY}99`;
+  writeFileSync(path.join(plansDir, `${brokenId}.json`), JSON.stringify({ schema: "arkaik.kritik.plan/9" }));
+  const broken = run(["plan", "--status", brokenId]);
+  check(
+    "a plan file that fails the schema is refused, naming the path and the issue",
+    broken.status === 1 && broken.stderr.includes(`${brokenId}.json`) && broken.stderr.includes("schema"),
+    broken.stderr,
+  );
+
+  // --- zero cells -----------------------------------------------------------------------------
+
+  {
+    const { run: runCli, plansDir: cliPlans } = repo({ surfaces: ["web", "cli"] });
+    const zero = runCli(["plan", "--run", "SEC:cli"]);
+    check(
+      "a pair with no applicable cell is refused, naming the domain and the surface",
+      zero.status === 1 && zero.stderr.includes('no SEC criterion applies to "cli"') && !existsSync(cliPlans),
+      zero.stderr,
+    );
+  }
+
+  // --- no counter sorts last -------------------------------------------------------------------
+
+  {
+    const { dir: late, run: runLate, plansDir: latePlans } = repo();
+    const ahead = `${MONTH}-zzz`;
+    mkdirSync(path.join(late, "docs", "quality", "audits", ahead), { recursive: true });
+    const blocked = runLate(["plan", "--run", "SEC:web"]);
+    check(
+      "an audit directory past every counter is refused, naming the id that blocks the sort",
+      blocked.status === 1 && blocked.stderr.includes(`"${ahead}"`) && !existsSync(latePlans),
+      blocked.stderr,
+    );
+
+    // The same id, recorded in the journal but with no directory: still known.
+    rmSync(path.join(late, "docs", "quality", "audits", ahead), { recursive: true, force: true });
+    appendFileSync(
+      path.join(late, "docs", "arkaik", "journal.jsonl"),
+      `${JSON.stringify({ id: "01ZZZZZZZZZZZZZZZZZZZZZZZZ", ts: new Date().toISOString(), type: "quality.audit.completed", audit_id: ahead, framework_version: PACK.version, actor: "test" })}\n`,
+    );
+    const recordedBlock = runLate(["plan", "--run", "SEC:web"]);
+    check(
+      "a recorded audit id is known too, even with no directory",
+      recordedBlock.status === 1 && recordedBlock.stderr.includes(`"${ahead}"`) && !existsSync(latePlans),
+      recordedBlock.stderr,
+    );
+  }
+} finally {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+}
+
+console.log(failures === 0 ? "\nAll kritik plan checks passed." : `\n${failures} check(s) failed.`);
+process.exit(failures === 0 ? 0 : 1);

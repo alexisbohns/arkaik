@@ -59,7 +59,9 @@ import {
   type JournalEvent,
   type KritikCriterion,
   type KritikLibrary,
+  type KritikPlan,
   type MaturityLevel,
+  type PlanPartStatus,
   type QualityAssessment,
   type QualityFinding,
   type QualityProfile,
@@ -95,7 +97,9 @@ import {
   type CriterionDraft,
 } from "@arkaik/schema/src/cli/kritik-overlay";
 import { loadProfile, profilePath, writeJson } from "@arkaik/schema/src/cli/kritik-paths";
+import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
 import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { KRITIK_ACTOR, appendQualityEvents, loadKritikLibrary, resolveJournal } from "../lib/kritik-io";
 import { readFullJournalEvents } from "../lib/journal-io";
 
@@ -117,6 +121,7 @@ Subcommands:
   trend                 Every recorded audit's scores, and which way each moved.
   burndown              Open findings over time, and what closed since the last audit.
   scope                 The cells your resolved findings made stale since the last audit.
+  plan --run <D:S>      Plan a partial audit: its parts, their cells, audit ids and prompts.
   issue <criterion>     Print the prefilled GitHub issue skeleton.
   criterion add ...     Add a project-specific criterion to the overlay.
 
@@ -1440,6 +1445,184 @@ function runScope(args: string[], common: CommonOptions): void {
   process.exit(0);
 }
 
+// --- plan --------------------------------------------------------------------
+
+const PLAN_USAGE = `arkaik kritik plan --run <DOMAIN:SURFACE> [--run …] [--out <path>] [--json] [--dry-run]
+arkaik kritik plan --status <planId> [--json]
+
+Plan a partial audit before you run it. Each --run is one part: a domain on one
+surface, with an audit id of its own that sorts after every audit already on
+disk, the exact cells it scores, and a prompt to paste into an agent session.
+Run the parts in parallel sessions or one after the other, then record the plan
+once, after every part is scored: \`arkaik kritik matrix <planId> --record --plan\`.
+
+  --run D:S         One part: a domain code and a profile surface, e.g. SEC:web.
+                    Repeatable; the order given is kept. The surface must match
+                    a profile id exactly (web, never Web).
+  --out <path>      Write the plan file here instead. --status and the record
+                    step read only docs/quality/plans/<planId>.json, so move it
+                    there before recording.
+  --json            Print the plan file instead of the summary.
+  --dry-run         Print the plan, write nothing.
+  --counts-only     Accepted. Every plan counts cells and checklist steps only.
+  --status <id>     Read-only: each part's progress (not started, in progress,
+                    scored) from its audit directory, and any score outside the plan.
+
+--budget, --budget-tokens, --price and --tier arrive with the estimator. Until
+then they are refused.
+
+Writes docs/quality/plans/<planId>.json`;
+
+/** The flags the estimator will read. Parsed so a script that passes one fails loudly instead of being ignored. */
+const ESTIMATOR_FLAGS = ["budget", "budget-tokens", "price", "tier"] as const;
+
+/** Recorded audit ids from the journal, or none without one: a plan reads them only to sort after them. */
+function recordedIdsOf(common: CommonOptions): string[] {
+  const journal = resolveJournal(common.root, common.bundlePath);
+  return journal.present ? recordedAuditIds(readFullJournalEvents(journal.journalPath)) : [];
+}
+
+/** A plain aligned table, two spaces in, three between columns; numeric columns right-aligned. */
+function alignedTable(rows: string[][], numeric: readonly number[] = []): string[] {
+  const widths = rows[0].map((_, column) => Math.max(...rows.map((row) => row[column].length)));
+  return rows.map((row) =>
+    `  ${row.map((cell, column) => (numeric.includes(column) ? cell.padStart(widths[column]) : cell.padEnd(widths[column]))).join("   ")}`.trimEnd(),
+  );
+}
+
+function printPlanStatus(plan: KritikPlan, statuses: PlanPartStatus[], recorded: boolean): void {
+  console.log(`\n  Plan ${plan.planId} — ${recorded ? "recorded" : "not recorded"}\n`);
+  const rows = [
+    ["part", "audit id", "progress", "scored"],
+    ...statuses.map((status) => [
+      `${status.domain}:${status.surface}`,
+      status.auditId,
+      status.progress,
+      `${status.scored} of ${status.cells}`,
+    ]),
+  ];
+  for (const line of alignedTable(rows)) console.log(line);
+
+  const cellList = (cells: readonly { criterion_id: string; surface: string }[]) =>
+    cells.map((cell) => `${cell.criterion_id} on ${cell.surface}`).join(", ");
+  const notes: string[] = [];
+  for (const status of statuses) {
+    if (status.progress === "in progress" && status.missing.length > 0) {
+      notes.push(`${status.domain}:${status.surface} still to score: ${cellList(status.missing)}`);
+    }
+    if (status.stray.length > 0) {
+      notes.push(`${status.domain}:${status.surface} outside the plan, remove before recording: ${cellList(status.stray)}`);
+    }
+  }
+  if (notes.length > 0) console.log("");
+  for (const note of notes) console.log(`  ${note}`);
+
+  const included = statuses.filter((status) => status.progress !== "deferred");
+  const done = included.filter((status) => status.progress === "scored").length;
+  const clean = included.every((status) => status.stray.length === 0);
+  if (recorded) {
+    console.log(`\n  recorded — to correct it, make a new plan for the same parts.\n`);
+  } else if (done === included.length && clean) {
+    console.log(`\n  every part is scored — record it once:  ${plan.recordCommand}\n`);
+  } else {
+    console.log(`\n  ${done} of ${included.length} part${included.length === 1 ? "" : "s"} scored — record once every part is scored:  ${plan.recordCommand}\n`);
+  }
+}
+
+function printPlanSummary(plan: KritikPlan, warnings: readonly string[], written: string | null, home: string): void {
+  const commit = plan.commit === null ? "not a git checkout" : `@ ${plan.commit.slice(0, 7)}`;
+  console.log(`\n  Plan ${plan.planId}   ${commit}   framework ${plan.frameworkVersion}\n`);
+  const rows = [
+    ["part", "audit id", "cells", "steps", "status"],
+    ...plan.parts.map((part) => [`${part.domain}:${part.surface}`, part.auditId, String(part.cells.length), String(part.steps), part.status]),
+    ["total", "", String(plan.totals.cells), String(plan.totals.steps), `of ${plan.totals.applicableCells} applicable cells`],
+  ];
+  for (const line of alignedTable(rows, [2, 3])) console.log(line);
+  console.log(`\n  counts only: cells and checklist steps. The token estimate ships with the estimator.`);
+  for (const warning of warnings) console.log(`  note: ${warning}`);
+  if (written === null) {
+    console.log(`  dry run — nothing written`);
+  } else {
+    console.log(`  wrote ${written}`);
+    if (resolve(written) !== resolve(home)) {
+      console.log(`  --status and the record step read only ${home} — move the file there before recording.`);
+    }
+  }
+  console.log(`\nPaste into one agent session. For one session per part, each part's own prompt is parts[].prompt in the plan file (--json prints it).\n`);
+  console.log(plan.prompt);
+  console.log(`\nAfter every part is scored:  ${plan.recordCommand}\n`);
+}
+
+function runPlan(args: string[], common: CommonOptions): void {
+  const { single, many, flags } = collect(args, ["run"], ["json", "dry-run", "counts-only"]);
+  if (flags.has("help")) {
+    console.log(PLAN_USAGE);
+    process.exit(0);
+  }
+  for (const flag of ESTIMATOR_FLAGS) {
+    if (single[flag] !== undefined) {
+      fail(`kritik: --${flag} is not available yet — the estimator ships later, and every plan is counts-only for now.`);
+    }
+  }
+
+  if (single.status !== undefined) {
+    if (many.run.length > 0 || single.out !== undefined || flags.has("dry-run")) {
+      fail(`kritik: --status reads a plan that exists — it takes no --run, --out or --dry-run.\n\n${PLAN_USAGE}`);
+    }
+    let plan: KritikPlan;
+    let statuses: PlanPartStatus[];
+    try {
+      plan = loadPlan(common.root, single.status);
+      statuses = planStatus(common.root, plan);
+    } catch (error) {
+      return fail(`kritik: ${(error as Error).message}`);
+    }
+    const recorded = recordedIdsOf(common).includes(plan.planId);
+    if (flags.has("json")) {
+      console.log(JSON.stringify({ plan_id: plan.planId, recorded, parts: statuses }, null, 2));
+    } else {
+      printPlanStatus(plan, statuses, recorded);
+    }
+    process.exit(0);
+  }
+
+  if (many.run.length === 0) fail(`kritik: at least one --run DOMAIN:SURFACE is required\n\n${PLAN_USAGE}`);
+
+  const library = loadLibraryOrFail(common.root);
+  let created: ReturnType<typeof createPlan>;
+  try {
+    created = createPlan(common.root, library, many.run, { recorded: recordedIdsOf(common) });
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+  const { plan, warnings } = created;
+  const home = planPath(common.root, plan.planId);
+  const target = single.out ?? home;
+
+  let written: string | null = null;
+  if (!flags.has("dry-run")) {
+    if (single.out !== undefined && existsSync(target)) {
+      fail(`kritik: ${target} already exists — a plan file is written once. Pick another --out.`);
+    }
+    savePlan(target, plan);
+    written = target;
+  }
+
+  if (flags.has("json")) {
+    console.log(JSON.stringify(plan, null, 2));
+    for (const warning of warnings) console.error(`note: ${warning}`);
+    if (written !== null) {
+      console.error(`wrote ${written}`);
+      if (resolve(written) !== resolve(home)) {
+        console.error(`--status and the record step read only ${home} — move the file there before recording.`);
+      }
+    }
+  } else {
+    printPlanSummary(plan, warnings, written, home);
+  }
+  process.exit(0);
+}
+
 // --- issue -------------------------------------------------------------------
 
 function runIssue(args: string[], common: CommonOptions): void {
@@ -1596,6 +1779,8 @@ export function runKritik(args: string[]): void {
       return runBurndown(subArgs, common);
     case "scope":
       return runScope(subArgs, common);
+    case "plan":
+      return runPlan(subArgs, common);
     case "issue":
       return runIssue(subArgs, common);
     case "criterion":
