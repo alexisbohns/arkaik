@@ -201,6 +201,12 @@ export function Canvas({
 
   const display = useMemo(() => {
     const nodesWithSize = spotlit.nodes.map((node) => {
+      // A node that states its own size (the Screens map's wall nodes) keeps
+      // it. React Flow prefers `measured` over `width`/`height` for culling,
+      // the minimap and centring, and an off-screen node is never measured
+      // again — so an echoed size would outlive a re-layout (a lens change)
+      // and cull frames that are on screen. No other map sets both.
+      if (node.width !== undefined && node.height !== undefined) return node;
       const size = measured[node.id];
       if (!size || (node.measured?.width === size.width && node.measured?.height === size.height)) {
         return node;
