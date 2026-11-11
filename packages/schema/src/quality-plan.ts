@@ -133,7 +133,9 @@ const PLANNABLE_DOMAIN = /^[A-Z0-9]{2,5}$/;
  * `vocabulary.domains` (the effective library's codes, pack plus overlay); the
  * surface must equal one of `vocabulary.surfaces` (the profile's ids) exactly,
  * as `applicableCells` matches it. A duplicate after normalisation collapses
- * into its first occurrence with one warning. Every other problem throws.
+ * into its first occurrence with one warning. Two distinct runs that would
+ * share one part id (surfaces differing only by case) throw, as does every
+ * other problem.
  */
 export function parseRun(
   tokens: readonly string[],
@@ -145,6 +147,8 @@ export function parseRun(
   const unplannable = vocabulary.domains.filter((code) => !PLANNABLE_DOMAIN.test(code));
   const runs: PlanRun[] = [];
   const warnings: string[] = [];
+  /** The token each kept run came from, by its part id's suffix (planPartId lower-cases both halves). */
+  const tokenBySuffix = new Map<string, string>();
   for (const token of tokens) {
     const match = RUN_TOKEN.exec(token);
     if (match === null) {
@@ -179,6 +183,15 @@ export function parseRun(
       warnings.push(`--run ${token} repeats ${domain}:${surface}; the two are one part.`);
       continue;
     }
+    const suffix = `${domain.toLowerCase()}-${surface.toLowerCase()}`;
+    const other = tokenBySuffix.get(suffix);
+    if (other !== undefined) {
+      throw new Error(
+        `--run "${other}" and --run "${token}" name surfaces that differ only by case, so both would score into ` +
+          `the one part id "<planId>-${suffix}". Plan one of them, or give the profile's surfaces ids that differ by more than case.`,
+      );
+    }
+    tokenBySuffix.set(suffix, token);
     runs.push({ domain, surface });
   }
   return { runs, warnings };

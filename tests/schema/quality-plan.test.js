@@ -159,6 +159,17 @@ const throws = (fn) => {
     check("a library whose codes all fit the grammar gets no unplannable sentence", message !== undefined && !message.includes("cannot be planned"), message);
   }
   {
+    const cased = { domains: ["SEC", "AGT"], surfaces: ["Web", "web", "ios"] };
+    const message = throws(() => parseRun(["SEC:Web", "AGT:ios", "sec:web"], cased));
+    check(
+      "two runs that would share one part id (surfaces differing only by case) refuse, naming both tokens",
+      message !== undefined && message.includes('"SEC:Web"') && message.includes('"sec:web"') && message.includes("sec-web"),
+      message,
+    );
+    const { runs } = parseRun(["SEC:Web", "AGT:web"], cased);
+    check("the same surface casing under two domains is two parts", runs.length === 2);
+  }
+  {
     const { runs } = parseRun(["ux1:web"], { domains: ["UX1"], surfaces: ["web"] });
     check("the domain vocabulary is the caller's (an overlay code)", runs.length === 1 && runs[0].domain === "UX1");
   }
