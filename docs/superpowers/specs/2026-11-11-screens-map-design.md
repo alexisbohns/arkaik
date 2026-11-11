@@ -478,7 +478,7 @@ export type WallItem =
   | { kind: "empty"; id: string };
 
 export interface WallStrip {
-  /** `strip:<flowId>`, or `strip:loose`. */
+  /** `strip:<flowId>`, or `loose-strip` (outside that space, so a flow id `loose` cannot collide). */
   id: string;
   flowId: string | null;
   title: string;

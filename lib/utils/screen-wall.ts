@@ -107,7 +107,7 @@ export type WallItem =
   | { kind: "empty"; id: string };
 
 export interface WallStrip {
-  /** `strip:<flowId>`, or `strip:loose`. */
+  /** `strip:<flowId>`, or `LOOSE_STRIP_ID` (`loose-strip`). */
   id: string;
   flowId: string | null;
   title: string;
@@ -136,7 +136,11 @@ export interface StripCounts {
   noShot: number;
 }
 
-export const LOOSE_STRIP_ID = "strip:loose";
+/**
+ * The "Not in a flow" strip's id. Outside the `strip:<flowId>` space on
+ * purpose, so a flow whose id is `loose` keeps a strip of its own.
+ */
+export const LOOSE_STRIP_ID = "loose-strip";
 
 /** The strip id of a flow's strip; also its header's box id and React Flow node id. */
 export function stripIdOf(flowId: string): string {

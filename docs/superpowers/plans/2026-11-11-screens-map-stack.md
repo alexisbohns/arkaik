@@ -72,7 +72,7 @@ Types exactly as the spec writes them (§ The wall model › Input, Output, Coun
 ```ts
 export function buildWall(input: WallInput): Wall;
 
-export const LOOSE_STRIP_ID = "strip:loose";
+export const LOOSE_STRIP_ID = "loose-strip";            // outside `strip:<flowId>`: a flow id `loose` keeps its own strip
 export function stripIdOf(flowId: string): string;                 // `strip:${flowId}`
 /** Every frame id showing the view, strip order then item order; [] if none. */
 export function frameIdsOf(wall: Wall, viewId: string): string[];
@@ -91,7 +91,7 @@ export function cellWord(cell: PlatformCell): string;
 export function stripCountsLine(wall: Wall, strip: WallStrip, lens: WallLens): string;
 ```
 
-Ids (spec § Output): frame `createVisualNodeId(viewId, "<flowId>:<path>")`, loose frame `<viewId>@loose`, `arm:<flowId>:<path>.<armIndex>`, `end:<flowId>:<path>`, `jump:<flowId>:<path>`, `empty:<flowId>`; strips `strip:<flowId>` / `strip:loose`. **A strip header's box id and React Flow node id is the strip id.** `StaleReason.label` is built in the model from ids, `STATUSES`/`PLATFORMS` labels and a shipped event's own `title`; the model never formats a date.
+Ids (spec § Output): frame `createVisualNodeId(viewId, "<flowId>:<path>")`, loose frame `<viewId>@loose`, `arm:<flowId>:<path>.<armIndex>`, `end:<flowId>:<path>`, `jump:<flowId>:<path>`, `empty:<flowId>`; strips `strip:<flowId>` / `loose-strip` (`LOOSE_STRIP_ID`; every user goes through the constant). **A strip header's box id and React Flow node id is the strip id.** `StaleReason.label` is built in the model from ids, `STATUSES`/`PLATFORMS` labels and a shipped event's own `title`; the model never formats a date.
 
 ### Part 1 — `lib/utils/screen-wall-layout.ts` (new)
 

@@ -125,7 +125,7 @@ const ORDER_EDGES = [
   const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
   const stripIds = wall.strips.map((strip) => strip.id);
   check("app scope: anchor's compose children, their sub-flows depth first, then the rest, then loose views",
-    same(stripIds, ["strip:F-a", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-b", "strip:F-zeta", "strip:loose"]), show(stripIds));
+    same(stripIds, ["strip:F-a", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-b", "strip:F-zeta", "loose-strip"]), show(stripIds));
   check("platforms: the scope's menu, in PLATFORMS order", same(wall.platforms, ["web", "ios", "android"]), show(wall.platforms));
   check("a wall with flows is not empty", wall.empty === null);
 
@@ -192,13 +192,13 @@ const ORDER_EDGES = [
   check("frameIdsOf: every frame of a view, strip order then item order",
     same(wallModule.frameIdsOf(wall, "V-a"), ["V-a@F-a:0", "V-a@F-a:3"]) && same(wallModule.frameIdsOf(wall, "V-d"), ["V-d@F-e:0", "V-d@F-b:1"]));
   check("frameIdsOf: none for a view not on the wall", same(wallModule.frameIdsOf(wall, "V-admin"), []));
-  check("stripIdOf and LOOSE_STRIP_ID", wallModule.stripIdOf("F-a") === "strip:F-a" && wallModule.LOOSE_STRIP_ID === "strip:loose");
+  check("stripIdOf and LOOSE_STRIP_ID", wallModule.stripIdOf("F-a") === "strip:F-a" && wallModule.LOOSE_STRIP_ID === "loose-strip");
 }
 
 {
   const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: null });
   check("All products: every product's flows, another product's view listed where its flow puts it",
-    same(wall.strips.map((s) => s.id), ["strip:F-a", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-b", "strip:F-zeta", "strip:F-adm", "strip:loose"]) &&
+    same(wall.strips.map((s) => s.id), ["strip:F-a", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-b", "strip:F-zeta", "strip:F-adm", "loose-strip"]) &&
       wall.strips[0].items.some((i) => i.id === "V-admin@F-a:4"),
     show(wall.strips.map((s) => s.id)));
 }
@@ -206,7 +206,7 @@ const ORDER_EDGES = [
 {
   const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: null, root: null });
   check("no anchor and no product named: parentless flows in snapshot order, each with its sub-flows, then the rest",
-    same(wall.strips.map((s) => s.id), ["strip:F-zeta", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-adm", "strip:F-a", "strip:F-b", "strip:loose"]),
+    same(wall.strips.map((s) => s.id), ["strip:F-zeta", "strip:F-c", "strip:F-d", "strip:F-e", "strip:F-adm", "strip:F-a", "strip:F-b", "loose-strip"]),
     show(wall.strips.map((s) => s.id)));
 }
 
@@ -221,7 +221,7 @@ const ORDER_EDGES = [
 {
   const noFlows = wallOf({ nodes: [view("V-x", "X"), view("V-y", "Y")], productId: "app" });
   check("views but no flow: empty is no-flows, and the loose strip holds them",
-    noFlows.empty === "no-flows" && same(noFlows.strips.map((s) => s.id), ["strip:loose"]) && noFlows.strips[0].items.length === 2);
+    noFlows.empty === "no-flows" && same(noFlows.strips.map((s) => s.id), ["loose-strip"]) && noFlows.strips[0].items.length === 2);
   const nothing = wallOf({ nodes: [], productId: null });
   check("no flow and no view: empty is nothing, no strips", nothing.empty === "nothing" && nothing.strips.length === 0 && nothing.screens.size === 0);
 }
@@ -551,8 +551,8 @@ const COUNT_EVENTS = [toLive("e-1-web", "V-1", T1, { platform: "web", actor: "al
   check("Not in a flow wraps after eight frames",
     same(pick(box(loose, "V-07@loose")), ["frame", 7 * 472, 56, 448, 324, 0, 448]) &&
       same(pick(box(loose, "V-08@loose")), ["frame", 0, 420, 448, 324, 1, 448]) &&
-      same(loose.strips.get("strip:loose"), { x: 0, y: 0, width: 8 * 448 + 7 * 24, height: 744 }),
-    show(loose.strips.get("strip:loose")));
+      same(loose.strips.get("loose-strip"), { x: 0, y: 0, width: 8 * 448 + 7 * 24, height: 744 }),
+    show(loose.strips.get("loose-strip")));
 
   const counted = wallOf({ nodes: COUNT_NODES, events: COUNT_EVENTS, productId: "app" });
   const measured = (viewId, platform) =>
@@ -813,4 +813,20 @@ const EQUIV_EXPECTED = {
     cell("V-arch-hand").status === "live" && same(cell("V-arch-hand").proof, deployed), show(cell("V-arch-hand").proof));
   check("proof: archived on the platform by override counts as archived there",
     cell("V-arch-only").status === "live" && same(cell("V-arch-only").proof, deployed), show(cell("V-arch-only").proof));
+}
+
+// --- A flow named `loose` keeps its own strip (review S3) -------------------
+
+{
+  const wall = wallOf({
+    nodes: [flow("loose", "Loose ends", [V("V-in")]), view("V-in", "In a flow"), view("V-out", "Out of every flow")],
+    productId: null,
+    root: null,
+  });
+  const ids = wall.strips.map((strip) => strip.id);
+  check("a flow whose id is loose and the Not in a flow strip get different ids",
+    ids.length === 2 && new Set(ids).size === 2 && ids[0] === wallModule.stripIdOf("loose") && ids[1] === wallModule.LOOSE_STRIP_ID, show(ids));
+  check("LOOSE_STRIP_ID is outside the strip:<flowId> space", !wallModule.LOOSE_STRIP_ID.startsWith("strip:"), wallModule.LOOSE_STRIP_ID);
+  const layout = wallModule.layoutWall(wall, "web", () => undefined);
+  check("…and the layout keeps both strips' rects", layout.strips.size === 2, show([...layout.strips.keys()]));
 }
