@@ -209,13 +209,16 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   const layout = useMemo(() => layoutWall(wall, lens, aspectOf), [aspectOf, lens, wall]);
 
   // --- part 4: selection ---
-  // Held as `picked`, read as `selection`: a frame that leaves the layout (a
-  // scope or lens change) drops out here, during render, never in an effect.
+  // Held as `picked`, read as `selection`. A pick that no longer resolves — its
+  // frame left the layout (a product-scope change) or its view was deleted —
+  // is cleared, not just hidden: otherwise going back to the old scope would
+  // bring the frame back selected, inspector and chips with it, unasked.
+  // Cleared during render (the derived-state shape `shown` uses below), never
+  // in an effect: React discards this pass and renders again without it.
   const [picked, setPicked] = useState<WallSelection | null>(null);
-  const selection = useMemo(
-    () => (picked && frameBoxOf(layout, picked.frameId) && wall.screens.has(picked.viewId) ? picked : null),
-    [layout, picked, wall],
-  );
+  const pickResolves = picked !== null && frameBoxOf(layout, picked.frameId) !== null && wall.screens.has(picked.viewId);
+  if (picked !== null && !pickResolves) setPicked(null);
+  const selection = pickResolves ? picked : null;
 
   // Loading shows the loading page only until the map has been shown once.
   // After that a read going back to loading — an errored journal refetching on
