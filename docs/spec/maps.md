@@ -23,7 +23,7 @@ interface MapDefinition extends Record<string, unknown> {
   id: string;                    // kebab-case, unique within the project; built-in ids reserved
   title: string;
   description?: string;
-  kind: "journey" | "system";    // selects the renderer and the defaults below
+  kind: "journey" | "system" | "screens"; // selects the renderer and the defaults below
   species?: SpeciesId[];         // node filter; defaults by kind
   edge_types?: EdgeTypeId[];     // edge filter; defaults by kind
   root_node_id?: string;         // scope anchor; journey falls back to the product's, then — only
@@ -37,8 +37,8 @@ interface MapDefinition extends Record<string, unknown> {
 
 | Rule | Detail |
 |---|---|
-| Defaults by kind | `journey`: `species: ["flow","view"]`, `edge_types: ["composes"]`. `system`: `species: ["view","api-endpoint","data-model"]`, `edge_types: ["calls","displays","queries"]` |
-| Reserved ids | `journey` and `system` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
+| Defaults by kind | `journey`: `species: ["flow","view"]`, `edge_types: ["composes"]`. `system`: `species: ["view","api-endpoint","data-model"]`, `edge_types: ["calls","displays","queries"]`. `screens`: `species: ["flow","view"]`, `edge_types: []` |
+| Reserved ids | `journey`, `system` and `screens` name the built-in maps every project has implicitly. A stored definition MUST NOT reuse them (validator warning `map-shadows-built-in`) |
 | `product` | Scopes the map to one product ([bundle-format.md](bundle-format.md) § Products); absent selects every product. It composes with `root_node_id` rather than competing with it: the product restricts which nodes exist for this map, and the anchor then scopes the walk through them — a `journey` is scoped by **both**, and an anchor outside the product is no anchor at all. Full semantics in § Product Scope below |
 | Unknown fields | Preserved and ignored, like every other format object (`Record<string, unknown>`) |
 | Unknown kinds | Consumers MUST preserve definitions with unrecognized `kind` values and SHOULD list them as unrenderable rather than dropping them |
@@ -114,6 +114,12 @@ display overrides at **`project.metadata.map_display: Record<string, MapDisplayO
 keyed by map id — built-in ids included, since `journey` and `system` have no
 stored definition to carry a `display`.
 
+The Screens map stores nothing in either place. Its display choice — the
+platform lens — belongs to the person reading, not to the product, so it is kept
+per viewer in the browser (`localStorage["arkaik:display-prefs:<projectId>"]`,
+read through `useDisplayPreferences`) and never written to the bundle or its
+exports. It has no Display popover, and `map_display.screens` is never read.
+
 This is a purely additive optional field in an already-`catchall` object (`ProjectMetadataSchema`), so per [bundle-format.md](bundle-format.md) § Schema Versioning it requires **no `schema_version` bump** — the same class of change as `metadata.refs` was. Every existing consumer (app import, published validator, Publik/Synk round-trips, canonical serialization) preserves it today.
 
 Maps-as-data is the point: a human saves a map from a dialog, **an agent authors one by writing JSON** — "make me a map of the admin area" is a metadata patch, not a feature request.
@@ -179,7 +185,8 @@ unanchored parentless-roots render (§ Built-in Maps) stays exactly where it bel
 All-products / no-products case, where it is the fresh-project view of a graph nobody has rooted yet.
 
 **Counts go through the renderer that draws them.** The maps index and the Overview's Maps card
-count each map through its own renderer — `computeMapSubgraph` for `system`, and for `journey` the
+count each map through its own renderer — `computeMapSubgraph` for `system` and `screens` (whose
+selection is exactly the flows and views the wall draws), and for `journey` the
 collapsed `buildJourneyGraph` render (no flow expanded) — so a card can never advertise a node count
 the map it links to does not show. Counting a journey with `computeMapSubgraph` did exactly that,
 twice over: the built-in Journey carries no `root_node_id` of its own, so step 3 never ran for it and
@@ -223,7 +230,7 @@ order:
    endpoint. The four steps below are unchanged by it.
 1. **Species filter.** Keep nodes whose `species` is in the (defaulted) `species` list.
 2. **Edge filter.** Keep edges whose `edge_type` is in the (defaulted) `edge_types` list **and** whose two endpoints both survived step 1.
-3. **Scope.** If `root_node_id` is present and resolves to a surviving node: **undirected BFS** from it through the surviving edges, bounded by `depth` when present; keep the visited nodes and the surviving edges among them. Undirected, because a scoped map means *"the neighborhood of this anchor"* — an admin view's map must include the API that calls into it, not only what it calls. (A directed variant was considered and rejected for v1; a `direction` knob MAY be added later without breaking this contract.)
+3. **Scope.** If `root_node_id` is present and resolves to a surviving node: **undirected BFS** from it through the surviving edges, bounded by `depth` when present; keep the visited nodes and the surviving edges among them. Undirected, because a scoped map means *"the neighborhood of this anchor"* — an admin view's map must include the API that calls into it, not only what it calls. (A directed variant was considered and rejected for v1; a `direction` knob MAY be added later without breaking this contract.) **A `screens` definition skips this step:** a wall has no anchor and no edges to walk, so its `root_node_id` and `depth` are ignored and the selection is every flow and view step 0 kept — rule 4 never applies to it either.
 4. **Unresolvable root → empty subgraph**, never an error — the same posture as `computeChangelog` with an unknown version.
 
 The function is deterministic, pure, and generic over the node/edge element type (callers pass full app nodes or raw parsed JSON and get the same elements back).
@@ -243,6 +250,7 @@ direct-projection kind, not it. The journey's own equivalents, and where they di
 |---|---|---|---|
 | **Journey** | `journey` | "How does a user move through the product?" | The existing canvas: compose closure from the root (product-restricted candidates and the anchor chain, both in § Product Scope), playlist expansion, flows collapsible, visual node duplication for reuse. With no root resolved and no product named, the parentless flow/view roots |
 | **System** | `system` | "Which screens render this model? What does this endpoint feed?" | Direct render of `computeMapSubgraph`: all selected species as cards, cross-layer edges drawn, ELK-layered by species tier (views / api-endpoints / data-models) |
+| **Screens** | `screens` | "What is actually live, screen by screen?" | The app-side wall model (`lib/utils/screen-wall.ts`) over the kind's selection: one strip per flow in scope — the flows the Journey reaches first, in its order, then the rest in bundle order — each a row of frames in playlist order showing the lens platform's screenshot, or a ghost frame saying why there is none; sub-flows are jump tiles, branches thin markers, and views in no flow a final "Not in a flow" strip. Read-only: a frame opens the node panel. `get_map` serves the selection itself (every scoped flow and view, no edge) |
 
 **Renderer division of labor:** System is a *direct* projection render. Journey consumes the definition's root and species but owns its drawing logic (playlist ordering, expansion state, visual duplication of reused views) — renderer logic over a projection, exactly as `ReleaseCard` is renderer logic over `computeChangelog`. Delivery and Overview (vision.md § Core Product) are projections too, but render as a board and a dashboard rather than a canvas; Delivery's item semantics live with its implementation (`lib/utils/delivery.ts`), and the Overview's composition is specified in § Overview Composition below.
 
