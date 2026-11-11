@@ -254,6 +254,10 @@ const throws = (fn) => {
   }
   check("planPartId accepts a surface that merely contains scoped", planPartId("2026-11-zplan-1100", "SEC", "scoped-api") === "2026-11-zplan-1100-sec-scoped-api");
 
+  {
+    const message = throws(() => planId({ now: NOW, known: [], runs: [] }));
+    check("planId with no runs throws", message !== undefined && message.includes("run"), message);
+  }
   check("with nothing known, the first plan of the day is DD00", planId({ now: NOW, known: [], runs: RUNS }) === "2026-11-zplan-1100");
   check("the id pads the month and the day", planId({ now: new Date(2026, 0, 5, 12), known: [], runs: RUNS }) === "2026-01-zplan-0500");
   check(

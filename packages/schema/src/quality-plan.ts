@@ -268,10 +268,12 @@ export function planPartId(planId: string, domain: string, surface: string): str
  * NN is the smallest of 00 to 99 where no `known` id is the candidate or one of
  * its parts, and every part id the runs would get sorts after the greatest
  * `known` id under plain string comparison. `known` is every id that exists:
- * audit directories, plan files and recorded audits.
+ * audit directories, plan files and recorded audits. Throws with no run.
  */
 export function planId(input: { now: Date; known: readonly string[]; runs: readonly PlanRun[] }): string {
   const { now, known, runs } = input;
+  // With no run, rule (b) holds vacuously and any candidate would do: a plan id that checked nothing.
+  if (runs.length === 0) throw new Error("a plan id needs at least one run: with none, no part is checked to sort last");
   const ids = known.filter((id) => typeof id === "string" && id !== "");
   const greatest = [...ids].sort().at(-1);
   const year = String(now.getFullYear()).padStart(4, "0");
