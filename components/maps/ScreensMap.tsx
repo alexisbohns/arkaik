@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ReactFlowProvider, useStore, useStoreApi } from "@xyflow/react";
 import Link from "next/link";
 import { ImageOffIcon, TriangleAlertIcon } from "lucide-react";
 import { buildProductUsageIndex, type MapDefinition } from "@arkaik/schema";
 import type { CanvasFocus } from "@/components/graph/Canvas";
 import { ScreensCanvas } from "@/components/graph/ScreensCanvas";
-import { WALL_BAR_INSET, type WallCameraRequest } from "@/components/graph/WallCamera";
+import { WALL_BAR_INSET, WALL_CAMERA_PADDING, type WallCameraRequest } from "@/components/graph/WallCamera";
 import { PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -35,7 +36,14 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { generateNodeId } from "@/lib/utils/id";
 import { platformAvailabilityShape, type ProductGraph } from "@/lib/utils/product-scope";
 import { buildWall, resolveLens, stripIdOf, type WallLens } from "@/lib/utils/screen-wall";
-import { layoutWall, openingViewport, type AspectOf } from "@/lib/utils/screen-wall-layout";
+import {
+  keepStripViewport,
+  layoutWall,
+  openingViewport,
+  stripNearViewport,
+  type AspectOf,
+  type WallLayout,
+} from "@/lib/utils/screen-wall-layout";
 import { STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot-staleness";
 
 interface ScreensMapProps {
@@ -51,6 +59,39 @@ const STRIP_ZOOM = { minZoom: 0.4, maxZoom: 1 } as const;
 
 /** How long a jumped-to strip's header stays rung. */
 const RING_MS = 2000;
+
+type FlowStore = ReturnType<typeof useStoreApi>;
+
+/**
+ * Reports, from inside the map's `ReactFlowProvider`, the React Flow store and
+ * the strip the reader is in (`stripNearViewport` over `layout`) whenever that
+ * changes — once per strip crossed, not per wheel step: the selector returns
+ * an id. The controller sits above the provider, so this is how it learns
+ * where the camera is.
+ */
+function WallViewportProbe({
+  layout,
+  onStore,
+  onStrip,
+}: {
+  layout: WallLayout;
+  onStore: (store: FlowStore) => void;
+  onStrip: (stripId: string | null) => void;
+}) {
+  const store = useStoreApi();
+  const stripId = useStore((state) =>
+    state.width === 0 || state.height === 0
+      ? null
+      : stripNearViewport(
+          layout,
+          { x: state.transform[0], y: state.transform[1], zoom: state.transform[2] },
+          { width: state.width, height: state.height },
+        ),
+  );
+  useEffect(() => onStore(store), [onStore, store]);
+  useEffect(() => onStrip(stripId), [onStrip, stripId]);
+  return null;
+}
 
 /**
  * The Screens map's controller (docs/spec/maps.md § Built-in Maps): every flow
@@ -164,9 +205,32 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   // re-renders with the request, so the canvas never paints a frame without it.
   const [camera, setCamera] = useState<WallCameraRequest | null>(null);
   const hasStrip = wall.strips.length > 0 && layout.strips.has(wall.strips[0].id);
+  const openingInsets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
   if (ready && camera === null && hasStrip && (!pillsUp || pillsBottom !== null)) {
-    const insets = { top: pillsUp ? (pillsBottom ?? 0) : 0, bottom: WALL_BAR_INSET };
-    setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, insets) });
+    setCamera({ version: 1, viewport: (size) => openingViewport(layout, size, openingInsets) });
+  }
+
+  // Where the reader is, for the lens and scope rules below: the React Flow
+  // store (read in handlers, never during render) and the strip nearest the
+  // viewport's vertical centre, as the probe last reported it.
+  const flowStore = useRef<FlowStore | null>(null);
+  const handleStore = useCallback((store: FlowStore) => {
+    flowStore.current = store;
+  }, []);
+  const [viewedStrip, setViewedStrip] = useState<string | null>(null);
+
+  // A product-scope change keeps the camera unless the reader's strip left the
+  // wall with it; then the map opens again, at the top of the new wall. During
+  // render, so `viewedStrip` is still the old layout's answer.
+  const [seenProduct, setSeenProduct] = useState(scope.productId);
+  if (seenProduct !== scope.productId) {
+    setSeenProduct(scope.productId);
+    if (camera !== null && hasStrip && viewedStrip !== null && !layout.strips.has(viewedStrip)) {
+      setCamera({
+        version: camera.version + 1,
+        viewport: (size) => openingViewport(layout, size, openingInsets),
+      });
+    }
   }
 
   // The frame a click activated, centred in whatever canvas the panel leaves.
@@ -204,9 +268,27 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
     [layout],
   );
 
+  // A lens change reshapes every strip (Web is about three times as wide as
+  // iOS), so it keeps the reader in the strip they were in: when the
+  // viewport's centre would land outside that strip's new extent, pan along
+  // it — same zoom, same height — to bring its start to the left edge.
   const handleLensChange = useCallback(
-    (next: WallLens) => setPreferences({ screensLens: next }),
-    [setPreferences],
+    (next: WallLens) => {
+      const store = flowStore.current;
+      if (store && next !== lens) {
+        const { transform, width, height } = store.getState();
+        const viewport = { x: transform[0], y: transform[1], zoom: transform[2] };
+        const size = { width, height };
+        const stripId = width > 0 && height > 0 ? stripNearViewport(layout, viewport, size) : null;
+        const kept =
+          stripId === null
+            ? null
+            : keepStripViewport(layoutWall(wall, next, aspectOf), stripId, viewport, size, WALL_CAMERA_PADDING);
+        if (kept) setCamera((previous) => ({ version: (previous?.version ?? 0) + 1, viewport: () => kept }));
+      }
+      setPreferences({ screensLens: next });
+    },
+    [aspectOf, layout, lens, setPreferences, wall],
   );
 
   const handleNodeUpdate = useCallback(
@@ -284,19 +366,25 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
         </div>
       ) : (
         <div className="@container relative h-full w-full">
-          <ScreensCanvas
-            wall={wall}
-            layout={layout}
-            lens={lens}
-            scope={scope}
-            focus={focus}
-            camera={camera}
-            ring={ring}
-            onFrameActivate={handleFrameActivate}
-            onOpenNode={handleOpenNode}
-            onJump={jumpToFlow}
-            onAspect={reportAspect}
-          />
+          {/* The canvas's own React Flow store, lifted so the probe beside it can
+              read where the camera is. Only the canvas: a panel's graph must
+              never share it. */}
+          <ReactFlowProvider>
+            <ScreensCanvas
+              wall={wall}
+              layout={layout}
+              lens={lens}
+              scope={scope}
+              focus={focus}
+              camera={camera}
+              ring={ring}
+              onFrameActivate={handleFrameActivate}
+              onOpenNode={handleOpenNode}
+              onJump={jumpToFlow}
+              onAspect={reportAspect}
+            />
+            <WallViewportProbe layout={layout} onStore={handleStore} onStrip={setViewedStrip} />
+          </ReactFlowProvider>
           {pillsUp && (
             <div
               ref={measurePills}

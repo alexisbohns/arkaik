@@ -779,7 +779,16 @@ hidden left handle on each chip.
 - **Arrival.** The first camera puts the first strip's header at the top-left
   of the canvas, below the top pills and clear of the bottom bar, at the zoom
   that fits the strip's width within [0.7, 1] (`openingViewport`); a wider
-  strip runs off to the right. Every later move frames with `frameViewport`.
+  strip runs off to the right. Every later move frames with `frameViewport`,
+  except the two below.
+- **Lens and scope keep the reader's strip.** A lens change reshapes every
+  strip, so it keeps the reader in the strip whose row is nearest the
+  viewport's vertical centre (`stripNearViewport`, old layout): when the
+  viewport's horizontal centre would fall outside that strip's extent in the
+  new layout, the camera pans along it — same zoom, same vertical position —
+  to put the strip's start at the left edge, 32px in (`keepStripViewport`).
+  A product-scope change moves nothing unless that strip left the wall; then
+  the opening camera runs again.
 - **Part 2.** Click or Enter/Space on a frame → `openNode({ nodeId: viewId })`
   and `focus` on that frame (the System map's grammar). Header click → the
   flow's panel. Jump tile → camera to the target strip, `maxZoom` 1, `minZoom`
