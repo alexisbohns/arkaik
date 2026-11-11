@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { buildProductUsageIndex, listMaps, MAP_KINDS, type MapDefinition } from "@arkaik/schema";
+import { buildProductUsageIndex, isBuiltInMapId, listMaps, MAP_KINDS, type MapDefinition } from "@arkaik/schema";
 import { MapCard } from "@/components/maps/MapCard";
 import { MapEditorDialog } from "@/components/maps/MapEditorDialog";
 import { DeleteConfirmDialog } from "@/components/graph/DeleteConfirmDialog";
@@ -141,7 +141,9 @@ export default function ProjectMapsPage() {
         <PageSurface contentClassName="grid gap-4 sm:grid-cols-2">
           {maps.map((definition) => {
             const count = counts.get(definition.id) ?? { nodes: 0, edges: 0 };
-            const builtIn = definition.id === "journey" || definition.id === "system";
+            // The schema's reserved set, not a list of names here: a third
+            // built-in once got Edit and Delete from a hard-coded pair.
+            const builtIn = isBuiltInMapId(definition.id);
             const renderable = (MAP_KINDS as readonly string[]).includes(definition.kind);
 
             return (

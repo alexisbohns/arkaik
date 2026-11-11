@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NetworkIcon, PencilIcon, RouteIcon, Trash2Icon, MapIcon } from "lucide-react";
+import { GalleryHorizontalEndIcon, NetworkIcon, PencilIcon, RouteIcon, Trash2Icon, MapIcon } from "lucide-react";
 import type { MapDefinition } from "@arkaik/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const KIND_ICONS: Record<string, typeof MapIcon> = {
   journey: RouteIcon,
   system: NetworkIcon,
+  screens: GalleryHorizontalEndIcon,
 };
 
 interface MapCardProps {
