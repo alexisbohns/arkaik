@@ -17,7 +17,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
 import { getRollupDisplayStatus, type PlatformStatusCounts } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
-import { frameBoxOf, planChips } from "@/lib/utils/screen-inspector";
+import { frameBoxOf, frameDimmed, planChips } from "@/lib/utils/screen-inspector";
 import {
   isGapCell,
   isGapFrame,
@@ -275,7 +275,7 @@ export function ScreensCanvas({
           status: frameStatus(screen, lens, wall.platforms),
           onActivate: onFrameActivate,
           onAspect,
-          dimmed: kept !== null && !kept.has(item.viewId),
+          dimmed: frameDimmed(kept, item.viewId, item.id, selection),
           dimmedRows: kept !== null && kept.has(item.viewId) ? fadedRows(wall, item.viewId, lens) : NO_ROWS,
           selected: selection?.frameId === box.id,
           onMove: onFrameMove,

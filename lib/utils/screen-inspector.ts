@@ -163,6 +163,23 @@ export function frameBoxOf(layout: WallLayout, frameId: string): WallBox | null 
   return layout.boxes.find((box) => box.kind === "frame" && box.id === frameId) ?? null;
 }
 
+/**
+ * Gaps only: whether a frame fades. `kept` is the set of views that are gaps
+ * (null with gaps only off). A non-gap frame fades to 15% and greyscale —
+ * unless it is the selected frame: the selection's ring, chips and inspector
+ * belong to it, and fading it would leave them pointing at a ghost once focus
+ * moves to the inspector. Selection is by frame, so the same view in another
+ * strip still fades.
+ */
+export function frameDimmed(
+  kept: ReadonlySet<string> | null,
+  viewId: string,
+  frameId: string,
+  selection: { frameId: string } | null,
+): boolean {
+  return kept !== null && !kept.has(viewId) && selection?.frameId !== frameId;
+}
+
 /** The key of the "+N more" chip and its edge, in place of a node id. */
 export const MORE_CHIP_KEY = "more";
 

@@ -68,7 +68,7 @@ change, the change is in § Verified facts and the open questions, not here.
   screens with no shot, with a count. With a count of 0 on the lens nothing fades
   (a whole wall at 15% reads as broken): the switch stays on, shows 0, and a
   status above the bar says "No gaps on <lens>" ("No gaps on any platform"
-  side by side).
+  side by side). The selected frame (part 4) never fades, gap or not.
 - **R9 Flow headers** show how many screens are live on the lens and how many
   are stale or missing a shot, on a counts line directly after the
   flow's title (never at the header's far end, which is off screen on arrival

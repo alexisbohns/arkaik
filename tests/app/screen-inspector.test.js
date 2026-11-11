@@ -29,6 +29,7 @@ const {
   MORE_CHIP_KEY,
   selectionRect,
   coldLoadTarget,
+  frameDimmed,
   INSPECTOR_W,
   INSPECTOR_GAP,
   cellWord,
@@ -325,6 +326,16 @@ test("cold load on nothing, or on a node not on the wall: no target", () => {
   assert.equal(coldLoadTarget(wallWithTouches, layout, null), null);
   assert.equal(coldLoadTarget(wallWithTouches, layout, "API-1"), null);
 });
+test("gaps only: a selected frame is never faded", () => {
+  const kept = new Set(["V-gap"]);
+  const selection = { frameId: "V-a@F-checkin:0", viewId: "V-a", stripId: "strip:F-checkin" };
+  assert.equal(frameDimmed(null, "V-a", "V-a@F-checkin:0", selection), false, "gaps only off: nothing fades");
+  assert.equal(frameDimmed(kept, "V-gap", "V-gap@F-checkin:1", null), false, "a gap stays lit");
+  assert.equal(frameDimmed(kept, "V-a", "V-a@F-checkin:0", null), true, "not a gap, not selected: faded");
+  assert.equal(frameDimmed(kept, "V-a", "V-a@F-checkin:0", selection), false, "not a gap but selected: lit");
+  assert.equal(frameDimmed(kept, "V-a", "V-a@F-weekly:2", selection), true, "the same view in another strip is another frame: faded");
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

@@ -175,7 +175,7 @@ export type WallFrameData = {
   status?: StatusId;                       // Minimap fill: lens status; side → highest in getRollupDisplayStatus order
   onActivate: (frameId: string, viewId: string, stripId: string) => void;
   onAspect: AspectReport;
-  dimmed: boolean;                         // (3) gaps only and not a gap: 15% + greyscale, still clickable
+  dimmed: boolean;                         // (3) gaps only and not a gap: 15% + greyscale, still clickable; (4) never the selected frame
   dimmedRows: readonly PlatformId[];       // (3) non-gap rows inside a kept side frame: 35%
   selected: boolean;                       // (4)
   onMove: (frameId: string, dir: "left" | "right" | "up" | "down") => void;   // (4)

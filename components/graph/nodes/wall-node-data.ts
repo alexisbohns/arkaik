@@ -40,7 +40,7 @@ export type WallFrameData = {
   status?: StatusId;
   onActivate: (frameId: string, viewId: string, stripId: string) => void;
   onAspect: AspectReport;
-  /** Gaps only, and this frame shows no gap under the lens: drawn at 15% and greyscale, still clickable. */
+  /** Gaps only, and this frame shows no gap under the lens and is not the selected frame: drawn at 15% and greyscale, still clickable. */
   dimmed: boolean;
   /** Gaps only, side by side, and this frame is a gap: its rows that are not gaps, drawn at 35%. Empty otherwise. */
   dimmedRows: readonly PlatformId[];
