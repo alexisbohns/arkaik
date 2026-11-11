@@ -264,6 +264,37 @@ check(
   implicitAuditBaseline([], { ...SCOPED_SECTION, assessments: SCOPED_SECTION.assessments.filter((a) => a.audit_id !== "2026-08") }, LIBRARY) === null,
 );
 
+// --- plan part ids are never the baseline ------------------------------------------
+//
+// A project whose first audit is a plan has scored parts on disk before the
+// plan is recorded. A part scores a handful of cells; read as the baseline it
+// would pass for a full audit.
+
+const PLAN_SECTION = {
+  profile: SECTION.profile,
+  assessments: [
+    assess("SEC-01", 3, "2026-08", "2026-08-04T10:00:00.000Z"),
+    assess("SEC-02", 3, "2026-08", "2026-08-05T10:00:00.000Z"),
+    assess("SEC-01", 1, "2026-11-zplan-1100-sec-web", "2026-11-11T10:00:00.000Z"),
+    assess("SEC-02", 1, "2026-11-zplan-1100-sec-web", "2026-11-11T10:05:00.000Z"),
+    assess("SEC-02", 0, "2026-11-zplan-1100-sec-web-scoped", "2026-11-12T10:00:00.000Z"),
+  ],
+  findings: [],
+};
+const planBaseline = implicitAuditBaseline([], PLAN_SECTION, LIBRARY);
+check(
+  "a plan part id is never the baseline: the newest full audit is, dated and scored from it alone",
+  planBaseline !== null &&
+    planBaseline.audit_id === "2026-08" &&
+    planBaseline.ts === "2026-08-05T10:00:00.000Z" &&
+    planBaseline.scores.web.SEC === auditOnlyScore,
+  JSON.stringify(planBaseline),
+);
+check(
+  "a section holding only a plan's parts → no baseline",
+  implicitAuditBaseline([], { ...PLAN_SECTION, assessments: PLAN_SECTION.assessments.filter((a) => a.audit_id !== "2026-08") }, LIBRARY) === null,
+);
+
 // --- stored and folded sections give the same baseline -----------------------------
 //
 // The server folds each decision into the section it serves; the snapshot a
