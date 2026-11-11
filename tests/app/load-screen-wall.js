@@ -30,6 +30,7 @@ const MODULES = [
   ["lib/utils/journey-graph.ts", "journey-graph"],
   ["lib/utils/screenshot-staleness.ts", "screenshot-staleness"],
   ["lib/utils/screen-wall.ts", "screen-wall"],
+  ["lib/utils/screen-wall-layout.ts", "screen-wall-layout"],
 ];
 
 // `@/lib/...` specifier → build output basename.
@@ -87,6 +88,7 @@ function loadScreenWall() {
   const schema = require(schemaIndex);
   return {
     ...require(path.join(BUILD_DIR, "screen-wall.js")),
+    ...require(path.join(BUILD_DIR, "screen-wall-layout.js")),
     // Part 2 pins the Screens map's advertised counts against the wall.
     computeMapCounts: require(path.join(BUILD_DIR, "journey-graph.js")).computeMapCounts,
     resolveProductScope: require(path.join(BUILD_DIR, "product-scope.js")).resolveProductScope,

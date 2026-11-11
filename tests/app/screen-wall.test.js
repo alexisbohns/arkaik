@@ -488,3 +488,101 @@ const COUNT_EVENTS = [toLive("e-1-web", "V-1", T1, { platform: "web", actor: "al
       cellWord({ state: "not-live", status: "archived" }) === "Archived" &&
       cellWord({ state: "absent", status: "live" }) === "Absent");
 }
+
+// --- Layout (spec § Layout) -------------------------------------------------
+
+{
+  const L = wallModule;
+  check("layout constants",
+    same(
+      [L.FRAME_H, L.CAPTION_GAP, L.CAPTION_H, L.FRAME_NODE_H, L.FRAME_MIN_W, L.ASPECT_MIN, L.ASPECT_MAX, L.ITEM_GAP, L.ARM_W, L.END_W,
+        L.JUMP_W, L.JUMP_H, L.JUMP_Y, L.EMPTY_W, L.HEADER_H, L.HEADER_GAP, L.HEADER_MIN_W, L.STRIP_GAP, L.LOOSE_PER_ROW, L.ROW_GAP,
+        L.SIDE_ROW_GAP, L.SIDE_TAG_W, L.SIDE_WORD_W, L.CHIP_W, L.CHIP_H, L.CHIP_GAP, L.CHIP_MAX, L.CHIP_OFFSET, L.LOD_ZOOM],
+      [280, 8, 36, 324, 144, 0.3, 2.4, 24, 24, 12, 144, 96, 92, 280, 44, 12, 360, 72, 8, 40, 6, 28, 72, 220, 28, 6, 8, 16, 0.35],
+    ) && same(L.DEFAULT_ASPECT, { web: 1.6, ios: 0.4615, android: 0.45 }));
+  check("clampAspect: into [ASPECT_MIN, ASPECT_MAX]", L.clampAspect(0.1) === 0.3 && L.clampAspect(3) === 2.4 && L.clampAspect(1) === 1);
+
+  const noAspect = () => undefined;
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  const web = L.layoutWall(wall, "web", noAspect);
+  const box = (layout, id) => layout.boxes.find((b) => b.id === id);
+  const pick = (b) => [b.kind, b.x, b.y, b.width, b.height, b.row, b.shotWidth];
+
+  check("boxes: each strip's header, then its items, strip by strip",
+    same(web.boxes.map((b) => b.id), wall.strips.flatMap((strip) => [strip.id, ...strip.items.map((item) => item.id)])));
+  check("a header box is the strip id, at the strip's y, as wide as the strip",
+    same(pick(box(web, "strip:F-a")), ["header", 0, 0, 2464, 44, 0, null]), show(box(web, "strip:F-a")));
+  check("web frame: 448 box, items under the header",
+    same(pick(box(web, "V-a@F-a:0")), ["frame", 0, 56, 448, 324, 0, 448]), show(box(web, "V-a@F-a:0")));
+  check("jump tile: 144 × 96, centred on the box",
+    same(pick(box(web, "jump:F-a:1")), ["jump", 472, 148, 144, 96, 0, null]), show(box(web, "jump:F-a:1")));
+  check("arm and end markers: FRAME_H tall, top-aligned",
+    same(pick(box(web, "arm:F-a:2.0")), ["arm", 640, 56, 24, 280, 0, null]) &&
+      same(pick(box(web, "end:F-a:2.0.1")), ["end", box(web, "end:F-a:2.0.1").x, 56, 12, 280, 0, null]));
+  check("strip rect: content width, one row tall",
+    same(web.strips.get("strip:F-a"), { x: 0, y: 0, width: 2464, height: 380 }), show(web.strips.get("strip:F-a")));
+  check("one-row pitch is 452", web.strips.get("strip:F-c").y === 452 && web.strips.get("strip:F-d").y === 904);
+  check("a header is at least HEADER_MIN_W", box(web, "strip:F-c").width === 360 && web.strips.get("strip:F-c").width === 360);
+  check("the empty item: 280 wide, FRAME_H tall", same(pick(box(web, "empty:F-d")), ["empty", 0, 960, 280, 280, 0, null]));
+
+  const ios = L.layoutWall(wall, "ios", noAspect);
+  const android = L.layoutWall(wall, "android", noAspect);
+  check("iOS and Android defaults: 129 and 126 boxes in 144 nodes",
+    same(pick(box(ios, "V-a@F-a:0")), ["frame", 0, 56, 144, 324, 0, 129]) && same(pick(box(android, "V-a@F-a:0")), ["frame", 0, 56, 144, 324, 0, 126]));
+  const side = L.layoutWall(wall, "side", noAspect);
+  check("side by side, three platforms: 257", same(pick(box(side, "V-a@F-a:0")), ["frame", 0, 56, 257, 324, 0, 257]));
+  check("the lens changes widths, never the vertical rhythm",
+    [ios, android, side].every((layout) => same(layout.boxes.map((b) => [b.y, b.height]), web.boxes.map((b) => [b.y, b.height]))) &&
+      [...ios.strips.values()].every((rect, i) => rect.y === [...web.strips.values()][i].y));
+  const last = [...web.strips.values()].pop();
+  check("bounds: the widest strip, down to the last strip's bottom",
+    same(web.bounds, { x: 0, y: 0, width: Math.max(...[...web.strips.values()].map((r) => r.width)), height: last.y + last.height }));
+
+  const twoWall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, products: [{ id: "app", platforms: ["web", "ios"], root_node_id: "V-home" }], productId: "app" });
+  check("side by side, web + iOS: 333", box(L.layoutWall(twoWall, "side", noAspect), "V-a@F-a:0").width === 333);
+  check("sideGeometry: row height and minis at n = 2 and n = 3",
+    same(L.sideGeometry(twoWall, "V-a", noAspect), { rowHeight: 137, miniWidths: { web: 219, ios: 63 }, shotWidth: 333 }) &&
+      L.sideGeometry(wall, "V-a", noAspect).rowHeight === 268 / 3 &&
+      same(L.sideGeometry(wall, "V-a", noAspect).miniWidths, { web: 143, ios: 41, android: 40 }),
+    show([L.sideGeometry(twoWall, "V-a", noAspect), L.sideGeometry(wall, "V-a", noAspect)]));
+
+  const looseWall = wallOf({ nodes: Array.from({ length: 10 }, (_, i) => view(`V-${String(i).padStart(2, "0")}`, `View ${i}`)), productId: "app" });
+  const loose = L.layoutWall(looseWall, "web", noAspect);
+  check("Not in a flow wraps after eight frames",
+    same(pick(box(loose, "V-07@loose")), ["frame", 7 * 472, 56, 448, 324, 0, 448]) &&
+      same(pick(box(loose, "V-08@loose")), ["frame", 0, 420, 448, 324, 1, 448]) &&
+      same(loose.strips.get("strip:loose"), { x: 0, y: 0, width: 8 * 448 + 7 * 24, height: 744 }),
+    show(loose.strips.get("strip:loose")));
+
+  const counted = wallOf({ nodes: COUNT_NODES, events: COUNT_EVENTS, productId: "app" });
+  const measured = (viewId, platform) =>
+    ({ "V-1|web": 5, "V-1|android": 0.5, "V-2|web": 1, "V-3|web": 0.5, "V-4|web": 0.5 })[`${viewId}|${platform}`];
+  const sized = L.layoutWall(counted, "web", measured);
+  check("a measured aspect sizes a frame with a shot; clamped; ignored without a shot",
+    box(sized, "V-2@F-count:1").shotWidth === 280 && box(sized, "V-1@F-count:0").shotWidth === 672 &&
+      box(sized, "V-3@F-count:3").shotWidth === 448 && box(sized, "V-4@F-count:4").shotWidth === 448);
+  const tiny = L.layoutWall(counted, "web", () => 0.1);
+  check("a clamped narrow shot stays centred in a FRAME_MIN_W node",
+    box(tiny, "V-2@F-count:1").shotWidth === 84 && box(tiny, "V-2@F-count:1").width === 144);
+  check("side by side: each mini keeps its own aspect, the widest sets the box",
+    same(L.sideGeometry(counted, "V-1", measured).miniWidths, { web: 214, ios: 41, android: 45 }) &&
+      L.sideGeometry(counted, "V-1", measured).shotWidth === 328);
+
+  const empty = L.layoutWall(wallOf({ nodes: [], productId: null }), "web", noAspect);
+  check("an empty wall lays out nothing", empty.boxes.length === 0 && empty.strips.size === 0 && same(empty.bounds, { x: 0, y: 0, width: 0, height: 0 }));
+}
+
+// --- Time budget (spec § Performance 1) -------------------------------------
+
+{
+  for (const name of ["pebbles.json", "arkaik-self-map.json"]) {
+    const { input } = seedWall(name);
+    const lens = "web";
+    wallModule.layoutWall(buildWall(input), lens, () => undefined); // warm-up, not timed
+    const runs = 20;
+    const start = performance.now();
+    for (let i = 0; i < runs; i += 1) wallModule.layoutWall(buildWall(input), lens, () => undefined);
+    const mean = (performance.now() - start) / runs;
+    check(`${name}: buildWall + layoutWall under 25 ms on average (${mean.toFixed(2)} ms)`, mean < 25);
+  }
+}

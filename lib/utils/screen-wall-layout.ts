@@ -1,0 +1,197 @@
+import type { PlatformId } from "@/lib/config/platforms";
+import type { Rect } from "@/lib/utils/journey-layout";
+import type { Wall, WallItem, WallLens } from "@/lib/utils/screen-wall";
+
+/**
+ * The Screens map's layout (docs/superpowers/specs/2026-11-11-screens-map-design.md
+ * § Layout): strips stacked top to bottom, each a header over one row of items
+ * left to right ("Not in a flow" wraps). Computed directly — no ELK — and
+ * synchronously, so a lens change or a measured shot re-lays the wall in one
+ * pass. All values are px in flow coordinates.
+ */
+
+export type { Rect } from "@/lib/utils/journey-layout";
+
+/** Height of every frame's shot box. */
+export const FRAME_H = 280;
+/** Caption under the box: title line + state line. */
+export const CAPTION_GAP = 8;
+export const CAPTION_H = 36;
+/** Box + caption: 324. */
+export const FRAME_NODE_H = FRAME_H + CAPTION_GAP + CAPTION_H;
+/** A frame node is never narrower; the box centres in it. */
+export const FRAME_MIN_W = 144;
+/** Width / height before a shot loads, and for ghosts. */
+export const DEFAULT_ASPECT: Record<PlatformId, number> = { web: 1.6, ios: 0.4615, android: 0.45 };
+/** Clamp on measured aspects. */
+export const ASPECT_MIN = 0.3;
+export const ASPECT_MAX = 2.4;
+/** Between consecutive items in a strip. */
+export const ITEM_GAP = 24;
+/** Marker widths; both are FRAME_H tall, top-aligned with boxes. */
+export const ARM_W = 24;
+export const END_W = 12;
+/** Jump tile, centred on the box: (FRAME_H − JUMP_H) / 2 = JUMP_Y. */
+export const JUMP_W = 144;
+export const JUMP_H = 96;
+export const JUMP_Y = 92;
+/** The empty-flow ghost, FRAME_H tall. */
+export const EMPTY_W = 280;
+/** Strip header and the space under it. */
+export const HEADER_H = 44;
+export const HEADER_GAP = 12;
+/** A header is as wide as its strip, at least this. */
+export const HEADER_MIN_W = 360;
+/** Between one strip's last row and the next header. */
+export const STRIP_GAP = 72;
+/** Only "Not in a flow" wraps. */
+export const LOOSE_PER_ROW = 8;
+export const ROW_GAP = 40;
+/** Between platform rows in a side-by-side frame. */
+export const SIDE_ROW_GAP = 6;
+/** Platform tag column, state word column. */
+export const SIDE_TAG_W = 28;
+export const SIDE_WORD_W = 72;
+/** Touch chips. */
+export const CHIP_W = 220;
+export const CHIP_H = 28;
+export const CHIP_GAP = 6;
+export const CHIP_MAX = 8;
+/** Chips start this far below the selected frame node. */
+export const CHIP_OFFSET = 16;
+/** Below this zoom, frames drop images and captions. */
+export const LOD_ZOOM = 0.35;
+
+/** The gaps around a side-by-side mini: after the tag column, before the word column. */
+const SIDE_TAG_GAP = 6;
+const SIDE_WORD_GAP = 8;
+
+export type WallBoxKind = "header" | "frame" | "arm" | "end" | "jump" | "empty";
+
+export interface WallBox extends Rect {
+  id: string;
+  kind: WallBoxKind;
+  stripId: string;
+  row: number;
+  /** Frames only: the shot box width (≤ width, centred in it); null for every other kind. */
+  shotWidth: number | null;
+}
+
+export interface WallLayout {
+  /** Strip by strip, item by item: the DOM and Tab order. */
+  boxes: WallBox[];
+  strips: ReadonlyMap<string, Rect>;
+  bounds: Rect;
+}
+
+/** Measured width / height of a loaded shot, or undefined. */
+export type AspectOf = (viewId: string, platform: PlatformId) => number | undefined;
+
+export function clampAspect(aspect: number): number {
+  return Math.min(ASPECT_MAX, Math.max(ASPECT_MIN, aspect));
+}
+
+/** The aspect a mini or a box is drawn at: the measured one while the cell shows a shot, else the platform default. */
+function aspectFor(wall: Wall, viewId: string, platform: PlatformId, aspectOf: AspectOf): number {
+  const cell = wall.screens.get(viewId)?.cells[platform];
+  if (cell?.shot && cell.state !== "absent") {
+    const measured = aspectOf(viewId, platform);
+    if (measured !== undefined && Number.isFinite(measured) && measured > 0) return clampAspect(measured);
+  }
+  return DEFAULT_ASPECT[platform];
+}
+
+/** Side-by-side geometry of one frame, n = wall.platforms.length (spec § Layout). */
+export function sideGeometry(
+  wall: Wall,
+  viewId: string,
+  aspectOf: AspectOf,
+): { rowHeight: number; miniWidths: Partial<Record<PlatformId, number>>; shotWidth: number } {
+  const n = Math.max(1, wall.platforms.length);
+  const rowHeight = (FRAME_H - (n - 1) * SIDE_ROW_GAP) / n;
+  const miniWidths: Partial<Record<PlatformId, number>> = {};
+  let widest = 0;
+  for (const platform of wall.platforms) {
+    const width = Math.round(rowHeight * aspectFor(wall, viewId, platform, aspectOf));
+    miniWidths[platform] = width;
+    widest = Math.max(widest, width);
+  }
+  return { rowHeight, miniWidths, shotWidth: SIDE_TAG_W + SIDE_TAG_GAP + widest + SIDE_WORD_GAP + SIDE_WORD_W };
+}
+
+function frameShotWidth(wall: Wall, viewId: string, lens: WallLens, aspectOf: AspectOf): number {
+  if (lens === "side") return sideGeometry(wall, viewId, aspectOf).shotWidth;
+  return Math.round(FRAME_H * aspectFor(wall, viewId, lens, aspectOf));
+}
+
+/** An item's size and its offset from the top of its row. */
+function itemBox(
+  item: WallItem,
+  wall: Wall,
+  lens: WallLens,
+  aspectOf: AspectOf,
+): { width: number; height: number; dy: number; shotWidth: number | null } {
+  switch (item.kind) {
+    case "frame": {
+      const shotWidth = frameShotWidth(wall, item.viewId, lens, aspectOf);
+      return { width: Math.max(shotWidth, FRAME_MIN_W), height: FRAME_NODE_H, dy: 0, shotWidth };
+    }
+    case "jump":
+      return { width: JUMP_W, height: JUMP_H, dy: JUMP_Y, shotWidth: null };
+    case "arm":
+      return { width: ARM_W, height: FRAME_H, dy: 0, shotWidth: null };
+    case "end":
+      return { width: END_W, height: FRAME_H, dy: 0, shotWidth: null };
+    case "empty":
+      return { width: EMPTY_W, height: FRAME_H, dy: 0, shotWidth: null };
+  }
+}
+
+/**
+ * Positions for every header and item. Strips start at x = 0; the header sits
+ * at the strip's y, items `HEADER_H + HEADER_GAP` below it, advancing by width
+ * + `ITEM_GAP`. The lens changes widths, never the vertical rhythm.
+ */
+export function layoutWall(wall: Wall, lens: WallLens, aspectOf: AspectOf): WallLayout {
+  const boxes: WallBox[] = [];
+  const strips = new Map<string, Rect>();
+  let y = 0;
+  let maxWidth = 0;
+
+  wall.strips.forEach((strip, index) => {
+    if (index > 0) y += STRIP_GAP;
+    const top = y;
+    const itemsTop = top + HEADER_H + HEADER_GAP;
+    const wraps = strip.flowId === null;
+    const header: WallBox = { id: strip.id, kind: "header", stripId: strip.id, row: 0, x: 0, y: top, width: HEADER_MIN_W, height: HEADER_H, shotWidth: null };
+    boxes.push(header);
+
+    let x = 0;
+    let row = 0;
+    let inRow = 0;
+    let contentWidth = 0;
+    for (const item of strip.items) {
+      if (wraps && inRow === LOOSE_PER_ROW) {
+        row += 1;
+        inRow = 0;
+        x = 0;
+      }
+      const rowTop = itemsTop + row * (FRAME_NODE_H + ROW_GAP);
+      const { width, height, dy, shotWidth } = itemBox(item, wall, lens, aspectOf);
+      boxes.push({ id: item.id, kind: item.kind, stripId: strip.id, row, x, y: rowTop + dy, width, height, shotWidth });
+      contentWidth = Math.max(contentWidth, x + width);
+      x += width + ITEM_GAP;
+      inRow += 1;
+    }
+
+    const rows = row + 1;
+    const width = Math.max(contentWidth, HEADER_MIN_W);
+    const height = HEADER_H + HEADER_GAP + rows * FRAME_NODE_H + (rows - 1) * ROW_GAP;
+    header.width = width;
+    strips.set(strip.id, { x: 0, y: top, width, height });
+    maxWidth = Math.max(maxWidth, width);
+    y = top + height;
+  });
+
+  return { boxes, strips, bounds: { x: 0, y: 0, width: maxWidth, height: y } };
+}
