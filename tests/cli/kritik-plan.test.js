@@ -427,6 +427,16 @@ try {
     );
   }
 
+  // --- a stray JSON file under plans/ is not a plan -----------------------------------------------
+
+  {
+    const { run: runStray, plansDir: strayPlans } = repo();
+    mkdirSync(strayPlans, { recursive: true });
+    writeFileSync(path.join(strayPlans, "notes.json"), "{}");
+    const made = runStray(["plan", "--run", "SEC:web", "--json"]);
+    check("a JSON file under plans/ whose name is not a plan id never blocks a plan", made.status === 0 && json(made)?.planId !== undefined, made.stderr);
+  }
+
   // --- zero cells -----------------------------------------------------------------------------
 
   {

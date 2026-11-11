@@ -24,6 +24,7 @@ import type { KritikLibrary } from "../quality";
 import {
   PLAN_PLANS_DIR,
   buildKritikPlan,
+  isPlanId,
   parseRun,
   planPartStatuses,
   type KritikPlan,
@@ -39,13 +40,19 @@ export const plansDir = (root: string): string => join(root, QUALITY_DIR, PLAN_P
 /** The one path `--status`, `matrix --plan` and `kritik_plan` read a plan from. */
 export const planPath = (root: string, planId: string): string => join(plansDir(root), `${planId}.json`);
 
-/** Every plan file's id (its basename without `.json`), sorted; `[]` when there is no plans directory. */
+/**
+ * Every plan file's id (its basename without `.json`), sorted; `[]` when there
+ * is no plans directory. A JSON file whose name is not a plan id is not a plan:
+ * left in, a stray `notes.json` would sort after every counter and block every
+ * later plan.
+ */
 export function listPlanIds(root: string): string[] {
   const dir = plansDir(root);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => name.endsWith(".json") && statSync(join(dir, name)).isFile())
     .map((name) => name.slice(0, -".json".length))
+    .filter((id) => isPlanId(id))
     .sort();
 }
 
