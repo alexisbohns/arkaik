@@ -848,6 +848,55 @@ async function run() {
 
     const again = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
     check("recording the plan twice is refused", again.isError && again.json.message.includes("already recorded") && planned.journal().length === before + 1, again.text.slice(0, 300));
+
+    // --- after the plan record: the scope's anchor, and regressions readings ---
+
+    const emptyScope = await planned.call("kritik_scope", {});
+    check(
+      "with only plan records, kritik_scope is empty and says why",
+      !emptyScope.isError && emptyScope.json.since === null && (emptyScope.json.note ?? "").includes("only plan records") && (emptyScope.json.note ?? "").includes(planId),
+      emptyScope.text.slice(0, 400),
+    );
+    const planSince = await planned.call("kritik_scope", { since: planId });
+    check("a plan id is never a scope's anchor", planSince.isError && planSince.json.message.includes("never a scope's anchor"), planSince.text.slice(0, 300));
+    const partSince = await planned.call("kritik_scope", { since: part.auditId });
+    check("nor is one of its part ids", partSince.isError && partSince.json.message.includes("never a scope's anchor"), partSince.text.slice(0, 300));
+    const scopedScore = await planned.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "x.ts:1", scope: true });
+    check("kritik_score scope=true with only plan records says why there is nothing to measure from", scopedScore.isError && scopedScore.json.message.includes("only plan records"), scopedScore.text.slice(0, 300));
+
+    const writeScores = (auditId, cells, level) => {
+      const dir = path.join(planned.dir, "docs", "quality", "audits", auditId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "scores.json"),
+        JSON.stringify({
+          audit_id: auditId,
+          framework_version: plan.frameworkVersion,
+          assessments: cells.map((cell) => ({ criterion_id: cell.criterion_id, surface: cell.surface, level, evidence: `${cell.criterion_id}.ts:1`, audit_id: auditId, ts: "2026-11-01T00:00:00.000Z" })),
+        }),
+      );
+    };
+    // An audit sorting after the plan's part, declared scoped by hand: there is
+    // no full or scoped record before it, so it is refused — never measured from the plan.
+    const later = `${planId.slice(0, 7)}-zz-later`;
+    writeScores(later, [{ criterion_id: "SEC-02", surface: "supabase" }], 2);
+    const declaredAfterPlan = await planned.call("kritik_matrix", { audit_id: later, scope: true });
+    check("scope=true never takes a plan or its part as the audit it followed", declaredAfterPlan.isError && declaredAfterPlan.json.message.includes("no recorded audit sorts before"), declaredAfterPlan.text.slice(0, 300));
+    rmSync(path.join(planned.dir, "docs", "quality", "audits", later), { recursive: true, force: true });
+
+    const oneReading = await planned.call("kritik_regressions", {});
+    check("one plan is one reading — nothing to compare yet", oneReading.isError && oneReading.json.message.includes(`only "${planId}" exists`), oneReading.text.slice(0, 300));
+    const made2 = await planned.call("kritik_plan", { runs: ["SEC:supabase", "PRV:web"] });
+    const plan2 = made2.json.plan ?? { parts: [] };
+    const [secSupabase, prvWeb] = plan2.parts;
+    writeScores(secSupabase?.auditId, secSupabase?.cells ?? [], 2);
+    writeScores(prvWeb?.auditId, prvWeb?.cells ?? [], 2);
+    const pairDefault = await planned.call("kritik_regressions", {});
+    check("kritik_regressions defaults to the newest plan against the reading before it", !pairDefault.isError && pairDefault.json.from === planId && pairDefault.json.to === plan2.planId, pairDefault.text.slice(0, 300));
+    const toPart = await planned.call("kritik_regressions", { to: prvWeb?.auditId });
+    check("a part id given as to reads its whole plan", !toPart.isError && toPart.json.to === plan2.planId, toPart.text.slice(0, 300));
+    const samePlan = await planned.call("kritik_regressions", { from: secSupabase?.auditId, to: prvWeb?.auditId });
+    check("two parts of one plan are one reading", samePlan.isError && samePlan.json.message.includes("same audit"), samePlan.text.slice(0, 300));
   } finally {
     planned.stop();
     rmSync(twin, { recursive: true, force: true });
