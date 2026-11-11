@@ -396,6 +396,73 @@ try {
   rmSync(nb.at("docs", "arkaik", "bundle.json"));
   refuses(nb, "--record --plan with no journal to append to", ["matrix", nbPlan.planId, "--record", "--plan"], ["needs a journal", "no bundle at"]);
 
+  // === Coverage beside every roll-up, and the first audit that is a plan =========
+
+  const fullTable = a.run(["matrix", FULL]);
+  check("a full audit's table carries no coverage lines", fullTable.status === 0 && !fullTable.stdout.includes("coverage —"), fullTable.stdout.slice(-400));
+
+  const aTrend = a.run(["trend"]);
+  check("trend marks the plan's row", aTrend.status === 0 && aTrend.stdout.includes(`planned partial audit: 6 cells re-scored in 1 part since ${FULL}`), aTrend.stdout);
+  const aRows = JSON.parse(a.run(["trend", "--json"]).stdout || "{}").rows ?? [];
+  check("trend --json carries the plan marker, not a scope marker", aRows[1]?.plan?.plan === planId && aRows[1]?.scope === undefined, String(JSON.stringify(aRows[1])).slice(0, 300));
+  check(
+    "its delta moves only where the plan looked: web compared, iOS not",
+    aRows[1]?.cells?.web?.delta !== null && aRows[1]?.cells?.web?.delta === aRows[1]?.cells?.web?.score - aRows[0]?.cells?.web?.score && aRows[1]?.cells?.ios?.delta === null,
+    JSON.stringify(aRows[1]?.cells),
+  );
+
+  const c = repo();
+  c.ok(["profile", ...SURFACES.flatMap((surface) => ["--surface", surface])]);
+  const cPlan = c.makePlan("SEC:web");
+  const cPart = cPlan.parts[0] ?? { cells: [] };
+  c.writeScores(cPart.auditId, cellsOf(cPart), 3);
+  const webLine = new RegExp(`web \\d+, from 6 of ${APPLICABLE.web} cells`);
+  const iosLine = `ios —, from 0 of ${APPLICABLE.ios} cells`;
+
+  const cPreview = c.run(["matrix", cPlan.planId, "--plan"]);
+  check(
+    "first audit as a plan: the preview prints coverage beside the roll-ups",
+    cPreview.status === 0 && cPreview.stdout.includes("coverage —") && webLine.test(cPreview.stdout) && cPreview.stdout.includes(iosLine),
+    cPreview.stderr + cPreview.stdout.slice(-800),
+  );
+  check(
+    "and says no full audit came before it",
+    cPreview.stdout.includes(`planned partial audit ${cPlan.planId}: 6 cells re-scored in 1 part, with no full audit before it`),
+    cPreview.stdout.slice(-400),
+  );
+
+  const cRecorded = c.run(["matrix", cPlan.planId, "--record", "--plan"]);
+  const cEvent = c.journal().filter((e) => e.type === "quality.audit.completed").at(-1) ?? {};
+  check("first audit as a plan records", cRecorded.status === 0 && cEvent.audit_id === cPlan.planId, cRecorded.stderr);
+  check("its record has no since", cEvent.scope !== undefined && !("since" in cEvent.scope), String(JSON.stringify(cEvent.scope)).slice(0, 200));
+  check(
+    "its coverage: 6 scored, 6 assessed, 338 applicable",
+    cEvent.scope?.coverage?.scored === 6 && cEvent.scope?.coverage?.assessed === 6 && cEvent.scope?.coverage?.applicable === ALL_CELLS.length,
+    String(JSON.stringify(cEvent.scope?.coverage)).slice(0, 300),
+  );
+  check(
+    "per surface: web 6 of its cells, iOS none of its",
+    cEvent.scope?.coverage?.surfaces?.web?.assessed === 6 &&
+      cEvent.scope?.coverage?.surfaces?.web?.applicable === APPLICABLE.web &&
+      cEvent.scope?.coverage?.surfaces?.ios?.assessed === 0 &&
+      cEvent.scope?.coverage?.surfaces?.ios?.applicable === APPLICABLE.ios,
+    JSON.stringify(cEvent.scope?.coverage?.surfaces),
+  );
+  check("the record prints its coverage too", webLine.test(cRecorded.stdout), cRecorded.stdout.slice(-600));
+
+  const cPartTable = c.run(["matrix", cPart.auditId]);
+  check("a part's own table carries coverage", cPartTable.status === 0 && webLine.test(cPartTable.stdout), cPartTable.stdout.slice(-600));
+
+  const cTrend = c.run(["trend"]);
+  check(
+    "trend prints the plan line and its coverage lines",
+    cTrend.status === 0 &&
+      cTrend.stdout.includes("planned partial audit: 6 cells re-scored in 1 part — no full audit before it") &&
+      webLine.test(cTrend.stdout) &&
+      cTrend.stdout.includes(iosLine),
+    cTrend.stdout,
+  );
+
   // ── later sections are inserted above this line ──
 } finally {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });

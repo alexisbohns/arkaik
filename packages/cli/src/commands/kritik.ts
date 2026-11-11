@@ -28,6 +28,8 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  coverageNotes,
+  coverageOf,
   deriveAuditScope,
   deriveQualityMatrix,
   deriveFindingsBurndown,
@@ -267,7 +269,12 @@ findings: "from where we started to where we are now".
 Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
 and audits recorded with \`arkaik kritik matrix --record\`. A framework major
 bump between two audits breaks the comparison there (SPEC § 8): the row still
-prints, without an arrow.`;
+prints, without an arrow.
+
+A planned partial audit's row says so — "planned partial audit: 6 cells
+re-scored in 1 part since 2026-08" — moves its arrows only where the plan
+re-scored, and lists each surface it did not fully cover: "web 62, from 6 of
+73 cells".`;
 
 const BURNDOWN_USAGE = `arkaik kritik burndown [--surface <s>] [--domain <CODE>] [--json]
 
@@ -920,6 +927,15 @@ function printMatrixReport(section: QualitySection, matrix: QualityMatrix, libra
   const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
   console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
 
+  // A roll-up averages the domains that scored, so on a sparse reading it reads as
+  // a grade for a whole surface it never looked at; the coverage line says so.
+  const notes = coverageNotes(coverageOf(section, library), matrix.overall);
+  if (notes.length > 0) {
+    console.log(`coverage — a roll-up reads only the cells that hold a score:`);
+    for (const note of notes) console.log(`  ${note}`);
+    console.log("");
+  }
+
   const open = section.findings.filter(isOpenFinding);
   const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
   for (const finding of open) lanes[priorityOf(finding, library)]++;
@@ -1371,6 +1387,23 @@ function runTrend(args: string[], common: CommonOptions): void {
     }
     if (row.scope) {
       console.log(`  ${"".padEnd(widths[0])}   scoped re-audit of ${row.scope.cells ?? "?"} cell(s) since ${row.scope.since}`);
+    }
+    if (row.plan) {
+      const parts = row.plan.parts.length;
+      console.log(
+        `  ${"".padEnd(widths[0])}   planned partial audit: ${row.plan.cells ?? "?"} cell${row.plan.cells === 1 ? "" : "s"} ` +
+          `re-scored in ${parts} part${parts === 1 ? "" : "s"}` +
+          (row.plan.since !== null ? ` since ${row.plan.since}` : " — no full audit before it"),
+      );
+      if (row.plan.coverage !== null) {
+        const shown = {
+          ...row.plan.coverage,
+          surfaces: Object.fromEntries(Object.entries(row.plan.coverage.surfaces).filter(([surface]) => surfaces.includes(surface))),
+        };
+        for (const note of coverageNotes(shown, trend.snapshots[index].overall)) {
+          console.log(`  ${"".padEnd(widths[0])}   ${note}`);
+        }
+      }
     }
   }
   console.log(
