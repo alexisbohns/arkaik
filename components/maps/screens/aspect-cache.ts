@@ -7,9 +7,15 @@ import type { PlatformId } from "@/lib/config/platforms";
  * default shape and takes the shot's own once it has loaded (spec § Images).
  * Kept at module level, keyed `viewId|platform`, so leaving the map and coming
  * back keeps every proportion already learned: a frame changes width at most
- * once per shot per tab. Each entry remembers the slot value it was measured
- * from and answers only while that is still the slot's value — a new shot
- * starts from the default again rather than wearing the old one's shape.
+ * once per shot per tab. Each entry remembers the shot it was measured from —
+ * by its fingerprint, `shotKey` — and answers only while that is still the
+ * slot's shot: a new shot starts from the default again rather than wearing
+ * the old one's shape.
+ *
+ * The fingerprint, not the value: a shot can be a multi-megabyte data URI,
+ * and the cache is consulted for every frame on every re-layout and kept for
+ * the life of the tab. Its length, its `meta.ts` and its first and last 64
+ * characters tell one shot from the next for a fraction of the cost.
  *
  * Reports arrive one `onLoad` at a time; they are applied together once per
  * animation frame, so a screenful of loading shots re-lays the wall once, not
@@ -18,8 +24,23 @@ import type { PlatformId } from "@/lib/config/platforms";
  */
 
 export interface AspectEntry {
-  value: string;
+  /** `shotKey` of the shot the ratio was measured from. */
+  key: string;
   ratio: number;
+}
+
+/** How many characters of each end of a shot's value its fingerprint keeps. */
+const KEY_END = 64;
+
+/**
+ * A shot's fingerprint: its value's length, its `meta.ts` when there is one,
+ * and the first and last 64 characters of the value. Cheap on a data URI of
+ * any size; a short URL is kept whole.
+ */
+export function shotKey(shot: { value: string; ts: string | null }): string {
+  const { value } = shot;
+  const ends = value.length <= 2 * KEY_END ? value : `${value.slice(0, KEY_END)}…${value.slice(-KEY_END)}`;
+  return `${value.length}|${shot.ts ?? ""}|${ends}`;
 }
 
 const EMPTY: ReadonlyMap<string, AspectEntry> = new Map();
@@ -29,16 +50,16 @@ let pending = new Map<string, AspectEntry>();
 let frame: number | null = null;
 const listeners = new Set<() => void>();
 
-const keyOf = (viewId: string, platform: PlatformId) => `${viewId}|${platform}`;
+const slotOf = (viewId: string, platform: PlatformId) => `${viewId}|${platform}`;
 
 function flush(): void {
   frame = null;
   let next: Map<string, AspectEntry> | null = null;
-  for (const [key, entry] of pending) {
-    const known = snapshot.get(key);
-    if (known && known.value === entry.value && known.ratio === entry.ratio) continue;
+  for (const [slot, entry] of pending) {
+    const known = snapshot.get(slot);
+    if (known && known.key === entry.key && known.ratio === entry.ratio) continue;
     next ??= new Map(snapshot);
-    next.set(key, entry);
+    next.set(slot, entry);
   }
   pending = new Map();
   if (next === null) return;
@@ -46,10 +67,10 @@ function flush(): void {
   for (const listener of listeners) listener();
 }
 
-/** A shot loaded: `ratio` = naturalWidth / naturalHeight of `value`. Applied on the next animation frame. */
-export function reportAspect(viewId: string, platform: PlatformId, value: string, ratio: number): void {
+/** A shot loaded: `key` = `shotKey(shot)`, `ratio` = naturalWidth / naturalHeight. Applied on the next animation frame. */
+export function reportAspect(viewId: string, platform: PlatformId, key: string, ratio: number): void {
   if (!Number.isFinite(ratio) || ratio <= 0) return;
-  pending.set(keyOf(viewId, platform), { value, ratio });
+  pending.set(slotOf(viewId, platform), { key, ratio });
   if (frame === null) frame = window.requestAnimationFrame(flush);
 }
 
@@ -69,13 +90,13 @@ export function getServerAspectSnapshot(): ReadonlyMap<string, AspectEntry> {
   return EMPTY;
 }
 
-/** The slot's measured ratio, or undefined unless it was measured from `value` itself. */
+/** The slot's measured ratio, or undefined unless it was measured from the shot `key` names. */
 export function aspectFrom(
   aspects: ReadonlyMap<string, AspectEntry>,
   viewId: string,
   platform: PlatformId,
-  value: string,
+  key: string,
 ): number | undefined {
-  const entry = aspects.get(keyOf(viewId, platform));
-  return entry && entry.value === value ? entry.ratio : undefined;
+  const entry = aspects.get(slotOf(viewId, platform));
+  return entry && entry.key === key ? entry.ratio : undefined;
 }

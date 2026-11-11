@@ -12,7 +12,7 @@ import type { WallLens, WallScreen } from "@/lib/utils/screen-wall";
  * them — a field nothing fills would be a lie the type checker cannot see.
  */
 
-/** A loaded shot's measured width / height, reported for the slot's current value. */
+/** A loaded shot's measured width / height, reported for the slot's current shot: `value` is its fingerprint (aspect-cache `shotKey`), never the shot itself. */
 export type AspectReport = (viewId: string, platform: PlatformId, value: string, ratio: number) => void;
 
 export type WallFrameData = {

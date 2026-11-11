@@ -7,6 +7,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { PlatformCell, WallShot as WallShotValue } from "@/lib/utils/screen-wall";
 import { LOD_ZOOM } from "@/lib/utils/screen-wall-layout";
 import { cn } from "@/lib/utils";
+import { shotKey } from "@/components/maps/screens/aspect-cache";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 import type { AspectReport } from "./wall-node-data";
 
@@ -120,11 +121,12 @@ interface WallShotProps {
  */
 export function WallShot({ viewId, platform, cell, width, height, onAspect }: WallShotProps) {
   const detailed = useWallDetail();
-  // The value that failed, not a flag: a new value for the slot gets a fresh
-  // try without an effect resetting anything.
-  const [failedValue, setFailedValue] = useState<string | null>(null);
+  // The shot that failed, by its fingerprint (aspect-cache `shotKey`), not a
+  // flag: a new shot for the slot gets a fresh try without an effect resetting
+  // anything.
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const shot = cell?.shot ?? null;
-  const failed = shot !== null && failedValue === shot.value;
+  const failed = shot !== null && failedKey === shotKey(shot);
   const ghost = ghostFor(cell, platform, failed);
 
   if (ghost !== null || shot === null || cell === undefined) {
@@ -181,10 +183,10 @@ export function WallShot({ viewId, platform, cell, width, height, onAspect }: Wa
           onLoad={(event) => {
             const image = event.currentTarget;
             if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-              onAspect(viewId, platform, shot.value, image.naturalWidth / image.naturalHeight);
+              onAspect(viewId, platform, shotKey(shot), image.naturalWidth / image.naturalHeight);
             }
           }}
-          onError={() => setFailedValue(shot.value)}
+          onError={() => setFailedKey(shotKey(shot))}
         />
       ) : (
         <div

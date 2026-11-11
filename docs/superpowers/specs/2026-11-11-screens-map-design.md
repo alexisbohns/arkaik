@@ -907,10 +907,13 @@ scope does not have, and nothing is written back until the viewer chooses.
   exists (no image config in `next.config.ts`) and arbitrary hosts cannot be
   optimised, so none is added.
 - **Proportions:** `onLoad` reports `naturalWidth / naturalHeight` through
-  `data.onAspect(viewId, platform, value, ratio)`. The controller batches
-  reports per animation frame into a module-level cache keyed by
-  `viewId|platform` that stores `{ value, ratio }`; `aspectOf` returns the ratio
-  only while the stored value is the slot's current value. The cache lives for
+  `data.onAspect(viewId, platform, value, ratio)`, where `value` is the shot's
+  fingerprint (`shotKey`: the value's length, its `meta.ts` when present, and
+  its first and last 64 characters), never the shot itself — a data URI can be
+  megabytes, and the cache is read on every re-layout and kept for the tab. The
+  controller batches reports per animation frame into a module-level cache
+  keyed by `viewId|platform` that stores `{ key, ratio }`; `aspectOf` returns
+  the ratio only while the stored key is the slot's current shot's. The cache lives for
   the tab, so returning to the map keeps proportions. A frame therefore changes
   width at most once per shot per tab.
 - **Forms:** `form` = `meta.form`, else `data:image/` → data, `http(s)://` →

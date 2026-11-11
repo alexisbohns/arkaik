@@ -17,6 +17,7 @@ import {
   getAspectSnapshot,
   getServerAspectSnapshot,
   reportAspect,
+  shotKey,
   subscribeAspects,
 } from "@/components/maps/screens/aspect-cache";
 import { Button } from "@/components/ui/button";
@@ -121,12 +122,12 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
   const lens = resolveLens(preferences.screensLens, wall);
 
   // Measured proportions, shared by every visit in this tab. `aspectOf`
-  // answers only for the slot's current value (see aspect-cache).
+  // answers only for the slot's current shot, by its fingerprint (see aspect-cache).
   const aspects = useSyncExternalStore(subscribeAspects, getAspectSnapshot, getServerAspectSnapshot);
   const aspectOf = useMemo<AspectOf>(
     () => (viewId, platform) => {
-      const value = wall.screens.get(viewId)?.cells[platform]?.shot?.value;
-      return value === undefined ? undefined : aspectFrom(aspects, viewId, platform, value);
+      const shot = wall.screens.get(viewId)?.cells[platform]?.shot;
+      return shot ? aspectFrom(aspects, viewId, platform, shotKey(shot)) : undefined;
     },
     [aspects, wall],
   );
