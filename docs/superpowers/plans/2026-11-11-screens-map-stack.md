@@ -113,6 +113,11 @@ export function sideGeometry(wall: Wall, viewId: string, aspectOf: AspectOf):
   { rowHeight: number; miniWidths: Partial<Record<PlatformId, number>>; shotWidth: number };
 export function frameViewport(rect: Rect, viewport: { width: number; height: number },
   options: { padding: number; bottomInset: number; minZoom: number; maxZoom: number }): { x: number; y: number; zoom: number };
+/** The map's first viewport: the first strip's header at the top-left of the canvas less `insets`, 32px in,
+ *  at the zoom that fits the strip's full width, clamped to [0.7, 1]; wider at 0.7 → left-aligned, overflowing
+ *  right. Height never sets the zoom. No strip → { x: 0, y: 0, zoom: 1 }. */
+export function openingViewport(layout: WallLayout, viewport: { width: number; height: number },
+  insets?: { top?: number; right?: number; bottom?: number; left?: number }): { x: number; y: number; zoom: number };
 export function neighbourFrame(layout: WallLayout, frameId: string, dir: "left" | "right" | "up" | "down"): string | null;
 export function chipRects(frame: WallBox, count: number): Rect[];
 ```

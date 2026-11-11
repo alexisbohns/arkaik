@@ -696,6 +696,15 @@ export function frameViewport(
   options: { padding: number; bottomInset: number; minZoom: number; maxZoom: number },
 ): { x: number; y: number; zoom: number };
 
+/** The map's first viewport: the first strip's header at the top-left of the canvas less `insets`
+ *  (32px padding), at the zoom that fits the strip's full width, clamped to [0.7, 1]. A strip too
+ *  wide at 0.7 stays left-aligned and overflows right. No strip: the identity viewport. */
+export function openingViewport(
+  layout: WallLayout,
+  viewport: { width: number; height: number },
+  insets?: { top?: number; right?: number; bottom?: number; left?: number },
+): { x: number; y: number; zoom: number };
+
 /** Arrow-key neighbour among frames only: left/right within the row; up/down to the frame
  *  in the previous/next row or strip whose centre x is nearest. null at the edges. */
 export function neighbourFrame(layout: WallLayout, frameId: string, dir: "left" | "right" | "up" | "down"): string | null;

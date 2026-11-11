@@ -842,3 +842,52 @@ const EQUIV_EXPECTED = {
   check("sideGeometry's box is the tag column, the tag gap, the widest mini, the word gap and the word column",
     geometry.shotWidth === L.SIDE_TAG_W + L.SIDE_TAG_GAP + widest + L.SIDE_WORD_GAP + L.SIDE_WORD_W, show(geometry));
 }
+
+// --- The opening camera (review S5) ----------------------------------------
+
+{
+  const L = wallModule;
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const nearView = (actual, expected) => ["x", "y", "zoom"].every((key) => near(actual[key], expected[key]));
+  const layoutOf = (...rects) => ({
+    boxes: [],
+    strips: new Map(rects.map((rect, i) => [`strip:${i}`, rect])),
+    bounds: { x: 0, y: 0, width: Math.max(...rects.map((r) => r.width)), height: 1000 },
+  });
+  const INSETS = { top: 0, bottom: 72 };
+
+  // 1440 wide: a 1500 px strip fits at 1376 / 1500, between the bounds.
+  const wide = L.openingViewport(layoutOf({ x: 0, y: 0, width: 1500, height: 380 }, { x: 0, y: 452, width: 5000, height: 380 }), { width: 1440, height: 900 }, INSETS);
+  check("openingViewport, wide canvas: the first strip's full width, its header at the top-left padding",
+    nearView(wide, { x: 32, y: 32, zoom: 1376 / 1500 }), show(wide));
+
+  // 390 wide: the first strip would need 0.22; the floor is 0.7, left-aligned, overflowing right.
+  const narrow = L.openingViewport(layoutOf({ x: 0, y: 0, width: 1500, height: 380 }), { width: 390, height: 844 }, INSETS);
+  check("openingViewport, narrow canvas: never below 0.7, still left-aligned at the padding",
+    nearView(narrow, { x: 32, y: 32, zoom: 0.7 }), show(narrow));
+
+  // A strip narrower than the canvas: zoom 1 at most, and left-aligned, not centred.
+  const small = L.openingViewport(layoutOf({ x: 0, y: 0, width: 400, height: 380 }), { width: 1000, height: 800 }, INSETS);
+  check("openingViewport, a strip narrower than the canvas: never above 1, left-aligned",
+    nearView(small, { x: 32, y: 32, zoom: 1 }), show(small));
+
+  // Insets move the usable canvas: the header sits below the top inset and right of the left one,
+  // and the side insets narrow the width the zoom fits.
+  const inset = L.openingViewport(layoutOf({ x: 100, y: 200, width: 1200, height: 380 }), { width: 1300, height: 800 }, { top: 60, left: 10, right: 30, bottom: 72 });
+  const insetZoom = (1300 - 10 - 30 - 64) / 1200;
+  check("openingViewport: insets shift the corner and narrow the fit; the strip's own origin is honoured",
+    nearView(inset, { x: 10 + 32 - 100 * insetZoom, y: 60 + 32 - 200 * insetZoom, zoom: insetZoom }), show(inset));
+  check("openingViewport: insets are optional",
+    nearView(L.openingViewport(layoutOf({ x: 0, y: 0, width: 400, height: 380 }), { width: 1000, height: 800 }), { x: 32, y: 32, zoom: 1 }));
+
+  const emptyLayout = L.layoutWall(wallOf({ nodes: [], productId: null }), "web", () => undefined);
+  check("openingViewport, empty layout: the identity viewport",
+    same(L.openingViewport(emptyLayout, { width: 1440, height: 900 }, INSETS), { x: 0, y: 0, zoom: 1 }));
+
+  // On a real wall: the first strip is the first header's.
+  const wall = wallOf({ nodes: ORDER_NODES, edges: ORDER_EDGES, productId: "app" });
+  const layout = L.layoutWall(wall, "web", () => undefined);
+  const real = L.openingViewport(layout, { width: 1160, height: 888 }, INSETS);
+  check("openingViewport on a laid-out wall: the first strip (2464 wide) at the 0.7 floor, header at (32, 32)",
+    nearView(real, { x: 32, y: 32, zoom: 0.7 }), show(real));
+}

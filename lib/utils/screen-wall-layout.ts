@@ -221,6 +221,36 @@ export function frameViewport(
   return { x, y, zoom };
 }
 
+/** The opening camera's padding (screen px) and zoom bounds. The padding is WallCamera's WALL_CAMERA_PADDING. */
+const OPENING_PADDING = 32;
+const OPENING_MIN_ZOOM = 0.7;
+const OPENING_MAX_ZOOM = 1;
+
+/**
+ * The map's first viewport: the first strip's header at the top-left of the
+ * usable canvas (the viewport less `insets`), `OPENING_PADDING` in from it, at
+ * the zoom that fits the strip's full width into the usable width, clamped to
+ * [0.7, 1] so captions stay readable. A strip too wide for the canvas at 0.7
+ * stays left-aligned and runs off to the right — the strips below it show
+ * underneath instead of empty canvas above it. Height never sets the zoom, so
+ * `insets.bottom` only matters to callers that share the insets with
+ * `frameViewport`. No strip: the identity viewport.
+ */
+export function openingViewport(
+  layout: WallLayout,
+  viewport: { width: number; height: number },
+  insets: { top?: number; right?: number; bottom?: number; left?: number } = {},
+): { x: number; y: number; zoom: number } {
+  const first = layout.strips.values().next();
+  if (first.done) return { x: 0, y: 0, zoom: 1 };
+  const rect = first.value;
+  const top = insets.top ?? 0;
+  const left = insets.left ?? 0;
+  const roomW = viewport.width - left - (insets.right ?? 0) - 2 * OPENING_PADDING;
+  const zoom = Math.min(OPENING_MAX_ZOOM, Math.max(OPENING_MIN_ZOOM, roomW / rect.width));
+  return { x: left + OPENING_PADDING - rect.x * zoom, y: top + OPENING_PADDING - rect.y * zoom, zoom };
+}
+
 /**
  * The arrow-key neighbour among frames only: left/right within the row;
  * up/down to the frame in the previous/next row (or strip) whose centre x is
