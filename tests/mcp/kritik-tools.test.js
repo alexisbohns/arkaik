@@ -616,6 +616,48 @@ async function run() {
       pairSupabaseScore.text.slice(0, 400),
     );
 
+    // A part that no longer sorts last is refused, and nothing is written.
+    const auditFile = (id, name) => path.join(session.dir, "docs", "quality", "audits", id, name);
+    const earlierBlocked = await session.call("kritik_score", { criterion_id: "SEC-04", surface: "web", level: 2, evidence: "app/x.ts:1", audit_id: partId });
+    check(
+      "kritik_score into an earlier plan's part is refused once a later plan's part directory sorts after it",
+      earlierBlocked.isError &&
+        earlierBlocked.json.message.includes(`"${pairSupabase}"`) &&
+        earlierBlocked.json.message.includes("lose the merge") &&
+        session.readJson("docs", "quality", "audits", partId, "scores.json").assessments.length === 1,
+      earlierBlocked.text.slice(0, 400),
+    );
+    const scopedAfterPart = `${pairWeb}-scoped`;
+    mkdirSync(path.join(session.dir, "docs", "quality", "audits", scopedAfterPart), { recursive: true });
+    const journalBeforeRefusal = session.journal().length;
+    const siblingBlocked = await session.call("kritik_score", { criterion_id: "SEC-03", surface: "supabase", level: 2, evidence: "x.sql:1", audit_id: pairSupabase });
+    check(
+      "a scoped directory named after a sibling part blocks the earlier part's kritik_score, naming it, and writes nothing",
+      siblingBlocked.isError &&
+        siblingBlocked.json.message.includes(`"${scopedAfterPart}"`) &&
+        siblingBlocked.json.message.includes("new plan for the parts not yet scored") &&
+        session.readJson("docs", "quality", "audits", pairSupabase, "scores.json").assessments.length === 1,
+      siblingBlocked.text.slice(0, 400),
+    );
+    const findingBlocked = await session.call("kritik_open_finding", {
+      criterion_id: "SEC-02",
+      surface: "supabase",
+      title: "RLS off",
+      evidence: "migrations/003.sql:8",
+      impact: 3,
+      likelihood: 3,
+      cost: "S",
+      audit_id: pairSupabase,
+    });
+    check(
+      "and kritik_open_finding into it is refused, with no finding file and no journal event",
+      findingBlocked.isError &&
+        findingBlocked.json.message.includes(`"${scopedAfterPart}"`) &&
+        !existsSync(auditFile(pairSupabase, "findings.json")) &&
+        session.journal().length === journalBeforeRefusal,
+      findingBlocked.text.slice(0, 400),
+    );
+
     const noRuns = await session.call("kritik_plan", { runs: [] });
     check("kritik_plan without runs is an actionable tool error", noRuns.isError && /runs/.test(noRuns.json.message), noRuns.text);
     const badSurfacePlan = await session.call("kritik_plan", { runs: ["SEC:android"] });

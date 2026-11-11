@@ -37,9 +37,12 @@ import {
   formatDelta,
   findingResolvedInput,
   isOpenFinding,
+  isPlanPartId,
   mintFindingId,
   orderEvents,
+  outsortedBy,
   parseSurfaceSpec,
+  planIdOfPartId,
   priorityOf,
   recordedAuditIds,
   renderIssue,
@@ -394,6 +397,24 @@ function auditForWrite(root: string, requested?: string): string {
   return existing.length > 0 ? existing[existing.length - 1] : currentAuditId();
 }
 
+/**
+ * Fails when `auditId` is a plan part that no longer sorts last: a scoped
+ * re-audit or a later plan's part now sorts after it on disk, so on any cell
+ * both hold, a score written here would lose the latest-wins merge. Sibling
+ * parts never count (they share no cell). For a plan part this replaces the
+ * generic ordering note, which only warns.
+ */
+function refuseOutsortedPart(root: string, auditId: string): void {
+  const later = outsortedBy(auditId, listAuditIds(root));
+  if (later.length === 0) return;
+  fail(
+    `kritik: "${auditId}" is a part of plan ${planIdOfPartId(auditId)}, and ${later.map((id) => `"${id}"`).join(", ")} ` +
+      `now sort${later.length === 1 ? "s" : ""} after it — audits merge latest-wins in id order, so on any cell ` +
+      `${later.length === 1 ? "both hold" : "they share with it"}, this part's scores would lose the merge. Nothing written.\n` +
+      `Make a new plan for the parts not yet scored: \`arkaik kritik plan --run <DOMAIN:SURFACE> …\` names parts that sort last again.`,
+  );
+}
+
 function loadLibraryOrFail(root: string): KritikLibrary {
   try {
     return loadKritikLibrary(root).library;
@@ -620,6 +641,9 @@ function runScore(args: string[], common: CommonOptions): void {
   } else {
     auditId = auditForWrite(common.root, single.audit);
   }
+  // A plan part that no longer sorts last is refused, not warned about: the
+  // part's whole point is that its scores win the merge.
+  refuseOutsortedPart(common.root, auditId);
   // Two quiet ways a plain score goes wrong, said out loud rather than refused
   // — each has a legitimate use (correcting a recorded audit, fixing an old
   // one), and each is the #443 review's trap when it was not meant.
@@ -632,7 +656,8 @@ function runScore(args: string[], common: CommonOptions): void {
           `For a re-audit after fixes, \`arkaik kritik score … --scope\` writes into an audit of its own.`,
       );
     }
-    const order = auditOrderNote(common.root, auditId);
+    // For a plan part, refuseOutsortedPart above stands in for this note.
+    const order = isPlanPartId(auditId) ? undefined : auditOrderNote(common.root, auditId);
     if (order !== undefined) notes.push(order);
   }
   const file = loadScoresOrEmpty(common.root, auditId);
@@ -720,6 +745,7 @@ function runFindingOpen(args: string[], common: CommonOptions): void {
   }
 
   const auditId = auditForWrite(common.root, single.audit);
+  refuseOutsortedPart(common.root, auditId);
   const file = loadFindings(common.root, auditId);
   const taken = new Set(file.findings.map((f) => f.id));
   const id = single.id ?? mintFindingId(auditId, criterionId, surface, taken, library);

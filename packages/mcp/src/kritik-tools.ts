@@ -57,9 +57,12 @@ import {
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
+  isPlanPartId,
   domainCodeOf,
   mintFindingId,
   orderEvents,
+  outsortedBy,
+  planIdOfPartId,
   priorityOf,
   recordedAuditIds,
   renderIssue,
@@ -358,6 +361,24 @@ function auditForWrite(root: string, requested: unknown): string {
   if (typeof requested === "string" && requested !== "") return requested;
   const existing = listAuditIds(root);
   return existing.length > 0 ? existing[existing.length - 1] : currentAuditId();
+}
+
+/**
+ * Throws when `auditId` is a plan part that no longer sorts last: a scoped
+ * re-audit or a later plan's part now sorts after it on disk, so on any cell
+ * both hold, a score written here would lose the latest-wins merge. Sibling
+ * parts never count (they share no cell). For a plan part this replaces the
+ * generic ordering note, which only warns.
+ */
+function refuseOutsortedPart(root: string, auditId: string): void {
+  const later = outsortedBy(auditId, listAuditIds(root));
+  if (later.length === 0) return;
+  throw new ToolError(
+    `"${auditId}" is a part of plan ${planIdOfPartId(auditId)}, and ${later.map((id) => `"${id}"`).join(", ")} ` +
+      `now sort${later.length === 1 ? "s" : ""} after it — audits merge latest-wins in id order, so on any cell ` +
+      `${later.length === 1 ? "both hold" : "they share with it"}, this part's scores would lose the merge. Nothing written. ` +
+      `Make a new plan for the parts not yet scored: kritik_plan names parts that sort last again.`,
+  );
 }
 
 export function buildKritikCatalog(ctx: KritikContext): {
@@ -1354,13 +1375,17 @@ export function buildKritikCatalog(ctx: KritikContext): {
       } else {
         auditId = auditForWrite(root, args.audit_id);
       }
+      // A plan part that no longer sorts last is refused, not warned about:
+      // the part's whole point is that its scores win the merge.
+      refuseOutsortedPart(root, auditId);
       // Said out loud rather than refused — each has a legitimate use.
       const notes: string[] = [];
       if (scopedFrom === undefined) {
         if (recordedAuditIds(graph.journal).includes(auditId)) {
           notes.push(`${auditId} is already recorded — a re-score here rewrites that reading. For a re-audit after fixes, pass scope=true.`);
         }
-        const order = auditOrderNote(root, auditId);
+        // For a plan part, refuseOutsortedPart above stands in for this note.
+        const order = isPlanPartId(auditId) ? undefined : auditOrderNote(root, auditId);
         if (order !== undefined) notes.push(order);
       }
       const file = loadScoresOrEmpty(root, auditId);
@@ -1448,6 +1473,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       }
 
       const auditId = auditForWrite(root, args.audit_id);
+      refuseOutsortedPart(root, auditId);
       const file = loadFindings(root, auditId);
       const taken = new Set(file.findings.map((candidate) => candidate.id));
       const requestedId = typeof args.finding_id === "string" && args.finding_id !== "" ? args.finding_id : undefined;

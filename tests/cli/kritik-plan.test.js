@@ -91,6 +91,11 @@ const assessment = (criterion_id, surface, auditId) => ({
 /** Every applicable cell of the shipped pack over the five surfaces: a full audit. */
 const fullAudit = (auditId) =>
   applicableCells(PACK, SURFACES).flatMap(({ criterion_id, surfaces }) => surfaces.map((surface) => assessment(criterion_id, surface, auditId)));
+/** `finding open` with every flag it requires, for the criterion and surface given. */
+const FINDING = (positionals) => [
+  "finding", "open", ...positionals,
+  "--title", "A defect", "--evidence", "file.ts:1", "--impact", "2", "--likelihood", "2", "--cost", "S",
+];
 const json = (result) => {
   try {
     return JSON.parse(result.stdout);
@@ -368,6 +373,57 @@ try {
       "scoring the alphabetically earlier part second prints no ordering note",
       secScore.status === 0 && agtScore.status === 0 && agtPart < secPart && !agtScore.stdout.includes("note:") && !agtScore.stdout.includes("sorts before"),
       agtScore.stdout + agtScore.stderr,
+    );
+    const agtFinding = runSib(FINDING(["AGT-01", "ios", "--audit", agtPart]));
+    check("a sibling part that sorts later never blocks a finding either", agtFinding.status === 0, agtFinding.stderr);
+  }
+
+  // --- a part that no longer sorts last is refused -----------------------------------------------
+
+  {
+    const { dir: d, run: runOut, writeScores: write } = repo();
+    const made = json(runOut(["plan", "--run", "SEC:web", "--run", "AGT:ios", "--json"]));
+    const [secPart, agtPart] = made?.parts?.map((p) => p.auditId) ?? [];
+    // A scoped re-audit named after the newest part, made while AGT:ios is unscored.
+    const scoped = `${secPart}-scoped`;
+    write(scoped, [assessment("SEC-01", "web", scoped)], { scope: { since: "2026-08" } });
+    const partDir = (id) => path.join(d, "docs", "quality", "audits", id);
+    const refused = runOut(["score", "AGT-01", "ios", "2", "--evidence", "ios/agent.swift:1", "--audit", agtPart]);
+    check(
+      "a scoped directory named after a sibling part blocks the earlier part's score, naming it, and writes nothing",
+      refused.status === 1 &&
+        refused.stderr.includes(`"${scoped}"`) &&
+        refused.stderr.includes("lose the merge") &&
+        refused.stderr.includes("new plan for the parts not yet scored") &&
+        !existsSync(partDir(agtPart)),
+      refused.stderr + refused.stdout,
+    );
+    check("the refusal replaces the ordering note", !refused.stdout.includes("note:") && !refused.stderr.includes("Name a new audit"), refused.stderr);
+    const refusedFinding = runOut(FINDING(["AGT-01", "ios", "--audit", agtPart]));
+    check(
+      "and blocks a finding opened into it, writing nothing",
+      refusedFinding.status === 1 && refusedFinding.stderr.includes(`"${scoped}"`) && !existsSync(partDir(agtPart)),
+      refusedFinding.stderr,
+    );
+    const refusedSec = runOut(["score", "SEC-04", "web", "2", "--evidence", "app/x.ts:1", "--audit", secPart]);
+    check("it blocks the part it is named after too", refusedSec.status === 1 && refusedSec.stderr.includes(`"${scoped}"`), refusedSec.stderr);
+  }
+  {
+    const { dir: d, run: runLater } = repo();
+    const earlier = json(runLater(["plan", "--run", "SEC:web", "--json"]));
+    const later = json(runLater(["plan", "--run", "AGT:ios", "--json"]));
+    const earlierPart = earlier?.parts?.[0]?.auditId;
+    const laterPart = later?.parts?.[0]?.auditId;
+    const laterScore = runLater(["score", "AGT-01", "ios", "2", "--evidence", "ios/agent.swift:1", "--audit", laterPart]);
+    const blocked = runLater(["score", "SEC-01", "web", "2", "--evidence", "app/auth.ts:1", "--audit", earlierPart]);
+    check(
+      "a later plan's part directory blocks an earlier plan's part",
+      laterScore.status === 0 &&
+        blocked.status === 1 &&
+        blocked.stderr.includes(`"${laterPart}"`) &&
+        blocked.stderr.includes(earlier?.planId) &&
+        !existsSync(path.join(d, "docs", "quality", "audits", earlierPart)),
+      blocked.stderr,
     );
   }
 
