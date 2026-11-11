@@ -604,6 +604,18 @@ async function run() {
       inProgress.text.slice(0, 300),
     );
 
+    // Sibling parts sort alphabetically, not in plan order, and never share a
+    // cell: scoring the earlier-sorting part second carries no ordering note.
+    const pair = await session.call("kritik_plan", { runs: ["SEC:web", "SEC:supabase"] });
+    const [pairWeb, pairSupabase] = (pair.json.plan?.parts ?? []).map((part) => part.auditId);
+    const pairWebScore = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "middleware.ts:14", audit_id: pairWeb });
+    const pairSupabaseScore = await session.call("kritik_score", { criterion_id: "SEC-02", surface: "supabase", level: 2, evidence: "migrations/003.sql:8", audit_id: pairSupabase });
+    check(
+      "kritik_score into the alphabetically earlier sibling part, scored second, carries no ordering note",
+      !pair.isError && !pairWebScore.isError && !pairSupabaseScore.isError && pairSupabase < pairWeb && pairSupabaseScore.json.notes === undefined,
+      pairSupabaseScore.text.slice(0, 400),
+    );
+
     const noRuns = await session.call("kritik_plan", { runs: [] });
     check("kritik_plan without runs is an actionable tool error", noRuns.isError && /runs/.test(noRuns.json.message), noRuns.text);
     const badSurfacePlan = await session.call("kritik_plan", { runs: ["SEC:android"] });

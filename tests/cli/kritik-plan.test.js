@@ -352,6 +352,25 @@ try {
     broken.stderr,
   );
 
+  // --- sibling parts never warn about each other ------------------------------------------------
+  //
+  // Parts sort alphabetically, not in plan order: scoring AGT:ios after
+  // SEC:web's directory exists finds a later audit on disk, but sibling parts
+  // never share a cell, so no ordering note applies.
+
+  {
+    const { run: runSib } = repo();
+    const made = json(runSib(["plan", "--run", "SEC:web", "--run", "AGT:ios", "--json"]));
+    const [secPart, agtPart] = made?.parts?.map((p) => p.auditId) ?? [];
+    const secScore = runSib(["score", "SEC-01", "web", "2", "--evidence", "app/auth.ts:1", "--audit", secPart]);
+    const agtScore = runSib(["score", "AGT-01", "ios", "2", "--evidence", "ios/agent.swift:1", "--audit", agtPart]);
+    check(
+      "scoring the alphabetically earlier part second prints no ordering note",
+      secScore.status === 0 && agtScore.status === 0 && agtPart < secPart && !agtScore.stdout.includes("note:") && !agtScore.stdout.includes("sorts before"),
+      agtScore.stdout + agtScore.stderr,
+    );
+  }
+
   // --- zero cells -----------------------------------------------------------------------------
 
   {
