@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { cache } from "react";
+import { cache, Suspense } from "react";
 
 import { ARKADEMY_COLUMN, ARKADEMY_TITLE } from "@/components/arkademy/ArkademyChrome";
 import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
+import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { ToolCard } from "@/components/arkademy/ToolCard";
 import { ARKADEMY_INTRO, arkademyShellMetadata } from "@/lib/arkademy/metadata";
 import { arkademyToolCards } from "@/lib/arkademy/tools";
@@ -11,7 +12,10 @@ import { cn } from "@/lib/utils";
 
 /**
  * `/arkademy` — the shell: the Arkademy's name, one line on what it is, and a
- * card per tool. The cards are the only part that reads the library.
+ * card per tool. The cards are the only part that reads the library, and
+ * they sit behind a Suspense boundary: the chrome, the h1 and the intro are
+ * sent at once, the cards (or the message) when the read ends — within
+ * ARKADEMY_READ_TIMEOUT_MS whatever the database does.
  * force-dynamic: the library is a runtime fact; the build never reads it.
  */
 export const dynamic = "force-dynamic";
@@ -25,8 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return arkademyShellMetadata(lookup.status === "ready");
 }
 
-export default async function ArkademyShellPage() {
-  const lookup = await lookupArkademy();
+export default function ArkademyShellPage() {
   return (
     <div className={cn(ARKADEMY_COLUMN, "pt-10 pb-24 sm:pt-14")}>
       <h1 className={ARKADEMY_TITLE}>Arkademy</h1>
@@ -36,24 +39,27 @@ export default async function ArkademyShellPage() {
           Tools
         </h2>
         <div className="mt-4">
-          {lookup.status === "ready" ? (
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {arkademyToolCards(lookup.document).map((card) => (
-                <li key={card.id}>
-                  <ToolCard
-                    href={card.href}
-                    title={card.title}
-                    tagline={card.tagline}
-                    exampleCount={card.exampleCount}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ArkademyMessage status={lookup.status} />
-          )}
+          <Suspense fallback={<LibraryPlaceholder />}>
+            <ToolList />
+          </Suspense>
         </div>
       </section>
     </div>
+  );
+}
+
+/** The cards, or why there are none: the part of the shell that waits for the library. */
+async function ToolList() {
+  const lookup = await lookupArkademy();
+  return lookup.status === "ready" ? (
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {arkademyToolCards(lookup.document).map((card) => (
+        <li key={card.id}>
+          <ToolCard href={card.href} title={card.title} tagline={card.tagline} exampleCount={card.exampleCount} />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <ArkademyMessage status={lookup.status} />
   );
 }
