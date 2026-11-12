@@ -369,6 +369,120 @@ const index = A.indexArkademy(validation.document);
   same("repaired ids keep counting", draftReducer(r, { type: "add", question: "kr", text: "boats" }).answers.at(-1).id, "a13");
 }
 
+// --- exports -------------------------------------------------------------------------
+{
+  const { canvasMarkdown, canvasJson, canvasJsonText, canvasFilename, canvasParagraphText, draftState, emptyDraft } = A;
+  const toolPart = { title: tool.title, questions: tool.questions };
+  const draft = {
+    name: "  Tidy Harbour ",
+    answers: [
+      { id: "a1", question: "seg", text: "people who fish from the shore " },
+      { id: "a2", question: "ch", text: "app stores", inspiration: { entity: "app-stores", documentVersion: 4 } },
+      { id: "a3", question: "ch", text: "harbour noticeboards." },
+      { id: "a4", question: "vp", text: "..." },
+    ],
+    open: ["rev"],
+    updatedAt: "",
+  };
+  const state = draftState(draft);
+
+  same(
+    "paragraph text",
+    canvasParagraphText({ tool: toolPart, name: draft.name, state }),
+    "Tidy Harbour is for people who fish from the shore. It reaches them through app stores and harbour noticeboards.",
+  );
+  same(
+    "markdown, byte-exact: answered, open and empty questions, a name",
+    canvasMarkdown({ tool: toolPart, name: draft.name, state }),
+    [
+      "# Tidy Harbour: Business Model Canvas",
+      "",
+      "Tidy Harbour is for people who fish from the shore. It reaches them through app stores and harbour noticeboards.",
+      "",
+      "## Customer segments",
+      "",
+      "- people who fish from the shore",
+      "",
+      "## Value propositions",
+      "",
+      "_Not answered yet._",
+      "",
+      "## Channels",
+      "",
+      "- app stores",
+      "- harbour noticeboards",
+      "",
+      "## Customer relationships",
+      "",
+      "_Not answered yet._",
+      "",
+      "## Revenue streams",
+      "",
+      "_Left open on purpose._",
+      "",
+      "## Key resources",
+      "",
+      "_Not answered yet._",
+      "",
+      "## Key activities",
+      "",
+      "_Not answered yet._",
+      "",
+      "## Key partners",
+      "",
+      "_Not answered yet._",
+      "",
+      "## Cost structure",
+      "",
+      "_Not answered yet._",
+      "",
+    ].join("\n"),
+  );
+  const unnamed = canvasMarkdown({ tool: toolPart, name: " ", state: draftState(emptyDraft()) });
+  check("markdown without a name: the default subject, no paragraph line", unnamed.startsWith("# This product: Business Model Canvas\n\n## Customer segments\n\n_Not answered yet._\n\n## Value"));
+  check("markdown: a single trailing newline", unnamed.endsWith("_Not answered yet._\n") && !unnamed.endsWith("\n\n"));
+  same("markdown: nine sections", (unnamed.match(/^## /gm) ?? []).length, 9);
+
+  const exported = canvasJson({ tool: toolPart, name: draft.name, state, documentVersion: 4, exportedAt: "2026-11-12T10:00:00.000Z" });
+  same("json: header", [exported.format, exported.formatVersion, exported.tool, exported.name, exported.documentVersion, exported.exportedAt], [
+    "arkaik.arkademy.canvas",
+    1,
+    "business-model-canvas",
+    "Tidy Harbour",
+    4,
+    "2026-11-12T10:00:00.000Z",
+  ]);
+  same("json: the paragraph", exported.paragraph, canvasParagraphText({ tool: toolPart, name: draft.name, state }));
+  same("json: nine questions with their words", exported.questions.map((q) => [q.key, q.state]), [
+    ["seg", "answered"],
+    ["vp", "empty"],
+    ["ch", "answered"],
+    ["cr", "empty"],
+    ["rev", "open"],
+    ["kr", "empty"],
+    ["ka", "empty"],
+    ["kp", "empty"],
+    ["cost", "empty"],
+  ]);
+  same("json: a question", exported.questions[2], {
+    key: "ch",
+    block: "Channels",
+    prompt: "How do they find out about it, and how do they get it?",
+    state: "answered",
+    answers: [{ text: "app stores", entity: "app-stores" }, { text: "harbour noticeboards" }],
+  });
+  const text = canvasJsonText(exported);
+  check("json text: two-space indentation, trailing newline", text.startsWith('{\n  "format": "arkaik.arkademy.canvas",') && text.endsWith("}\n"));
+  same("json text parses back", JSON.parse(text), exported);
+
+  same("markdown and json: answers as shown, cleaned", [canvasMarkdown({ tool: toolPart, name: draft.name, state }).includes("- harbour noticeboards\n"), exported.questions[1].state], [true, "empty"]);
+  same("filename: a name", canvasFilename("Tidy Harbour"), "tidy-harbour-business-model-canvas.json");
+  same("filename: accents", canvasFilename("Café Crème"), "cafe-creme-business-model-canvas.json");
+  same("filename: punctuation only", canvasFilename("!!! ???"), "business-model-canvas.json");
+  same("filename: empty", canvasFilename(""), "business-model-canvas.json");
+  same("filename: long names cut, no trailing dash", canvasFilename(`${"a".repeat(59)} b`), `${"a".repeat(59)}-business-model-canvas.json`);
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-canvas test(s) failed`);
