@@ -372,6 +372,18 @@ export interface Use {
   entity: string;            // Entity.id
   text: string;              // this company's own wording, the wording rules below
   order: number;             // integer ≥ 0, ascending within (tool, company, question)
+  note?: UseNote;            // a sourced fact about this company's case, § "Notes on a use"
+}
+
+export const NOTE_MAX_LENGTH = 200;
+
+export interface UseNote {
+  text: string;              // 1–200, the fact, "about $5.6B in the second quarter of 2026"
+  source: {
+    name: string;            // 1–80, who says so, "Anthropic, press release"
+    url: string;             // https only, the page that states it
+    date: string;            // YYYY-MM-DD, when the source was published
+  };
 }
 
 export interface OpenQuestion {
@@ -386,7 +398,39 @@ and `tool` on uses and open questions, because question keys are only unique
 within a tool. `simulation` is a boolean beside the free-text `note` so the
 pages can show a consistent "Simulation" badge without parsing prose.
 
+### Notes on a use
+
+Added on 2026-11-12 at the owner's request. Three things are kept apart: what
+the thing is (the entity, neutral and shareable), how this company words it
+(the use's `text`), and a fact about this company's case (the use's `note`).
+A figure, a date, a named supplier or anything a reader could ask "says who?"
+about belongs in a note, never in `text` or in a label. So "compute and
+infrastructure" stays an entity several companies can share, and a company's
+reported spend on it is a note on that company's use.
+
+- A note always has a source: a name, an `https` link and the date the source
+  was published. A fact with no source a reader can open is left out of the
+  library; there is no unsourced note.
+- A note belongs to one use. It is never shown on an entity, in the
+  inspirations, or on another company's use of the same entity, and adding an
+  inspiration to your own canvas copies the entity and its label only.
+- Your own canvas has no notes in this MVP; `CanvasQuestionState` carries them
+  only for examples.
+- Where an example's answer is shown with room (the tour's answer list, the
+  cover's canvas block when expanded), the note sits under the answer in
+  smaller text, followed by the source's name as a link and its date. In the
+  paragraph it follows the answer in parentheses, § "The paragraph". Links to
+  sources open in a new tab with `rel="noopener noreferrer nofollow"`.
+
 ### Field constraints
+
+- **Notes** (`Use.note`): `text` is 1–200 characters (`NOTE_MAX_LENGTH`),
+  single line, trimmed, with no parentheses and no trailing punctuation
+  (it is set inside parentheses); `source.name` is 1–80 characters, single
+  line; `source.url` parses as a URL with the `https:` protocol and is at most
+  500 characters; `source.date` matches `YYYY-MM-DD`, is a real calendar date
+  and is not in the future at upload time (a warning, not an error, since the
+  check depends on the clock).
 
 - **Slugs** (`Company.id`, `Entity.id`): `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 1–64
   characters. Company ids are URL segments (`/tour/{id}`).
@@ -425,6 +469,11 @@ Warnings (printed, the upload proceeds):
 - An example covers neither by uses nor by `open` some question. The pages
   cope (the paragraph shows "open: …"), but a tour reads better complete.
 - An entity has no use. It never appears as an inspiration.
+- A wording (`Use.text` or `Entity.label`) contains a digit followed by `%`, a
+  currency sign or code (`$`, `€`, `£`, `USD`, `EUR`), or the words
+  `reported`, `reportedly` or `according to`: such a fact probably belongs in
+  a sourced note.
+- A note's `source.date` is in the future.
 - Two entities of one kind share a label, compared case-insensitively.
 - A wording starts with a capitalised opener (`The`, `A`, `An`, `We`, `It`,
   `Our`, `Nothing`, `Free`), contains a first-person pronoun (`we`, `our`,
@@ -773,11 +822,15 @@ the sentence words moved into the document:
 ```ts
 export interface CanvasQuestionState {
   key: BmcQuestionKey;
-  answers: { text: string; entity?: string }[];  // in display order
+  answers: { text: string; entity?: string; note?: UseNote }[];  // in display order
   open: boolean;                                   // ignored when answers is non-empty
 }
+/** A sentence in pieces, so a page can render a note's source as a link. */
+export type ParagraphPart =
+  | { kind: "text"; text: string }
+  | { kind: "note"; note: UseNote };
 export type ParagraphSegment =
-  | { kind: "sentence"; question: BmcQuestionKey; text: string }
+  | { kind: "sentence"; question: BmcQuestionKey; text: string; parts: ParagraphPart[] }
   | { kind: "gap"; question: BmcQuestionKey; open: boolean; text: string };
 
 export const SUBJECT_PRONOUN = "It";
@@ -790,6 +843,7 @@ export function composeParagraph(input: {
   subject: string;                            // company name, or the visitor's product name
   through?: number;                           // 1–9, default 9: questions after it are omitted
 }): ParagraphSegment[];
+export function noteText(note: UseNote): string;
 export function paragraphText(segments: readonly ParagraphSegment[]): string;
 ```
 
@@ -812,7 +866,19 @@ The rule:
      (the joined, cleaned answers); the segment is a `sentence`.
    - without answers: a `gap` segment whose text is
      `"left open on purpose: " + gap` when `open`, else `"open: " + gap`.
-5. **Text.** `paragraphText` joins the `sentence` segments with single spaces
+5. **Notes.** An answer with a note reads as the cleaned answer, a space, then
+   the note in parentheses. `noteText(note)` is the plain form of what goes
+   inside them: `note.text + "; " + note.source.name + ", " + note.source.date`
+   (so `compute and infrastructure (about $5.6B in the second quarter of 2026;
+   Example Source, 2026-08-14)`). The join rule (2) chooses its separator from
+   the cleaned answers alone, never from note text. A sentence segment's
+   `parts` hold the same sentence cut at each note: `text` parts for the
+   words, including the parentheses, and one `note` part where each note's
+   content goes, so a page renders the note's text followed by the source's
+   name as a link and its date. Concatenating the parts, with each `note` part
+   rendered by `noteText`, gives the segment's `text` exactly. A sentence with
+   no note has a single `text` part.
+6. **Text.** `paragraphText` joins the `sentence` segments with single spaces
    and leaves the gaps out. It is what every copy and export uses.
 
 On screen, sentences are inline text and gaps are inline dashed pills (buttons
@@ -824,7 +890,7 @@ exactly.
 
 `lib/arkademy/examples.ts` (part 2) turns an example into the same state:
 `exampleCanvas(index, companyId): { company: Company; questions: CanvasQuestionState[] } | null`,
-answers taken from its uses in `order`, each carrying its entity id.
+answers taken from its uses in `order`, each carrying its entity id and its note when it has one.
 
 ## The canvas grid
 
