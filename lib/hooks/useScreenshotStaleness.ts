@@ -5,10 +5,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useProjectId } from "@/lib/hooks/useProjectId";
-import { isScreenshotStale } from "@/lib/utils/screenshot-staleness";
-
-/** A stable array, so the query key does not change identity on every render. */
-const STALENESS_EVENT_TYPES = ["node.status_changed", "ref.status_changed", "deliverable.shipped"] as const;
+import { isScreenshotStale, STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot-staleness";
 
 /**
  * The staleness flags `PlatformVariants` captions with, one per platform in
