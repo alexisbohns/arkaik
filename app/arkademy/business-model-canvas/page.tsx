@@ -10,6 +10,7 @@ import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
 import { ExampleCard } from "@/components/arkademy/ExampleCard";
 import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { PromptBlock } from "@/components/arkademy/PromptBlock";
+import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";
 import { Button } from "@/components/ui/button";
 import { exampleCanvas, type ExampleCanvas } from "@/lib/arkademy/examples";
 import { ARKADEMY_HEAD_START_MS, settledWithin } from "@/lib/arkademy/head-start";
@@ -117,12 +118,15 @@ function CoverFor({ lookup }: { lookup: ArkademyLookup }) {
       title={tool.title}
       tagline={tool.tagline}
       actions={
-        <Button asChild variant="outline">
-          <a href="#examples">
-            <CirclePlayIcon aria-hidden="true" />
-            Play a tour
-          </a>
-        </Button>
+        <>
+          <StartYourOwnButton />
+          <Button asChild variant="outline">
+            <a href="#examples">
+              <CirclePlayIcon aria-hidden="true" />
+              Play a tour
+            </a>
+          </Button>
+        </>
       }
       after={<CoverBody document={lookup.document} />}
     />

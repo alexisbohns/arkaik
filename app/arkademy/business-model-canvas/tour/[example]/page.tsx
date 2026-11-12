@@ -6,6 +6,7 @@ import { ArkademyBreadcrumb } from "@/components/arkademy/ArkademyBreadcrumb";
 import { ARKADEMY_COLUMN, ARKADEMY_TITLE } from "@/components/arkademy/ArkademyChrome";
 import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
 import { CanvasWalk } from "@/components/arkademy/CanvasWalk";
+import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";
 import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { Badge } from "@/components/ui/badge";
 import { exampleCanvas } from "@/lib/arkademy/examples";
@@ -162,6 +163,7 @@ function TourBody({
         initialStep={initialStep}
         next={nextCompany ? { name: nextCompany.name, href: tourHref(nextCompany.id) } : null}
         examplesHref={`${COVER_PATH}#examples`}
+        endActions={<StartYourOwnButton />}
       />
       {company.note && <p className="mt-8 max-w-prose text-xs leading-relaxed text-muted-foreground">{company.note}</p>}
     </>

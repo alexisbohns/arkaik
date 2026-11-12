@@ -484,7 +484,14 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   })(source);
   check("cover: the hero's Play a tour goes to the examples", found.examplesHref);
   check("cover: each example card links to its tour", found.tourHref >= 1);
-  check("cover: no link to your own canvas yet (part 4)", !found.yours);
+  // Part 4: the cover's actions row leads with your own canvas, and the tour's end card offers it.
+  const coverText = fs.readFileSync(file, "utf8");
+  check(
+    "cover: Start your own leads the hero's actions, before Play a tour (part 4)",
+    found.yours || (coverText.indexOf("<StartYourOwnButton") >= 0 && coverText.indexOf("<StartYourOwnButton") < coverText.lastIndexOf("Play a tour")),
+  );
+  const tourPage = fs.readFileSync(path.join(ROOT, "app", "arkademy", "business-model-canvas", "tour", "[example]", "page.tsx"), "utf8");
+  check("tour: the end card offers your own canvas (part 4)", tourPage.includes("endActions={<StartYourOwnButton"));
 }
 
 cleanup();

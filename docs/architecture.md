@@ -71,6 +71,8 @@ app/
       tour/
         [example]/
           page.tsx      # A tour (?step=1..9): one example's canvas built in nine steps; noindex
+      yours/
+        page.tsx        # Your own canvas (?step=1..9): the nine questions for your product, saved in this browser only; noindex
   api/
     arkademy/           # GET the Arkademy library: public, cached; POST revalidate/ expires the cache (spec/services.md § Arkademy)
     graph/              # Hosted projects: CRUD + the validated `mutations` write path
@@ -197,6 +199,14 @@ lib/landing/
     QuestionCard.tsx        # One question, read-only: its answers arriving, the sentence they become
     TourControls.tsx        # Back, Play/Pause, Next; a bar fixed to the bottom on phones
     TourEndCard.tsx         # The last step complete: the next example, the gallery
+    YourCanvas.tsx          # Your own canvas's screen: name, steps, question editor, inspirations, paragraph, canvas (useCanvasDraft)
+    QuestionSteps.tsx       # The nine questions as numbered buttons: answered, left open, not answered yet
+    QuestionEditor.tsx      # The current question in edit mode: answers (reword, reorder, remove), add, open on purpose
+    InspirationList.tsx     # The library's entities for the current question, most shared first; one click adds one
+    CanvasToolbar.tsx       # Copy the paragraph, Copy as Markdown, Download JSON, Start over
+    ConfirmDialog.tsx       # A destructive action and its confirmation: Start over, discarding kept text (the button is the trigger)
+    StartYourOwnButton.tsx  # "Start your own" / "Continue your canvas": the cover and the tour's end card
+    StrandedDraft.tsx       # Your own canvas without a library: download the saved draft as it is
   publik/                   # PublishDialog, ImportSnapshotButton
   sync/                     # Synk provider, per-project control, restore dialog, onboarding banner
   settings/                 # Product manager, repo links, token manager
