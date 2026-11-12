@@ -345,16 +345,23 @@ function CanvasEditor({
             />
           </div>
           {catalogForQuestion.length > 0 && (
-            // From 768px: beside the card, in view as the page scrolls, its own scroll past the screen's height.
-            <div className="hidden min-w-0 md:sticky md:top-4 md:block md:max-h-[calc(100svh-2rem)] md:overflow-y-auto md:pr-1 md:pb-1">
-              <InspirationList
-                key={question.key}
-                id={INSPIRATIONS_ID}
-                items={inspirations}
-                examples={tool.examples}
-                full={full}
-                onAdd={addInspiration}
-              />
+            // From 768px, beside the card and never taller than it: the cell
+            // takes the card's height (its content is absolutely placed, so it
+            // adds none), the list scrolls inside it, and stays in view
+            // (sticky) while a tall card scrolls past.
+            <div className="relative hidden min-w-0 self-stretch md:block">
+              <div className="absolute inset-0">
+                <div className="sticky top-4 max-h-[min(100%,calc(100svh-2rem))] overflow-y-auto pr-1 pb-1">
+                  <InspirationList
+                    key={question.key}
+                    id={INSPIRATIONS_ID}
+                    items={inspirations}
+                    examples={tool.examples}
+                    full={full}
+                    onAdd={addInspiration}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
