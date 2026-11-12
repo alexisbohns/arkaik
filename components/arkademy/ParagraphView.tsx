@@ -1,3 +1,4 @@
+import { CircleDashedIcon } from "lucide-react";
 import { Fragment } from "react";
 
 import { SourcedNote } from "@/components/arkademy/SourcedNote";
@@ -16,15 +17,37 @@ interface ParagraphViewProps {
   className?: string;
 }
 
-const GAP =
-  "rounded-md border border-dashed border-muted-foreground/45 px-1.5 text-[0.875em] text-muted-foreground box-decoration-clone";
+/**
+ * A gap pill. An inline block capped at the line's width: it moves to the next
+ * line whole rather than breaking mid-phrase, and wraps inside only when it is
+ * longer than a line (a phone), so it never overflows. Its text is the
+ * foreground at 65%, which passes 4.5:1 on the card and on the muted fill in
+ * both themes (muted-foreground on the muted fill measured 4.40:1).
+ */
+const GAP = "inline-block max-w-full rounded-md border px-1.5 text-[0.875em] leading-6 text-foreground/65";
+/**
+ * Left open on purpose: a dashed border, no fill, and a dashed-circle icon.
+ * Not answered yet: a solid muted fill and no visible border. Shape and icon,
+ * not only a fill, tell them apart.
+ */
+const GAP_OPEN_ON_PURPOSE = "border-dashed border-muted-foreground/45";
+const GAP_UNANSWERED = "border-transparent bg-muted";
+
+function GapText({ open, text }: { open: boolean; text: string }) {
+  return (
+    <>
+      {open && <CircleDashedIcon aria-hidden="true" className="mr-1 inline size-[0.95em] align-[-0.125em]" />}
+      {text}
+    </>
+  );
+}
 
 /**
  * A canvas read back as one paragraph: sentences as inline text, a small
  * marker after each answer that has a note (`SourcedNote`: the note opens in a
  * card on click; no note words in the running text), and each question
- * without answers as an inline dashed pill — "left open on purpose: …" plain,
- * "open: …" on a muted fill. Its text, gaps and no-script fallbacks aside, is
+ * without answers as an inline pill — "left open on purpose: …" with a dashed
+ * border and a dashed-circle icon, "open: …" as a solid muted chip. Its text, gaps and no-script fallbacks aside, is
  * exactly `paragraphText`.
  *
  * No hooks and no "use client": the cover renders it on the server (each
@@ -55,15 +78,19 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
               onClick={() => onSelectQuestion(segment.question)}
               className={cn(
                 GAP,
-                !segment.open && "bg-muted",
+                segment.open ? GAP_OPEN_ON_PURPOSE : GAP_UNANSWERED,
                 "cursor-pointer text-left outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
               )}
             >
-              {segment.text}
+              <GapText open={segment.open} text={segment.text} />
             </button>
           ) : (
-            <span data-question={segment.question} data-kind="gap" className={cn(GAP, !segment.open && "bg-muted")}>
-              {segment.text}
+            <span
+              data-question={segment.question}
+              data-kind="gap"
+              className={cn(GAP, segment.open ? GAP_OPEN_ON_PURPOSE : GAP_UNANSWERED)}
+            >
+              <GapText open={segment.open} text={segment.text} />
             </span>
           )}
         </Fragment>

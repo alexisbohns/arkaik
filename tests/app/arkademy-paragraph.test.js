@@ -465,8 +465,8 @@ function textOf(html, drop = []) {
 }
 const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
 // Gaps are pills on screen and absent from paragraphText (rule 6): each is one
-// element carrying data-kind="gap", with no element inside it.
-const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
+// element carrying data-kind="gap" (an icon inside it, no span or button).
+const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[\s\S]*?<\/\1>/g;
 // A note's no-script fallback: shown only without JavaScript, so not part of the on-screen text.
 const NOSCRIPT = /<noscript>[\s\S]*?<\/noscript>/g;
 /** Each note marker's accessible name, in order. */
@@ -500,6 +500,16 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
       html.includes(`href="${note.source.url}"`) && html.includes('target="_blank"') && html.includes('rel="noopener noreferrer nofollow"'),
     );
   }
+}
+
+// The two gap pills differ by more than a fill: border style and an icon.
+{
+  const segments = composeParagraph({ questions, state: state({ seg: ["people"] }, ["rev"]), subject: "X" });
+  const html = render(ParagraphView, { segments });
+  const pill = (key) => new RegExp(`<span[^>]*data-question="${key}"[^>]*data-kind="gap"[^>]*>[\\s\\S]*?</span>`).exec(html)[0];
+  check("pills: left open on purpose has a dashed border and an icon", /border-dashed/.test(pill("rev")) && /<svg/.test(pill("rev")) && !/bg-muted/.test(pill("rev")));
+  check("pills: not answered is a filled chip, no dashed border, no icon", /bg-muted/.test(pill("vp")) && !/border-dashed/.test(pill("vp")) && !/<svg/.test(pill("vp")));
+  same("pills: the icon adds no text", textOf(pill("rev")), "left open on purpose: where the money comes from");
 }
 
 // The grid draws the blocks after `through` faint, with the paragraph's own clamp.
