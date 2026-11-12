@@ -124,6 +124,17 @@ same("join: an explicit comma flag wins", joinAnswers(["a, b", "c"], false), "a,
 check("semicolons: a plain list joins with commas", !joinsWithSemicolons([{ text: "a" }, { text: "b" }]));
 check("semicolons: a comma triggers them", joinsWithSemicolons([{ text: "a, b" }, { text: "c" }]));
 check("semicolons: 'and' as a word triggers them", joinsWithSemicolons([{ text: "a and b" }, { text: "c" }]));
+check("semicolons: a capitalised 'And' triggers them", joinsWithSemicolons([{ text: "Rock And roll" }, { text: "c" }]));
+check("semicolons: 'AND' triggers them", joinsWithSemicolons([{ text: "black AND white" }, { text: "c" }]));
+check("semicolons: an 'And' at the start triggers them", joinsWithSemicolons([{ text: "And more" }, { text: "c" }]));
+check("semicolons: ' & ' triggers them", joinsWithSemicolons([{ text: "Crumb & Co" }, { text: "c" }]));
+check("semicolons: an '&' inside a word does not", !joinsWithSemicolons([{ text: "R&D" }, { text: "AT&T" }, { text: "c" }]));
+check(
+  "semicolons: 'and' inside a word does not, whatever its case",
+  !joinsWithSemicolons([{ text: "brand" }, { text: "Sandbox" }, { text: "ANDROID apps" }, { text: "black-and-white" }]),
+);
+same("join: three, an 'And' inside", joinAnswers(["a", "Rock And Roll", "c"]), "a; Rock And Roll; and c");
+same("join: three, an '&' inside", joinAnswers(["a", "Crumb & Co", "c"]), "a; Crumb & Co; and c");
 check("semicolons: a note triggers them", joinsWithSemicolons([{ text: "a", note: NOTE }, { text: "c" }]));
 check(
   "semicolons: a note's own commas and 'and' are not looked at",

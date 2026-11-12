@@ -61,12 +61,16 @@ function separatorBefore(i: number, texts: readonly string[], semicolon: boolean
   return texts.length === 2 && !texts.some((text) => text.includes(",")) ? ", and " : "; and ";
 }
 
-/** " and " as a word: an item holding it cannot be told apart from the list's own last "and". */
-const AND_WORD = /(?:^|\s)and(?:\s|$)/;
+/**
+ * "and" as a word, in any case, or "&" standing alone: an item holding one
+ * cannot be told apart from the list's own last "and". "brand", "Sandbox",
+ * "black-and-white" and "R&D" do not count.
+ */
+const AND_WORD = /(?:^|\s)(?:and|&)(?:\s|$)/i;
 
 /**
  * Whether a list of answers joins with semicolons: when any cleaned answer
- * contains a comma or "and" as a word, or carries a note. A comma-joined list
+ * contains a comma, "and" as a word (any case) or a standalone "&", or carries a note. A comma-joined list
  * of such items cannot be read back into its items. Looks at whether an
  * answer has a note, never at the note's own text.
  */
