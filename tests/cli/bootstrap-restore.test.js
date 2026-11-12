@@ -520,11 +520,11 @@ async function main() {
       lines.some((l) => l.includes("Re-run without --dry-run to apply — that run takes the backup")),
       JSON.stringify(lines),
     );
-    // S9: the same line must not promise a preview it does not give. All three
+    // S9: the same line must not promise a preview it does not give. All four
     // guards read the export, which a dry run never fetches.
     check(
       "and that the guards only run on the real thing",
-      lines.some((l) => /quality-loss guards/.test(l) && /never fetches/.test(l)),
+      lines.some((l) => /quality-loss and metadata-loss guards/.test(l) && /never fetches/.test(l)),
       JSON.stringify(lines),
     );
   }
@@ -1554,6 +1554,100 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
+  // Metadata-loss guard (#423). `PUT .../bundle` replaces project.metadata
+  // wholesale, and the settings that live there (products, maps, ref_policy,
+  // pollen) are written in the app and never reach the repo bundle. A restore
+  // deleted them silently — the delta reads +0 -0 — so it must refuse instead.
+  // -------------------------------------------------------------------------
+  {
+    const HOSTED_METADATA = {
+      view_card_variant: "large",
+      pollen: { plant: "demo" },
+      products: [{ id: "app", title: "App", platforms: ["web"] }],
+      ref_policy: { "github-pr": { open: "development", merged: "releasing", closed: null } },
+    };
+    const exportWithMetadata = { ...HOSTED_EXPORT, project: { ...HOSTED_EXPORT.project, metadata: HOSTED_METADATA } };
+    const withLocalMetadata = (bundlePath, metadata) => {
+      const local = JSON.parse(readFileSync(bundlePath, "utf8"));
+      if (metadata === undefined) delete local.project.metadata;
+      else local.project.metadata = metadata;
+      writeFileSync(bundlePath, JSON.stringify(local));
+    };
+    const puts = (client) => client.calls.filter((c) => c.url.split("?")[0].endsWith("/bundle")).length;
+
+    // 1. The repo bundle carries only a display preference -> refused, keys named.
+    {
+      const { dir, bundlePath } = fixture();
+      withLocalMetadata(bundlePath, { view_card_variant: "large" });
+      const httpClient = makeMockHttpClient(qualityResponder(exportWithMetadata));
+      const result = await runQualityRestore(dir, bundlePath, httpClient);
+
+      check("a restore that drops hosted metadata keys is refused", result.ok === false, JSON.stringify(result));
+      check("no PUT was sent for the metadata refusal", puts(httpClient) === 0, JSON.stringify(httpClient.calls.map((c) => c.url)));
+      check(
+        "the message names every dropped key, and only those",
+        /pollen, products, ref_policy/.test(result.fatal || "") && !/view_card_variant/.test(result.fatal || ""),
+        result.fatal,
+      );
+      check("the message names --allow-metadata-loss", /--allow-metadata-loss/.test(result.fatal || ""), result.fatal);
+      check("the metadata refusal leaves nothing behind in .backups/", backupsIn(dir).length === 0, JSON.stringify(backupsIn(dir)));
+    }
+
+    // 2. No metadata at all locally -> every hosted key is dropped.
+    {
+      const { dir, bundlePath } = fixture();
+      withLocalMetadata(bundlePath, undefined);
+      const httpClient = makeMockHttpClient(qualityResponder(exportWithMetadata));
+      const result = await runQualityRestore(dir, bundlePath, httpClient);
+      check(
+        "a local bundle with no project.metadata is refused too",
+        result.ok === false && /4 hosted project settings/.test(result.fatal || ""),
+        result.fatal,
+      );
+    }
+
+    // 3. --allow-metadata-loss proceeds.
+    {
+      const { dir, bundlePath } = fixture();
+      withLocalMetadata(bundlePath, { view_card_variant: "large" });
+      const httpClient = makeMockHttpClient(qualityResponder(exportWithMetadata));
+      const result = await runQualityRestore(dir, bundlePath, httpClient, { allowMetadataLoss: true });
+      check("--allow-metadata-loss proceeds", result.ok === true && result.status === 200, JSON.stringify(result));
+      check("exactly one PUT under --allow-metadata-loss", puts(httpClient) === 1, JSON.stringify(httpClient.calls.map((c) => c.url)));
+    }
+
+    // 4. Local carries every hosted key (values may differ, extras allowed) -> untouched.
+    //    A changed value is what restoring a backup is for; only a dropped key refuses.
+    {
+      const { dir, bundlePath } = fixture();
+      withLocalMetadata(bundlePath, { ...HOSTED_METADATA, products: [], maps: [] });
+      let sent;
+      const httpClient = makeMockHttpClient(qualityResponder(exportWithMetadata, (b) => { sent = b; }));
+      const result = await runQualityRestore(dir, bundlePath, httpClient);
+      check("a superset of the hosted keys passes the guard", result.ok === true && result.status === 200, JSON.stringify(result));
+      check("and the local metadata is what is sent", sent && Array.isArray(sent.project.metadata.maps), JSON.stringify(sent && sent.project));
+    }
+
+    // 5. Neither side has metadata: the guard must not fire (every fixture above is in this state).
+    {
+      const { dir, bundlePath } = fixture();
+      const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT));
+      const result = await runQualityRestore(dir, bundlePath, httpClient);
+      check("no metadata on either side is untouched by the metadata guard", result.ok === true && result.status === 200, JSON.stringify(result));
+    }
+
+    // 6. Dry run never fetches the export, so it cannot refuse — and says so.
+    {
+      const { dir, bundlePath } = fixture();
+      withLocalMetadata(bundlePath, { view_card_variant: "large" });
+      const httpClient = makeMockHttpClient(qualityResponder(exportWithMetadata));
+      const result = await runQualityRestore(dir, bundlePath, httpClient, { dryRun: true });
+      const lines = captureConsoleLog(() => reportRestore(result));
+      check("the dry-run footer names the metadata-loss guard", lines.some((l) => /metadata-loss/.test(l)), JSON.stringify(lines));
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // CLI-level: argv parsing / exit codes / --help, spawned — every case here
   // fails before any network call would be attempted.
   // -------------------------------------------------------------------------
@@ -1565,6 +1659,7 @@ async function main() {
     check("help documents --allow-deletions", /--allow-deletions/.test(help.stdout));
     check("help documents --no-quality", /--no-quality/.test(help.stdout));
     check("help documents --allow-quality-loss", /--allow-quality-loss/.test(help.stdout));
+    check("help documents --allow-metadata-loss", /--allow-metadata-loss/.test(help.stdout));
     check("help documents --audit", /--audit <id>/.test(help.stdout));
     check("help documents --root", /--root <dir>/.test(help.stdout));
     check("help documents --api", /--api/.test(help.stdout));

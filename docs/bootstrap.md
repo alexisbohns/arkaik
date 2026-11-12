@@ -191,6 +191,12 @@ One more guard: if the outbound journal has fewer events than the hosted one,
 restore refuses — that shape usually means a missing `journal.jsonl`, not an
 intended rewrite. `--allow-history-loss` is the deliberate override.
 
+And another: `project.metadata` is replaced wholesale, so if the local bundle
+lacks a setting the hosted project has — products, custom maps, `ref_policy`,
+`pollen` — restore refuses and names the keys. Those are edited in the app and
+rarely reach the repo bundle; copy them in from `GET .../export`, or pass
+`--allow-metadata-loss` if they really are meant to go.
+
 ## When the run is done
 
 ```bash
