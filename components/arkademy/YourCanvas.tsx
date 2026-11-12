@@ -51,8 +51,8 @@ import { downloadTextFile } from "@/lib/utils/download";
 import { cn } from "@/lib/utils";
 
 interface YourCanvasProps {
-  /** The tool's title and its nine questions. */
-  tool: CanvasTool;
+  /** The tool's title, its nine questions, and its example ids in order (the inspirations' groups follow it). */
+  tool: CanvasTool & { examples: readonly string[] };
   /** `inspirationCatalog`, built on the server. */
   catalog: Record<BmcQuestionKey, Inspiration[]>;
   /** The library version this page was served with: kept on inspired answers and in the JSON export. */
@@ -65,6 +65,7 @@ const NAME_ID = "canvas-name";
 const PARAGRAPH_TITLE_ID = "canvas-paragraph-title";
 const QUESTION_CARD_ID = "canvas-question";
 const INSPIRATIONS_ID = "canvas-inspirations";
+const INSPIRATIONS_PHONE_ID = "canvas-inspirations-phone";
 const COVER_PATH = ARKADEMY_TOOL_PATHS[BMC_TOOL_ID];
 
 /**
@@ -306,28 +307,50 @@ function CanvasEditor({
               onSetOpen={setOpen}
               onBack={() => goTo(step - 1, "heading")}
               onNext={next}
+              beforeNav={
+                catalogForQuestion.length > 0 && (
+                  // On a phone: one tap away, above Back / Next, inside the card.
+                  <div className="md:hidden">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-between"
+                      aria-expanded={inspirationsShown}
+                      aria-controls={INSPIRATIONS_PHONE_ID}
+                      onClick={() => setInspirationsShown(!inspirationsShown)}
+                    >
+                      {inspirationsShown ? "Hide inspirations" : `Stuck? ${inspirations.length} inspirations`}
+                      <ChevronDownIcon
+                        aria-hidden="true"
+                        className={cn("transition-transform", inspirationsShown && "rotate-180")}
+                      />
+                    </Button>
+                    {inspirationsShown && (
+                      <InspirationList
+                        key={question.key}
+                        id={INSPIRATIONS_PHONE_ID}
+                        items={inspirations}
+                        examples={tool.examples}
+                        full={full}
+                        onAdd={addInspiration}
+                        className="mt-3"
+                      />
+                    )}
+                  </div>
+                )
+              }
             />
           </div>
           {catalogForQuestion.length > 0 && (
-            <div className="min-w-0">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-between md:hidden"
-                aria-expanded={inspirationsShown}
-                aria-controls={INSPIRATIONS_ID}
-                onClick={() => setInspirationsShown(!inspirationsShown)}
-              >
-                {inspirationsShown ? "Hide inspirations" : `Stuck? ${inspirations.length} inspirations`}
-                <ChevronDownIcon aria-hidden="true" className={cn("transition-transform", inspirationsShown && "rotate-180")} />
-              </Button>
+            // From 768px: beside the card, in view as the page scrolls, its own scroll past the screen's height.
+            <div className="hidden min-w-0 md:sticky md:top-4 md:block md:max-h-[calc(100svh-2rem)] md:overflow-y-auto md:pr-1 md:pb-1">
               <InspirationList
                 key={question.key}
                 id={INSPIRATIONS_ID}
                 items={inspirations}
+                examples={tool.examples}
                 full={full}
                 onAdd={addInspiration}
-                className={cn("mt-3 md:mt-0 md:block", inspirationsShown ? "block" : "hidden")}
               />
             </div>
           )}

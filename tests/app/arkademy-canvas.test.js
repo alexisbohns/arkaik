@@ -40,7 +40,7 @@ const index = A.indexArkademy(validation.document);
 
 // --- inspirations -------------------------------------------------------------------
 {
-  const { inspirationCatalog, availableInspirations, answerFromLabel, inspirationAnswer, companiesLine, INSPIRATIONS_SHOWN } = A;
+  const { inspirationCatalog, availableInspirations, answerFromLabel, inspirationAnswer, companiesLine, splitInspirations } = A;
   const catalog = inspirationCatalog(index);
   same("catalog: one list per question, canonical order", Object.keys(catalog), A.BMC_QUESTION_KEYS);
   same(
@@ -91,7 +91,16 @@ const index = A.indexArkademy(validation.document);
     ["cloud-host", "harbour-offices", "a-zz", "b-zz", "local-millers"],
   );
 
-  same("show six before Show all", INSPIRATIONS_SHOWN, 6);
+  // Shared first: the entities two examples or more use; the rest grouped by example, in example order.
+  const split = splitInspirations(catalog.ch.concat(catalog.cr), tool.examples);
+  same("split: shared ones first, most shared first", split.shared.map((i) => i.entity), ["word-of-mouth", "app-stores"]);
+  same(
+    "split: the rest grouped by example, in the tool's example order",
+    split.single.map((group) => [group.company.name, group.items.map((i) => i.entity)]),
+    [["Crumb & Co", ["weekly-newsletter"]], ["Tidewise", ["in-app-help"]], ["Inkwell", ["onboarding-calls"]]],
+  );
+  same("split: nothing shared", splitInspirations(catalog.seg, tool.examples).shared, []);
+  same("split: nothing at all", splitInspirations([], tool.examples), { shared: [], single: [] });
 
   const channels = catalog.ch;
   same(
@@ -669,7 +678,7 @@ const index = A.indexArkademy(validation.document);
   const noop = () => {};
 
   const server = render(YourCanvas, {
-    tool: { title: tool.title, questions: tool.questions },
+    tool: { title: tool.title, questions: tool.questions, examples: tool.examples },
     catalog: A.inspirationCatalog(index),
     documentVersion: 1,
     initialStep: null,
@@ -718,12 +727,19 @@ const index = A.indexArkademy(validation.document);
   check("steps: each named with its state", steps.includes('aria-label="Question 1: Customer segments, answered"') && steps.includes('aria-label="Question 5: Revenue streams, left open on purpose"') && steps.includes('aria-label="Question 2: Value propositions, not answered yet"'));
   same("steps: one current", (steps.match(/aria-current="step"/g) ?? []).length, 1);
 
-  const many = Array.from({ length: 9 }, (_, i) => ({ entity: `e-${i}`, label: `label ${i}`, companies: [{ id: "c", name: "Crumb & Co" }] }));
-  const list = render(InspirationList, { items: many, full: false, onAdd: noop });
-  same("inspirations: six first", (list.match(/<li>/g) ?? []).length, 6);
-  check("inspirations: then Show all", list.includes("Show all 9"));
-  check("inspirations: each names its example, not a fact about the company", list.includes('aria-label="Add “label 0”, in the Crumb &amp; Co example"') && !list.includes("used by"));
-  const fullList = render(InspirationList, { items: many.slice(0, 2), full: true, onAdd: noop });
+  const crumb = { id: "crumb-and-co", name: "Crumb & Co" };
+  const tide = { id: "tidewise", name: "Tidewise" };
+  const item = (i, companies) => ({ entity: `e-${i}`, label: `label ${i}`, answer: `label ${i}`, companies });
+  const mixed = [item(0, [crumb, tide]), ...Array.from({ length: 8 }, (_, i) => item(i + 1, [i % 2 ? tide : crumb]))];
+  const props = { id: "canvas-inspirations", examples: tool.examples, full: false, onAdd: noop };
+  const list = render(InspirationList, { ...props, items: mixed });
+  same("inspirations: only the shared one is listed at first", (list.match(/<li>/g) ?? []).length, 1);
+  check("inspirations: the rest behind one disclosure, with its count", /aria-expanded="false"[^>]*>[\s\S]*?From one example \(8\)/.test(list));
+  check("inspirations: each names its example, not a fact about the company", list.includes('aria-label="Add “label 0”, in the Crumb &amp; Co and Tidewise examples"') && !list.includes("used by"));
+  const none = render(InspirationList, { ...props, items: mixed.slice(1) });
+  check("inspirations: no shared one is said in a line", none.includes("No two examples share an answer here yet."));
+  check("inspirations: and the disclosure is still there", none.includes("From one example (8)"));
+  const fullList = render(InspirationList, { ...props, items: [item(0, [crumb, tide]), item(1, [tide, crumb])], full: true });
   same("inspirations: disabled at five answers", (fullList.match(/<button[^>]*disabled=""/g) ?? []).length, 2);
 
   const bare = render(CanvasToolbar, { paragraph: "", markdown: "", hasContent: false, onDownload: noop, onStartOver: noop, focusAfterStartOver: "canvas-name" });

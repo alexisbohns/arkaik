@@ -117,7 +117,7 @@ function YoursFor({ lookup, initialStep }: { lookup: ArkademyLookup; initialStep
       toolTitle={tool.title}
       after={
         <YourCanvas
-          tool={{ title: tool.title, questions: tool.questions }}
+          tool={{ title: tool.title, questions: tool.questions, examples: tool.examples }}
           catalog={inspirationCatalog(indexArkademy(lookup.document))}
           documentVersion={lookup.version}
           initialStep={initialStep}

@@ -34,6 +34,8 @@ interface QuestionEditorProps {
   open: boolean;
   /** What this question adds to the paragraph, drawn by the screen. */
   preview: ReactNode;
+  /** Drawn above Back / Next: the phone's inspirations (the screen hides it from 768px). */
+  beforeNav?: ReactNode;
   onAdd: (text: string) => AddResult;
   onEdit: (id: string, text: string) => void;
   onRemove: (id: string) => void;
@@ -83,6 +85,7 @@ export function QuestionEditor({
   answers,
   open,
   preview,
+  beforeNav,
   onAdd,
   onEdit,
   onRemove,
@@ -337,6 +340,8 @@ export function QuestionEditor({
         <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">In your paragraph</p>
         <div className="mt-1">{preview}</div>
       </div>
+
+      {beforeNav}
 
       <div className="flex items-center justify-between gap-2 border-t pt-4">
         <Button type="button" variant="ghost" onClick={onBack} disabled={step === 1}>

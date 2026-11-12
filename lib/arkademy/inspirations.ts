@@ -20,9 +20,6 @@ export interface Inspiration {
   companies: { id: string; name: string }[]; // in tool.examples order
 }
 
-/** How many inspirations a question shows before "Show all N". */
-export const INSPIRATIONS_SHOWN = 6;
-
 /** Per question: the entities of its kind that some example uses, most shared first, then label, then id. */
 export function inspirationCatalog(index: ArkademyIndex): Record<BmcQuestionKey, Inspiration[]> {
   const catalog = {} as Record<BmcQuestionKey, Inspiration[]>;
@@ -126,4 +123,41 @@ export function companiesLine(companies: readonly { name: string }[]): string {
  */
 export function examplesPhrase(companies: readonly { name: string }[]): string {
   return `the ${companiesLine(companies)} ${companies.length === 1 ? "example" : "examples"}`;
+}
+
+/** One example's own inspirations, for the "From one example" disclosure. */
+export interface ExampleInspirations {
+  company: { id: string; name: string };
+  items: Inspiration[];
+}
+
+/**
+ * Shared first. The entities two examples or more use are what the canvas
+ * teaches, so they are listed at once, most shared first (the catalog's
+ * order). The rest, each from a single example, are grouped by that example,
+ * in the tool's example order, behind one disclosure.
+ */
+export function splitInspirations(
+  items: readonly Inspiration[],
+  examples: readonly string[],
+): { shared: Inspiration[]; single: ExampleInspirations[] } {
+  const shared: Inspiration[] = [];
+  const groups = new Map<string, ExampleInspirations>();
+  for (const item of items) {
+    if (item.companies.length >= 2) {
+      shared.push(item);
+      continue;
+    }
+    const company = item.companies[0];
+    if (!company) continue;
+    const group = groups.get(company.id);
+    if (group) group.items.push(item);
+    else groups.set(company.id, { company, items: [item] });
+  }
+  const rank = (id: string) => {
+    const at = examples.indexOf(id);
+    return at < 0 ? examples.length : at;
+  };
+  const single = [...groups.values()].sort((a, b) => rank(a.company.id) - rank(b.company.id));
+  return { shared, single };
 }
