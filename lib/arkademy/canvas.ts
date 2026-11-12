@@ -284,6 +284,73 @@ export function isPlainEnter(event: { key: string; shiftKey: boolean; keyCode: n
   return event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
 }
 
+/** A part of the draft a tab can be editing: the name, or one question. */
+export type DraftField = BmcQuestionKey | "name";
+
+/** The fields an action changes (Start over changes them all). */
+export function fieldsOf(draft: CanvasDraft, action: DraftAction): DraftField[] {
+  switch (action.type) {
+    case "rename":
+      return ["name"];
+    case "add":
+    case "addInspiration":
+    case "setOpen":
+      return [action.question];
+    case "edit":
+    case "remove":
+    case "move": {
+      const answer = draft.answers.find((entry) => entry.id === action.id);
+      return answer ? [answer.question] : [];
+    }
+    case "reset":
+      return ["name", ...BMC_QUESTION_KEYS];
+    case "replace":
+      return [];
+  }
+}
+
+/**
+ * Another tab's draft, merged with this tab's own fields (two tabs typing at
+ * once). Each field in `keep` (one this tab has changed since its last save,
+ * or the one with the focus) stays as this tab has it: its answers and its
+ * left-open flag, or the name. Every other field comes from the other tab.
+ * An answer from the other tab whose id a kept answer already holds gets a
+ * new id, so ids stay unique and a kept field is never remounted. With
+ * nothing to keep, the other tab's draft is returned as it is.
+ */
+export function mergeOtherTab(local: CanvasDraft, incoming: CanvasDraft, keep: ReadonlySet<DraftField>): CanvasDraft {
+  if (keep.size === 0) return incoming;
+  const kept = local.answers.filter((answer) => keep.has(answer.question));
+  const used = new Set(kept.map((answer) => answer.id));
+  const answers: DraftAnswer[] = [];
+  for (const key of BMC_QUESTION_KEYS) {
+    if (keep.has(key)) {
+      answers.push(...kept.filter((answer) => answer.question === key));
+      continue;
+    }
+    for (const answer of incoming.answers) {
+      if (answer.question !== key) continue;
+      if (!used.has(answer.id)) {
+        used.add(answer.id);
+        answers.push(answer);
+        continue;
+      }
+      const id = nextAnswerId([...kept, ...answers, ...incoming.answers]);
+      used.add(id);
+      answers.push({ ...answer, id });
+    }
+  }
+  const open = BMC_QUESTION_KEYS.filter((key) =>
+    keep.has(key) ? local.open.includes(key) : incoming.open.includes(key),
+  );
+  return {
+    name: keep.has("name") ? local.name : incoming.name,
+    answers,
+    open,
+    updatedAt: local.updatedAt > incoming.updatedAt ? local.updatedAt : incoming.updatedAt,
+  };
+}
+
 /** What happened, for the live region: the result of each of the visitor's own actions. */
 export type CanvasEvent =
   | { kind: "added"; text: string; count: number } // count: the question's answers after it

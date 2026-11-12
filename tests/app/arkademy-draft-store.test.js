@@ -69,7 +69,7 @@ function fire(type, event = {}) {
   for (const fn of [...(browser.listeners.get(type) ?? [])]) fn(event);
 }
 
-const { canvasDraftStore, dispatchDraft, discardKeptAside, DRAFT_WRITE_DELAY_MS } = requireTsx("lib/hooks/useCanvasDraft.ts");
+const { canvasDraftStore, dispatchDraft, discardKeptAside, setDraftFieldInFocus, DRAFT_WRITE_DELAY_MS } = requireTsx("lib/hooks/useCanvasDraft.ts");
 
 // Fake timers, installed after the modules load.
 let now = 0;
@@ -170,6 +170,28 @@ const envelope = (draft, v = 1) =>
   fire("storage", { key: KEY, newValue: envelope({ name: "Mine again" }) });
   fire("storage", { key: KEY, newValue: "{oops" });
   same("an unreadable value from another tab is not adopted", p.view().draft.name, "Mine again");
+  p.leave();
+}
+
+// --- two tabs typing at once ---------------------------------------------------------------
+{
+  const p = page({ stored: { [KEY]: envelope({ name: "Start" }) } });
+  dispatchDraft({ type: "rename", name: "Mine, still typing" });
+  advance(100);
+  fire("storage", { key: KEY, newValue: envelope({ name: "Theirs", answers: [{ id: "a1", question: "seg", text: "anglers" }] }) });
+  same("a pending change of mine survives the other tab's write", p.view().draft.name, "Mine, still typing");
+  same("and the other tab's other changes arrive", p.view().draft.answers.map((a) => a.text), ["anglers"]);
+  advance(200);
+  same("my save follows and wins for my field, keeping theirs", [storedDraft().name, storedDraft().answers.length], ["Mine, still typing", 1]);
+  fire("storage", { key: KEY, newValue: envelope({ name: "Theirs again" }) });
+  same("once saved, my field takes the other tab's next write", p.view().draft.name, "Theirs again");
+
+  setDraftFieldInFocus("seg");
+  fire("storage", { key: KEY, newValue: envelope({ name: "Theirs again", answers: [{ id: "a1", question: "seg", text: "not under my caret" }] }) });
+  same("the field with the focus is never replaced from another tab", p.view().draft.answers.map((a) => a.text), []);
+  setDraftFieldInFocus(null);
+  fire("storage", { key: KEY, newValue: envelope({ name: "Theirs again", answers: [{ id: "a1", question: "seg", text: "now it may" }] }) });
+  same("focus gone: the other tab's write applies", p.view().draft.answers.map((a) => a.text), ["now it may"]);
   p.leave();
 }
 

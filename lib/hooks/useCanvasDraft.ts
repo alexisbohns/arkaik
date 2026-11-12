@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
-import { draftIsEmpty, draftReducer, emptyDraft, firstUnfinishedStep } from "@/lib/arkademy/canvas";
-import type { CanvasDraft, DraftAction } from "@/lib/arkademy/canvas";
+import { draftIsEmpty, draftReducer, emptyDraft, fieldsOf, firstUnfinishedStep, mergeOtherTab } from "@/lib/arkademy/canvas";
+import type { CanvasDraft, DraftAction, DraftField } from "@/lib/arkademy/canvas";
 import {
   DRAFT_STORAGE_KEY,
   DRAFT_UNREADABLE_KEY,
@@ -66,6 +66,10 @@ let writeTimer: ReturnType<typeof setTimeout> | undefined;
  * page has not seen.
  */
 let readAtLoad = false;
+/** The fields changed since the last save: this tab's own, kept when another tab writes. */
+const unsaved = new Set<DraftField>();
+/** The field that has the focus: never replaced from another tab. */
+let inFocus: DraftField | null = null;
 
 function emit() {
   for (const listener of listeners) listener();
@@ -145,6 +149,7 @@ function write() {
     if (!storage) throw new Error("no storage");
     if (draftIsEmpty(view.draft)) storage.removeItem(DRAFT_STORAGE_KEY);
     else storage.setItem(DRAFT_STORAGE_KEY, serializeDraft(view.draft));
+    unsaved.clear();
     if (view.persistence !== "on") {
       view = { ...view, persistence: "on" };
       emit();
@@ -167,10 +172,14 @@ function onStorage(event: StorageEvent) {
   if (view.phase !== "ready") return;
   const read = readStoredDraft(event.key === null ? null : event.newValue);
   if (read.status === "unreadable") return; // keep this tab's canvas
-  // The other tab wrote last; a pending write here would undo it.
-  clearTimeout(writeTimer);
-  writeTimer = undefined;
-  const draft = read.status === "none" ? emptyDraft() : read.draft;
+  // Two tabs converge on the last writer, field by field: what this tab has
+  // changed since its last save, and the field with the focus, stay as this
+  // tab has them (its pending save follows and wins for them); everything
+  // else comes from the other tab.
+  const keep = new Set(unsaved);
+  if (inFocus) keep.add(inFocus);
+  const incoming = read.status === "none" ? emptyDraft() : read.draft;
+  const draft = mergeOtherTab(view.draft, incoming, keep);
   const persistence = read.status === "newer" && view.persistence === "on" ? "newer" : view.persistence;
   view = { ...view, draft: draftReducer(view.draft, { type: "replace", draft }), persistence };
   emit();
@@ -191,6 +200,8 @@ function subscribe(listener: () => void): () => void {
     window.removeEventListener("storage", onStorage);
     window.removeEventListener("pagehide", flush);
     view = LOADING;
+    unsaved.clear();
+    inFocus = null;
   };
 }
 
@@ -207,11 +218,17 @@ export function dispatchDraft(action: DraftAction) {
   if (view.phase !== "ready") return;
   const next = draftReducer(view.draft, action);
   if (next === view.draft) return;
+  for (const field of fieldsOf(view.draft, action)) unsaved.add(field);
   view = { ...view, draft: action.type === "reset" ? next : { ...next, updatedAt: new Date().toISOString() } };
   emit();
   // At most DRAFT_WRITE_DELAY_MS after the first unsaved change: a timer reset
   // on every keystroke would never fire while someone types without pausing.
   if (writeTimer === undefined) writeTimer = setTimeout(write, DRAFT_WRITE_DELAY_MS);
+}
+
+/** The field the visitor is in (an answer's question, or the name), or null: another tab never replaces it. */
+export function setDraftFieldInFocus(field: DraftField | null) {
+  inFocus = field;
 }
 
 /** Deletes the text kept aside from unreadable drafts (the page asks first). */

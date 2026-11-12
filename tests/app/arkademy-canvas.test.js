@@ -387,6 +387,40 @@ const index = A.indexArkademy(validation.document);
   same("started over", canvasAnnouncement({ kind: "reset" }), "Your canvas is empty again.");
 }
 
+// --- two tabs: another tab's write merged with this tab's own fields ----------------------------
+{
+  const { mergeOtherTab } = A;
+  const local = {
+    name: "Mine",
+    answers: [
+      { id: "a1", question: "seg", text: "bakers typing" },
+      { id: "a2", question: "vp", text: "old value" },
+    ],
+    open: ["rev"],
+    updatedAt: "2026-11-12T10:00:00.000Z",
+  };
+  const incoming = {
+    name: "Theirs",
+    answers: [
+      { id: "a1", question: "seg", text: "bakers" },
+      { id: "a2", question: "vp", text: "new value" },
+      { id: "a3", question: "ch", text: "word of mouth" },
+    ],
+    open: [],
+    updatedAt: "2026-11-12T10:00:01.000Z",
+  };
+  check("nothing of this tab's to keep: the other tab's draft as it is", mergeOtherTab(local, incoming, new Set()) === incoming);
+  const merged = mergeOtherTab(local, incoming, new Set(["seg", "name", "rev"]));
+  same("kept: the name and the question being typed in", [merged.name, merged.answers.filter((a) => a.question === "seg").map((a) => a.text)], ["Mine", ["bakers typing"]]);
+  same("taken: every other question from the other tab", merged.answers.filter((a) => a.question !== "seg").map((a) => a.text), ["new value", "word of mouth"]);
+  same("kept: this tab's left-open flag for a kept question", merged.open, ["rev"]);
+  same("the merged draft's answers in question order", merged.answers.map((a) => a.question), ["seg", "vp", "ch"]);
+  check("ids stay unique: the kept answer keeps its id, the other tab's colliding one gets a new one", new Set(merged.answers.map((a) => a.id)).size === merged.answers.length && merged.answers[0].id === "a1");
+  same("the later of the two dates", merged.updatedAt, "2026-11-12T10:00:01.000Z");
+  const opened = mergeOtherTab(local, { ...incoming, open: ["kp"] }, new Set(["seg"]));
+  same("an open flag of a question not kept comes from the other tab", opened.open, ["kp"]);
+}
+
 // --- control characters (the ones part 1's schema refuses in text) ----------------------
 {
   const { stripTextControls, draftReducer, emptyDraft, textCharacterProblem, repairDraft } = A;

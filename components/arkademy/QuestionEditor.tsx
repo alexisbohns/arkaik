@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { duplicateAnswers, hasWords, isPlainEnter, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
 import { ANSWER_MAX_LENGTH, MAX_ANSWERS_PER_QUESTION, type BmcQuestion } from "@/lib/arkademy/schema";
+import { setDraftFieldInFocus } from "@/lib/hooks/useCanvasDraft";
 import { cn } from "@/lib/utils";
 
 /** The ids the screen focuses: the question's heading and its add field. */
@@ -149,6 +150,7 @@ export function QuestionEditor({
    * row, so it goes to the next answer, or the add field, instead.
    */
   function leave(event: FocusEvent<HTMLTextAreaElement>, id: string, position: number) {
+    setDraftFieldInFocus(null);
     if (hasWords(event.target.value)) return;
     const row = event.currentTarget.closest("li");
     const target = event.relatedTarget;
@@ -227,6 +229,7 @@ export function QuestionEditor({
                   aria-invalid={repeats !== undefined || undefined}
                   aria-describedby={repeats !== undefined ? `${answerFieldId(answer.id)}-repeats` : undefined}
                   onChange={(event) => onEdit(answer.id, event.target.value)}
+                  onFocus={() => setDraftFieldInFocus(question.key)}
                   onBlur={(event) => leave(event, answer.id, i)}
                   onKeyDown={(event) => onAnswerKeyDown(event, answer.id)}
                   className={cn(FIELD, "min-w-60 flex-1")}

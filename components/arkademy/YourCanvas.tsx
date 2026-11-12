@@ -47,7 +47,7 @@ import { availableInspirations, type Inspiration } from "@/lib/arkademy/inspirat
 import { composeParagraph, DEFAULT_SUBJECT, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
 import { BMC_TOOL_ID, MAX_ANSWERS_PER_QUESTION, type BmcQuestion, type BmcQuestionKey } from "@/lib/arkademy/schema";
 import { ARKADEMY_TOOL_PATHS } from "@/lib/arkademy/tools";
-import { discardKeptAside, dispatchDraft, useCanvasDraft, type DraftPersistence } from "@/lib/hooks/useCanvasDraft";
+import { discardKeptAside, dispatchDraft, setDraftFieldInFocus, useCanvasDraft, type DraftPersistence } from "@/lib/hooks/useCanvasDraft";
 import { downloadTextFile } from "@/lib/utils/download";
 import { cn } from "@/lib/utils";
 
@@ -271,6 +271,8 @@ function CanvasEditor({
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => dispatchDraft({ type: "rename", name: event.target.value })}
+          onFocus={() => setDraftFieldInFocus("name")}
+          onBlur={() => setDraftFieldInFocus(null)}
           onKeyDown={(event) => {
             if (!isEnter(event)) return;
             event.preventDefault();
