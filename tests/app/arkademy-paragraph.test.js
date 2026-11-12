@@ -440,6 +440,7 @@ const { requireTsx } = require("./load-arkademy-tsx");
 const { ParagraphView } = requireTsx("components/arkademy/ParagraphView.tsx");
 const { SourcedNote, NoteContent } = requireTsx("components/arkademy/SourcedNote.tsx");
 const { CanvasGrid } = requireTsx("components/arkademy/CanvasGrid.tsx");
+const { ExampleCard } = requireTsx("components/arkademy/ExampleCard.tsx");
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#x27": "'", "#39": "'", nbsp: "\u00a0" };
 /**
@@ -575,6 +576,15 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   const duplicate = [...state({ seg: ["first"] }), { key: "seg", answers: [{ text: "second" }], open: false }];
   same("duplicate key: the paragraph takes the last entry", composeParagraph({ questions, state: duplicate, subject: "X" })[0].text, "X is for second.");
   same("duplicate key: so does the grid", items(block(grid(duplicate), "seg")), ["second"]);
+}
+
+// --- an example's card ------------------------------------------------------------------
+{
+  const crumb = exampleCanvas(index, "crumb-and-co");
+  const card = render(ExampleCard, { company: crumb.company, questions, state: crumb.questions });
+  const paragraphTag = /<p[^>]*class="([^"]*)"[^>]*>[^<]*<span[^>]*data-kind="sentence"/.exec(card);
+  check("card: the paragraph is in the card", paragraphTag !== null);
+  check("card: the paragraph spans the card (no width cap)", paragraphTag !== null && !/max-w-/.test(paragraphTag[1]), paragraphTag && paragraphTag[1]);
 }
 
 // --- the sitemap's source -----------------------------------------------------------

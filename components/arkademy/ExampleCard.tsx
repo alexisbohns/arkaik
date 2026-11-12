@@ -40,7 +40,7 @@ export function ExampleCard({ company, questions, state, actions }: ExampleCardP
         </div>
         {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
       </div>
-      <ParagraphView segments={segments} className="max-w-[72ch]" />
+      <ParagraphView segments={segments} />
       <CanvasGrid
         questions={questions}
         state={state}
