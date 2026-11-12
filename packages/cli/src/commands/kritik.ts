@@ -28,6 +28,9 @@ import {
   REMEDIATION_COSTS,
   acceptFinding,
   auditCompletedInput,
+  auditReadings,
+  coverageNotes,
+  coverageOf,
   deriveAuditScope,
   deriveQualityMatrix,
   deriveFindingsBurndown,
@@ -37,14 +40,19 @@ import {
   formatDelta,
   findingResolvedInput,
   isOpenFinding,
+  isPlanId,
   isPlanPartId,
   mintFindingId,
   orderEvents,
   outsortedBy,
   parseSurfaceSpec,
   planIdOfPartId,
+  planRecordCommand,
   priorityOf,
+  readingOf,
   recordedAuditIds,
+  recordedPlans,
+  recordedSinceIds,
   renderIssue,
   resolveFinding,
   scopeSummary,
@@ -58,6 +66,7 @@ import {
   upsertAssessment,
   upsertFinding,
   type AuditCompletedScope,
+  type AuditReading,
   type AuditScope,
   type JournalEvent,
   type KritikCriterion,
@@ -67,6 +76,7 @@ import {
   type PlanPartStatus,
   type QualityAssessment,
   type QualityFinding,
+  type QualityMatrix,
   type QualityProfile,
   type QualitySection,
   type Regression,
@@ -100,7 +110,16 @@ import {
   type CriterionDraft,
 } from "@arkaik/schema/src/cli/kritik-overlay";
 import { loadProfile, profilePath, writeJson } from "@arkaik/schema/src/cli/kritik-paths";
-import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import {
+  createPlan,
+  listPlanIds,
+  loadPlan,
+  planPath,
+  planStatus,
+  preparePlanRecord,
+  savePlan,
+  type PlanRecord,
+} from "@arkaik/schema/src/cli/kritik-plan";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { KRITIK_ACTOR, appendQualityEvents, loadKritikLibrary, resolveJournal } from "../lib/kritik-io";
@@ -183,6 +202,7 @@ const FINDING_USAGE = `arkaik kritik finding <open|resolve|accept> [options]
     finding, not something that happened to the product.`;
 
 const MATRIX_USAGE = `arkaik kritik matrix [audit-id] [--json] [--record] [--scope]
+arkaik kritik matrix <plan-id> --plan [--record] [--json]
 
 Roll one audit up into its comparative matrix and write matrix.json — the only
 thing that may write that file.
@@ -193,11 +213,20 @@ thing that may write that file.
                     and counts. Do this once per finished audit.
   --scope           Treat the audit as a scoped re-audit even though it was
                     scored without \`score --scope\` (which marks it for you).
+  --plan            The id is a plan from \`arkaik kritik plan\`: read the merged
+                    matrix through its last part, writing nothing; with --record,
+                    append it as one quality.audit.completed under the plan id.
+                    Refused unless every part scored exactly its cells, and
+                    never with --scope.
 
 A scoped re-audit holds only the cells it re-scored, so matrix.json shows just
 those ("how did this audit go"), while --record carries the merged matrix
 through this audit ("where does the product stand") — the reading the trend
-replays. Everything else keeps its last score.`;
+replays. Everything else keeps its last score.
+
+A plan records once, as a whole: a part's own id is refused with --record or
+--scope. Under every table, a coverage line names each surface whose roll-up
+rests on fewer cells than apply to it: "web 62, from 6 of 73 cells".`;
 
 const SIGNALS_USAGE = `arkaik kritik signals [--surface <s>] [--criterion <c>] [--domain <CODE>] [--json]
 arkaik kritik signals --trip <criterion> --surface <s> --signal <index|text> [--detail <d>]
@@ -226,8 +255,10 @@ not a regression.
 Exits 1 when anything regressed, which is what makes it usable as a CI step or a
 scheduled routine.
 
-  --from <audit>    The older reading (default: the audit before --to).
+  --from <audit>    The older reading (default: the reading before --to).
   --to <audit>      The newer reading (default: the newest on disk).
+                    A plan's parts are one reading: a plan id, or any of its
+                    part ids, names the state through the plan's last part.
   --record          Append one quality.signal.tripped per regression.
   --json            The full list as JSON.`;
 
@@ -245,7 +276,12 @@ findings: "from where we started to where we are now".
 Reads the journal, so it needs a bundle (--bundle, default docs/arkaik/bundle.json)
 and audits recorded with \`arkaik kritik matrix --record\`. A framework major
 bump between two audits breaks the comparison there (SPEC § 8): the row still
-prints, without an arrow.`;
+prints, without an arrow.
+
+A planned partial audit's row says so — "planned partial audit: 6 cells
+re-scored in 1 part since 2026-08" — moves its arrows only where the plan
+re-scored, and lists each surface it did not fully cover: "web 62, from 6 of
+73 cells".`;
 
 const BURNDOWN_USAGE = `arkaik kritik burndown [--surface <s>] [--domain <CODE>] [--json]
 
@@ -278,7 +314,8 @@ This is a work list, not a score: re-score each cell with evidence
 Recording closes the window: a cell left unscored drops out of the next scope.
 
   --since <audit>   Measure from this recorded audit (default: the newest
-                    quality.audit.completed in the journal).
+                    quality.audit.completed that is not a plan's). A plan
+                    record is never what a scope is measured from.
   --no-widen        Only the resolved findings' own cells, no neighbours.
   --json            The scope as JSON (what an agent should read).
 
@@ -617,9 +654,13 @@ function runScore(args: string[], common: CommonOptions): void {
   let scopedFrom: string | undefined;
   let auditId: string;
   if (flags.has("scope")) {
-    const { scope, recorded } = currentScope(common, library, profile);
+    const { scope, recorded, plans } = currentScope(common, library, profile);
     if (scope.since === null) {
-      fail(`kritik: --scope needs a recorded audit to measure from — \`arkaik kritik matrix --record\` writes one.`);
+      fail(
+        plans.length > 0
+          ? `kritik: --scope needs a full or scoped audit to measure from, and ${planOnlyScopeNote(plans)}`
+          : `kritik: --scope needs a recorded audit to measure from — \`arkaik kritik matrix --record\` writes one.`,
+      );
     }
     if (!scope.cells.some((cell) => cell.criterion_id === criterionId && cell.surface === surface)) {
       fail(
@@ -858,14 +899,24 @@ function runFindingAccept(args: string[], common: CommonOptions): void {
  * not this one. \`undefined\` for a comprehensive audit.
  */
 function scopedSince(common: CommonOptions, auditId: string, stamped: string | undefined, declared: boolean): string | undefined {
-  if (stamped !== undefined) return stamped;
+  if (stamped !== undefined) {
+    // `score --scope` never stamps a plan (its anchor skips plan records), so this one was written by hand.
+    if (isPlanId(stamped) || isPlanPartId(stamped)) {
+      return fail(
+        `kritik: ${scoresPath(common.root, auditId)} stamps "scope": { "since": "${stamped}" }, a plan or one of its parts — ` +
+          `a scope is measured from a full or scoped audit, never from a plan. Stamp the full or scoped audit this one followed.`,
+      );
+    }
+    return stamped;
+  }
   if (!declared) return undefined;
   const journal = resolveJournal(common.root, common.bundlePath);
   if (!journal.present) {
     fail(`kritik: --scope needs the audit this one was scoped from, and there is no journal at ${journal.bundlePath}.`);
   }
   try {
-    return declaredScopeSince(auditId, recordedAuditIds(readFullJournalEvents(journal.journalPath)));
+    // A plan record is never what a scoped audit followed: only full and scoped records count.
+    return declaredScopeSince(auditId, recordedSinceIds(readFullJournalEvents(journal.journalPath)));
   } catch (error) {
     return fail(`kritik: --scope refused — ${(error as Error).message}`);
   }
@@ -893,19 +944,148 @@ function unscoredScopeCells(
   return scope.cells.filter((cell) => !done.has(`${cell.criterion_id}::${cell.surface}`));
 }
 
+/** The human matrix report: the table, the open findings by severity and lane, and the P0 shortlist. */
+function printMatrixReport(section: QualitySection, matrix: QualityMatrix, library: KritikLibrary): void {
+  const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
+  console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
+
+  // A roll-up averages the domains that scored, so on a sparse reading it reads as
+  // a grade for a whole surface it never looked at; the coverage line says so.
+  const notes = coverageNotes(coverageOf(section, library), matrix.overall);
+  if (notes.length > 0) {
+    console.log(`coverage — a roll-up reads only the cells that hold a score:`);
+    for (const note of notes) console.log(`  ${note}`);
+    console.log("");
+  }
+
+  const open = section.findings.filter(isOpenFinding);
+  const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
+  for (const finding of open) lanes[priorityOf(finding, library)]++;
+  const counts = matrix.finding_counts;
+  console.log(
+    `${section.assessments.length} assessments · ${open.length} open findings ` +
+      `(${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low)\n` +
+      `lanes: P0 ${lanes.P0} · P1 ${lanes.P1} · P2 ${lanes.P2} · P3 ${lanes.P3}`,
+  );
+
+  const p0 = open.filter((finding) => priorityOf(finding, library) === "P0");
+  if (p0.length > 0) {
+    console.log(`\nP0 — fix first:`);
+    for (const finding of p0) {
+      console.log(`  [${severityOf(finding, library)}] ${finding.surface} · ${finding.id} — ${finding.title}`);
+    }
+  }
+}
+
+/**
+ * `matrix <planId> --plan [--record]` — a planned partial audit, read and, with --record,
+ * recorded as one reading (spec "matrix --record --plan"). Every check is
+ * `preparePlanRecord`'s, shared with `kritik_matrix plan=true`; what lives here is printing
+ * and the journal write. Nothing goes to disk but the journal: a plan has no audit directory.
+ */
+function runPlanMatrix(planId: string, flags: Set<string>, common: CommonOptions, library: KritikLibrary): void {
+  const record = flags.has("record");
+  const journal = resolveJournal(common.root, common.bundlePath);
+  const events = journal.present ? readFullJournalEvents(journal.journalPath) : [];
+  let prepared: PlanRecord;
+  try {
+    prepared = preparePlanRecord(common.root, planId, library, events);
+  } catch (error) {
+    return fail(`kritik: ${(error as Error).message}`);
+  }
+  const { plan, section, matrix, scope } = prepared;
+  const parts = scope.parts.length;
+
+  if (flags.has("json")) {
+    console.log(
+      JSON.stringify(
+        {
+          audit_id: plan.planId,
+          ...(plan.commit !== null ? { commit: plan.commit } : {}),
+          framework_version: plan.frameworkVersion,
+          matrix: matrix.matrix,
+          overall: matrix.overall,
+          finding_counts: matrix.finding_counts,
+          scope,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    printMatrixReport(section, matrix, library);
+    console.log(
+      `\nplanned partial audit ${plan.planId}: ${scope.cells} cell${scope.cells === 1 ? "" : "s"} re-scored in ${parts} part${parts === 1 ? "" : "s"}` +
+        (scope.since !== undefined ? ` since ${scope.since}` : ", with no full audit before it") +
+        `. The table is the merged reading through the plan's last part — every other cell at its last score.` +
+        (record ? "" : `\nNothing written. Record it: \`${planRecordCommand(plan.planId)}\``),
+    );
+  }
+  if (record) reportJournal(common.root, [prepared.input], common);
+  console.log("");
+  process.exit(0);
+}
+
 function runMatrix(args: string[], common: CommonOptions): void {
-  const { flags, positionals } = collect(args, [], ["json", "record", "scope"]);
+  const { flags, positionals } = collect(args, [], ["json", "record", "scope", "plan"]);
   if (flags.has("help")) {
     console.log(MATRIX_USAGE);
     process.exit(0);
   }
 
   const library = loadLibraryOrFail(common.root);
+  if (flags.has("plan")) {
+    const planId = positionals[0];
+    if (flags.has("scope")) {
+      return fail(`kritik: --plan and --scope cannot be combined — a plan records its own scope marker, measured from the newest full or scoped audit.`);
+    }
+    if (planId === undefined) {
+      const plans = listPlanIds(common.root);
+      return fail(
+        `kritik: --plan needs the plan id — \`arkaik kritik matrix <planId> --record --plan\` ` +
+          `(plans: ${plans.join(", ") || "none — `arkaik kritik plan` makes one"}).`,
+      );
+    }
+    if (isPlanPartId(planId)) {
+      const owner = planIdOfPartId(planId) ?? planId;
+      return fail(`kritik: "${planId}" is one part of plan "${owner}" — pass the plan id: \`arkaik kritik matrix ${owner} --record --plan\`.`);
+    }
+    if (flags.has("record")) {
+      if (!common.journal) {
+        return fail(`kritik: --record --plan appends the plan's reading to the journal, and --no-journal says not to — drop one of them.`);
+      }
+      const journal = resolveJournal(common.root, common.bundlePath);
+      if (!journal.present) {
+        return fail(
+          `kritik: --record --plan needs a journal, and there is no bundle at ${journal.bundlePath} — ` +
+            `a plan's reading exists only as its quality.audit.completed.`,
+        );
+      }
+    }
+    return runPlanMatrix(planId, flags, common, library);
+  }
   let auditId: string;
   try {
     auditId = positionals[0] ?? newestAuditId(common.root);
   } catch (error) {
     return fail(`kritik: ${(error as Error).message}`);
+  }
+
+  // Before anything is computed or written, and before `scopedSince`: once a
+  // plan is recorded its parts are recorded ids, and `declaredScopeSince` over
+  // `recordedSinceIds` would no longer catch them.
+  if (isPlanId(auditId)) {
+    return fail(
+      `kritik: "${auditId}" is a plan, not an audit — pass --plan: \`arkaik kritik matrix ${auditId} --plan\` previews its merged reading, ` +
+        `\`arkaik kritik matrix ${auditId} --record --plan\` records it.`,
+    );
+  }
+  if (isPlanPartId(auditId) && (flags.has("record") || flags.has("scope"))) {
+    const owner = planIdOfPartId(auditId) ?? auditId;
+    return fail(
+      `kritik: "${auditId}" is one part of plan "${owner}" — a plan records once, as a whole, and carries its own scope marker: ` +
+        `\`arkaik kritik matrix ${owner} --record --plan\`.`,
+    );
   }
 
   let computed: ReturnType<typeof computeAuditMatrix>;
@@ -936,26 +1116,7 @@ function runMatrix(args: string[], common: CommonOptions): void {
     console.log(JSON.stringify(file, null, 2));
     reportUnscored((line) => console.error(line));
   } else {
-    const domainNames = new Map((library.domains ?? []).map((d) => [d.code, d.name]));
-    console.log(`\n${renderMatrixMarkdown(matrix, domainNames)}\n`);
-
-    const open = section.findings.filter(isOpenFinding);
-    const lanes: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
-    for (const finding of open) lanes[priorityOf(finding, library)]++;
-    const counts = matrix.finding_counts;
-    console.log(
-      `${section.assessments.length} assessments · ${open.length} open findings ` +
-        `(${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low)\n` +
-        `lanes: P0 ${lanes.P0} · P1 ${lanes.P1} · P2 ${lanes.P2} · P3 ${lanes.P3}`,
-    );
-
-    const p0 = open.filter((finding) => priorityOf(finding, library) === "P0");
-    if (p0.length > 0) {
-      console.log(`\nP0 — fix first:`);
-      for (const finding of p0) {
-        console.log(`  [${severityOf(finding, library)}] ${finding.surface} · ${finding.id} — ${finding.title}`);
-      }
-    }
+    printMatrixReport(section, matrix, library);
     console.log(`\nwrote ${matrixPath(common.root, auditId)}`);
     if (scope !== undefined) {
       reportUnscored((line) => console.log(line));
@@ -1088,33 +1249,43 @@ function runSignals(args: string[], common: CommonOptions): void {
 
 // --- regressions --------------------------------------------------------------
 
-/** The two audits to compare, or a refusal saying why there is no pair. */
-function auditPair(root: string, from?: string, to?: string): { from: string; to: string } {
-  const audits = listAuditIds(root);
-  if (audits.length < 2) {
+/** The audit directory a reading's state runs through: its last member. */
+const lastAuditOf = (reading: AuditReading): string => reading.auditIds[reading.auditIds.length - 1];
+
+/**
+ * The two readings to compare, or a refusal saying why there is no pair. A plan's parts are one
+ * reading (`auditReadings`): ids accepted are reading ids or member ids, the default `to` is the
+ * last reading and the default `from` the one before.
+ */
+function auditPair(root: string, from?: string, to?: string): { from: AuditReading; to: AuditReading } {
+  const readings = auditReadings(listAuditIds(root));
+  if (readings.length < 2) {
     fail(
       `kritik: regressions needs two audits to compare — ` +
-        `${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}.\n` +
+        `${readings.length === 0 ? "docs/quality/audits/ holds none" : `only "${readings[0].id}" exists`}.\n` +
         `A regression is the difference between two readings; one reading is a baseline.`,
     );
   }
-  const known = (id: string): string => {
-    if (!audits.includes(id)) fail(`kritik: no audit "${id}" under docs/quality/audits/ (have: ${audits.join(", ")})`);
-    return id;
+  const known = (id: string): AuditReading => {
+    const reading = readingOf(readings, id);
+    if (reading === undefined) {
+      return fail(`kritik: no audit "${id}" under docs/quality/audits/ (have: ${readings.map((r) => r.id).join(", ")})`);
+    }
+    return reading;
   };
-  const newer = to === undefined ? audits[audits.length - 1] : known(to);
-  const older = from === undefined ? audits[audits.indexOf(newer) - 1] : known(from);
+  const newer = to === undefined ? readings[readings.length - 1] : known(to);
+  const older = from === undefined ? readings[readings.indexOf(newer) - 1] : known(from);
   if (older === undefined) {
-    fail(`kritik: "${newer}" is the oldest audit — there is nothing before it to compare against.`);
+    fail(`kritik: "${newer.id}" is the oldest audit — there is nothing before it to compare against.`);
   }
   if (older === newer) {
-    fail(`kritik: --from and --to name the same audit ("${newer}") — a regression needs two readings.`);
+    fail(`kritik: --from and --to name the same audit ("${newer.id}") — a regression needs two readings.`);
   }
   // Order is the whole verdict: `detectRegressions` reads its first argument as
   // the EARLIER reading, so a hand-swapped pair reports a clean run where a real
   // regression exists — a false green in the CI step this verb exists to be.
-  if (audits.indexOf(older) > audits.indexOf(newer)) {
-    fail(`kritik: --from "${older}" is newer than --to "${newer}" — swap them, or the comparison inverts.`);
+  if (readings.indexOf(older) > readings.indexOf(newer)) {
+    fail(`kritik: --from "${older.id}" is newer than --to "${newer.id}" — swap them, or the comparison inverts.`);
   }
   return { from: older, to: newer };
 }
@@ -1128,7 +1299,9 @@ function runRegressions(args: string[], common: CommonOptions): void {
 
   const library = loadLibraryOrFail(common.root);
   profileOrFail(common.root);
-  const { from, to } = auditPair(common.root, single.from, single.to);
+  const pair = auditPair(common.root, single.from, single.to);
+  const from = pair.from.id;
+  const to = pair.to.id;
 
   let regressions: Regression[];
   try {
@@ -1136,8 +1309,8 @@ function runRegressions(args: string[], common: CommonOptions): void {
     // the cells it re-scored, and each must be compared with the last reading
     // before it — which may live in an audit older than \`from\`.
     regressions = detectRegressions(
-      loadQualitySectionThrough(common.root, from, library),
-      loadQualitySectionThrough(common.root, to, library),
+      loadQualitySectionThrough(common.root, lastAuditOf(pair.from), library),
+      loadQualitySectionThrough(common.root, lastAuditOf(pair.to), library),
       library,
     );
   } catch (error) {
@@ -1248,6 +1421,25 @@ function runTrend(args: string[], common: CommonOptions): void {
     }
     if (row.scope) {
       console.log(`  ${"".padEnd(widths[0])}   scoped re-audit of ${row.scope.cells ?? "?"} cell(s) since ${row.scope.since}`);
+    }
+    if (row.plan) {
+      const parts = row.plan.parts.length;
+      console.log(
+        `  ${"".padEnd(widths[0])}   planned partial audit: ${row.plan.cells ?? "?"} cell${row.plan.cells === 1 ? "" : "s"} ` +
+          `re-scored in ${parts} part${parts === 1 ? "" : "s"}` +
+          (row.plan.since !== null ? ` since ${row.plan.since}` : " — no full audit before it"),
+      );
+      // Not under --domain: a row then shows one domain's score, and a coverage line beneath it
+      // would print the whole-surface roll-up — two numbers that contradict each other.
+      if (row.plan.coverage !== null && single.domain === undefined) {
+        const shown = {
+          ...row.plan.coverage,
+          surfaces: Object.fromEntries(Object.entries(row.plan.coverage.surfaces).filter(([surface]) => surfaces.includes(surface))),
+        };
+        for (const note of coverageNotes(shown, trend.snapshots[index].overall)) {
+          console.log(`  ${"".padEnd(widths[0])}   ${note}`);
+        }
+      }
     }
   }
   console.log(
@@ -1370,12 +1562,24 @@ function scopeReason(cell: ScopeCell, resolvedBy: Readonly<Record<string, string
  * and resolved last week lives in an older findings.json, and its cell's
  * current score may come from any audit on disk.
  */
+/**
+ * Why a scope is empty when the journal holds plan records and nothing else (spec "A first audit
+ * that is a plan"): a plan record is never a scope's anchor, so until a full audit is recorded a
+ * fix is re-checked by running its part again in a new plan.
+ */
+function planOnlyScopeNote(plans: readonly string[]): string {
+  return (
+    `only plan records are in this journal (${plans.join(", ")}) — a plan record is never what a scope is measured from. ` +
+    `Until a full audit is recorded, re-check a fix by running its plan part again: \`arkaik kritik plan --run <DOMAIN:SURFACE>\`, then record that plan.`
+  );
+}
+
 function currentScope(
   common: CommonOptions,
   library: KritikLibrary,
   profile: QualityProfile,
   options: { since?: string; widen?: boolean } = {},
-): { scope: AuditScope; journalPath: string; recorded: string[] } {
+): { scope: AuditScope; journalPath: string; recorded: string[]; plans: string[] } {
   const journal = resolveJournal(common.root, common.bundlePath);
   if (!journal.present) {
     fail(
@@ -1385,12 +1589,21 @@ function currentScope(
   }
   const events = readFullJournalEvents(journal.journalPath);
   const recorded = recordedAuditIds(events);
+  const sinceIds = recordedSinceIds(events);
+  const plans = recordedPlans(events).map((plan) => plan.plan);
 
   if (options.since !== undefined) {
-    if (!recorded.includes(options.since)) {
+    const since = options.since;
+    if (isPlanId(since) || isPlanPartId(since) || (recorded.includes(since) && !sinceIds.includes(since))) {
       fail(
-        `kritik: no recorded audit "${options.since}" in ${journal.journalPath} ` +
-          `(recorded: ${recorded.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
+        `kritik: "${since}" is a plan record, never a scope's anchor — a scope is measured from a full or scoped audit ` +
+          `(recorded: ${sinceIds.join(", ") || "none yet — `arkaik kritik matrix --record` writes one"}).`,
+      );
+    }
+    if (!sinceIds.includes(since)) {
+      fail(
+        `kritik: no recorded audit "${since}" in ${journal.journalPath} ` +
+          `(recorded: ${sinceIds.join(", ") || "none — `arkaik kritik matrix --record` writes one"}).\n` +
           `A scope is measured from a recorded reading; an audit directory that was never recorded is not one.`,
       );
     }
@@ -1402,7 +1615,7 @@ function currentScope(
   } catch (error) {
     return fail(`kritik: ${(error as Error).message}`);
   }
-  return { scope: deriveAuditScope(events, section, library, options), journalPath: journal.journalPath, recorded };
+  return { scope: deriveAuditScope(events, section, library, options), journalPath: journal.journalPath, recorded, plans };
 }
 
 function runScope(args: string[], common: CommonOptions): void {
@@ -1414,19 +1627,31 @@ function runScope(args: string[], common: CommonOptions): void {
 
   const library = loadLibraryOrFail(common.root);
   const profile = profileOrFail(common.root);
-  const { scope } = currentScope(common, library, profile, {
+  const { scope, plans } = currentScope(common, library, profile, {
     ...(single.since !== undefined ? { since: single.since } : {}),
     widen: !flags.has("no-widen"),
   });
 
   if (flags.has("json")) {
-    console.log(JSON.stringify({ ...scope, summary: scopeSummary(scope) }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...scope,
+          summary: scopeSummary(scope),
+          ...(scope.since === null && plans.length > 0 ? { note: `No full audit recorded yet: ${planOnlyScopeNote(plans)}` } : {}),
+        },
+        null,
+        2,
+      ),
+    );
     process.exit(0);
   }
 
   if (scope.since === null) {
     console.log(
-      `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
+      plans.length > 0
+        ? `\n  no full audit recorded yet: ${planOnlyScopeNote(plans)}\n`
+        : `\n  no recorded audit yet — a scope is measured from one. \`arkaik kritik matrix --record\` writes it.\n`,
     );
     process.exit(0);
   }

@@ -47,12 +47,14 @@ import {
   acceptFinding,
   acceptedDetail,
   auditCompletedInput,
+  auditReadings,
   deriveAuditScope,
   deriveQualityMatrix,
   deriveFindingsBurndown,
   deriveQualityTrend,
   burndownRows,
   burndownSummary,
+  coverageNotes,
   detectRegressions,
   findingOpenedInput,
   findingResolvedInput,
@@ -65,7 +67,10 @@ import {
   outsortedBy,
   planIdOfPartId,
   priorityOf,
+  readingOf,
   recordedAuditIds,
+  recordedPlans,
+  recordedSinceIds,
   renderIssue,
   resolveFinding,
   resolveKritikLibrary,
@@ -78,6 +83,7 @@ import {
   upsertFinding,
   withImplicitBaseline,
   type AuditCompletedScope,
+  type AuditReading,
   type AuditScope,
   type AuditState,
   type EventInput,
@@ -105,12 +111,22 @@ import {
   requireProfile,
   saveFindings,
   saveScores,
+  scoresPath,
   auditOrderNote,
   declaredScopeSince,
   scopedAuditTarget,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
-import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import {
+  createPlan,
+  listPlanIds,
+  loadPlan,
+  planPath,
+  planStatus,
+  preparePlanRecord,
+  savePlan,
+  type PlanRecord,
+} from "@arkaik/schema/src/cli/kritik-plan";
 import { existsSync } from "node:fs";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
@@ -165,6 +181,20 @@ async function appendHosted(store: Store, inputs: readonly HostedQualityInput[])
  */
 const NO_HOSTED_AUDIT =
   "This hosted project has no audit to measure from. One must be run in the repository and restored (`arkaik restore`) first — a hosted session cannot write one.";
+
+/**
+ * Why a repo scope is empty when the journal holds plan records and nothing else: a plan
+ * record is never a scope's anchor, so a fix is re-checked by running its part again.
+ */
+function planOnlyNote(plans: readonly string[]): string {
+  return (
+    `only plan records are in this journal (${plans.join(", ")}) — a plan record is never what a scope is measured from. ` +
+    `Until a full audit is recorded, re-check a fix by running its plan part again: kritik_plan, then kritik_matrix with plan=true and record=true.`
+  );
+}
+
+/** The audit directory a reading's state runs through: its last member. */
+const lastAuditOf = (reading: AuditReading): string => reading.auditIds[reading.auditIds.length - 1];
 
 function hostedSection(graph: LoadedGraph): { section: QualitySection; library: KritikLibrary | undefined } {
   const section = (graph.loaded.bundle as { quality?: QualitySection }).quality;
@@ -240,34 +270,36 @@ function openFindingsSummary(
 }
 
 /**
- * Resolve the `from`/`to` pair for a regression comparison out of a known list
- * of audit ids (ascending), applying the same not-found / too-few / same-audit
- * / inverted-order guards `kritik_regressions` needs in both modes — only the
- * "no audit under X" phrasing and where `audits` itself comes from differ.
+ * Resolve the `from`/`to` pair for a regression comparison out of the readings on hand
+ * (ascending), applying the same not-found / too-few / same-reading / inverted-order guards
+ * `kritik_regressions` needs in both modes — only the "no audit under X" phrasing and where
+ * the readings come from differ. In repo mode a plan's parts are one reading
+ * (`auditReadings`); a hosted session passes each audit id as its own.
  */
 function resolveAuditPair(
-  audits: readonly string[],
+  readings: readonly AuditReading[],
   args: Record<string, unknown>,
   notFoundHint: string,
-): { from: string; to: string } {
-  if (audits.length < 2) {
+): { from: AuditReading; to: AuditReading } {
+  if (readings.length < 2) {
     throw new ToolError(
-      `regressions needs two audits to compare — ${audits.length === 0 ? `${notFoundHint} holds none` : `only "${audits[0]}" exists`}. ` +
+      `regressions needs two audits to compare — ${readings.length === 0 ? `${notFoundHint} holds none` : `only "${readings[0].id}" exists`}. ` +
         `A regression is the difference between two readings; one reading is a baseline.`,
     );
   }
-  const known = (id: string): string => {
-    if (!audits.includes(id)) throw new ToolError(`no audit "${id}" ${notFoundHint} (have: ${audits.join(", ")})`);
-    return id;
+  const known = (id: string): AuditReading => {
+    const reading = readingOf(readings, id);
+    if (reading === undefined) throw new ToolError(`no audit "${id}" ${notFoundHint} (have: ${readings.map((r) => r.id).join(", ")})`);
+    return reading;
   };
-  const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : audits[audits.length - 1];
-  const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : audits[audits.indexOf(to) - 1];
-  if (from === undefined) throw new ToolError(`"${to}" is the oldest audit — there is nothing before it to compare against.`);
-  if (from === to) throw new ToolError(`from and to name the same audit ("${to}") — a regression needs two readings.`);
+  const to = typeof args.to === "string" && args.to !== "" ? known(args.to) : readings[readings.length - 1];
+  const from = typeof args.from === "string" && args.from !== "" ? known(args.from) : readings[readings.indexOf(to) - 1];
+  if (from === undefined) throw new ToolError(`"${to.id}" is the oldest audit — there is nothing before it to compare against.`);
+  if (from === to) throw new ToolError(`from and to name the same audit ("${to.id}") — a regression needs two readings.`);
   // Order is the whole verdict: a hand-swapped pair reports a clean run where
   // a real regression exists.
-  if (audits.indexOf(from) > audits.indexOf(to)) {
-    throw new ToolError(`from "${from}" is newer than to "${to}" — swap them, or the comparison inverts.`);
+  if (readings.indexOf(from) > readings.indexOf(to)) {
+    throw new ToolError(`from "${from.id}" is newer than to "${to.id}" — swap them, or the comparison inverts.`);
   }
   return { from, to };
 }
@@ -456,8 +488,15 @@ export function buildKritikCatalog(ctx: KritikContext): {
     }
 
     if (options.since !== undefined) {
-      const recorded = recordedAuditIds(events);
-      if (!recorded.includes(options.since)) {
+      const recordedAll = recordedAuditIds(events);
+      const recorded = recordedSinceIds(events);
+      const since = options.since;
+      if (isPlanId(since) || isPlanPartId(since) || (recordedAll.includes(since) && !recorded.includes(since))) {
+        throw new ToolError(
+          `"${since}" is a plan record, never a scope's anchor — a scope is measured from a full or scoped audit (recorded: ${recorded.join(", ") || "none"}).`,
+        );
+      }
+      if (!recorded.includes(since)) {
         // A hosted record=true records a scoped re-audit, which itself needs
         // an audit to measure from — pointing a hosted agent at it would loop.
         const hint =
@@ -479,7 +518,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
     {
       name: "kritik_matrix",
       description:
-        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section, and record=true (with the audit_id kritik_score returned) records that scoped re-audit — the server computes the reading from the scores it holds, rather than accepting one on the wire. A scoped re-audit (scored with kritik_score scope=true, or, in repo mode, declared with scope=true here) returns `scope` and records the MERGED matrix through it with a scope marker, so the trend never reads its unscored cells as dropped; matrix.json stays this audit alone.",
+        "The comparative quality matrix: a score and grade per (domain x surface), the weighted roll-up per surface, and open findings by priority lane. Anti-averaging caps are applied — one open Critical caps its cell at D, one open High at B — so a cell full of 3s cannot absorb a live defect. In repo mode this refreshes the audit's matrix.json, and with record=true appends quality.audit.completed; in hosted mode it is a read of the stored quality section, and record=true (with the audit_id kritik_score returned) records that scoped re-audit — the server computes the reading from the scores it holds, rather than accepting one on the wire. A scoped re-audit (scored with kritik_score scope=true, or, in repo mode, declared with scope=true here) returns `scope` and records the MERGED matrix through it with a scope marker, so the trend never reads its unscored cells as dropped; matrix.json stays this audit alone. With plan=true (repo mode only) audit_id is a plan made by kritik_plan: it returns the plan's merged reading — every audit through its last part, latest-wins — with `scope` (the plan marker), `coverage` and `coverage_notes`, writes nothing, and with record=true appends it as one quality.audit.completed under the plan id, after checking the plan's cells have not moved, no audit sorts after one of its parts, and every part scored exactly its cells. A plan part's own id is refused with record or scope: a plan records once, as a whole.",
       inputSchema: {
         type: "object",
         properties: {
@@ -495,6 +534,11 @@ export function buildKritikCatalog(ctx: KritikContext): {
             type: "boolean",
             description: "Treat the audit as a scoped re-audit even though it was scored without kritik_score scope=true (which marks it). Repo mode only.",
           },
+          plan: {
+            type: "boolean",
+            description:
+              "audit_id is a plan made by kritik_plan: return its merged reading with scope and coverage, and with record=true append it as one quality.audit.completed under the plan id. Repo mode only; never with scope.",
+          },
           commit: {
             type: "string",
             description: "Hosted record only: the commit the scoped re-audit read. Repo mode reads it from the audit's scores.json.",
@@ -506,6 +550,12 @@ export function buildKritikCatalog(ctx: KritikContext): {
     async (args) => {
       const hosted = ctx.qualityRoot === undefined;
       if (hosted) {
+        if (args.plan === true) {
+          throw new ToolError(
+            "plan=true records a planned partial audit, whose parts live in docs/quality/audits/ — a hosted session has none. " +
+              "Run it where the checkout is — `arkaik-mcp --bundle <path>`.",
+          );
+        }
         if (args.record === true) {
           if (typeof args.audit_id !== "string" || args.audit_id === "") {
             throw new ToolError(
@@ -621,11 +671,71 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
       const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
+
+      // A planned partial audit: the same preparePlanRecord as `matrix <planId> --plan`.
+      if (args.plan === true) {
+        const requested = typeof args.audit_id === "string" && args.audit_id !== "" ? args.audit_id : undefined;
+        if (args.scope === true) {
+          throw new ToolError("plan=true and scope=true cannot be combined — a plan records its own scope marker, measured from the newest full or scoped audit.");
+        }
+        if (requested === undefined) {
+          const plans = listPlanIds(root);
+          throw new ToolError(`plan=true needs the plan id as audit_id (plans: ${plans.join(", ") || "none — kritik_plan makes one"}).`);
+        }
+        if (isPlanPartId(requested)) {
+          const owner = planIdOfPartId(requested) ?? requested;
+          throw new ToolError(`"${requested}" is one part of plan "${owner}" — pass the plan id: audit_id "${owner}" with plan=true.`);
+        }
+        const graph = await load();
+        let prepared: PlanRecord;
+        try {
+          prepared = preparePlanRecord(root, requested, library, graph.journal);
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+        const events = args.record === true ? await record(graph, [prepared.input]) : [];
+        const { open, lanes, p0 } = openFindingsSummary(prepared.section.findings, library);
+        return {
+          audit_id: prepared.plan.planId,
+          ...(prepared.plan.commit !== null ? { commit: prepared.plan.commit } : {}),
+          framework_version: prepared.plan.frameworkVersion,
+          matrix: prepared.matrix.matrix,
+          overall: prepared.matrix.overall,
+          finding_counts: prepared.matrix.finding_counts,
+          scope: prepared.scope,
+          coverage: prepared.scope.coverage,
+          coverage_notes: coverageNotes(prepared.scope.coverage, prepared.matrix.overall),
+          assessment_count: prepared.section.assessments.length,
+          open_findings: open.length,
+          lanes,
+          p0,
+          events,
+          ...(args.record === true
+            ? {}
+            : { note: `Preview only — nothing written. record=true appends this reading as one quality.audit.completed under ${prepared.plan.planId}.` }),
+        };
+      }
+
       let auditId: string;
       try {
         auditId = typeof args.audit_id === "string" && args.audit_id !== "" ? args.audit_id : newestAuditId(root);
       } catch (error) {
         throw new ToolError((error as Error).message);
+      }
+      // Before anything is computed or written, and before `declaredScopeSince`:
+      // once a plan is recorded its parts are recorded ids, and that check over
+      // `recordedSinceIds` would no longer catch them.
+      if (isPlanId(auditId)) {
+        throw new ToolError(
+          `"${auditId}" is a plan, not an audit — pass plan=true: audit_id "${auditId}" with plan=true previews its merged reading, and with record=true records it.`,
+        );
+      }
+      if (isPlanPartId(auditId) && (args.record === true || args.scope === true)) {
+        const owner = planIdOfPartId(auditId) ?? auditId;
+        throw new ToolError(
+          `"${auditId}" is one part of plan "${owner}" — a plan records once, as a whole, and carries its own scope marker: ` +
+            `kritik_matrix with audit_id "${owner}", plan=true and record=true.`,
+        );
       }
 
       let computed: ReturnType<typeof computeAuditMatrix>;
@@ -644,10 +754,18 @@ export function buildKritikCatalog(ctx: KritikContext): {
       // needs no journal.
       let graph: LoadedGraph | undefined;
       let since = loadScoresOrEmpty(root, auditId).scope?.since;
+      // kritik_score never stamps a plan (its anchor skips plan records), so this one was written by hand.
+      if (since !== undefined && (isPlanId(since) || isPlanPartId(since))) {
+        throw new ToolError(
+          `${scoresPath(root, auditId)} stamps "scope": { "since": "${since}" }, a plan or one of its parts — ` +
+            `a scope is measured from a full or scoped audit, never from a plan. Stamp the full or scoped audit this one followed.`,
+        );
+      }
       if (since === undefined && args.scope === true) {
         graph = await load();
         try {
-          since = declaredScopeSince(auditId, recordedAuditIds(graph.journal));
+          // A plan record is never what a scoped audit followed: only full and scoped records count.
+          since = declaredScopeSince(auditId, recordedSinceIds(graph.journal));
         } catch (error) {
           throw new ToolError(`scope=true refused — ${(error as Error).message}`);
         }
@@ -812,8 +930,8 @@ export function buildKritikCatalog(ctx: KritikContext): {
       inputSchema: {
         type: "object",
         properties: {
-          from: { type: "string", description: "The older audit. Default: the audit before `to`." },
-          to: { type: "string", description: "The newer audit. Default: the newest on disk." },
+          from: { type: "string", description: "The older reading. Default: the reading before `to`. A plan id, or any of its part ids, reads the whole plan." },
+          to: { type: "string", description: "The newer reading. Default: the newest on disk. A plan id, or any of its part ids, reads the whole plan." },
           record: { type: "boolean", description: "Append one quality.signal.tripped per regression." },
         },
         additionalProperties: false,
@@ -833,7 +951,10 @@ export function buildKritikCatalog(ctx: KritikContext): {
           else grouped.set(assessment.audit_id, [assessment]);
         }
         const audits = [...grouped.keys()].sort();
-        const { from, to } = resolveAuditPair(audits, args, "in this project's assessments");
+        // Hosted assessments carry their audit id alone, so each id is its own reading.
+        const hostedPair = resolveAuditPair(audits.map((id) => ({ id, auditIds: [id] })), args, "in this project's assessments");
+        const from = hostedPair.from.id;
+        const to = hostedPair.to.id;
 
         // Both sides share the same living pool of findings (issue #400
         // decision 3), so finding-based regression kinds cannot fire here: a
@@ -863,16 +984,17 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
       const root = repoRootOf(ctx, REPO_MODE_ONLY);
       const library = libraryOf(root);
-      const audits = listAuditIds(root);
-      const { from, to } = resolveAuditPair(audits, args, "under docs/quality/audits/");
+      const pair = resolveAuditPair(auditReadings(listAuditIds(root)), args, "under docs/quality/audits/");
+      const from = pair.from.id;
+      const to = pair.to.id;
 
       let regressions: Regression[];
       try {
         // Merged through each audit: a scoped `to` holds only the cells it
         // re-scored, each compared with its last reading wherever it was taken.
         regressions = detectRegressions(
-          loadQualitySectionThrough(root, from, library),
-          loadQualitySectionThrough(root, to, library),
+          loadQualitySectionThrough(root, lastAuditOf(pair.from), library),
+          loadQualitySectionThrough(root, lastAuditOf(pair.to), library),
           library,
         );
       } catch (error) {
@@ -1095,6 +1217,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
         }
       }
 
+      const planOnly = ctx.qualityRoot !== undefined && scope.since === null ? recordedPlans(graph.journal).map((p) => p.plan) : [];
       return {
         ...scope,
         cells,
@@ -1105,7 +1228,9 @@ export function buildKritikCatalog(ctx: KritikContext): {
               note:
                 ctx.qualityRoot === undefined
                   ? NO_HOSTED_AUDIT
-                  : "No recorded audit yet — a scope is measured from one. `kritik_matrix` with record=true writes it.",
+                  : planOnly.length > 0
+                    ? `No full audit recorded yet: ${planOnlyNote(planOnly)}`
+                    : "No recorded audit yet — a scope is measured from one. `kritik_matrix` with record=true writes it.",
             }
           : {}),
       };
@@ -1383,7 +1508,12 @@ export function buildKritikCatalog(ctx: KritikContext): {
       if (args.scope === true) {
         const scope = scopeOf(graph);
         if (scope.since === null) {
-          throw new ToolError("scope=true needs a recorded audit to measure from — kritik_matrix with record=true writes one.");
+          const plans = recordedPlans(graph.journal).map((p) => p.plan);
+          throw new ToolError(
+            plans.length > 0
+              ? `scope=true needs a full or scoped audit to measure from, and ${planOnlyNote(plans)}`
+              : "scope=true needs a recorded audit to measure from — kritik_matrix with record=true writes one.",
+          );
         }
         if (!scope.cells.some((cell) => cell.criterion_id === criterionId && cell.surface === surface)) {
           throw new ToolError(

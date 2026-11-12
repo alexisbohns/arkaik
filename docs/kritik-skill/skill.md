@@ -1,6 +1,6 @@
 ---
 name: kritik
-version: 0.7.0
+version: 0.8.0
 description: >
   Audit this product's quality with the Kritik framework — score each criterion
   on each surface against observable maturity anchors, record findings with
@@ -277,6 +277,14 @@ caps** apply — one open Critical caps its cell at **D**, one open High caps it
 at **B**, shown with an asterisk. A cell full of 3s does not get to absorb a
 live account-takeover.
 
+**Read the coverage lines.** When a surface's roll-up rests on fewer cells than
+apply to it — a partial audit, a planned part, a first audit that covered one
+domain — `arkaik kritik matrix` prints one line per such surface under the
+table: `web 62, from 6 of 73 cells`. The roll-up is the weighted mean of the
+domains that scored, so with only Security scored, web's overall *is* its
+Security score. Report it with its coverage, never as a grade for the whole
+surface. (The plugin's `compute-matrix.js` prints the table alone.)
+
 ### 7. Record it in the journal
 
 Only if this repo keeps an Arkaik journal — a `docs/arkaik/journal.jsonl`
@@ -440,6 +448,12 @@ whatever the score says. `--record` appends one
 audits under `docs/quality/audits/` and says so plainly when there is one: a
 single reading is a baseline, not a trend.
 
+A planned partial audit's parts count as **one reading**: with no arguments,
+`regressions` compares the state through a plan's last part with the reading
+before it, never two parts of the same plan, and `--from`/`--to` take a plan id
+or any of its part ids. `detect-regressions.js` and `kritik_regressions` pair
+them the same way.
+
 **This is the one to put in CI.** It exits 1 when anything regressed, and it
 depends on nothing but the two audits on disk. (`signals` exits 1 too, but only
 when a `quality.signal.tripped` was already recorded since the last
@@ -478,6 +492,13 @@ says how many cells it re-scored and which audit it measured from.
 `kritik_trend` is the same table over MCP, and the Quality page's matrix wears
 the same arrows against the last recorded audit. On a hosted project that was
 restored but never recorded, both start from that baseline row.
+
+A planned partial audit's row says so — `planned partial audit: 6 cells
+re-scored in 1 part since 2026-08` — and its arrows move only on the surfaces
+(with `--domain`, only the domain) the plan re-scored. Under it, one coverage
+line per surface the reading has not fully looked at: `web 62, from 6 of 73
+cells`. With `--domain` there is none: the row shows one domain's score, and
+the line would show the whole surface's roll-up.
 
 ### Burndown — what was done since the audit
 
@@ -923,6 +944,41 @@ copy them over first.
 
 A plan runs in the repository. A hosted session cannot take a part: hosted
 scoring is scoped re-audits only, and a part's prompt says so.
+
+**Record the plan once, when every part is scored.** `arkaik kritik plan --status
+<planId>` shows each part as not started, in progress or scored. Preview the
+merged reading first — it writes nothing — then record it, from one session:
+
+```
+arkaik kritik matrix <planId> --plan
+arkaik kritik matrix <planId> --record --plan
+```
+
+The record checks that the plan's cells have not moved since it was made (same
+pack version, same profile), that every part still sorts after every other
+audit on disk (a scoped re-audit or another plan made meanwhile would win the
+merge on the cells both hold — make a new plan for the affected parts), that
+every part scored exactly its cells — a score outside the plan is refused, not
+ignored, because the merge reads every audit directory — and that no plan cell
+is missing a score. A part scored in another worktree has no directory here:
+copy or merge it first. Then it appends **one** `quality.audit.completed` under
+the plan id, carrying the merged matrix and
+`scope: { partial, cells, since, plan, parts, scored, coverage }`. Recording
+changes no finding: resolve one explicitly when you see its defect is gone.
+
+The record clears the scope **per cell**: only the stale cells the plan
+re-scored leave `arkaik kritik scope`, and only for fixes that landed before the
+part scored that cell; every other stale cell stays listed. Never record a part
+on its own — `matrix <partId> --record` refuses and points here — and never
+record a plan twice: to correct a recorded plan, make a new plan for the same
+parts. Over MCP the same record is `kritik_matrix` with `audit_id: <planId>`,
+`plan: true` and `record: true`.
+
+A project's first audit may be a plan. Its record has no `since`, the matrix
+and the trend print a coverage line beside every roll-up that rests on part of
+its surface, and `arkaik kritik scope` stays empty until a full audit is
+recorded: a plan record is never what a scope is measured from. Re-check a fix
+by running its part again in a new plan.
 
 ## Reporting back
 

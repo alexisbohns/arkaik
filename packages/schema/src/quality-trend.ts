@@ -10,8 +10,9 @@
  * started to where we are now*.
  *
  * Same two disciplines as `quality.ts` and `quality-regressions.ts`: zod-free
- * and fs-free (the runtime imports are `orderEvents` and `rollUpSurface`, both
- * pure), and nothing mutates its input. Lenient and total, too: a malformed
+ * and fs-free (the runtime imports are `orderEvents`, `rollUpSurface`,
+ * `domainCodeOf` and `readPlanScope`, all pure), and nothing mutates its
+ * input. Lenient and total, too: a malformed
  * payload yields a snapshot with no cells rather than a throw, because a
  * hand-edited journal must never blank the matrix.
  *
@@ -26,6 +27,8 @@
 
 import { orderEvents, type JournalEvent } from "./journal";
 import { rollUpSurface, type FindingSeverity, type QualityMatrix, type QualityProfile } from "./quality";
+import { domainCodeOf } from "./quality-ops";
+import { readPlanScope, type PlanScopeReading } from "./quality-plan";
 
 /** One recorded audit, as `quality.audit.completed` compressed it. */
 export interface AuditSnapshot {
@@ -51,6 +54,12 @@ export interface AuditSnapshot {
   baseline?: true;
   /** Present when the event is a scoped re-audit's merged reading: the audit it followed, and how many cells it re-scored. */
   scope?: { since: string; cells: number | null };
+  /**
+   * Present when the event records a planned partial audit (`scope.plan`): the merged reading, with
+   * the plan's parts, the cells it re-scored and its coverage. A plan record never carries `scope`,
+   * whose `since` would make it read as a scoped re-audit — and without one, as a full audit.
+   */
+  plan?: PlanScopeReading;
 }
 
 /**
@@ -107,8 +116,12 @@ export function sameFrameworkMajor(a: unknown, b: unknown): boolean {
   return left === null || right === null || left === right;
 }
 
-/** The event's scope marker, kept to what a row can show: the audit it followed, and how many cells it re-scored. */
+/**
+ * The event's scope marker, kept to what a row can show: the audit it followed, and how many cells
+ * it re-scored. `undefined` for a plan record, which carries its own marker (`plan`) instead.
+ */
 function scopeOf(raw: unknown): { scope: { since: string; cells: number | null } } | undefined {
+  if (readPlanScope(raw) !== null) return undefined;
   if (!isRecord(raw) || typeof raw.since !== "string" || raw.since === "") return undefined;
   return { scope: { since: raw.since, cells: typeof raw.cells === "number" && Number.isFinite(raw.cells) ? raw.cells : null } };
 }
@@ -215,6 +228,7 @@ export function deriveQualityTrend(
     const scores = cleanScores(event.scores);
     const overall: Record<string, number | null> = {};
     for (const surface of Object.keys(scores)) overall[surface] = rollUpSurface(scores[surface], weights);
+    const plan = readPlanScope(event.scope);
     const snapshot: AuditSnapshot = {
       audit_id: auditId,
       ts: typeof event.ts === "string" ? event.ts : "",
@@ -226,6 +240,7 @@ export function deriveQualityTrend(
       counts: cleanCounts(event.counts),
       ...(event.baseline === true ? { baseline: true as const } : {}),
       ...(scopeOf(event.scope) ?? {}),
+      ...(plan !== null ? { plan } : {}),
     };
     byAudit.delete(auditId);
     byAudit.set(auditId, snapshot);
@@ -274,6 +289,33 @@ export interface TrendRow {
   baseline?: true;
   /** Present when the row is a scoped re-audit's merged reading: the audit it followed, and how many cells it re-scored. */
   scope?: { since: string; cells: number | null };
+  /** Present when the row is a planned partial audit's merged reading; its deltas cover the plan's scored cells only. */
+  plan?: PlanScopeReading;
+}
+
+/**
+ * Whether a plan record re-scored any cell in this column — with `domain`, any cell of that domain.
+ * A plan's point carries the merged matrix, so a column it never looked at only repeats its last
+ * reading; its delta is read over the scored cells alone (spec "Trend"). The domain is the scored
+ * criterion's id prefix: the event carries no library, and every shipped criterion's domain is it.
+ */
+function planScored(plan: PlanScopeReading, surface: string, domain: string | undefined): boolean {
+  return plan.scored.some((key) => {
+    const at = key.lastIndexOf("::");
+    if (at <= 0 || key.slice(at + 2) !== surface) return false;
+    return domain === undefined || domainCodeOf(key.slice(0, at)) === domain;
+  });
+}
+
+/**
+ * Whether two snapshots hold a score for the same domains on `surface`. A surface roll-up averages
+ * the domains that scored, so when a plan brings a new domain onto a surface its roll-up moves
+ * although nothing that existed before got worse: that is coverage growing, not a score moving.
+ */
+function sameDomains(a: AuditSnapshot, b: AuditSnapshot, surface: string): boolean {
+  const left = Object.keys(a.scores[surface] ?? {});
+  const right = new Set(Object.keys(b.scores[surface] ?? {}));
+  return left.length === right.size && left.every((domain) => right.has(domain));
 }
 
 /**
@@ -286,6 +328,10 @@ export interface TrendRow {
  * above did not score that surface or a major bump sits between the two.
  * Columns are the surfaces in order of first appearance, which is the profile
  * order every `auditCompletedInput` wrote them in.
+ *
+ * A plan row reads a delta only on a surface where it scored a cell (of
+ * `domain`, when given) and, with no `domain`, only where the same domains hold
+ * a score as in the row above — else the roll-up moved because coverage grew.
  */
 export function trendRows(
   trend: Pick<QualityTrend, "snapshots">,
@@ -311,7 +357,11 @@ export function trendRows(
     for (const surface of surfaces) {
       const score = valueOf(snapshot, surface);
       const before = above === null ? null : valueOf(above, surface);
-      const delta = snapshot.comparable && score !== null && before !== null ? score - before : null;
+      const looked =
+        snapshot.plan === undefined ||
+        (planScored(snapshot.plan, surface, filter.domain) &&
+          (filter.domain !== undefined || above === null || sameDomains(snapshot, above, surface)));
+      const delta = looked && snapshot.comparable && score !== null && before !== null ? score - before : null;
       cells[surface] = { score, delta };
     }
     rows.push({
@@ -323,6 +373,7 @@ export function trendRows(
       cells,
       ...(snapshot.baseline ? { baseline: true as const } : {}),
       ...(snapshot.scope !== undefined ? { scope: snapshot.scope } : {}),
+      ...(snapshot.plan !== undefined ? { plan: snapshot.plan } : {}),
     });
   });
 

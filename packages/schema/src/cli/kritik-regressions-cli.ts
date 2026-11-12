@@ -12,6 +12,7 @@
  */
 
 import { dirname, resolve } from "node:path";
+import { auditReadings, readingOf, type AuditReading } from "../quality-plan";
 import { detectRegressions, type Regression } from "../quality-regressions";
 import { listAuditIds, loadQualitySectionThrough } from "./kritik-audit";
 import { die, loadEffectiveLibrary } from "./kritik-paths";
@@ -20,8 +21,9 @@ const USAGE = `detect-regressions.js — what got worse between two Kritik audit
 
 Usage: node detect-regressions.js [--from <audit>] [--to <audit>] [--root <dir>] [--json]
 
-  --from       the older reading (default: the audit before --to)
-  --to         the newer reading (default: the newest on disk)
+  --from       the older reading (default: the reading before --to)
+  --to         the newer reading (default: the newest on disk); a plan's
+               parts are one reading, named by the plan id or any part id
   --root       repo root holding docs/quality/ (default: the current directory)
   --json       print the full list as JSON
 
@@ -54,35 +56,42 @@ function main(): void {
   // dropped into a repo that may run it from anywhere.
   const scriptDir = dirname(resolve(process.argv[1] ?? "."));
 
-  const audits = listAuditIds(root);
-  if (audits.length < 2) {
+  // A plan's parts are scored apart and recorded once, so they are one reading:
+  // the same pairing `arkaik kritik regressions` and `kritik_regressions` make.
+  const readings = auditReadings(listAuditIds(root));
+  if (readings.length < 2) {
     return die(
       `detect-regressions: needs two audits to compare — ` +
-        `${audits.length === 0 ? "docs/quality/audits/ holds none" : `only "${audits[0]}" exists`}.`,
+        `${readings.length === 0 ? "docs/quality/audits/ holds none" : `only "${readings[0].id}" exists`}.`,
     );
   }
   // An unknown id and "there is nothing older" are different refusals and must
   // read differently — folding them together names the wrong audit and hides
   // what the repo actually holds. The CLI verb and the MCP tool say the same
   // two things; a third wording here is how three entry points drift apart.
-  const known = (id: string, flag: string): string => {
-    if (!audits.includes(id)) {
-      die(`detect-regressions: no audit "${id}" for ${flag} (have: ${audits.join(", ")})`);
+  const known = (id: string, flag: string): AuditReading => {
+    const reading = readingOf(readings, id);
+    if (reading === undefined) {
+      return die(`detect-regressions: no audit "${id}" for ${flag} (have: ${readings.map((r) => r.id).join(", ")})`);
     }
-    return id;
+    return reading;
   };
-  const to = requestedTo === undefined ? audits[audits.length - 1] : known(requestedTo, "--to");
-  const from = requestedFrom === undefined ? audits[audits.indexOf(to) - 1] : known(requestedFrom, "--from");
-  if (from === undefined) {
-    return die(`detect-regressions: "${to}" is the oldest audit — there is nothing before it to compare against.`);
+  const toReading = requestedTo === undefined ? readings[readings.length - 1] : known(requestedTo, "--to");
+  const fromReading = requestedFrom === undefined ? readings[readings.indexOf(toReading) - 1] : known(requestedFrom, "--from");
+  if (fromReading === undefined) {
+    return die(`detect-regressions: "${toReading.id}" is the oldest audit — there is nothing before it to compare against.`);
   }
-  if (from === to) return die(`detect-regressions: --from and --to name the same audit ("${to}")`);
+  if (fromReading === toReading) return die(`detect-regressions: --from and --to name the same audit ("${toReading.id}")`);
   // Order is the whole verdict: `detectRegressions` reads its first argument as
   // the earlier reading, so a hand-swapped pair would silently report a clean
   // run where a real regression exists — a false green in CI.
-  if (audits.indexOf(from) > audits.indexOf(to)) {
-    return die(`detect-regressions: --from "${from}" is newer than --to "${to}" — swap them, or the comparison inverts.`);
+  if (readings.indexOf(fromReading) > readings.indexOf(toReading)) {
+    return die(`detect-regressions: --from "${fromReading.id}" is newer than --to "${toReading.id}" — swap them, or the comparison inverts.`);
   }
+  const from = fromReading.id;
+  const to = toReading.id;
+  /** The audit directory a reading's state runs through: its last member. */
+  const lastAuditOf = (reading: AuditReading): string => reading.auditIds[reading.auditIds.length - 1];
 
   const library = loadEffectiveLibrary(scriptDir, root);
   let regressions: Regression[];
@@ -90,8 +99,8 @@ function main(): void {
     // Merged through each audit, as the CLI verb reads them: a scoped re-audit
     // holds only the cells it re-scored, compared with their last reading.
     regressions = detectRegressions(
-      loadQualitySectionThrough(root, from, library),
-      loadQualitySectionThrough(root, to, library),
+      loadQualitySectionThrough(root, lastAuditOf(fromReading), library),
+      loadQualitySectionThrough(root, lastAuditOf(toReading), library),
       library,
     );
   } catch (error) {

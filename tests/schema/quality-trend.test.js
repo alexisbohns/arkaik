@@ -275,5 +275,101 @@ check("one cell moving makes the recorded audit the baseline again", goldenMoved
   check("an ordinary row carries neither key", !("baseline" in plain.rows[0]) && !("scope" in plain.rows[0]), JSON.stringify(plain.rows[0]));
 }
 
+// --- planned partial audits (kritik planner, part 4) -------------------------
+{
+  const planScope = (over = {}) => ({
+    partial: true,
+    cells: 2,
+    plan: "2026-11-zplan-1100",
+    parts: ["2026-11-zplan-1100-sec-web"],
+    scored: ["SEC-01::web", "SEC-04::web"],
+    coverage: { scored: 2, assessed: 40, applicable: 338, surfaces: { web: { assessed: 20, applicable: 73 }, ios: { assessed: 20, applicable: 71 } } },
+    ...over,
+  });
+  const events = [
+    audit("2026-10", "2026-10-01T00:00:00.000Z", { web: { SEC: 50, PRV: 50 }, ios: { SEC: 50 } }),
+    audit("2026-11-zplan-1100", "2026-11-11T00:00:00.000Z", { web: { SEC: 75, PRV: 50 }, ios: { SEC: 60 } }, { scope: planScope({ since: "2026-10" }) }),
+    audit("2026-12", "2026-12-01T00:00:00.000Z", { web: { SEC: 75, PRV: 50 }, ios: { SEC: 60 } }),
+  ];
+  const trend = deriveQualityTrend(events);
+  const planned = trend.snapshots[1];
+  check(
+    "a plan record's snapshot carries the plan marker",
+    planned.plan?.plan === "2026-11-zplan-1100" && eq(planned.plan?.parts, ["2026-11-zplan-1100-sec-web"]) && planned.plan?.since === "2026-10" && planned.plan?.coverage?.applicable === 338,
+    JSON.stringify(planned.plan),
+  );
+  check("and never the scoped re-audit marker, even with a since", planned.scope === undefined, JSON.stringify(planned.scope));
+
+  const { rows } = trendRows(trend);
+  check("its row carries the plan too", rows[1].plan?.plan === "2026-11-zplan-1100" && rows[1].scope === undefined, JSON.stringify(rows[1]));
+  check(
+    "its delta is read where it re-scored: web moved",
+    rows[1].cells.web.delta !== null && rows[1].cells.web.delta === rows[1].cells.web.score - rows[0].cells.web.score && rows[1].cells.web.delta !== 0,
+    JSON.stringify(rows[1].cells),
+  );
+  check("and nowhere else: iOS, which it never looked at, has no delta", rows[1].cells.ios.score === 60 && rows[1].cells.ios.delta === null, JSON.stringify(rows[1].cells.ios));
+  check("the row after a plan compares against it as usual", rows[2].cells.ios.delta === 0 && rows[2].plan === undefined, JSON.stringify(rows[2]));
+
+  const sec = trendRows(trend, { domain: "SEC" }).rows;
+  const prv = trendRows(trend, { domain: "PRV" }).rows;
+  check("with a domain, one the plan re-scored on a surface keeps its delta", sec[1].cells.web.delta === 25, JSON.stringify(sec[1].cells));
+  check("and one it did not re-score there has none", prv[1].cells.web.score === 50 && prv[1].cells.web.delta === null, JSON.stringify(prv[1].cells));
+
+  const first = deriveQualityTrend([audit("2026-11-zplan-1100", "2026-11-11T00:00:00.000Z", { web: { SEC: 75 } }, { scope: planScope() })]);
+  check(
+    "a first audit that is a plan reads as a plan with no since, never as a full audit",
+    first.snapshots[0].plan?.since === null && first.snapshots[0].scope === undefined,
+    JSON.stringify(first.snapshots[0]),
+  );
+
+  const blank = deriveQualityTrend([
+    audit("2026-11-scoped", "2026-11-11T00:00:00.000Z", { web: { SEC: 75 } }, { scope: { partial: true, cells: 3, since: "2026-10", plan: "" } }),
+  ]);
+  check("an empty plan field is not a plan: the scoped marker stands", blank.snapshots[0].plan === undefined && blank.snapshots[0].scope?.since === "2026-10", JSON.stringify(blank.snapshots[0]));
+}
+
+// --- a plan that adds a domain to a surface is coverage, not movement ---------
+//
+// A surface roll-up averages the domains holding a score. When a plan brings a
+// new domain onto a surface, the roll-up moves although nothing that existed
+// before got worse — so a plan row's delta on a surface needs the same domains
+// scored there as the row it is compared with.
+{
+  const planScope = (plan, scored) => ({
+    partial: true,
+    cells: scored.length,
+    plan,
+    parts: [`${plan}-x-web`],
+    scored,
+    coverage: { scored: scored.length, assessed: scored.length, applicable: 338, surfaces: { web: { assessed: scored.length, applicable: 73 } } },
+  });
+  const secPlan = audit("2026-11-zplan-1100", "2026-11-11T00:00:00.000Z", { web: { SEC: 100 } }, { scope: planScope("2026-11-zplan-1100", ["SEC-01::web"]) });
+  const a11yPlan = audit("2026-11-zplan-1101", "2026-11-11T01:00:00.000Z", { web: { SEC: 100, A11Y: 25 } }, { scope: planScope("2026-11-zplan-1101", ["A11Y-01::web"]) });
+  const rows = trendRows(deriveQualityTrend([secPlan, a11yPlan])).rows;
+  check(
+    "a plan that brings a new domain onto a surface shows no delta there, though the roll-up moved",
+    rows[1].cells.web.score !== rows[0].cells.web.score && rows[1].cells.web.delta === null,
+    JSON.stringify(rows.map((row) => row.cells.web)),
+  );
+  const a11y = trendRows(deriveQualityTrend([secPlan, a11yPlan]), { domain: "A11Y" }).rows;
+  check("with a domain filter the rule does not apply: A11Y was never scored above, so no delta either way", a11y[1].cells.web.delta === null && a11y[1].cells.web.score === 25, JSON.stringify(a11y[1].cells));
+
+  const secAgain = audit("2026-11-zplan-1102", "2026-11-11T02:00:00.000Z", { web: { SEC: 50, A11Y: 25 } }, { scope: planScope("2026-11-zplan-1102", ["SEC-01::web"]) });
+  const again = trendRows(deriveQualityTrend([secPlan, a11yPlan, secAgain])).rows;
+  check(
+    "a plan that re-scores a domain already scored there keeps its delta",
+    again[2].cells.web.delta !== null && again[2].cells.web.delta === again[2].cells.web.score - again[1].cells.web.score && again[2].cells.web.delta < 0,
+    JSON.stringify(again.map((row) => row.cells.web)),
+  );
+
+  const full = audit("2026-12", "2026-12-01T00:00:00.000Z", { web: { SEC: 50, A11Y: 25, PRV: 75 } });
+  const after = trendRows(deriveQualityTrend([secPlan, a11yPlan, secAgain, full])).rows;
+  check(
+    "a full audit after plans is unaffected: its delta is read even with a new domain",
+    after[3].cells.web.delta !== null && after[3].cells.web.delta === after[3].cells.web.score - after[2].cells.web.score,
+    JSON.stringify(after.map((row) => row.cells.web)),
+  );
+}
+
 console.log(failures === 0 ? "\nAll quality-trend tests OK" : `\n${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -23,6 +23,7 @@ import {
   severityOf,
   deriveFindingsBurndown,
   domainCodeOf,
+  readPlanScope,
   type BurndownPoint,
   type FindingPriority,
   type FindingSeverity,
@@ -614,12 +615,31 @@ export function describeDelta(delta: ScoreDelta | undefined): string | null {
  * much was actually looked at, and that is the thing a reader of the feed needs.
  * Lenient like every reader of stored events: a malformed `scope` falls back to
  * the plain wording rather than rendering "of undefined cells".
+ *
+ * A planned partial audit's record (`scope.plan`) reads as one — "Planned partial
+ * audit of 14 cells" — with the plan, its parts and the audit it followed in the meta.
  */
 export function describeAuditCompleted(event: Readonly<Record<string, unknown>>): { text: string; meta?: string } {
   const str = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
   const audit = str(event.audit_id);
   const framework = str(event.framework_version);
   const kritik = framework ? `Kritik ${framework}` : undefined;
+
+  const plan = readPlanScope(event.scope);
+  if (plan !== null) {
+    const parts = plan.parts.length;
+    const text =
+      plan.cells !== null ? `Planned partial audit of ${plan.cells} cell${plan.cells === 1 ? "" : "s"}` : `Planned partial audit ${plan.plan}`;
+    const meta = [
+      plan.cells !== null ? plan.plan : undefined,
+      parts > 0 ? `${parts} part${parts === 1 ? "" : "s"}` : undefined,
+      plan.since !== null ? `since ${plan.since}` : undefined,
+      kritik,
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join(" · ");
+    return meta === "" ? { text } : { text, meta };
+  }
 
   const scope = event.scope as { partial?: unknown; cells?: unknown; since?: unknown } | null | undefined;
   if (typeof scope !== "object" || scope === null || scope.partial !== true) {

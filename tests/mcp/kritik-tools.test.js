@@ -16,14 +16,14 @@
 
 const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
-const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
+const { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const path = require("path");
 const readline = require("readline");
 
 const ROOT = path.join(__dirname, "..", "..");
 const SERVER = path.join(ROOT, "packages", "mcp", "dist", "index.js");
-// The CLI, for the kritik_plan parity check — test:mcp builds it first (arkaik/io lives in it).
+// The CLI, for the kritik_plan and plan-record parity checks — test:mcp builds it first (arkaik/io lives in it).
 const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 
 if (!existsSync(SERVER)) {
@@ -745,6 +745,296 @@ async function run() {
     session.stop();
   }
 
+  // --- a planned partial audit (repo mode) ------------------------------------
+  //
+  // kritik_matrix plan=true is `arkaik kritik matrix <planId> --record --plan`
+  // over MCP — one preparePlanRecord behind both, so one event. The parity check
+  // records the same plan with the CLI in a twin copied just before the MCP record.
+
+  const planned = startSession();
+  const twin = mkdtempSync(path.join(tmpdir(), "arkaik-mcp-kritik-twin-"));
+  try {
+    await planned.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const made = await planned.call("kritik_plan", { runs: ["SEC:web"] });
+    const plan = made.json.plan ?? { parts: [] };
+    const planId = plan.planId;
+    const part = plan.parts[0] ?? { cells: [] };
+    check("kritik_plan writes the plan kritik_matrix records", !made.isError && made.json.written === true && typeof planId === "string", made.text.slice(0, 300));
+    for (const cell of part.cells) {
+      await planned.call("kritik_score", { criterion_id: cell.criterion_id, surface: cell.surface, level: 3, evidence: `${cell.criterion_id}.ts:1`, audit_id: part.auditId });
+    }
+    const before = planned.journal().length;
+
+    const partRecord = await planned.call("kritik_matrix", { audit_id: part.auditId, record: true });
+    check(
+      "kritik_matrix refuses to record a plan part on its own, and points to the plan",
+      partRecord.isError && partRecord.json.message.includes(`"${planId}"`) && partRecord.json.message.includes("plan=true") && planned.journal().length === before,
+      partRecord.text.slice(0, 300),
+    );
+    const bare = await planned.call("kritik_matrix", { audit_id: planId });
+    check("a plan id without plan=true is told to pass it", bare.isError && bare.json.message.includes("plan=true"), bare.text.slice(0, 300));
+    const both = await planned.call("kritik_matrix", { audit_id: planId, plan: true, scope: true });
+    check("plan=true with scope=true is refused", both.isError && both.json.message.includes("cannot be combined"), both.text.slice(0, 300));
+    const viaPart = await planned.call("kritik_matrix", { audit_id: part.auditId, plan: true });
+    check("plan=true with a part id names the plan to pass", viaPart.isError && viaPart.json.message.includes(`"${planId}"`), viaPart.text.slice(0, 300));
+
+    // An audit that now sorts after the part would win the merge on every cell both hold.
+    const foreign = `${planId.slice(0, 7)}-zz-foreign`;
+    mkdirSync(path.join(planned.dir, "docs", "quality", "audits", foreign), { recursive: true });
+    writeFileSync(
+      path.join(planned.dir, "docs", "quality", "audits", foreign, "scores.json"),
+      JSON.stringify({ audit_id: foreign, assessments: [{ criterion_id: part.cells[0]?.criterion_id, surface: "web", level: 1, evidence: "x.ts:1", audit_id: foreign }] }),
+    );
+    const outsorted = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    check(
+      "plan=true refuses a plan one of whose parts an audit now sorts after, naming both",
+      outsorted.isError &&
+        outsorted.json.message.includes(`${part.auditId}: "${foreign}"`) &&
+        outsorted.json.message.includes("Make a new plan for the affected parts") &&
+        planned.journal().length === before,
+      outsorted.text.slice(0, 400),
+    );
+    rmSync(path.join(planned.dir, "docs", "quality", "audits", foreign), { recursive: true, force: true });
+
+    const preview = await planned.call("kritik_matrix", { audit_id: planId, plan: true });
+    check("plan=true without record previews and writes nothing", !preview.isError && preview.json.events?.length === 0 && planned.journal().length === before, preview.text.slice(0, 300));
+    check(
+      "the preview carries the plan marker",
+      preview.json.scope?.plan === planId && JSON.stringify(preview.json.scope?.parts) === JSON.stringify([part.auditId]) && preview.json.scope?.cells === part.cells.length,
+      String(JSON.stringify(preview.json.scope)).slice(0, 300),
+    );
+    check(
+      "and its coverage: a first audit that is a plan looked at its own cells only",
+      preview.json.coverage?.scored === part.cells.length &&
+        preview.json.coverage?.assessed === part.cells.length &&
+        preview.json.coverage?.surfaces?.web?.assessed === part.cells.length &&
+        preview.json.coverage?.applicable > part.cells.length,
+      String(JSON.stringify(preview.json.coverage)).slice(0, 300),
+    );
+    check(
+      "coverage_notes say it beside the web roll-up",
+      (preview.json.coverage_notes ?? []).some((note) => note.startsWith("web ") && note.includes(`from ${part.cells.length} of`)),
+      JSON.stringify(preview.json.coverage_notes),
+    );
+
+    cpSync(planned.dir, twin, { recursive: true });
+    const recorded = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    const event = recorded.json.events?.[0] ?? {};
+    check(
+      "plan=true record=true appends one quality.audit.completed under the plan id",
+      !recorded.isError && recorded.json.events.length === 1 && event.type === "quality.audit.completed" && event.audit_id === planId && planned.journal().length === before + 1,
+      recorded.text.slice(0, 300),
+    );
+    check("a first audit that is a plan records no since", event.scope?.plan === planId && event.scope !== undefined && !("since" in event.scope), String(JSON.stringify(event.scope)).slice(0, 300));
+
+    const cli = spawnSync(process.execPath, [CLI, "kritik", "matrix", planId, "--record", "--plan"], { cwd: twin, encoding: "utf8" });
+    const twinEvents = readFileSync(path.join(twin, "docs", "arkaik", "journal.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const cliEvent = twinEvents[twinEvents.length - 1] ?? {};
+    const sorted = (value) =>
+      Array.isArray(value)
+        ? value.map(sorted)
+        : value !== null && typeof value === "object"
+          ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])]))
+          : value;
+    const payload = (e) => {
+      const { id: _id, ts: _ts, actor: _actor, ...rest } = e;
+      return JSON.stringify(sorted(rest));
+    };
+    check(
+      "kritik_matrix plan=true appends the same event as the CLI",
+      cli.status === 0 && payload(cliEvent) === payload(event),
+      `${cli.stderr}\nCLI: ${payload(cliEvent).slice(0, 300)}\nMCP: ${payload(event).slice(0, 300)}`,
+    );
+
+    const again = await planned.call("kritik_matrix", { audit_id: planId, plan: true, record: true });
+    check("recording the plan twice is refused", again.isError && again.json.message.includes("already recorded") && planned.journal().length === before + 1, again.text.slice(0, 300));
+
+    // --- after the plan record: the scope's anchor, and regressions readings ---
+
+    const emptyScope = await planned.call("kritik_scope", {});
+    check(
+      "with only plan records, kritik_scope is empty and says why",
+      !emptyScope.isError && emptyScope.json.since === null && (emptyScope.json.note ?? "").includes("only plan records") && (emptyScope.json.note ?? "").includes(planId),
+      emptyScope.text.slice(0, 400),
+    );
+    const planSince = await planned.call("kritik_scope", { since: planId });
+    check("a plan id is never a scope's anchor", planSince.isError && planSince.json.message.includes("never a scope's anchor"), planSince.text.slice(0, 300));
+    const partSince = await planned.call("kritik_scope", { since: part.auditId });
+    check("nor is one of its part ids", partSince.isError && partSince.json.message.includes("never a scope's anchor"), partSince.text.slice(0, 300));
+    const scopedScore = await planned.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "x.ts:1", scope: true });
+    check("kritik_score scope=true with only plan records says why there is nothing to measure from", scopedScore.isError && scopedScore.json.message.includes("only plan records"), scopedScore.text.slice(0, 300));
+
+    const writeScores = (auditId, cells, level) => {
+      const dir = path.join(planned.dir, "docs", "quality", "audits", auditId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "scores.json"),
+        JSON.stringify({
+          audit_id: auditId,
+          framework_version: plan.frameworkVersion,
+          assessments: cells.map((cell) => ({ criterion_id: cell.criterion_id, surface: cell.surface, level, evidence: `${cell.criterion_id}.ts:1`, audit_id: auditId, ts: "2026-11-01T00:00:00.000Z" })),
+        }),
+      );
+    };
+    // An audit sorting after the plan's part, declared scoped by hand: there is
+    // no full or scoped record before it, so it is refused — never measured from the plan.
+    const later = `${planId.slice(0, 7)}-zz-later`;
+    writeScores(later, [{ criterion_id: "SEC-02", surface: "supabase" }], 2);
+    const declaredAfterPlan = await planned.call("kritik_matrix", { audit_id: later, scope: true });
+    check("scope=true never takes a plan or its part as the audit it followed", declaredAfterPlan.isError && declaredAfterPlan.json.message.includes("no recorded audit sorts before"), declaredAfterPlan.text.slice(0, 300));
+    rmSync(path.join(planned.dir, "docs", "quality", "audits", later), { recursive: true, force: true });
+
+    const oneReading = await planned.call("kritik_regressions", {});
+    check("one plan is one reading — nothing to compare yet", oneReading.isError && oneReading.json.message.includes(`only "${planId}" exists`), oneReading.text.slice(0, 300));
+    const made2 = await planned.call("kritik_plan", { runs: ["SEC:supabase", "PRV:web"] });
+    const plan2 = made2.json.plan ?? { parts: [] };
+    const [secSupabase, prvWeb] = plan2.parts;
+    writeScores(secSupabase?.auditId, secSupabase?.cells ?? [], 2);
+    writeScores(prvWeb?.auditId, prvWeb?.cells ?? [], 2);
+    const pairDefault = await planned.call("kritik_regressions", {});
+    check("kritik_regressions defaults to the newest plan against the reading before it", !pairDefault.isError && pairDefault.json.from === planId && pairDefault.json.to === plan2.planId, pairDefault.text.slice(0, 300));
+    const toPart = await planned.call("kritik_regressions", { to: prvWeb?.auditId });
+    check("a part id given as to reads its whole plan", !toPart.isError && toPart.json.to === plan2.planId, toPart.text.slice(0, 300));
+    const samePlan = await planned.call("kritik_regressions", { from: secSupabase?.auditId, to: prvWeb?.auditId });
+    check("two parts of one plan are one reading", samePlan.isError && samePlan.json.message.includes("same audit"), samePlan.text.slice(0, 300));
+  } finally {
+    planned.stop();
+    rmSync(twin, { recursive: true, force: true });
+  }
+
+  // --- a plan's record never takes in another audit's unrecorded scores ------------
+
+  const guarded = startSession();
+  try {
+    await guarded.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const audits = (...parts) => path.join(guarded.dir, "docs", "quality", "audits", ...parts);
+    const score = (cell, level, auditId) =>
+      guarded.call("kritik_score", { criterion_id: cell.criterion_id, surface: cell.surface, level, evidence: `${cell.criterion_id}.ts:1`, audit_id: auditId });
+    const planA = (await guarded.call("kritik_plan", { runs: ["SEC:web"] })).json.plan ?? { parts: [] };
+    const partA = planA.parts[0] ?? { cells: [] };
+    for (const cell of partA.cells.slice(0, 2)) await score(cell, 0, partA.auditId);
+    const planB = (await guarded.call("kritik_plan", { runs: ["SEC:supabase"] })).json.plan ?? { parts: [] };
+    const partB = planB.parts[0] ?? { cells: [] };
+    for (const cell of partB.cells) await score(cell, 3, partB.auditId);
+    const before = guarded.journal().length;
+
+    const blocked = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "plan=true refuses while another plan's unrecorded part with scores sorts before its last part",
+      blocked.isError &&
+        blocked.json.message.includes(`${partA.auditId}: 2 scores, never recorded (a part of plan "${planA.planId}")`) &&
+        blocked.json.message.includes("unannounced") &&
+        guarded.journal().length === before,
+      blocked.text.slice(0, 400),
+    );
+    rmSync(audits(partA.auditId), { recursive: true, force: true });
+
+    const hand = `${planB.planId.slice(0, 7)}-hand`;
+    mkdirSync(audits(hand), { recursive: true });
+    writeFileSync(
+      audits(hand, "scores.json"),
+      JSON.stringify({ audit_id: hand, assessments: [{ criterion_id: "PRV-01", surface: "web", level: 1, evidence: "x.ts:1", audit_id: hand }] }),
+    );
+    mkdirSync(audits(`${planB.planId.slice(0, 7)}-empty`), { recursive: true });
+    mkdirSync(audits(`${planB.planId.slice(0, 7)}-findings`), { recursive: true });
+    writeFileSync(audits(`${planB.planId.slice(0, 7)}-findings`, "findings.json"), JSON.stringify({ findings: [] }));
+    const byHand = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "plan=true refuses an unrecorded hand-named audit holding a score, and names no empty or findings-only directory",
+      byHand.isError &&
+        byHand.json.message.includes(`${hand}: 1 score, never recorded`) &&
+        !byHand.json.message.includes("-empty") &&
+        !byHand.json.message.includes("-findings") &&
+        guarded.journal().length === before,
+      byHand.text.slice(0, 400),
+    );
+    const handRecorded = await guarded.call("kritik_matrix", { audit_id: hand, record: true });
+    check("(setup) the hand-named audit records", !handRecorded.isError, handRecorded.text.slice(0, 300));
+    const afterHand = guarded.journal().length;
+    const recorded = await guarded.call("kritik_matrix", { audit_id: planB.planId, plan: true, record: true });
+    check(
+      "once recorded it no longer blocks, and the plan records",
+      !recorded.isError && guarded.journal().length === afterHand + 1 && guarded.journal().at(-1)?.audit_id === planB.planId,
+      recorded.text.slice(0, 300),
+    );
+
+    // A part recorded on its own (an older server, a hand-edited journal) cannot be folded into its plan.
+    const planC = (await guarded.call("kritik_plan", { runs: ["PRV:web"] })).json.plan ?? { parts: [] };
+    const partC = planC.parts[0] ?? { cells: [] };
+    for (const cell of partC.cells) await score(cell, 3, partC.auditId);
+    const template = guarded.journal().at(-1) ?? {};
+    appendFileSync(
+      path.join(guarded.dir, "docs", "arkaik", "journal.jsonl"),
+      `${JSON.stringify({ ...template, id: `${String(template.id).slice(0, -1)}Z`, ts: new Date().toISOString(), audit_id: partC.auditId, scope: undefined })}\n`,
+    );
+    const beforeC = guarded.journal().length;
+    const alone = await guarded.call("kritik_matrix", { audit_id: planC.planId, plan: true, record: true });
+    check(
+      "plan=true refuses a plan one of whose parts was recorded on its own",
+      alone.isError &&
+        alone.json.message.includes(`part "${partC.auditId}" was already recorded on its own`) &&
+        alone.json.message.includes("cannot be folded into a plan record") &&
+        guarded.journal().length === beforeC,
+      alone.text.slice(0, 400),
+    );
+
+    // A hand-written scope stamp naming a plan or a part is refused, naming the file.
+    const stamped = `${planC.planId.slice(0, 7)}-stamped`;
+    for (const since of [planB.planId, partB.auditId]) {
+      mkdirSync(audits(stamped), { recursive: true });
+      writeFileSync(
+        audits(stamped, "scores.json"),
+        JSON.stringify({ audit_id: stamped, scope: { since }, assessments: [{ criterion_id: "PRV-01", surface: "web", level: 2, evidence: "x.ts:1", audit_id: stamped }] }),
+      );
+      const beforeStamp = guarded.journal().length;
+      const refused = await guarded.call("kritik_matrix", { audit_id: stamped, record: true });
+      check(
+        `kritik_matrix refuses a scores.json stamped scope.since "${since}", naming the file`,
+        refused.isError &&
+          refused.json.message.includes(path.join("docs", "quality", "audits", stamped, "scores.json")) &&
+          refused.json.message.includes("a scope is measured from a full or scoped audit, never from a plan") &&
+          guarded.journal().length === beforeStamp,
+        refused.text.slice(0, 400),
+      );
+    }
+  } finally {
+    guarded.stop();
+  }
+
+  // --- readings are ordered by their last member ------------------------------------
+  //
+  // A scoped re-audit named after a plan's first part, made while a sibling part was
+  // unscored, sorts between the parts; the plan's state runs through its last part.
+
+  const interleaved = startSession();
+  try {
+    await interleaved.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "kritik-test", version: "0" } });
+    const P = "2026-09-zplan-0100";
+    const write = (auditId, rows) => {
+      const dir = path.join(interleaved.dir, "docs", "quality", "audits", auditId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "scores.json"),
+        JSON.stringify({
+          audit_id: auditId,
+          assessments: rows.map(([criterion_id, level]) => ({ criterion_id, surface: "web", level, evidence: "x.ts:1", audit_id: auditId, ts: "2026-09-01T00:00:00.000Z" })),
+        }),
+      );
+    };
+    write("2026-08", [["PRV-01", 2], ["SEC-01", 2]]);
+    write(`${P}-prv-web`, [["PRV-01", 2]]);
+    write(`${P}-prv-web-scoped`, [["PRV-01", 2]]);
+    write(`${P}-sec-web`, [["SEC-01", 1]]); // 2 -> 1
+    const pair = await interleaved.call("kritik_regressions", {});
+    check(
+      "kritik_regressions: a scoped re-audit sorting between a plan's parts is the earlier reading, the plan the later",
+      pair.json.from === `${P}-prv-web-scoped` && pair.json.to === P && (pair.json.regressions ?? []).some((r) => r.kind === "level-drop" && r.criterion_id === "SEC-01"),
+      pair.text.slice(0, 400),
+    );
+  } finally {
+    interleaved.stop();
+  }
+
   // --- hosted mode -------------------------------------------------------------
   //
   // A stub server stands in for the hosted API. It covers: the reads
@@ -1455,6 +1745,12 @@ async function run() {
       "hosted kritik_scope since=<unknown> with no audit points at a restore, not record=true",
       emptySince.isError && pointsAtRestore(emptySince.json.message),
       emptySince.text.slice(0, 400),
+    );
+    const hostedPlan = await empty.call("kritik_matrix", { audit_id: "2026-11-zplan-1100", plan: true, record: true });
+    check(
+      "a hosted session refuses plan=true — a plan's parts live in the repository",
+      hostedPlan.isError && hostedPlan.json.message.includes("plan=true") && hostedPlan.json.message.includes("--bundle"),
+      hostedPlan.text.slice(0, 300),
     );
   } finally {
     empty.stop();
