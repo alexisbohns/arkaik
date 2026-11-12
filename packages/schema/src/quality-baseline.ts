@@ -12,9 +12,11 @@
  * reading instead:
  *
  * - **Which audit:** the lexically newest `audit_id` among the assessments,
- *   skipping scoped ones (`<month>-scoped`, `<month>-scoped-02`) — a hosted
- *   score landing between the section read and the journal read must never
- *   pass for the restored audit. The scoped rows are left out of the matrix
+ *   skipping partial ones (`isPartialAuditId`: scoped re-audits such as
+ *   `<month>-scoped`, plans and plan parts such as `2026-11-zplan-1100-sec-web`)
+ *   — a hosted score landing between the section read and the journal read
+ *   must never pass for the restored audit, and neither may a plan part scored
+ *   before its plan is recorded. The partial rows are left out of the matrix
  *   too; every other row feeds it, as it always has.
  * - **Its window:** the finding decisions (`quality.finding.resolved` /
  *   `accepted`) ordered at or after the audit's earliest assessment `ts`. A
@@ -51,17 +53,15 @@
 import { orderEvents, type JournalEvent } from "./journal";
 import { deriveQualityMatrix, type KritikLibrary, type QualityAssessment, type QualityFinding, type QualitySection } from "./quality";
 import { auditCompletedInput } from "./quality-ops";
+import { isPartialAuditId } from "./quality-plan";
 
 const EPOCH = "1970-01-01T00:00:00.000Z";
 const DECISIONS = new Set(["quality.finding.resolved", "quality.finding.accepted"]);
 /** The statuses a decision event produces — the only ones the revert undoes. */
 const REVERTIBLE = new Set<unknown>(["resolved", "accepted-risk"]);
-/** `<month>-scoped` and `<month>-scoped-02`…: the ids a scoped re-audit writes into (`scopedAuditTarget`). */
-const SCOPED_AUDIT_ID = /-scoped(-\d+)?$/;
 
 const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 const isString = (value: unknown): value is string => typeof value === "string" && value !== "";
-const isScopedAuditId = (value: unknown): boolean => isString(value) && SCOPED_AUDIT_ID.test(value);
 
 /** A plain object, never `null` and never an array — what every reader below (and `deriveQualityMatrix`) can safely dereference fields of. */
 const isRow = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -117,7 +117,7 @@ export function implicitAuditBaseline(
   const rows = objectRowsOf<JournalEvent>(events);
   if (rows.some((event) => event.type === "quality.audit.completed")) return null;
 
-  // Every valid assessment row but a scoped audit's feeds the matrix below;
+  // Every valid assessment row but a partial audit's feeds the matrix below;
   // only the ones tagged with an `audit_id` say anything about *which* audit to
   // read or when it was taken.
   //
@@ -128,8 +128,11 @@ export function implicitAuditBaseline(
   // them — reading those rows as the restored audit would mislabel the scoped
   // audit as the baseline, and score the baseline from the hosted re-scores. A
   // restored scoped audit with no recording is not a real case, so skipping
-  // them costs nothing.
-  const assessmentRows = objectRowsOf<QualityAssessment>(section?.assessments).filter((row) => !isScopedAuditId(row.audit_id));
+  // them costs nothing. A plan part (`2026-11-zplan-1100-sec-web`) is skipped
+  // too: it scores a handful of cells, and until its plan is recorded nothing
+  // says so — read as the baseline, six Security cells would pass for a full
+  // audit.
+  const assessmentRows = objectRowsOf<QualityAssessment>(section?.assessments).filter((row) => !isPartialAuditId(row.audit_id));
   const taggedAssessments = assessmentRows.filter((row) => isString(row.audit_id));
   if (taggedAssessments.length === 0) return null;
   const auditId = taggedAssessments.map((row) => row.audit_id as string).sort().at(-1) as string;

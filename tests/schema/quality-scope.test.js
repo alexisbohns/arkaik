@@ -472,5 +472,95 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
   );
 }
 
+// --- scopedAuditId after a plan (the planner, part 1) ------------------------
+//
+// A plan's parts (`2026-11-zplan-1100-sec-web`) sort after every same-month id
+// by design, so `<month>-scoped` would sort before them and be refused. The
+// candidates start from the newest part instead.
+
+{
+  const throws = (fn) => {
+    try {
+      fn();
+      return undefined;
+    } catch (error) {
+      return error.message;
+    }
+  };
+  const PARTS = ["2026-11-zplan-1100-agt-ios", "2026-11-zplan-1100-sec-web"];
+  const base = { since: "2026-10", month: "2026-11", recorded: ["2026-10", "2026-11-zplan-1100", ...PARTS] };
+
+  check(
+    "after a plan in the same month, the scoped audit is named after the newest part",
+    scopedAuditId({ ...base, known: ["2026-10", ...PARTS] }) === "2026-11-zplan-1100-sec-web-scoped",
+  );
+  check(
+    "a taken <partId>-scoped rolls to -02, read off the scoped id's stem",
+    scopedAuditId({ ...base, known: ["2026-10", ...PARTS, "2026-11-zplan-1100-sec-web-scoped"] }) === "2026-11-zplan-1100-sec-web-scoped-02",
+  );
+  check(
+    "-02 taken rolls to -03",
+    scopedAuditId({ ...base, known: ["2026-10", ...PARTS, "2026-11-zplan-1100-sec-web-scoped", "2026-11-zplan-1100-sec-web-scoped-02"] }) ===
+      "2026-11-zplan-1100-sec-web-scoped-03",
+  );
+  check(
+    "known need not arrive sorted",
+    scopedAuditId({ ...base, known: ["2026-11-zplan-1100-sec-web", "2026-10", "2026-11-zplan-1100-agt-ios"] }) === "2026-11-zplan-1100-sec-web-scoped",
+  );
+  check(
+    "a plan in an earlier month leaves the month base alone",
+    scopedAuditId({ since: "2026-10", month: "2026-11", known: ["2026-10", "2026-10-zplan-3100-sec-web"], recorded: ["2026-10", "2026-10-zplan-3100"] }) ===
+      "2026-11-scoped",
+  );
+  check(
+    "a plan id alone (no part on disk) is not a part: the month base still applies, and still refuses",
+    /would sort before "2026-11-zplan-1100"/.test(
+      throws(() => scopedAuditId({ since: "2026-10", month: "2026-11", known: ["2026-10", "2026-11-zplan-1100"], recorded: ["2026-10", "2026-11-zplan-1100"] })),
+    ),
+  );
+  check(
+    "a newest id that is not a plan part still refuses as before",
+    /would sort before "2026-11-zz"/.test(throws(() => scopedAuditId({ since: "2026-10", month: "2026-11", known: ["2026-10", "2026-11-zz"], recorded: ["2026-10"] }))),
+  );
+  {
+    const input = { ...base, requested: "2026-11-scoped", known: ["2026-10", ...PARTS] };
+    const message = throws(() => scopedAuditId(input));
+    const suggestion = (/e\.g\. `([^`]+)`/.exec(message ?? "") ?? [])[1];
+    check(
+      "a refused request after a plan suggests <partId>-scoped, which is accepted",
+      /sorts before/.test(message) && suggestion === "2026-11-zplan-1100-sec-web-scoped" && scopedAuditId({ ...input, requested: suggestion }) === suggestion,
+      message,
+    );
+  }
+  check(
+    "a requested <partId>-scoped is accepted",
+    scopedAuditId({ ...base, requested: "2026-11-zplan-1100-sec-web-scoped", known: ["2026-10", ...PARTS] }) === "2026-11-zplan-1100-sec-web-scoped",
+  );
+
+  // A requested id shaped like a plan or a part would make an audit directory
+  // that can never be recorded or read as a plan: refused, whatever it sorts after.
+  for (const requested of ["2026-11-zplan-1199", "2026-11-zplan-1199-sec-web", "2026-11-zplan-1100-sec-ios"]) {
+    const input = { ...base, requested, known: ["2026-10", ...PARTS] };
+    const message = throws(() => scopedAuditId(input));
+    check(`a requested "${requested}" is refused as reserved for plans and their parts`, /reserved for plans and their parts/.test(message ?? ""), message);
+    const suggestion = (/e\.g\. `([^`]+)`/.exec(message ?? "") ?? [])[1];
+    check(
+      `the refusal of "${requested}" suggests an id that is accepted`,
+      suggestion !== undefined && scopedAuditId({ ...input, requested: suggestion }) === suggestion,
+      message,
+    );
+  }
+  check(
+    "a recorded part asked for by name still says it is already recorded",
+    /already recorded/.test(throws(() => scopedAuditId({ ...base, requested: "2026-11-zplan-1100-sec-web", known: ["2026-10", ...PARTS] })) ?? ""),
+  );
+  check(
+    "a reserved id is refused with nothing else known, too",
+    /reserved for plans and their parts/.test(
+      throws(() => scopedAuditId({ since: "2026-10", month: "2026-11", requested: "2026-11-zplan-1199", known: ["2026-10"], recorded: ["2026-10"] })) ?? "",
+    ),
+  );
+}
+
 console.log(failures === 0 ? "\nAll quality-scope checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -27,4 +27,5 @@ export * from "./quality-trend";
 export * from "./quality-scope";
 export * from "./quality-burndown";
 export * from "./quality-baseline";
+export * from "./quality-plan";
 export * from "./journal-page";

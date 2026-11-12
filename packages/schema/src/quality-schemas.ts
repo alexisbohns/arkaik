@@ -27,6 +27,7 @@ import type {
   QualitySection,
   SurfaceDef,
 } from "./quality";
+import { isPlanId, KRITIK_PLAN_SCHEMA, planPartId, type KritikPlan, type KritikPlanPart } from "./quality-plan";
 
 const GradeSchema = z.enum(["A", "B", "C", "D", "E"]);
 
@@ -186,3 +187,119 @@ export const QualitySectionSchema: z.ZodType<QualitySection> = z
     description:
       "The project's Kritik state (docs/rfcs/kritik.md § 4.1) — profile, assessments, findings. Criteria are library content, not graph nodes; the matrix is a projection, never stored.",
   });
+
+// --- The Kritik plan file (docs/superpowers/specs/2026-11-11-kritik-planner-design.md) ---
+//
+// Plain `z.object`, unlike everything above: a plan file is written by `arkaik
+// kritik plan` and read back by the same toolchain, never round-tripped through
+// a bundle, so an unknown key is stripped rather than carried. No `.meta({ id })`
+// either — the plan is not part of the project bundle's published JSON Schema.
+
+const KritikPlanBandSchema = z.object({
+  low: z.number().nonnegative(),
+  mid: z.number().nonnegative(),
+  high: z.number().nonnegative(),
+});
+
+const KritikPlanCellSchema = z.object({ criterion_id: z.string(), surface: z.string() });
+
+export const KritikPlanPartSchema: z.ZodType<KritikPlanPart> = z.object({
+  domain: z.string().regex(/^[A-Z0-9]{2,5}$/),
+  surface: z.string().min(1),
+  auditId: z.string(),
+  cells: z.array(KritikPlanCellSchema).min(1),
+  steps: z.number().int().nonnegative(),
+  estimate: z
+    .object({
+      tokens: KritikPlanBandSchema,
+      usd: KritikPlanBandSchema.nullable(),
+      inputs: z.object({
+        P: z.number(),
+        B: z.number(),
+        c: KritikPlanBandSchema,
+        q: KritikPlanBandSchema,
+        h: KritikPlanBandSchema,
+        V: KritikPlanBandSchema,
+      }),
+      calibrated: z.boolean(),
+    })
+    .nullable(),
+  status: z.enum(["included", "deferred"]),
+  prompt: z.string(),
+});
+
+export const KritikPlanSchema: z.ZodType<KritikPlan> = z
+  .object({
+    schema: z.literal(KRITIK_PLAN_SCHEMA),
+    planId: z.string(),
+    createdAt: z.iso.datetime(),
+    commit: z.string().nullable(),
+    frameworkVersion: z.string(),
+    tier: z.string().nullable(),
+    budgetTokens: z.number().int().positive().nullable(),
+    budgetUsd: z.number().positive().nullable(),
+    pricePerMTok: z.number().positive().nullable(),
+    parts: z.array(KritikPlanPartSchema).min(1),
+    totals: z.object({
+      cells: z.number().int(),
+      steps: z.number().int(),
+      applicableCells: z.number().int(),
+      tokens: KritikPlanBandSchema.nullable(),
+      usd: KritikPlanBandSchema.nullable(),
+    }),
+    prompt: z.string(),
+    recordCommand: z.string(),
+  })
+  .superRefine((plan, ctx) => {
+    if (plan.budgetUsd !== null && plan.pricePerMTok === null) {
+      ctx.addIssue({ code: "custom", path: ["pricePerMTok"], message: "required when budgetUsd is set" });
+    }
+    // The ids must fit together: a part scores into planPartId(planId, domain,
+    // surface), so a hand edit that breaks the link would score, read or record
+    // a directory the plan never named.
+    if (!isPlanId(plan.planId)) {
+      ctx.addIssue({ code: "custom", path: ["planId"], message: "not a plan id (YYYY-MM-zplan-DDNN)" });
+      return;
+    }
+    const seen = new Map<string, number>();
+    plan.parts.forEach((part, index) => {
+      let expected: string | null;
+      try {
+        expected = planPartId(plan.planId, part.domain, part.surface);
+      } catch {
+        expected = null;
+      }
+      if (part.auditId !== expected) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["parts", index, "auditId"],
+          message:
+            expected === null
+              ? `the surface "${part.surface}" cannot be planned, so no audit id fits this part`
+              : `not this part's audit id: expected "${expected}"`,
+        });
+      } else if (seen.has(part.auditId)) {
+        ctx.addIssue({ code: "custom", path: ["parts", index, "auditId"], message: `repeats the audit id of part ${seen.get(part.auditId)}` });
+      } else {
+        seen.set(part.auditId, index);
+      }
+      part.cells.forEach((cell, cellIndex) => {
+        if (cell.surface !== part.surface) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["parts", index, "cells", cellIndex, "surface"],
+            message: `not the part's surface "${part.surface}"`,
+          });
+        }
+      });
+    });
+  });
+
+/** A plan file's content, parsed — or its first problem as `<path>: <message>` (`(root)` when the value itself is wrong). */
+export function parseKritikPlan(value: unknown): { ok: true; plan: KritikPlan } | { ok: false; issue: string } {
+  const result = KritikPlanSchema.safeParse(value);
+  if (result.success) return { ok: true, plan: result.data };
+  const first = result.error.issues[0];
+  const path = first === undefined ? "" : first.path.map(String).join(".");
+  return { ok: false, issue: `${path === "" ? "(root)" : path}: ${first?.message ?? "not a plan"}` };
+}
