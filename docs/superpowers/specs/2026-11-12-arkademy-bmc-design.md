@@ -596,7 +596,8 @@ export type ArkademyLookup =
 export const ARKADEMY_CACHE_SECONDS = 3600;
 export const ARKADEMY_CACHE_TAG = "arkademy";
 export const ARKADEMY_CACHE_KEY_PARTS: readonly string[]; // ["arkademy-current", "format-<F>", "schema-<R>"]
-export async function readCurrentArkademy(): Promise<StoredArkademyRow | null>; // one query, uncached
+export const ARKADEMY_READ_TIMEOUT_MS = 5000;
+export async function readCurrentArkademy(): Promise<StoredArkademyRow | null>; // one query, uncached, bounded
 export async function getArkademy(): Promise<ArkademyLookup>;
 export function expireArkademyCache(): void; // revalidateTag(ARKADEMY_CACHE_TAG, { expire: 0 })
 export function arkademyEtag(version: number): string; // W/"arkademy.<version>.f<F>.s<R>"
@@ -620,6 +621,13 @@ without a format bump.
   the cache, logs the message (never the document), and returns `error`.
 - In development (`NODE_ENV !== "production"`) it reads Postgres directly, so
   an upload shows on the next reload.
+- The read is bounded (added 2026-11-12, after review): `readCurrentArkademy`
+  runs its query through `queryWithin` (`lib/services/db.ts`), which gives up
+  after `ARKADEMY_READ_TIMEOUT_MS`, connection included, on a connection of
+  its own that it destroys at the deadline. A database that accepts and never
+  answers therefore ends in `error`, uncached, within seconds. The pool's other
+  users (`query`, `withTransaction`, the Auth.js adapter) keep waiting as long
+  as it takes: a deadline there would turn a cold start into a failed sign-in.
 - A new upload is live at once when the upload script can call
   `POST /api/arkademy/revalidate` (§ "The read route"), which expires the tag
   with `revalidateTag(tag, { expire: 0 })` — the immediate expiry of Next 16's
