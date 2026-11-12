@@ -42,8 +42,15 @@ export interface CanvasGridProps {
   label: string;
   /** 3 under a page's `h2`; 4 inside a card titled by an `h3` (the cover). Default 3. */
   headingLevel?: 3 | 4;
-  /** The block that carries a ring: the current question (tour, your canvas). */
+  /** The block that carries a ring: the current question (tour, your canvas). Never drawn faint. */
   current?: BmcQuestionKey;
+  /**
+   * The tour's block being answered, not filled yet: drawn at full strength
+   * (never faint), its ring if it is also `current`, its heading shown and its
+   * body empty — no answers, no "Not answered yet." — and named "<block>, being
+   * answered" for assistive technology.
+   */
+  pending?: BmcQuestionKey;
   /**
    * 0–9 (tour): blocks after it are drawn faint with only their title. Default
    * 9. Clamped by `clampThrough`, as the paragraph is, so the two agree.
@@ -71,6 +78,7 @@ export function CanvasGrid({
   label,
   headingLevel = 3,
   current,
+  pending,
   through,
   onSelectQuestion,
 }: CanvasGridProps) {
@@ -86,8 +94,11 @@ export function CanvasGrid({
           const entry = byKey.get(question.key);
           // Cleaned, empties dropped: the same answers the paragraph reads.
           const answers = displayAnswers(entry);
-          const open = answers.length === 0 && entry?.open === true;
-          const faint = i >= shown;
+          const isPending = question.key === pending;
+          // A pending block does not reveal yet that its question is left open (no dashed border).
+          const open = !isPending && answers.length === 0 && entry?.open === true;
+          // Past `through`, faint with only the title; the current and the pending block never are.
+          const faint = i >= shown && question.key !== current && !isPending;
           const listed = mini ? answers.slice(0, CANVAS_MINI_ANSWERS) : answers;
           // "--", which a slug never holds: "example-acme--cost" cannot be company "acme-cost"'s heading.
           const headingId = `${idPrefix}--${question.key}`;
@@ -95,9 +106,11 @@ export function CanvasGrid({
             <div
               key={question.key}
               role="group"
-              aria-labelledby={headingId}
+              aria-labelledby={isPending ? undefined : headingId}
+              aria-label={isPending ? `${question.block}, being answered` : undefined}
               data-question={question.key}
               data-faint={faint ? "" : undefined}
+              data-pending={isPending ? "" : undefined}
               className={cn(
                 "flex min-w-0 flex-col rounded-lg border bg-background",
                 mini ? "gap-1.5 p-2.5" : "gap-2 p-3",
@@ -124,7 +137,7 @@ export function CanvasGrid({
                   question.block
                 )}
               </Heading>
-              {faint ? null : answers.length > 0 ? (
+              {faint || isPending ? null : answers.length > 0 ? (
                 <>
                   <ul
                     className={cn(

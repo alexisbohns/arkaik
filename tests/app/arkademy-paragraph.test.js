@@ -520,6 +520,41 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   }
 }
 
+// --- the tour's grid: the current block, and a block being answered ------------------------
+{
+  const example = exampleCanvas(index, "crumb-and-co");
+  const grid = (props) =>
+    render(CanvasGrid, { questions, state: example.questions, density: "full", idPrefix: "t", label: "Crumb", ...props });
+  const blockTag = (html, key) => new RegExp(`<div[^>]*data-question="${key}"[^>]*>`).exec(html)[0];
+  const blockHtml = (html, key) => {
+    const at = html.indexOf(blockTag(html, key));
+    const next = html.indexOf("data-question=", at + blockTag(html, key).length);
+    return html.slice(at, next === -1 ? undefined : html.lastIndexOf("<", next));
+  };
+
+  const current = grid({ through: 2, current: "cr" });
+  check("current: the current block is never faint", !/data-faint/.test(blockTag(current, "cr")), blockTag(current, "cr"));
+  check("current: it keeps its ring", /ring-2/.test(blockTag(current, "cr")));
+  check("current: the blocks around it past through stay faint", /data-faint/.test(blockTag(current, "ch")) && /data-faint/.test(blockTag(current, "rev")));
+
+  const vpTitle = questions.find((q) => q.key === "vp").block;
+  const pending = grid({ through: 1, current: "vp", pending: "vp" });
+  const tag = blockTag(pending, "vp");
+  check("pending: drawn at full strength though past through", !/data-faint/.test(tag) && !/opacity-/.test(tag), tag);
+  check("pending: with the current ring when current", /ring-2/.test(tag));
+  check("pending: marked as pending", /data-pending=""/.test(tag));
+  same("pending: its heading is shown, its body is empty", textOf(blockHtml(pending, "vp")), `2${vpTitle}`);
+  check("pending: no answer listed though the state has some", !/<li/.test(blockHtml(pending, "vp")));
+  check("pending: an accessible name says it is being answered", tag.includes(`aria-label="${vpTitle}, being answered"`), tag);
+  const tide = exampleCanvas(index, "tidewise");
+  const openPending = render(CanvasGrid, { questions, state: tide.questions, density: "full", idPrefix: "t", label: "T", through: 4, current: "rev", pending: "rev" });
+  check("pending: an open question's block shows no dashed border yet", !/border-dashed/.test(blockTag(openPending, "rev")));
+  check("pending: nor says it is left open", !/Left open on purpose/.test(blockHtml(openPending, "rev")));
+  const notCurrent = grid({ through: 1, pending: "vp" });
+  check("pending: without current, no ring", !/ring-2/.test(blockTag(notCurrent, "vp")));
+  check("pending: the other blocks keep their own treatment", /data-faint/.test(blockTag(pending, "ch")) && !/data-faint/.test(blockTag(pending, "seg")));
+}
+
 // --- display answers: the paragraph and the grid read the same ones --------------------
 {
   same(
