@@ -67,7 +67,10 @@ app/
     page.tsx            # /arkademy — the shell: one card per tool in the library
     not-found.tsx       # notFound() under /arkademy, inside the chrome
     business-model-canvas/
-      page.tsx          # The cover: pitch, gallery of examples (paragraph + mini canvas), baseline prompt
+      page.tsx          # The cover: pitch, gallery of examples (paragraph + mini canvas, Play the tour), baseline prompt
+      tour/
+        [example]/
+          page.tsx      # A tour (?step=1..9): one example's canvas built in nine steps; noindex
   api/
     arkademy/           # GET the Arkademy library: public, cached; POST revalidate/ expires the cache (spec/services.md § Arkademy)
     graph/              # Hosted projects: CRUD + the validated `mutations` write path
@@ -189,6 +192,11 @@ lib/landing/
     LibraryPlaceholder.tsx  # The quiet Suspense fallback while a page reads the library
     PromptBlock.tsx         # The baseline prompt with its copy button
     CopyButton.tsx          # Every Arkademy copy action (useCopyId)
+    CanvasWalk.tsx          # The screen a canvas is walked through (mode "tour"): player, paragraph, canvas (client)
+    StepRail.tsx            # The nine steps as links (?step=N), the current one aria-current="step"
+    QuestionCard.tsx        # One question, read-only: its answers arriving, the sentence they become
+    TourControls.tsx        # Back, Play/Pause, Next; a bar fixed to the bottom on phones
+    TourEndCard.tsx         # The last step complete: the next example, the gallery
   publik/                   # PublishDialog, ImportSnapshotButton
   sync/                     # Synk provider, per-project control, restore dialog, onboarding banner
   settings/                 # Product manager, repo links, token manager
