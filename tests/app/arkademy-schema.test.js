@@ -221,6 +221,15 @@ expectError(
   (doc) => (doc.tools[0].questions[8].sentencePlural = "The main costs are many."),
   "tools[0].questions[8].sentencePlural",
 );
+for (const broken of ["{S} is for {{L}}.", "{S} is for {L}}.", "{S} is for {{L}.", "{S} is for {L} {.", "{S} is for {L} }.", "{S} is {for {L}.", "{S} is for {L} {}.", "{{S}} is for {L}."]) {
+  expectError(`a stray brace fails: ${broken}`, (doc) => (doc.tools[0].questions[0].sentence = broken), SENTENCE);
+}
+expectError("a stray brace in a plural fails", (doc) => (doc.tools[0].questions[8].sentencePlural = "The main costs are {L}}."), "tools[0].questions[8].sentencePlural");
+check(
+  "a doubled token is one problem: the stray braces",
+  templateProblems("{S} is for {{L}}.").length === 1 && /brace/.test(templateProblems("{S} is for {{L}}.")[0] ?? ""),
+  JSON.stringify(templateProblems("{S} is for {{L}}.")),
+);
 check("templateProblems passes a sound template", templateProblems("{S} is for {L}.").length === 0);
 check("templateProblems names every broken rule", templateProblems("{X} {S}").length === 3, JSON.stringify(templateProblems("{X} {S}")));
 

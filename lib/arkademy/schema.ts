@@ -297,10 +297,15 @@ export function templateProblems(template: string): string[] {
     problems.push(`${SUBJECT_TOKEN} must open the template`);
   }
   if (template.startsWith(LIST_TOKEN)) problems.push(`must not start with ${LIST_TOKEN}`);
-  const unknown = (template.match(/\{[^{}]*\}/g) ?? []).filter(
-    (token) => token !== LIST_TOKEN && token !== SUBJECT_TOKEN,
-  );
+  // Every brace must belong to exactly {S} or {L}: take those out, then any
+  // other {…} is an unknown token and any brace left over is a stray one
+  // (`{{L}}`, a lone `{`), which would show in the paragraph.
+  const rest = template.split(SUBJECT_TOKEN).join("").split(LIST_TOKEN).join("");
+  const unknown = rest.match(/\{[^{}]+\}/g) ?? [];
   if (unknown.length > 0) problems.push(`unknown token ${unknown[0]}`);
+  if (/[{}]/.test(rest.replace(/\{[^{}]+\}/g, ""))) {
+    problems.push(`has a stray brace: every { or } must belong to ${SUBJECT_TOKEN} or ${LIST_TOKEN}`);
+  }
   return problems;
 }
 

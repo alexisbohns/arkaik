@@ -452,7 +452,8 @@ reported spend on it is a note on that company's use.
   trimmed, not ending in `.`, `!`, `?`, `;`, `:` or `,`.
 - **Templates** (`sentence`, `sentencePlural`): contain `{L}` exactly once;
   contain `{S}` at most once and, when present, at the very start; do not start
-  with `{L}`; contain no other `{…}` token; `sentencePlural`, when present,
+  with `{L}`; contain no other `{…}` token and no brace that is not part of
+  exactly `{S}` or `{L}` (so `{{L}}` and a stray `{` are refused); `sentencePlural`, when present,
   uses `{S}` if and only if `sentence` does.
 - **Prompt:** `PROMPT_TOKEN` appears at most once in `prompt.text`.
 
