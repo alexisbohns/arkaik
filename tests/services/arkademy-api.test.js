@@ -142,6 +142,17 @@ async function main() {
         JSON.stringify(refused),
       );
 
+      for (const [name, char] of [["a NUL", "\u0000"], ["a lone surrogate", "\ud800"]]) {
+        const poisoned = fixture();
+        poisoned.uses[0].text = `house${char}holds`;
+        const outcome = await upload.publishDocument(client, poisoned, {});
+        check(
+          `invalid: ${name} is refused before Postgres sees it`,
+          outcome.status === "invalid" && outcome.errors.some((finding) => finding.path === "uses[0].text") && (await rowCount()) === 1,
+          JSON.stringify(outcome),
+        );
+      }
+
       const changed = fixture();
       changed.companies[1].oneLiner = "Tide tables for shore anglers";
       const v2 = await upload.publishDocument(client, changed, { note: "second" });

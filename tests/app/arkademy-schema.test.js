@@ -297,6 +297,70 @@ expectWarning(
   `uses[${accessed}].note.source.date`,
 );
 
+// --- Characters no text field may hold ------------------------------------------
+// Postgres refuses NUL and lone surrogates in jsonb, so they must fail `check`
+// rather than crash `publish`; the invisible ones would pass the trim and
+// single-line rules while breaking what a reader sees.
+{
+  const refused = [
+    ["NUL", "\u0000"],
+    ["a bell (C0)", "\u0007"],
+    ["U+001F (C0)", "\u001f"],
+    ["a vertical tab", "\u000b"],
+    ["DEL", "\u007f"],
+    ["a C1 control (NEL)", "\u0085"],
+    ["U+2028 LINE SEPARATOR", "\u2028"],
+    ["U+2029 PARAGRAPH SEPARATOR", "\u2029"],
+    ["a zero-width space", "\u200b"],
+    ["a zero-width non-joiner", "\u200c"],
+    ["a zero-width joiner", "\u200d"],
+    ["a word joiner", "\u2060"],
+    ["a byte-order mark inside text", "\ufeff"],
+    ["a left-to-right mark", "\u200e"],
+    ["a right-to-left mark", "\u200f"],
+    ["an Arabic letter mark", "\u061c"],
+    ["a right-to-left override", "\u202e"],
+    ["a left-to-right embedding", "\u202a"],
+    ["a first-strong isolate", "\u2068"],
+    ["a pop directional isolate", "\u2069"],
+    ["a lone high surrogate", "\ud800"],
+    ["a lone low surrogate", "\udc00"],
+  ];
+  for (const [name, char] of refused) {
+    expectError(`${name} inside a use's text fails`, (doc) => (doc.uses[0].text = `house${char}holds`), "uses[0].text");
+  }
+  expectError("a lone surrogate at the end fails", (doc) => (doc.uses[0].text = "households\ud83c"), "uses[0].text");
+  expectError("a reversed surrogate pair fails", (doc) => (doc.uses[0].text = "house\udc00\ud800holds"), "uses[0].text");
+  expectError("zero-width-only text fails", (doc) => (doc.uses[0].text = "\u200b"), "uses[0].text");
+  expectError("a zero-width-only label fails", (doc) => (doc.entities[0].label = "\u200b\u200b"), "entities[0].label");
+  expectError("a tab in a single-line field fails", (doc) => (doc.companies[0].name = "Crumb\t& Co"), "companies[0].name");
+  expectError("NUL in a company's one-liner fails", (doc) => (doc.companies[0].oneLiner = "bread\u0000"), "companies[0].oneLiner");
+  expectError("NUL in a hint fails", (doc) => (doc.tools[0].questions[0].hint = "a\u0000b"), "tools[0].questions[0].hint");
+  expectError("a zero-width space in a note fails", (doc) => (doc.uses[noted].note.text = "412\u200b harbours"), `${NOTE}.text`);
+  expectError("a zero-width space in a source name fails", (doc) => (doc.uses[noted].note.source.name = "Tide\u200bwise"), `${NOTE}.source.name`);
+  expectError(
+    "a bidi override in a source URL fails, though new URL() would encode it",
+    (doc) => (doc.uses[noted].note.source.url = "https://tidewise.example/\u202eharbours"),
+    `${NOTE}.source.url`,
+  );
+  expectError("NUL in a template fails", (doc) => (doc.tools[0].questions[0].sentence = "{S} is for {L}\u0000."), SENTENCE);
+  expectError("NUL in a pitch paragraph fails", (doc) => (doc.tools[0].pitch.body[0] = "one\u0000two"), "tools[0].pitch.body[0]");
+  expectError("a carriage return in a pitch paragraph fails", (doc) => (doc.tools[0].pitch.body[0] = "one\r\ntwo"), "tools[0].pitch.body[0]");
+  expectError("U+2028 in the prompt fails", (doc) => (doc.tools[0].prompt.text = "one\u2028two"), "tools[0].prompt.text");
+  expectOk("a tab inside a pitch paragraph passes", (doc) => (doc.tools[0].pitch.body[0] = "one\ttwo"));
+  expectOk("a newline and a tab inside the prompt pass", (doc) => (doc.tools[0].prompt.text = "one\n\ttwo"));
+  expectOk("accents pass", (doc) => (doc.uses[0].text = "crème brûlée lovers"));
+  expectOk("an emoji (a well-formed surrogate pair) passes", (doc) => (doc.uses[0].text = "bread lovers \ud83c\udf5e"));
+  expectOk("a no-break space inside text passes", (doc) => (doc.uses[0].text = "households\u00a0nearby"));
+  expectOk("a narrow no-break space (French typography) passes", (doc) => (doc.companies[0].oneLiner = "Du pain\u202f!"));
+  const message = mutate((doc) => (doc.uses[0].text = "house\u200bholds"));
+  check(
+    "the message names the code point, never echoes the text",
+    !message.ok && message.errors.some((finding) => /U\+200B/.test(finding.message) && !finding.message.includes("house")),
+    show(message),
+  );
+}
+
 // --- Referential errors ------------------------------------------------------
 expectError(
   "rule 1: a repeated company id",
@@ -484,6 +548,17 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
     const bad = run("check", brokenFile);
     check("upload check: a broken copy exits 1", bad.status === 1, `${bad.status} ${bad.stderr}`);
     check("upload check: it names the path", bad.stderr.includes("uses[0].entity"), bad.stderr);
+
+    const nulFile = path.join(dir, "nul.json");
+    const withNul = fixture();
+    withNul.uses[0].text = "house\u0000holds";
+    fs.writeFileSync(nulFile, JSON.stringify(withNul));
+    const nul = run("check", nulFile);
+    check(
+      "upload check: a NUL in a text is refused by check, with its path and no stack trace",
+      nul.status === 1 && nul.stderr.includes("uses[0].text") && /U\+0000/.test(nul.stderr) && !/\n\s+at /.test(nul.stderr),
+      `${nul.status} ${nul.stderr}`,
+    );
 
     const notJson = path.join(dir, "not-json.json");
     fs.writeFileSync(notJson, "{ nope");

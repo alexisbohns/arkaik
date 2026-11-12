@@ -153,8 +153,72 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const WORDING_BAD_ENDING = /[.!?;:,]$/;
 
 /**
+ * Characters no text field may hold, whatever it is, with the name the error
+ * message gives them. Postgres refuses NUL in `jsonb`; the rest are invisible
+ * or reorder what a reader sees, so they would pass the trim and single-line
+ * rules while breaking the page:
+ *
+ * - C0 controls U+0000–U+001F except tab (U+0009) and newline (U+000A), which
+ *   only multi-line fields accept (so a carriage return is refused everywhere);
+ * - DEL U+007F and the C1 controls U+0080–U+009F;
+ * - U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR;
+ * - zero-width and invisible format characters: U+200B–U+200D, U+2060–U+2064,
+ *   U+FEFF, U+180E;
+ * - bidirectional controls: U+061C, U+200E, U+200F, U+202A–U+202E,
+ *   U+2066–U+2069.
+ *
+ * Everything else is allowed, including no-break spaces (U+00A0, U+202F) and
+ * well-formed astral characters such as emoji. Ill-formed UTF-16 (a lone
+ * surrogate) is refused separately, by {@link textCharacterProblem}.
+ */
+const FORBIDDEN_CHARACTERS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/[\u0000-\u0008\u000B-\u001F]/, "a control character"],
+  [/[\u007F-\u009F]/, "a control character"],
+  [/[\u2028\u2029]/, "a line or paragraph separator"],
+  [/[\u200B-\u200D\u2060-\u2064\uFEFF\u180E]/, "an invisible zero-width character"],
+  [/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/, "a bidirectional control character"],
+];
+
+const codePoint = (char: string) => `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+
+/** The first lone surrogate in `value`, or null when it is well-formed UTF-16. */
+function loneSurrogate(value: string): string | null {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        index += 1;
+        continue;
+      }
+      return value[index];
+    }
+    if (unit >= 0xdc00 && unit <= 0xdfff) return value[index];
+  }
+  return null;
+}
+
+/**
+ * Why `value` cannot be a text field, as a message that names the offending
+ * code point (never the text around it), or null when every character is
+ * allowed. `multiline` fields also accept a newline and a tab.
+ */
+export function textCharacterProblem(value: string, options: { multiline?: boolean } = {}): string | null {
+  if (!options.multiline && /[\r\n]/.test(value)) return "must be a single line";
+  const lone = loneSurrogate(value);
+  if (lone !== null) return `must not contain ${codePoint(lone)}, a lone surrogate (the text is not well-formed)`;
+  for (const [pattern, name] of FORBIDDEN_CHARACTERS) {
+    const found = pattern.exec(value);
+    if (found) return `must not contain ${codePoint(found[0])}, ${name}`;
+  }
+  if (!options.multiline && value.includes("\t")) return "must not contain U+0009, a tab (only multi-line fields take one)";
+  return null;
+}
+
+/**
  * A trimmed text field of `min`–`max` characters. Single-line unless
- * `multiline` (only `pitch.body[]` and `prompt.text` are).
+ * `multiline` (only `pitch.body[]` and `prompt.text` are). Every text field
+ * refuses the characters listed at {@link FORBIDDEN_CHARACTERS}.
  */
 function text(min: number, max: number, options: { multiline?: boolean } = {}) {
   const base = z
@@ -162,9 +226,13 @@ function text(min: number, max: number, options: { multiline?: boolean } = {}) {
     .min(min)
     .max(max)
     .refine((value) => value === value.trim(), { message: "must not start or end with whitespace" });
-  return options.multiline
+  const singleLine = options.multiline
     ? base
     : base.refine((value) => !/[\r\n]/.test(value), { message: "must be a single line" });
+  return singleLine.superRefine((value, ctx) => {
+    const problem = textCharacterProblem(value, options);
+    if (problem !== null && problem !== "must be a single line") ctx.addIssue({ code: "custom", message: problem });
+  });
 }
 
 const slug = z

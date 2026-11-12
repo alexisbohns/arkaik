@@ -440,7 +440,11 @@ reported spend on it is a note on that company's use.
 - **Slugs** (`Company.id`, `Entity.id`): `^[a-z0-9]+(?:-[a-z0-9]+)*$`, 1–64
   characters. Company ids are URL segments (`/tour/{id}`).
 - **Text fields** are trimmed (no leading or trailing whitespace) and, except
-  `pitch.body[]` and `prompt.text`, single-line (no `\n` or `\r`).
+  `pitch.body[]` and `prompt.text`, single-line (no `\n` or `\r`). Every
+  text field is well-formed UTF-16 and holds no C0 control but the newline and
+  tab the two multi-line fields allow, no DEL or C1 control, no U+2028 or
+  U+2029, no zero-width character and no bidirectional control
+  (`textCharacterProblem`, which names the code point).
 - **Wordings** (`Use.text`, `Entity.label`): 1–140 characters
   (`ANSWER_MAX_LENGTH`, the prototype input's own limit), single line,
   trimmed, not ending in `.`, `!`, `?`, `;`, `:` or `,`.

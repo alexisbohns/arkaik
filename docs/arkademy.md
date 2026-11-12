@@ -35,6 +35,15 @@ Two content rules no validator can check:
   `check` warns on a wording that looks like a figure or a press claim, and on
   a note dated in the future.
 
+Every text field refuses characters a reader cannot see or Postgres cannot
+store: control characters (a newline and a tab are allowed in the two
+multi-line fields, `pitch.body[]` and `prompt.text`, and nowhere else; a
+carriage return nowhere), DEL, U+2028 and U+2029, zero-width characters
+(U+200B–U+200D, U+2060–U+2064, U+FEFF, U+180E), bidirectional controls
+(U+061C, U+200E, U+200F, U+202A–U+202E, U+2066–U+2069) and a lone surrogate.
+The error names the code point. Accents, emoji and no-break spaces (U+00A0,
+U+202F) are fine.
+
 `tests/fixtures/arkademy/document.json` is a small, fictional, valid document
 to copy the shape from.
 
