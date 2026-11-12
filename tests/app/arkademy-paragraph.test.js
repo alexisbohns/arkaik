@@ -175,6 +175,18 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   same("compose: no sentencePlural keeps the sentence at two answers", vp[1].text, "X offers a and b.");
 }
 
+{
+  // String.prototype.replace reads $&, $', $` and $$ in a string replacement as patterns.
+  const cash = composeParagraph({ questions, state: state({ seg: ["people"] }), subject: "Ca$$h App" });
+  same("compose: a $$ in the subject is literal", cash[0].text, "Ca$$h App is for people.");
+  const pays = composeParagraph({ questions, state: state({ seg: ["people"] }), subject: "Pay$'s" });
+  same("compose: a $' in the subject is literal", pays[0].text, "Pay$'s is for people.");
+  const amp = composeParagraph({ questions, state: state({ seg: ["people"] }), subject: "$&$`" });
+  same("compose: $& and $` in the subject are literal", amp[0].text, "$&$` is for people.");
+  const list = composeParagraph({ questions, state: state({ seg: ["$& fans", "$$ savers", "$' and $`"] }), subject: "X" });
+  same("compose: $ patterns in the list are literal", list[0].text, "X is for $& fans; $$ savers; and $' and $`.");
+}
+
 // --- gaps ----------------------------------------------------------------------
 {
   const segments = composeParagraph({ questions, state: state({ seg: ["people"] }, ["rev"]), subject: "X" });

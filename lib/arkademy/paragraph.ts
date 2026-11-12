@@ -132,7 +132,10 @@ export function composeParagraph(input: {
     const [head, after = ""] = template.split(LIST_TOKEN);
     let before = head;
     if (before.includes(SUBJECT_TOKEN)) {
-      before = before.replace(SUBJECT_TOKEN, subjectUsed ? SUBJECT_PRONOUN : subject);
+      // A function replacement is literal: a string one would read "$&", "$'",
+      // "$`" and "$$" in a name as patterns. {L} is cut with split, also literal.
+      const name = subjectUsed ? SUBJECT_PRONOUN : subject;
+      before = before.replace(SUBJECT_TOKEN, () => name);
       subjectUsed = true;
     }
 
