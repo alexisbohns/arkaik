@@ -1,5 +1,5 @@
 import { SourcedNote } from "@/components/arkademy/SourcedNote";
-import { clampThrough, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
+import { clampThrough, displayAnswers, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
 import type { BmcQuestion, BmcQuestionKey } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export const CANVAS_MINI_ANSWERS = 3;
 export interface CanvasGridProps {
   /** The document's nine questions, canonical order: each block's title and number. */
   questions: readonly Pick<BmcQuestion, "key" | "block">[];
-  /** Nine, canonical order, matched by key. */
+  /** Nine, canonical order, matched by key (a key given twice takes its last entry). Answers are shown through `displayAnswers`. */
   state: readonly CanvasQuestionState[];
   /** `full` (tour, your canvas): every answer and its note. `mini` (cover cards): three, then "+N more". */
   density: "full" | "mini";
@@ -81,7 +81,8 @@ export function CanvasGrid({
       <div className={cn("grid grid-cols-1 gap-2 @lg:grid-cols-2", mini && "@xs:grid-cols-2", CANONICAL)}>
         {questions.map((question, i) => {
           const entry = byKey.get(question.key);
-          const answers = entry?.answers ?? [];
+          // Cleaned, empties dropped: the same answers the paragraph reads.
+          const answers = displayAnswers(entry);
           const open = answers.length === 0 && entry?.open === true;
           const faint = i >= shown;
           const listed = mini ? answers.slice(0, CANVAS_MINI_ANSWERS) : answers;

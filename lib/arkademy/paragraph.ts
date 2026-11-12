@@ -50,6 +50,22 @@ export function cleanAnswer(text: string): string {
 }
 
 /**
+ * A question's answers as every page shows them: each cleaned (`cleanAnswer`),
+ * those that clean to nothing dropped with their note, entity and note kept.
+ * A question with none reads as unanswered (or left open, by its flag). The
+ * paragraph and the canvas grid both read answers through this, so they
+ * always agree.
+ */
+export function displayAnswers(question: CanvasQuestionState | undefined): CanvasAnswer[] {
+  const shown: CanvasAnswer[] = [];
+  for (const answer of question?.answers ?? []) {
+    const text = cleanAnswer(answer.text);
+    if (text !== "") shown.push({ ...answer, text });
+  }
+  return shown;
+}
+
+/**
  * The separator placed before item `i` (1 ≤ i < texts.length) of a joined
  * list. In the semicolon case, two items take "; and " only when one holds a
  * comma ("a, b; and c"); otherwise ", and " reads better ("flour and butter,
@@ -136,6 +152,7 @@ export function composeParagraph(input: {
   subject: string; // company name, or the visitor's product name
   through?: number; // 0–9, default 9: questions after it are omitted (clampThrough)
 }): ParagraphSegment[] {
+  // Matched by key; a key given twice takes its last entry, a missing one reads as unanswered.
   const byKey = new Map(input.state.map((question) => [question.key, question]));
   const subject = input.subject.trim() || DEFAULT_SUBJECT;
   const through = clampThrough(input.through, input.questions.length);
@@ -145,9 +162,7 @@ export function composeParagraph(input: {
   for (const question of input.questions.slice(0, through)) {
     const state = byKey.get(question.key);
     // An answer that cleans to nothing ("...") reads as no answer at all.
-    const answers = (state?.answers ?? [])
-      .map((answer) => ({ text: cleanAnswer(answer.text), note: answer.note }))
-      .filter((answer) => answer.text !== "");
+    const answers = displayAnswers(state);
 
     if (answers.length === 0) {
       const open = state?.open === true;

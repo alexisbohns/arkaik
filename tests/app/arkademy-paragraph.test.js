@@ -32,6 +32,7 @@ const {
   composeParagraph,
   paragraphText,
   clampThrough,
+  displayAnswers,
   exampleCanvas,
   PROMPT_PLACEHOLDER,
   promptForDisplay,
@@ -478,6 +479,55 @@ const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
       shown,
     );
   }
+}
+
+// --- display answers: the paragraph and the grid read the same ones --------------------
+{
+  same(
+    "displayAnswers: cleaned, empties dropped, entity and note kept",
+    displayAnswers({ key: "seg", answers: [{ text: "..." }, { text: "  " }, { text: "fast.", entity: "speed", note: NOTE }], open: false }),
+    [{ text: "fast", entity: "speed", note: NOTE }],
+  );
+  same("displayAnswers: a missing question has none", displayAnswers(undefined), []);
+  same(
+    "displayAnswers: a noted answer that cleans to nothing is dropped, note and all",
+    displayAnswers({ key: "kp", answers: [{ text: " . ", note: NOTE }], open: false }),
+    [],
+  );
+
+  const grid = (st) => render(CanvasGrid, { questions, state: st, density: "full", idPrefix: "g", label: "X" });
+  // One block's markup: from its opening tag to the next block's.
+  const block = (html, key) => {
+    const at = html.lastIndexOf("<", html.indexOf(`data-question="${key}"`));
+    const next = html.indexOf("data-question=", html.indexOf(`data-question="${key}"`) + 1);
+    return html.slice(at, next === -1 ? undefined : html.lastIndexOf("<", next));
+  };
+  const items = (html) => [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1]));
+
+  const messy = state({ seg: ["...", "  ", "fast."], vp: ["..."], rev: ["!"] }, ["rev"]);
+  const html = grid(messy);
+  same("grid: the canvas lists the cleaned answers only", items(block(html, "seg")), ["fast"]);
+  same("grid: and the paragraph agrees", composeParagraph({ questions, state: messy, subject: "X" })[0].text, "X is for fast.");
+  check("grid: a block whose only answer cleans to nothing is not answered yet", textOf(block(html, "vp")).endsWith("Not answered yet."), textOf(block(html, "vp")));
+  check("grid: and it lists nothing", items(block(html, "vp")).length === 0);
+  check("grid: an open block whose only answer cleans to nothing is left open", textOf(block(html, "rev")).endsWith("Left open on purpose."), textOf(block(html, "rev")));
+
+  const noted = grid(state({ kp: [{ text: "...", note: NOTE }] }));
+  check("grid: a noted answer that cleans to nothing leaves no note behind", !noted.includes(NOTE.source.url));
+
+  const missing = state({ seg: ["people"] }).filter((q) => q.key !== "vp");
+  const missingHtml = grid(missing);
+  same("missing key: the paragraph reads it as an open question", composeParagraph({ questions, state: missing, subject: "X" })[1], {
+    kind: "gap",
+    question: "vp",
+    open: false,
+    text: "open: what it does for them",
+  });
+  check("missing key: the grid says not answered yet", textOf(block(missingHtml, "vp")).endsWith("Not answered yet."));
+
+  const duplicate = [...state({ seg: ["first"] }), { key: "seg", answers: [{ text: "second" }], open: false }];
+  same("duplicate key: the paragraph takes the last entry", composeParagraph({ questions, state: duplicate, subject: "X" })[0].text, "X is for second.");
+  same("duplicate key: so does the grid", items(block(grid(duplicate), "seg")), ["second"]);
 }
 
 // --- the sitemap's source -----------------------------------------------------------
