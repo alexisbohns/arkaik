@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
+import { hasWords, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
 import { ANSWER_MAX_LENGTH, MAX_ANSWERS_PER_QUESTION, type BmcQuestion } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ const NEXT_ID = "canvas-next";
 const answerFieldId = (id: string) => `canvas-answer-${id}`;
 const moveButtonId = (id: string, offset: -1 | 1) => `canvas-answer-${id}-${offset < 0 ? "up" : "down"}`;
 
-export type AddResult = "added" | "duplicate" | "full";
+export type AddResult = "added" | "duplicate" | "full" | "empty";
 
 interface QuestionEditorProps {
   question: BmcQuestion;
@@ -82,7 +82,7 @@ export function QuestionEditor({
   onNext,
 }: QuestionEditorProps) {
   const [text, setText] = useState("");
-  const [duplicate, setDuplicate] = useState(false);
+  const [problem, setProblem] = useState<"duplicate" | "empty" | null>(null);
   const full = answers.length >= MAX_ANSWERS_PER_QUESTION;
   const left = ANSWER_MAX_LENGTH - text.length;
 
@@ -92,7 +92,7 @@ export function QuestionEditor({
       return;
     }
     const result = onAdd(text);
-    if (result === "duplicate") setDuplicate(true);
+    if (result === "duplicate" || result === "empty") setProblem(result);
     if (result !== "added") return;
     setText("");
     // The fifth answer disables the add field, which would drop the keyboard's focus.
@@ -136,8 +136,10 @@ export function QuestionEditor({
 
   const help = full
     ? "Five answers is the most a question takes."
-    : duplicate
+    : problem === "duplicate"
       ? "That answer is already here."
+      : problem === "empty"
+        ? "An answer needs words, not only punctuation."
       : left <= 20
         ? `${left} ${left === 1 ? "character" : "characters"} left.`
         : answers.length === 0
@@ -175,7 +177,8 @@ export function QuestionEditor({
                 aria-label={`Answer ${i + 1} of ${answers.length}`}
                 onChange={(event) => onEdit(answer.id, event.target.value)}
                 onBlur={(event) => {
-                  if (event.target.value.trim() === "") onRemove(answer.id);
+                  // A field emptied, or left with only punctuation ("..."), is no answer.
+                  if (!hasWords(event.target.value)) onRemove(answer.id);
                 }}
                 onKeyDown={(event) => onAnswerKeyDown(event, answer.id)}
                 className={cn(FIELD, "min-w-60 flex-1")}
@@ -235,7 +238,7 @@ export function QuestionEditor({
             aria-describedby="canvas-add-help"
             onChange={(event) => {
               setText(oneLine(event.target.value));
-              setDuplicate(false);
+              setProblem(null);
             }}
             onKeyDown={onAddKeyDown}
             className={FIELD}
@@ -247,7 +250,7 @@ export function QuestionEditor({
         </form>
         <p
           id="canvas-add-help"
-          className={cn("mt-1.5 text-xs text-muted-foreground", (full || duplicate) && "text-foreground")}
+          className={cn("mt-1.5 text-xs text-muted-foreground", (full || problem !== null) && "text-foreground")}
         >
           {help}
         </p>

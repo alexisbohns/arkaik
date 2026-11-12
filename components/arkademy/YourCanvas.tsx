@@ -25,6 +25,7 @@ import {
   draftIsEmpty,
   draftState,
   hasAnswerText,
+  hasWords,
   NAME_MAX_LENGTH,
   questionStatus,
   yoursHref,
@@ -175,6 +176,7 @@ function CanvasEditor({
 
   function addAnswer(text: string): AddResult {
     if (full) return "full";
+    if (!hasWords(text)) return "empty";
     if (hasAnswerText(draft, question.key, text)) return "duplicate";
     dispatchDraft({ type: "add", question: question.key, text });
     return "added";

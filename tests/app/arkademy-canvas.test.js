@@ -301,6 +301,27 @@ const index = A.indexArkademy(validation.document);
   ]);
 }
 
+// --- an answer that cleans to nothing ------------------------------------------------------
+{
+  const { draftReducer, emptyDraft, draftIsEmpty, repairDraft, serializeDraft } = A;
+  const start = emptyDraft();
+  check("add: only punctuation is refused (\"...\")", draftReducer(start, { type: "add", question: "seg", text: "..." }) === start);
+  check("add: \"!\" is refused", draftReducer(start, { type: "add", question: "seg", text: " ! " }) === start);
+  check(
+    "addInspiration: a text that cleans to nothing is refused",
+    draftReducer(start, { type: "addInspiration", question: "seg", entity: "x", text: "…", documentVersion: 1 }) === start,
+  );
+  const typing = { name: "", answers: [{ id: "a1", question: "seg", text: "..." }], open: [], updatedAt: "" };
+  check("a draft whose only answer is \"...\" is empty", draftIsEmpty(typing));
+  same("such an answer is not stored", JSON.parse(serializeDraft(typing)).draft.answers, []);
+  same("nor read back from storage", repairDraft({ answers: [{ id: "a1", question: "seg", text: "?!" }] }).answers, []);
+  same(
+    "setOpen is not refused by an answer that cleans to nothing",
+    draftReducer(typing, { type: "setOpen", question: "seg", open: true }).open,
+    ["seg"],
+  );
+}
+
 // --- control characters (the ones part 1's schema refuses in text) ----------------------
 {
   const { stripTextControls, draftReducer, emptyDraft, textCharacterProblem, repairDraft } = A;

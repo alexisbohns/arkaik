@@ -1,4 +1,4 @@
-import { displayAnswers } from "./paragraph";
+import { cleanAnswer, displayAnswers } from "./paragraph";
 import type { CanvasAnswer, CanvasQuestionState } from "./paragraph";
 import { ANSWER_MAX_LENGTH, BMC_QUESTION_KEYS, MAX_ANSWERS_PER_QUESTION } from "./schema";
 import type { BmcQuestionKey } from "./schema";
@@ -91,6 +91,14 @@ export function fitName(name: string): string {
   return cutText(stripTextControls(oneLine(name)), NAME_MAX_LENGTH);
 }
 
+/**
+ * Whether a text says anything once cleaned the way the paragraph cleans it
+ * (`cleanAnswer`): "..." or "!" does not. Such a text is never an answer.
+ */
+export function hasWords(text: string): boolean {
+  return cleanAnswer(text) !== "";
+}
+
 /** The answers of one question, in display order (blank ones included). */
 export function answersOf(draft: CanvasDraft, question: BmcQuestionKey): DraftAnswer[] {
   return draft.answers.filter((answer) => answer.question === question);
@@ -131,7 +139,7 @@ function withAnswer(draft: CanvasDraft, answer: DraftAnswer): CanvasDraft {
 /** Room for one more non-duplicate answer in this question. */
 function canAdd(draft: CanvasDraft, question: BmcQuestionKey, text: string): boolean {
   return (
-    text !== "" &&
+    hasWords(text) &&
     answersOf(draft, question).length < MAX_ANSWERS_PER_QUESTION &&
     !hasAnswerText(draft, question, text)
   );
@@ -188,7 +196,7 @@ export function draftReducer(draft: CanvasDraft, action: DraftAction): CanvasDra
     case "setOpen": {
       const isOpen = draft.open.includes(action.question);
       if (action.open === isOpen) return draft;
-      if (action.open && answersOf(draft, action.question).length > 0) return draft;
+      if (action.open && answersOf(draft, action.question).some((answer) => hasWords(answer.text))) return draft;
       const open = action.open
         ? inCanonicalOrder([...draft.open, action.question])
         : draft.open.filter((key) => key !== action.question);
@@ -204,7 +212,7 @@ export function draftReducer(draft: CanvasDraft, action: DraftAction): CanvasDra
 /** Nothing worth keeping: no name, no answer with words, nothing left open. */
 export function draftIsEmpty(draft: CanvasDraft): boolean {
   return (
-    draft.name.trim() === "" && draft.open.length === 0 && draft.answers.every((answer) => answer.text.trim() === "")
+    draft.name.trim() === "" && draft.open.length === 0 && draft.answers.every((answer) => !hasWords(answer.text))
   );
 }
 
@@ -218,7 +226,7 @@ export function draftState(draft: CanvasDraft): CanvasQuestionState[] {
     const answers: CanvasAnswer[] = [];
     for (const answer of answersOf(draft, key)) {
       const text = answer.text.trim();
-      if (text === "") continue;
+      if (!hasWords(text)) continue;
       answers.push(answer.inspiration ? { text, entity: answer.inspiration.entity } : { text });
     }
     return { key, answers, open: answers.length === 0 && draft.open.includes(key) };

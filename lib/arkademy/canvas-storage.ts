@@ -1,4 +1,4 @@
-import { emptyDraft, fitAnswer, fitName, nextAnswerId } from "./canvas";
+import { emptyDraft, fitAnswer, fitName, hasWords, nextAnswerId } from "./canvas";
 import type { CanvasDraft, DraftAnswer } from "./canvas";
 import { BMC_QUESTION_KEYS, MAX_ANSWERS_PER_QUESTION } from "./schema";
 import type { BmcQuestionKey } from "./schema";
@@ -62,7 +62,7 @@ export function repairDraft(value: unknown): CanvasDraft | null {
     if (typeof question !== "string" || !QUESTION_KEYS.has(question)) continue;
     if (typeof text !== "string") continue;
     const fitted = fitAnswer(text).trim();
-    if (fitted === "") continue;
+    if (!hasWords(fitted)) continue;
     const count = perQuestion.get(question) ?? 0;
     if (count >= MAX_ANSWERS_PER_QUESTION) continue;
     perQuestion.set(question, count + 1);
@@ -124,7 +124,7 @@ export function readStoredDraft(raw: string | null): StoredDraftRead {
 /** The stored value: the envelope, answers trimmed, blank ones left out. */
 export function serializeDraft(draft: CanvasDraft): string {
   const answers = draft.answers
-    .filter((answer) => answer.text.trim() !== "")
+    .filter((answer) => hasWords(answer.text))
     .map((answer) => ({
       id: answer.id,
       question: answer.question,
