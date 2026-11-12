@@ -296,7 +296,7 @@ a publish and a rollback each insert a row, and every version is kept.
 | empty table | 404 | `{ "error": "no_document", "message" }` | `public, max-age=60, s-maxage=60` |
 | no `DATABASE_URL` | 503 | `services_unavailable` | `no-store` |
 | newest row fails this build's schema | 500 | `{ "error": "document_invalid", "message" }` | `no-store` |
-| Postgres failed | 500 | `{ "error": "internal_error", "message" }` | `no-store` |
+| Postgres failed, or did not answer within 5 s | 500 | `{ "error": "internal_error", "message" }` | `no-store` |
 
 - Every 200 and 304 carries
   `ETag: W/"arkademy.<version>.f<format>.s<schema revision>"`
@@ -317,6 +317,11 @@ a publish and a rollback each insert a row, and every version is kept.
   saves. The key carries the format and the schema revision, so a deploy that
   changes either never serves an entry an older build stored. A thrown error
   is never cached. In development it reads Postgres directly.
+- **A bounded read.** The library's one query runs through `queryWithin`
+  (`lib/services/db.ts`) with `ARKADEMY_READ_TIMEOUT_MS` (5 s), connection
+  included, on a connection of its own that is destroyed at the deadline: a
+  database that accepts and never answers ends in the `error` lookup, uncached,
+  instead of hanging the page. The pool's other users keep no timeout.
 - **Making a write live.** `POST /api/arkademy/revalidate` expires the
   `arkademy` tag at once (`revalidateTag("arkademy", { expire: 0 })`): the
   next read refills from Postgres rather than serving the old entry while it

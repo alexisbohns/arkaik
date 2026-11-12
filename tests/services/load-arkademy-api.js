@@ -18,7 +18,8 @@
  * Stubs: `server-only` is an empty module (it throws outside React Server
  * Components); `next/cache`'s `unstable_cache` returns the function itself and
  * records each wrapping and each call in `nextCache.created` / `nextCache.calls`,
- * so the suite can prove which path `getArkademy` takes; its `revalidateTag`
+ * so the suite can prove which path `getArkademy` takes, and whether each call
+ * resolved or rejected in `nextCache.settled` (Next never caches a rejection); its `revalidateTag`
  * records each call in `nextCache.revalidated`.
  */
 
@@ -47,18 +48,25 @@ const REWRITES = [
 const NEXT_CACHE_STUB = `
 const created = [];
 const calls = [];
+const settled = [];
 function unstable_cache(fn, keyParts, options) {
   created.push({ keyParts, options });
   return (...args) => {
     calls.push({ keyParts, options });
-    return fn(...args);
+    const result = fn(...args);
+    // Next caches what the function resolves to, never a rejection: record which it was.
+    Promise.resolve(result).then(
+      () => settled.push("fulfilled"),
+      () => settled.push("rejected"),
+    );
+    return result;
   };
 }
 const revalidated = [];
 function revalidateTag(tag, profile) {
   revalidated.push({ tag, profile });
 }
-module.exports = { unstable_cache, revalidateTag, created, calls, revalidated };
+module.exports = { unstable_cache, revalidateTag, created, calls, settled, revalidated };
 `;
 
 function transpile(srcAbsPath) {

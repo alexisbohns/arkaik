@@ -12,6 +12,7 @@
  */
 
 const fs = require("fs");
+const net = require("net");
 const path = require("path");
 const { Client } = require("pg");
 const { loadArkademyApi, cleanup } = require("./load-arkademy-api");
@@ -237,8 +238,9 @@ async function main() {
 
     // --- Postgres fails ------------------------------------------------------
     {
-      const realQuery = api.db.query;
-      api.db.query = async () => {
+      // The loader reads through queryWithin (a bounded wait on a connection of its own).
+      const realQuery = api.db.queryWithin;
+      api.db.queryWithin = async () => {
         throw new Error("connection terminated");
       };
       try {
@@ -249,8 +251,57 @@ async function main() {
         check("error: 500 internal_error", res.status === 500 && body.error === "internal_error", JSON.stringify(body));
         check("error: never cached", res.headers.get("cache-control") === "no-store");
       } finally {
-        api.db.query = realQuery;
+        api.db.queryWithin = realQuery;
       }
+    }
+
+    // --- Postgres accepts the connection and never answers ----------------------
+    {
+      const { ARKADEMY_READ_TIMEOUT_MS } = api.arkademy;
+      check(
+        "hang: the read waits a few seconds at most",
+        Number.isInteger(ARKADEMY_READ_TIMEOUT_MS) && ARKADEMY_READ_TIMEOUT_MS >= 2000 && ARKADEMY_READ_TIMEOUT_MS <= 10000,
+        String(ARKADEMY_READ_TIMEOUT_MS),
+      );
+      const sockets = [];
+      // Reads whatever arrives (so it sees the client hang up) and never answers.
+      const silent = net.createServer((socket) => {
+        socket.on("error", () => {});
+        socket.resume();
+        sockets.push({ socket, closed: new Promise((resolve) => socket.once("close", resolve)) });
+      });
+      await new Promise((resolve) => silent.listen(0, "127.0.0.1", resolve));
+      const savedEnv = process.env.NODE_ENV;
+      process.env.DATABASE_URL = `postgres://arkaik@127.0.0.1:${silent.address().port}/nowhere`;
+      process.env.NODE_ENV = "production";
+      const { settled } = api.nextCache;
+      try {
+        logged.length = 0;
+        const started = Date.now();
+        const lookup = await getArkademy();
+        const waited = Date.now() - started;
+        check("hang: getArkademy ends in error", lookup.status === "error", JSON.stringify(lookup));
+        check(
+          "hang: at the deadline, not long after",
+          waited >= ARKADEMY_READ_TIMEOUT_MS - 50 && waited < ARKADEMY_READ_TIMEOUT_MS + 1500,
+          `${waited} ms`,
+        );
+        check("hang: the server was reached (it accepted the connection)", sockets.length === 1, String(sockets.length));
+        check("hang: the cached function rejected, so nothing was cached", settled[settled.length - 1] === "rejected", JSON.stringify(settled));
+        check("hang: the log says the database did not answer", logged.some((line) => /did not answer within/.test(line)), JSON.stringify(logged));
+        const closed = await Promise.race([
+          Promise.all(sockets.map((entry) => entry.closed)).then(() => true),
+          new Promise((resolve) => setTimeout(() => resolve(false), 2000)),
+        ]);
+        check("hang: the abandoned connection is closed, not left in a pool", closed);
+      } finally {
+        process.env.DATABASE_URL = connectionString;
+        if (savedEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = savedEnv;
+        await new Promise((resolve) => silent.close(resolve));
+      }
+      const after = await getArkademy();
+      check("hang: the next read reaches the database that answers", after.status !== "error" && after.status !== "unconfigured", JSON.stringify(after).slice(0, 120));
     }
 
     // --- Which path getArkademy takes ------------------------------------------

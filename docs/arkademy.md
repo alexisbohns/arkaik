@@ -196,4 +196,4 @@ curl -sI https://arkaik.app/api/arkademy        # twice: the CDN should answer t
 | 503 `services_unavailable` | No `DATABASE_URL` on this deployment | Configure the database |
 | 404 `no_document` | The table is empty | `publish` |
 | 500 `document_invalid` | The newest row fails this deployment's schema (the server log names the version and the first finding) | `rollback`, or publish a fixed document |
-| 500 `internal_error` | Postgres failed | Check the database |
+| 500 `internal_error` | Postgres failed, or did not answer within 5 seconds | Check the database |

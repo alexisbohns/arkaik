@@ -4,7 +4,7 @@ import { revalidateTag, unstable_cache } from "next/cache";
 
 import { ARKADEMY_FORMAT_VERSION, ARKADEMY_SCHEMA_REVISION, type ArkademyDocument } from "@/lib/arkademy/schema";
 import { upgradeArkademyDocument, validateArkademyDocument } from "@/lib/arkademy/validate";
-import { query, servicesConfigured } from "@/lib/services/db";
+import { queryWithin, servicesConfigured } from "@/lib/services/db";
 import { formatReadEtag } from "@/lib/services/graph/etag";
 
 /**
@@ -56,9 +56,18 @@ export const ARKADEMY_CACHE_KEY_PARTS: readonly string[] = [
   `schema-${ARKADEMY_SCHEMA_REVISION}`,
 ];
 
-/** One query, uncached: the newest version, or null on an empty table. */
+/**
+ * The longest a library read may take, connection included. Past it the read
+ * fails like any Postgres error: the page shows its "could not be loaded"
+ * message, nothing is cached, and the next request tries again. Long enough
+ * for a scale-to-zero database to wake, short enough that a database which
+ * accepts and never answers costs a visitor seconds, not the request.
+ */
+export const ARKADEMY_READ_TIMEOUT_MS = 5000;
+
+/** One query, uncached and bounded by ARKADEMY_READ_TIMEOUT_MS: the newest version, or null on an empty table. */
 export async function readCurrentArkademy(): Promise<StoredArkademyRow | null> {
-  const { rows } = await query<{
+  const { rows } = await queryWithin<{
     version: number;
     format_version: number;
     document: unknown;
@@ -67,6 +76,8 @@ export async function readCurrentArkademy(): Promise<StoredArkademyRow | null> {
   }>(
     `select version, format_version, document, sha256, uploaded_at
      from arkademy_documents order by version desc limit 1`,
+    [],
+    ARKADEMY_READ_TIMEOUT_MS,
   );
   const row = rows[0];
   if (!row) return null;
