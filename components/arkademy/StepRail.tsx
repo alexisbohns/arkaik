@@ -22,6 +22,8 @@ interface StepRailProps {
   hrefFor: (step: number) => string;
   /** A plain click goes to the step without leaving the page. */
   onSelect: (step: number) => void;
+  /** The `nav`'s accessible name. Default "Tour steps". */
+  label?: string;
   className?: string;
 }
 
@@ -39,7 +41,7 @@ const STATUS_WORDS: Record<StepStatus, string> = {
  *
  * No hooks: the tour renders it, and your own canvas (part 4) can.
  */
-export function StepRail({ steps, current, hrefFor, onSelect, className }: StepRailProps) {
+export function StepRail({ steps, current, hrefFor, onSelect, label = "Tour steps", className }: StepRailProps) {
   function follow(event: MouseEvent<HTMLAnchorElement>, step: number) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -47,7 +49,7 @@ export function StepRail({ steps, current, hrefFor, onSelect, className }: StepR
   }
 
   return (
-    <nav aria-label="Tour steps" className={className}>
+    <nav aria-label={label} className={className}>
       <ol className="flex flex-wrap gap-1">
         {steps.map((item, i) => {
           const step = i + 1;

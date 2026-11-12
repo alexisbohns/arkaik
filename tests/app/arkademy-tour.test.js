@@ -402,6 +402,20 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   );
   check("screen, step 9: the page's end actions come first in the end card", /End of the tour[\s\S]*Start your own[\s\S]*All examples/.test(withAction));
   check("screen, step 9: no next example with a single example", !withAction.includes("Next example"));
+
+  const { StepRail } = requireTsx("components/arkademy/StepRail.tsx");
+  const rail = (props) =>
+    renderToStaticMarkup(
+      React.createElement(StepRail, {
+        steps: questions.map((q, i) => ({ block: q.block, status: i === 4 ? "open" : "answered", reached: i < 2 })),
+        current: 3,
+        hrefFor: (n) => `?step=${n}`,
+        onSelect: () => {},
+        ...props,
+      }),
+    );
+  check("rail: named Tour steps by default", rail({}).includes('aria-label="Tour steps"'));
+  check("rail: a label names it otherwise", rail({ label: "Your canvas, question by question" }).includes('aria-label="Your canvas, question by question"'));
 }
 
 // --- source checks: no window keydown, replaceState only, the cover links each tour -----
