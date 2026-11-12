@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { duplicateAnswers, hasWords, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
+import { duplicateAnswers, hasWords, isPlainEnter, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
 import { ANSWER_MAX_LENGTH, MAX_ANSWERS_PER_QUESTION, type BmcQuestion } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
 
@@ -47,9 +47,14 @@ interface QuestionEditorProps {
 /** A field that grows with its words and never takes a line break: an answer is one line of the paragraph. */
 const FIELD = "min-h-9 resize-none py-1.5 [field-sizing:content]";
 
-/** Enter, outside an input method's composition. */
-function isEnter(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
-  return event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+/** Enter that means "done": not Shift+Enter, not an input method's Enter (`isPlainEnter`). */
+export function isEnter(event: KeyboardEvent<HTMLElement>): boolean {
+  return isPlainEnter({
+    key: event.key,
+    shiftKey: event.shiftKey,
+    keyCode: event.keyCode,
+    isComposing: event.nativeEvent.isComposing,
+  });
 }
 
 function focusById(id: string) {

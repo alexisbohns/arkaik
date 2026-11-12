@@ -274,6 +274,16 @@ export function firstUnfinishedStep(draft: CanvasDraft): number {
   return index < 0 ? 1 : index + 1;
 }
 
+/**
+ * An Enter that means "done" (add, move on), from a key event's fields. Not
+ * Shift+Enter, not during an input method's composition, and not the Enter
+ * that confirms an input-method word: WebKit fires `compositionend` before
+ * that Enter's keydown, so only its keyCode (229) tells it apart.
+ */
+export function isPlainEnter(event: { key: string; shiftKey: boolean; keyCode: number; isComposing: boolean }): boolean {
+  return event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
+}
+
 /** Your own canvas, optionally at a step. */
 export function yoursHref(step?: number): string {
   return step === undefined ? BMC_YOURS_PATH : `${BMC_YOURS_PATH}?step=${step}`;

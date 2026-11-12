@@ -347,6 +347,17 @@ const index = A.indexArkademy(validation.document);
   );
 }
 
+// --- Enter, outside an input method's composition ------------------------------------------
+{
+  const { isPlainEnter } = A;
+  const key = (over) => ({ key: "Enter", shiftKey: false, keyCode: 13, isComposing: false, ...over });
+  check("Enter", isPlainEnter(key({})));
+  check("not while composing", !isPlainEnter(key({ isComposing: true })));
+  check("not the Enter that confirms an input-method word on Safari (keyCode 229, after compositionend)", !isPlainEnter(key({ keyCode: 229 })));
+  check("not Shift+Enter", !isPlainEnter(key({ shiftKey: true })));
+  check("not another key", !isPlainEnter(key({ key: "a", keyCode: 65 })));
+}
+
 // --- control characters (the ones part 1's schema refuses in text) ----------------------
 {
   const { stripTextControls, draftReducer, emptyDraft, textCharacterProblem, repairDraft } = A;

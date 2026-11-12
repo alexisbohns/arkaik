@@ -12,7 +12,7 @@ import { CanvasLink } from "@/components/arkademy/CanvasLink";
 import { CanvasToolbar } from "@/components/arkademy/CanvasToolbar";
 import { InspirationList } from "@/components/arkademy/InspirationList";
 import { ParagraphView } from "@/components/arkademy/ParagraphView";
-import { ADD_ANSWER_ID, QUESTION_TITLE_ID, QuestionEditor, type AddResult } from "@/components/arkademy/QuestionEditor";
+import { ADD_ANSWER_ID, isEnter, QUESTION_TITLE_ID, QuestionEditor, type AddResult } from "@/components/arkademy/QuestionEditor";
 import { ARKADEMY_KICKER } from "@/components/arkademy/QuestionCard";
 import { QuestionSteps } from "@/components/arkademy/QuestionSteps";
 import { Button } from "@/components/ui/button";
@@ -237,7 +237,7 @@ function CanvasEditor({
           spellCheck={false}
           onChange={(event) => dispatchDraft({ type: "rename", name: event.target.value })}
           onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            if (!isEnter(event)) return;
             event.preventDefault();
             document.getElementById(ADD_ANSWER_ID)?.focus();
           }}
