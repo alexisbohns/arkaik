@@ -122,14 +122,14 @@ export function CanvasGrid({
             >
               <Heading
                 id={headingId}
-                className={cn("flex items-baseline gap-1.5 font-semibold", mini ? "text-xs" : "text-sm")}
+                className={cn("flex min-w-0 items-baseline gap-1.5 font-semibold wrap-anywhere", mini ? "text-xs" : "text-sm")}
               >
                 <span className="font-mono text-[10px] font-normal text-muted-foreground tabular-nums">{i + 1}</span>
                 {onSelectQuestion ? (
                   <button
                     type="button"
                     onClick={() => onSelectQuestion(question.key)}
-                    className="cursor-pointer rounded-sm text-left outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    className="min-w-0 cursor-pointer rounded-sm text-left outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >
                     {question.block}
                   </button>

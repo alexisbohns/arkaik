@@ -31,7 +31,7 @@ export function ExampleCard({ company, questions, state, actions }: ExampleCardP
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h3 id={headingId} className="text-xl font-semibold tracking-tight">
+            <h3 id={headingId} className="min-w-0 text-xl font-semibold tracking-tight wrap-anywhere">
               {company.name}
             </h3>
             {company.simulation && <Badge variant="outline">Simulation</Badge>}
