@@ -1,6 +1,6 @@
-# Arkademy — Part 4: your own canvas — Implementation Plan
+# Arkademy — Part 4: your own canvas — Implementation Plan and Record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: built.** This plan was executed on `feat/arkademy-your-canvas`, stacked on part 3's real tip `8c33cab1`. It is now the part's record: § "As built" lists every change against the plan that part 3's real code or the real library required, the tasks show the code as committed (final state, after `adf4f62e`), and § "Part done when" holds the real results. Steps keep the checkbox syntax so the part can be replayed.
 
 **Goal:** `/arkademy/business-model-canvas/yours[?step=1..9]`, where a visitor answers the Business Model Canvas's nine questions for their own product, one question at a time, and watches the paragraph and the canvas build as they type. A question can be left open on purpose. Inspirations from the library sit beside the question. The draft is saved in this browser only, under `arkaik:arkademy:bmc`. There are three exports: copy the paragraph, copy as Markdown, download JSON. Start over asks first. The cover gains its "Start your own" / "Continue your canvas" action, and this part's PR carries the single Lab Note for the whole Arkademy.
 
@@ -20,9 +20,9 @@
 
 **Branch:** `feat/arkademy-your-canvas`, created by Task 1 with `gh stack add` on top of part 3's branch `feat/arkademy-tour`, in the worktree `/Users/alexis/code/arkaik-arkademy`. A stack already exists: never run `gh stack init`.
 
-**Position in the stack:** part 4 of 4, the top. It changes nothing parts 1 and 2 own, except one anchored insertion in the cover page. It adds nothing to part 3's files except an optional final task (Task 10) for the tour's end card.
+**Position in the stack:** part 4 of 4, the top. It changes nothing in parts 1 and 2 except one insertion in the cover page's actions row. In part 3 it touches only the tour page (one prop, `endActions`) and one source check in part 3's suite, which it inverts (Task 8).
 
-**Rehearsed:** every task below was executed in order in a detached worktree of part 2 at `4c7b137`. Part 3 did not exist yet, and nothing in this part depends on it. A scratch Postgres 16 held the part 1 fixture, and a dev server served the pages. A Playwright run used the page for real:
+**Rehearsed, then built:** every task was first rehearsed in a detached worktree of part 2 at `4c7b137`, before part 3 existed. It was then built on the real branch, on top of part 3, and the whole check below was re-run there. A scratch Postgres 16 held the part 1 fixture, and a dev server served the pages. A Playwright run used the page for real:
 - a whole canvas filled by keyboard only;
 - an inspiration added and reworded;
 - a question left open and the choice undone;
@@ -32,7 +32,46 @@
 - a corrupt, a newer and a blocked storage value;
 - Start over, two tabs, and the three exports (clipboard read, download captured).
 
-Screenshots at 400, 900 and 1440 px, light and dark, of the empty, a half-filled and a full canvas, a larger fictional library, the cover and the no-library state were opened and read. `npm run lint`, `npx tsc --noEmit`, `npm run build`, `npm run generate` and every suite named below were run, and the new suite also ran under a real Node 20.19.5. Every expected output in this plan is what that run printed. Code shown in full is the rehearsed file, byte for byte.
+Screenshots at 400, 900 and 1440 px, light and dark, of the empty, a half-filled and a full canvas, a larger fictional library, the cover and the no-library state were opened and read. `npm run lint`, `npx tsc --noEmit`, `npm run build`, `npm run generate` and every suite named below were run, and the new suite also ran under a real Node 20.19.5. Every expected output in this plan is what that run printed. Code shown in full is the committed file, byte for byte.
+
+## As built
+
+The commits, oldest first (`git log --oneline feat/arkademy-tour..HEAD`, read upwards):
+
+```
+adf4f62e fix(arkademy): an inspiration that starts with a name keeps its capital
+3ef44b8c docs(arkademy): your own canvas in the folder map
+df98b448 feat(arkademy): Start your own on the cover and at the end of every tour
+a88d38ac feat(arkademy): your own canvas — one question at a time, inspirations, the paragraph and the canvas building as you type
+169a1250 feat(arkademy): the draft's store, read after mount, and a text download
+78f04b5c feat(arkademy): your canvas's exports — the paragraph, Markdown and JSON
+85de68e3 feat(arkademy): your canvas in browser storage, read tolerantly
+640852f6 feat(arkademy): your canvas's draft and its pure reducer
+eee9d309 feat(arkademy): inspirations for your own canvas, from the library's shared entities
+51a40bdd docs(arkademy): implementation plan for part 4, your own canvas
+```
+
+The final docs commit (this record) follows.
+
+**Changes required by part 3's real code** (its record, § "What part 4 gets from this part"):
+1. **`parseStepParam` is reused.** Part 3 exports `parseStepParam` from `lib/arkademy/tour.ts`, so `canvas.ts` does not define `parseCanvasStep`. The yours page imports part 3's parser. Its eight test cases are part 3's and are not repeated, so this suite has 8 checks fewer than rehearsed.
+2. **`ARKADEMY_KICKER` is reused.** `QuestionEditor` and `YourCanvas` take the mono kicker class from part 3's `QuestionCard.tsx`. It is the same string the rehearsal wrote inline.
+3. **"Start your own" goes where part 3 left room for it.**
+   - On the cover it goes first in `CoverHead`'s existing `actions` row, as a fragment before "Play a tour", not in a second row after the tagline.
+   - On the tour it goes to the end card through `CanvasWalk`'s `endActions`, one prop in `app/arkademy/business-model-canvas/tour/[example]/page.tsx`.
+   - `TourEndCard.tsx` and `CanvasWalk.tsx` are unchanged.
+   - The plan's conditional Task 10 is therefore folded into Task 8. Part 3's suite check "cover: no link to your own canvas yet (part 4)" is inverted in the same commit, into "cover: Start your own leads the hero's actions, before Play a tour (part 4)", and a check "tour: the end card offers your own canvas (part 4)" is added.
+4. **`StartYourOwnButton` has no `variant` prop.** The stone button is the special action on both pages: the tour page has no other stone button. Its default size is `default`, matching "Play a tour" and the end card's buttons.
+5. **`CanvasWalk` is not widened with an edit mode,** though part 3's record suggests it. This part keeps its own screen (`YourCanvas`), as planned (reading 1).
+6. **`StepRail` is not used for the step row, and `QuestionSteps` stays.** The rail is labelled "Tour steps" and names each link "Step N: …", both hard-coded; adopting it meant changing part 3's component under review. Its 28px links are smaller than the 36px targets an editing screen on a phone gets here. Its `href` per step, however, is a good idea for a later shared component (§ "For the owner").
+
+**Change required by the real library** (loaded into the scratch database only, never committed): `answerFromLabel` lowered names that are capitalised by their first letter alone:
+- "Broadcom and Google for TPU capacity" became "broadcom …";
+- "Apple App Store and Google Play" became "apple App Store …";
+- "Agentic AI Foundation" became "agentic …".
+
+Commit `adf4f62e` adds `inspirationAnswer(label, wordings)`. The catalog computes each inspiration's `answer` on the server, keeping the label as it is when one of the companies' own wordings of the entity holds the label's first word with the same capital: wordings sit mid-sentence, where a capital is a name's. `Inspiration` gains `answer`, and `addInspiration` carries `text` (that answer) instead of `label`. On the real library, the labels it keeps are exactly the names: Supabase, Apple, GitHub, Agentic AI Foundation, Broadcom, Daily.co, Gladia, Google (twice), Interprefy, Kota, Skello, Slack. No common word is kept. The tests were written first and seen failing (`TypeError: inspirationAnswer is not a function`).
+
 
 ---
 
@@ -41,7 +80,7 @@ Screenshots at 400, 900 and 1440 px, light and dark, of the empty, a half-filled
 The spec fixes names and shapes; these are the places it was silent, ambiguous or wrong, and what the code below does.
 
 1. **No `CanvasWalk mode="edit"`.** The spec has part 4 extend part 3's `CanvasWalk`, `StepRail` and `QuestionCard`. Part 3 was not built when this part was planned, and an editor shares little with a read-only player: inputs, focus rules, storage notices, inspirations. Part 4 therefore owns its screen (`YourCanvas.tsx`) and its step row (`QuestionSteps.tsx`). Both reuse part 2's `ParagraphView`, `CanvasGrid`, `CanvasLink` and `CopyButton` as they are. Sharing a step rail with the tour is a later, separate refactor.
-2. **`parseCanvasStep` and `yoursHref` live in `canvas.ts`.** Part 3 exports `parseStepParam` and `tourHref` from `lib/arkademy/tour.ts`. Part 1's loader throws when two modules export one name, so part 4 uses its own names, with the same rule: an integer 1–9 as a single string, anything else absent.
+2. **`?step=` is read with part 3's `parseStepParam`** (`lib/arkademy/tour.ts`). `canvas.ts` adds only `yoursHref(step?)`; `tourHref` is the tour's address alone.
 3. **The reducer is pure.** Answer ids are sequential (`a1`, `a2`, …: one more than the highest in use, `nextAnswerId`), not random. `updatedAt` is stamped by the store when it applies a change, not by the reducer.
 4. **Emptying an answer does not remove it at once.** The spec's `edit` with empty text removed the answer. That deleted the field under the visitor's caret mid-retype ("select all, type the new words"). An `edit` keeps the text as typed, blank included. The field removes a blank answer on blur. `draftState`, storage and the exports never see a blank answer.
 5. **Additions to `DraftAction`:** `move` (`{ id, offset: -1 | 1 }`, within its question) for reordering, which the brief asks for and the spec's actions lacked. `add` and `addInspiration` refuse a duplicate (same words, any case, in the same question) and anything past five, returning the same object so the store writes nothing.
@@ -58,9 +97,11 @@ The spec fixes names and shapes; these are the places it was silent, ambiguous o
 11. **The current question is underlined in the paragraph, not tinted.** Part 2's `CanvasLink` tints a sentence and outlines its block on hover and focus. The current sentence is underlined instead (a different property), so a hovered sentence and the current one are never confused. Rehearsed: hovering the current sentence tints it and keeps its underline, and the current block never takes the hover outline.
 12. **The page follows the cover's loading pattern.** It awaits `settledWithin(lookupArkademy(), ARKADEMY_HEAD_START_MS)` and renders in place when the library answered. Otherwise the breadcrumb, the `h1` "Your canvas" and the intro stream at once, and the editor (or the message) streams in behind `Suspense` with `LibraryPlaceholder`. Without a library, `ArkademyMessage` is followed by `StrandedDraft`: when this browser holds a draft, it downloads the stored value as it is (spec § "States without a document").
 13. **Notes never appear on your own canvas.** `draftState` never carries a note, and an inspiration carries the entity's label and the companies' names only (the suite checks the keys).
-14. **`StartYourOwnButton` takes `variant`.** It is `stone` on the cover (its one special action) and `outline` for the tour's end card, whose page may already have a special action. On the cover it is drawn only when the library is ready (the hero's tagline is shown): without a library the cover has nothing to start from.
+14. **`StartYourOwnButton`** is the stone special action on the cover (first in the hero's actions row) and on the tour's end card. On the cover it is drawn only when the library is ready, since the actions row exists only then.
 15. **The suite stubs `next/font/google`** while it renders `YourCanvas` in Node. `YourCanvas` takes `ARKADEMY_SECTION_TITLE` from `ArkademyChrome.tsx`, which imports `lib/fonts.ts`, and `next/font` runs only inside Next's compiler. The stub lives in the suite; part 2's `load-arkademy-tsx.js` is unchanged.
 16. **No `.gitignore` line:** the suite builds into part 1's `tests/app/.test-build-arkademy/`, already ignored.
+17. **An inspiration's answer keeps a name's capital** (`inspirationAnswer`, § "As built"). The spec's rule for `answerFromLabel` looks at the first word alone and cannot tell "Broadcom" from "Free", so the companies' own wordings decide. `Inspiration` gains `answer`, and `addInspiration` carries `text`.
+18. **Part 3's suite is edited once:** its check that the cover has no link to your own canvas is inverted, as part 3's record asks (Task 8).
 
 ## The design
 
@@ -163,14 +204,14 @@ The owner asked for clear and simple, to be enhanced in a later iteration. Every
 
 ## Local Postgres and a dev server, for the visual check
 
-Task 11 needs a migrated Postgres with the fixture published, and a dev server. Homebrew's Postgres 16 binaries are on the PATH. Use a directory **outside the repository** and free ports: check with `lsof -nP -iTCP:<port> -sTCP:LISTEN`, which prints nothing when free (the rehearsal used 6347 and 5347).
+Task 11 needs a migrated Postgres with the fixture published, and a dev server. Homebrew's Postgres 16 binaries are on the PATH. Use a directory **outside the repository** and free ports: check with `lsof -nP -iTCP:<port> -sTCP:LISTEN`, which prints nothing when free (the built run used 6847 and 5847).
 
 ```bash
 export PGSCRATCH=/path/to/your/scratchpad/pg-arkademy-p4     # outside the repo
 initdb -D "$PGSCRATCH/data" -U arkaik --auth=trust > "$PGSCRATCH.initdb.log"
-pg_ctl -D "$PGSCRATCH/data" -l "$PGSCRATCH.log" -o "-p 6347 -c listen_addresses=localhost -c unix_socket_directories=''" start
-createdb -h localhost -p 6347 -U arkaik arkademy_p4
-export DATABASE_URL=postgres://arkaik@localhost:6347/arkademy_p4
+pg_ctl -D "$PGSCRATCH/data" -l "$PGSCRATCH.log" -o "-p 6847 -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" start
+createdb -h 127.0.0.1 -p 6847 -U arkaik arkademy_p4
+export DATABASE_URL=postgres://arkaik@127.0.0.1:6847/arkademy_p4
 npm run --silent db:migrate | tail -1
 npm run --silent arkademy -- publish tests/fixtures/arkademy/document.json > "$PGSCRATCH.publish.log" 2>&1; grep published "$PGSCRATCH.publish.log"
 ```
@@ -223,8 +264,8 @@ Read at part 2's tip `4c7b137`.
 ## Names this part exports
 
 In `lib/arkademy/` (one namespace with parts 1–3):
-- `inspirations.ts`: `Inspiration`, `INSPIRATIONS_SHOWN`, `inspirationCatalog`, `answerFromLabel`, `availableInspirations`, `companiesLine`.
-- `canvas.ts`: `NAME_MAX_LENGTH`, `DraftAnswer`, `CanvasDraft`, `DraftAction`, `QuestionStatus`, `emptyDraft`, `oneLine`, `cutText`, `fitAnswer`, `answersOf`, `hasAnswerText`, `nextAnswerId`, `draftReducer`, `draftIsEmpty`, `draftState`, `questionStatus`, `firstUnfinishedStep`, `parseCanvasStep`, `yoursHref`.
+- `inspirations.ts`: `Inspiration`, `INSPIRATIONS_SHOWN`, `inspirationCatalog`, `answerFromLabel`, `inspirationAnswer`, `availableInspirations`, `companiesLine`.
+- `canvas.ts`: `NAME_MAX_LENGTH`, `DraftAnswer`, `CanvasDraft`, `DraftAction`, `QuestionStatus`, `emptyDraft`, `oneLine`, `cutText`, `fitAnswer`, `answersOf`, `hasAnswerText`, `nextAnswerId`, `draftReducer`, `draftIsEmpty`, `draftState`, `questionStatus`, `firstUnfinishedStep`, `yoursHref`.
 - `canvas-storage.ts`: `DRAFT_STORAGE_KEY`, `DRAFT_UNREADABLE_KEY`, `DRAFT_FORMAT`, `DRAFT_UPGRADES`, `UNREADABLE_DRAFT_FILENAME`, `StoredDraftRead`, `repairDraft`, `readStoredDraft`, `serializeDraft`.
 - `canvas-export.ts`: `CanvasTool`, `CanvasExport`, `canvasParagraphText`, `canvasMarkdown`, `canvasJson`, `canvasJsonText`, `canvasFilename`.
 
@@ -232,19 +273,17 @@ Outside it:
 - `lib/hooks/useCanvasDraft.ts`: `DRAFT_WRITE_DELAY_MS`, `DraftPersistence`, `CanvasDraftView`, `dispatchDraft`, `dismissUnreadableDraft`, `useCanvasDraft`, `useHasCanvasDraft`, `useStoredDraftText`.
 - `lib/utils/download.ts`: `downloadTextFile`.
 
-## Files part 3 may also touch
+## Files shared with part 3 (as built)
 
-Part 3 (`feat/arkademy-tour`) is planned in parallel. This part sits on top of it, and these files may carry part 3's lines when Task 1 runs:
-
-| File | Part 3's likely change | This part's edit, and what to do if the surroundings moved |
+| File | Part 3's code | This part's edit |
 |---|---|---|
-| `app/arkademy/business-model-canvas/page.tsx` | "Play a tour" in `CoverHead`'s `<header>` after the tagline; `ExampleCard`'s `actions` | Task 8 inserts an actions row after the tagline line. If part 3 already put a row of actions there (a `div` holding "Play a tour"), add `<StartYourOwnButton />` as that row's **first** child (the stone special action first) and add no second row. |
-| `components/arkademy/ExampleCard.tsx` | "Play the tour" through `actions` | not touched |
-| `package.json` | `test:arkademy-tour` after `test:arkademy-paragraph` | Task 2 inserts after the `test:arkademy-paragraph` line; if part 3's line follows it, insert after part 3's line instead. |
-| `.github/workflows/ci.yml` | an "Arkademy tour tests" step after the cover step | Task 2 inserts after the `run: npm run test:arkademy-paragraph` line; if part 3's step follows it, insert after part 3's `run: npm run test:arkademy-tour` line instead. |
-| `docs/architecture.md` | the tour's route and its components | Task 9 inserts before `  api/` and before `  publik/`, anchors part 3 does not move. |
-| `components/arkademy/TourEndCard.tsx` | created by part 3 | Task 10 only, and only if the file exists. |
-| `lib/wobble/*.generated.*`, `app/wobble.generated.css` | Play and Pause icons | not touched (this part adds no icon) |
+| `app/arkademy/business-model-canvas/page.tsx` | `CoverHead`'s `actions` row holds "Play a tour" | `<StartYourOwnButton />` first, in a fragment (Task 8) |
+| `app/arkademy/business-model-canvas/tour/[example]/page.tsx` | `<CanvasWalk … />` with no `endActions` | `endActions={<StartYourOwnButton />}` (Task 8) |
+| `tests/app/arkademy-tour.test.js` | "cover: no link to your own canvas yet (part 4)" | inverted, plus the end-card check (Task 8) |
+| `package.json`, `.github/workflows/ci.yml` | `test:arkademy-tour` and its step | this part's line and step follow them (Task 2) |
+| `docs/architecture.md` | the tour's route and components | inserted before `  api/` and before `  publik/` (Task 9) |
+| `components/arkademy/QuestionCard.tsx` | exports `ARKADEMY_KICKER` | imported, not edited |
+| `lib/arkademy/tour.ts` | exports `parseStepParam` | imported, not edited |
 
 ## File map
 
@@ -346,7 +385,7 @@ const index = A.indexArkademy(validation.document);
 
 // --- inspirations -------------------------------------------------------------------
 {
-  const { inspirationCatalog, availableInspirations, answerFromLabel, companiesLine, INSPIRATIONS_SHOWN } = A;
+  const { inspirationCatalog, availableInspirations, answerFromLabel, inspirationAnswer, companiesLine, INSPIRATIONS_SHOWN } = A;
   const catalog = inspirationCatalog(index);
   same("catalog: one list per question, canonical order", Object.keys(catalog), A.BMC_QUESTION_KEYS);
   same(
@@ -381,7 +420,7 @@ const index = A.indexArkademy(validation.document);
   check("catalog: only entities of the question's kind", catalog.seg.every((item) => item.entity !== "word-of-mouth"));
   check(
     "catalog: an inspiration carries no note",
-    Object.values(catalog).every((list) => list.every((item) => Object.keys(item).join() === "entity,label,companies")),
+    Object.values(catalog).every((list) => list.every((item) => Object.keys(item).join() === "entity,label,answer,companies")),
   );
 
   // Ties on label too sort by id; labels compare without case or accents.
@@ -419,6 +458,39 @@ const index = A.indexArkademy(validation.document);
   same("answerFromLabel: one capital letter alone is lowered", answerFromLabel("X"), "x");
   same("answerFromLabel: accents", answerFromLabel("École partners"), "école partners");
   same("answerFromLabel: trimmed", answerFromLabel("  Hosting "), "hosting");
+
+  // A name that is capitalised by its first letter alone (Broadcom, Apple) is
+  // told apart by the companies' own wordings of the entity, which sit
+  // mid-sentence: a capital there is a name's.
+  same(
+    "inspirationAnswer: a name the wordings capitalise keeps its capital",
+    inspirationAnswer("Broadcom and Google for TPU capacity", ["Broadcom and Google for TPU capacity"]),
+    "Broadcom and Google for TPU capacity",
+  );
+  same(
+    "inspirationAnswer: found anywhere in a wording, punctuation aside",
+    inspirationAnswer("Apple App Store and Google Play", ["the Apple and Google app stores"]),
+    "Apple App Store and Google Play",
+  );
+  same(
+    "inspirationAnswer: a common first word is lowered",
+    inspirationAnswer("Third-party AI model providers", ["third-party AI model providers", "AI providers"]),
+    "third-party AI model providers",
+  );
+  same("inspirationAnswer: no wording, the label rule alone", inspirationAnswer("Word of mouth", []), "word of mouth");
+  same("inspirationAnswer: an inner capital needs no wording", inspirationAnswer("GitHub", []), "GitHub");
+  check(
+    "catalog: each answer is its label's answer (the fixture holds no name)",
+    Object.values(catalog).every((list) => list.every((item) => item.answer === answerFromLabel(item.label))),
+  );
+  const named = JSON.parse(JSON.stringify(validation.document));
+  named.entities.push({ id: "brine-co", kind: "partner", label: "Brine & Sons for salt" });
+  named.uses.push({ tool: "business-model-canvas", company: "tidewise", question: "kp", entity: "brine-co", text: "Brine & Sons, who sell the salt", order: 1 });
+  same(
+    "catalog: a name keeps its capital in the answer",
+    inspirationCatalog(A.indexArkademy(named)).kp.find((item) => item.entity === "brine-co").answer,
+    "Brine & Sons for salt",
+  );
 
   same("companiesLine: one", companiesLine([{ name: "Crumb & Co" }]), "Crumb & Co");
   same("companiesLine: two", companiesLine([{ name: "A" }, { name: "B" }]), "A and B");
@@ -465,6 +537,8 @@ import type { BmcQuestionKey } from "./schema";
 export interface Inspiration {
   entity: string;
   label: string;
+  /** The label as an answer: `inspirationAnswer` of the label and the companies' own wordings. */
+  answer: string;
   companies: { id: string; name: string }[]; // in tool.examples order
 }
 
@@ -474,6 +548,12 @@ export const INSPIRATIONS_SHOWN = 6;
 /** Per question: the entities of its kind that some example uses, most shared first, then label, then id. */
 export function inspirationCatalog(index: ArkademyIndex): Record<BmcQuestionKey, Inspiration[]> {
   const catalog = {} as Record<BmcQuestionKey, Inspiration[]>;
+  const wordings = new Map<string, string[]>();
+  for (const use of index.document.uses) {
+    const list = wordings.get(use.entity);
+    if (list) list.push(use.text);
+    else wordings.set(use.entity, [use.text]);
+  }
   for (const key of BMC_QUESTION_KEYS) {
     const kind = BMC_QUESTION_KIND[key];
     const list: Inspiration[] = [];
@@ -483,7 +563,9 @@ export function inspirationCatalog(index: ArkademyIndex): Record<BmcQuestionKey,
         const company = index.company(id);
         return company ? [{ id: company.id, name: company.name }] : [];
       });
-      if (companies.length > 0) list.push({ entity: entity.id, label: entity.label, companies });
+      if (companies.length === 0) continue;
+      const answer = inspirationAnswer(entity.label, wordings.get(entity.id) ?? []);
+      list.push({ entity: entity.id, label: entity.label, answer, companies });
     }
     list.sort(
       (a, b) =>
@@ -510,6 +592,27 @@ export function answerFromLabel(label: string): string {
   return text.charAt(0).toLocaleLowerCase("en") + text.slice(1);
 }
 
+/** A word stripped of the punctuation around it, for comparing words across texts. */
+function bareWord(word: string): string {
+  return word.replace(/^[^0-9A-Za-z\u00C0-\uFFFF]+|[^0-9A-Za-z\u00C0-\uFFFF]+$/g, "");
+}
+
+/**
+ * The answer an inspiration becomes. `answerFromLabel` lowers a first letter
+ * it cannot tell from a name's ("Broadcom and Google", "Apple App Store"), so
+ * the companies' own wordings of the entity decide: they sit mid-sentence,
+ * where a capital is a name's. When one of them holds the label's first word
+ * with the same capital, the label is kept as it is.
+ */
+export function inspirationAnswer(label: string, wordings: readonly string[]): string {
+  const answer = answerFromLabel(label);
+  const text = label.trim();
+  if (answer === text) return answer;
+  const first = bareWord(text.split(/\s/, 1)[0] ?? "");
+  const named = first !== "" && wordings.some((wording) => wording.split(/\s+/).some((word) => bareWord(word) === first));
+  return named ? text : answer;
+}
+
 /**
  * The inspirations a question still offers: drops the entities already added
  * to it and any whose label matches an answer's text, case-insensitively.
@@ -518,11 +621,14 @@ export function availableInspirations(
   list: readonly Inspiration[],
   answers: readonly { text: string; inspiration?: { entity: string } }[],
 ): Inspiration[] {
+  // A label typed as an answer (any case) is on the canvas already.
   const chosen = new Set(answers.flatMap((answer) => (answer.inspiration ? [answer.inspiration.entity] : [])));
   const texts = new Set(answers.map((answer) => answer.text.trim().toLocaleLowerCase("en")));
   return list.filter(
     (inspiration) =>
-      !chosen.has(inspiration.entity) && !texts.has(inspiration.label.trim().toLocaleLowerCase("en")),
+      !chosen.has(inspiration.entity) &&
+      !texts.has(inspiration.label.trim().toLocaleLowerCase("en")) &&
+      !texts.has(inspiration.answer.trim().toLocaleLowerCase("en")),
   );
 }
 
@@ -542,17 +648,17 @@ node tests/app/arkademy-canvas.test.js | grep -c '^PASS'
 node tests/app/arkademy-canvas.test.js | tail -1
 ```
 
-Expected: `25`, then `All arkademy-canvas tests passed.`
+Expected: `32`, then `All arkademy-canvas tests passed.` (with the code as shown, its final state; the commit as first made counted 25, before `adf4f62e` added the inspiration-answer checks).
 
 - [ ] **Step 5: The npm script and the CI step**
 
-In `package.json`, insert one line immediately after `    "test:arkademy-paragraph": "node tests/app/arkademy-paragraph.test.js",` (or after part 3's `test:arkademy-tour` line if it follows it):
+In `package.json`, insert one line immediately after part 3's `    "test:arkademy-tour": "node tests/app/arkademy-tour.test.js",`:
 
 ```json
     "test:arkademy-canvas": "node tests/app/arkademy-canvas.test.js",
 ```
 
-In `.github/workflows/ci.yml`, immediately after the line `        run: npm run test:arkademy-paragraph` (or after part 3's `        run: npm run test:arkademy-tour` if that step follows), insert:
+In `.github/workflows/ci.yml`, immediately after part 3's line `        run: npm run test:arkademy-tour`, insert:
 
 ```yaml
 
@@ -595,7 +701,7 @@ Insert this section into `tests/app/arkademy-canvas.test.js` immediately above t
 // --- the draft and its reducer -------------------------------------------------------
 {
   const { draftReducer, emptyDraft, draftState, draftIsEmpty, firstUnfinishedStep, questionStatus } = A;
-  const { parseCanvasStep, yoursHref, nextAnswerId, NAME_MAX_LENGTH } = A;
+  const { yoursHref, nextAnswerId, NAME_MAX_LENGTH } = A;
   const run = (actions, start = emptyDraft()) => actions.reduce((draft, action) => draftReducer(draft, action), start);
 
   same("empty draft", emptyDraft(), { name: "", answers: [], open: [], updatedAt: "" });
@@ -631,7 +737,7 @@ Insert this section into `tests/app/arkademy-canvas.test.js` immediately above t
   check("a sixth is refused, same object", draftReducer(five, { type: "add", question: "ka", text: "f" }) === five);
   check(
     "a sixth inspiration is refused too",
-    draftReducer(five, { type: "addInspiration", question: "ka", entity: "order-taking", label: "Taking orders", documentVersion: 1 }) === five,
+    draftReducer(five, { type: "addInspiration", question: "ka", entity: "order-taking", text: "taking orders", documentVersion: 1 }) === five,
   );
 
   const opened = run([{ type: "setOpen", question: "rev", open: true }]);
@@ -645,15 +751,15 @@ Insert this section into `tests/app/arkademy-canvas.test.js` immediately above t
 
   const inspired = run([
     { type: "setOpen", question: "ch", open: true },
-    { type: "addInspiration", question: "ch", entity: "word-of-mouth", label: "Word of mouth", documentVersion: 7 },
+    { type: "addInspiration", question: "ch", entity: "word-of-mouth", text: " word of mouth ", documentVersion: 7 },
   ]);
-  same("addInspiration: label made an answer, entity and version kept", inspired.answers, [
+  same("addInspiration: the inspiration's answer, trimmed, entity and version kept", inspired.answers, [
     { id: "a1", question: "ch", text: "word of mouth", inspiration: { entity: "word-of-mouth", documentVersion: 7 } },
   ]);
   same("addInspiration clears open", inspired.open, []);
   check(
     "addInspiration: the same entity twice is refused",
-    draftReducer(inspired, { type: "addInspiration", question: "ch", entity: "word-of-mouth", label: "Word of mouth", documentVersion: 7 }) === inspired,
+    draftReducer(inspired, { type: "addInspiration", question: "ch", entity: "word-of-mouth", text: "word of mouth", documentVersion: 7 }) === inspired,
   );
   const reworded = run([{ type: "edit", id: "a1", text: "neighbours telling neighbours" }], inspired);
   same("rewording keeps the inspiration", reworded.answers[0], {
@@ -705,7 +811,7 @@ Insert this section into `tests/app/arkademy-canvas.test.js` immediately above t
   const full = run([
     { type: "rename", name: "Tidy" },
     { type: "add", question: "seg", text: "  people who fish  " },
-    { type: "addInspiration", question: "ch", entity: "app-stores", label: "App stores", documentVersion: 2 },
+    { type: "addInspiration", question: "ch", entity: "app-stores", text: "app stores", documentVersion: 2 },
     { type: "setOpen", question: "rev", open: true },
   ]);
   const state = draftState(full);
@@ -730,9 +836,6 @@ Insert this section into `tests/app/arkademy-canvas.test.js` immediately above t
   const allDone = run(A.BMC_QUESTION_KEYS.map((question) => ({ type: "add", question, text: `answer ${question}` })));
   same("first unfinished: all done is step 1", firstUnfinishedStep(allDone), 1);
 
-  for (const [raw, expected] of [["1", 1], ["9", 9], ["0", null], ["10", null], ["3abc", null], ["", null], [["2"], null], [undefined, null]]) {
-    same(`parseCanvasStep(${JSON.stringify(raw)})`, parseCanvasStep(raw), expected);
-  }
   same("yoursHref", [yoursHref(), yoursHref(4)], [
     "/arkademy/business-model-canvas/yours",
     "/arkademy/business-model-canvas/yours?step=4",
@@ -751,7 +854,6 @@ Expected: the stack trace of `TypeError: emptyDraft is not a function` and a non
 - [ ] **Step 3: Write `lib/arkademy/canvas.ts`**
 
 ```ts
-import { answerFromLabel } from "./inspirations";
 import { displayAnswers } from "./paragraph";
 import type { CanvasAnswer, CanvasQuestionState } from "./paragraph";
 import { ANSWER_MAX_LENGTH, BMC_QUESTION_KEYS, MAX_ANSWERS_PER_QUESTION } from "./schema";
@@ -792,7 +894,7 @@ export interface CanvasDraft {
 export type DraftAction =
   | { type: "rename"; name: string }
   | { type: "add"; question: BmcQuestionKey; text: string }
-  | { type: "addInspiration"; question: BmcQuestionKey; entity: string; label: string; documentVersion: number }
+  | { type: "addInspiration"; question: BmcQuestionKey; entity: string; text: string; documentVersion: number } // text: the inspiration's `answer`
   | { type: "edit"; id: string; text: string } // a blank text is kept while its field has focus; the field removes it on blur
   | { type: "remove"; id: string }
   | { type: "move"; id: string; offset: -1 | 1 } // within its question
@@ -887,7 +989,7 @@ export function draftReducer(draft: CanvasDraft, action: DraftAction): CanvasDra
     }
     case "addInspiration": {
       const chosen = answersOf(draft, action.question).some((answer) => answer.inspiration?.entity === action.entity);
-      const text = fitAnswer(answerFromLabel(oneLine(action.label).trim())).trim();
+      const text = fitAnswer(oneLine(action.text).trim()).trim();
       if (chosen || !canAdd(draft, action.question, text)) return draft;
       return withAnswer(draft, {
         id: nextAnswerId(draft.answers),
@@ -969,11 +1071,6 @@ export function firstUnfinishedStep(draft: CanvasDraft): number {
   return index < 0 ? 1 : index + 1;
 }
 
-/** `?step=N` on your own canvas: an integer 1–9, anything else reads as absent. */
-export function parseCanvasStep(raw: string | string[] | undefined): number | null {
-  return typeof raw === "string" && /^[1-9]$/.test(raw) ? Number(raw) : null;
-}
-
 /** Your own canvas, optionally at a step. */
 export function yoursHref(step?: number): string {
   return step === undefined ? BMC_YOURS_PATH : `${BMC_YOURS_PATH}?step=${step}`;
@@ -987,7 +1084,7 @@ node tests/app/arkademy-canvas.test.js | grep -c '^PASS'
 node tests/app/arkademy-canvas.test.js | tail -1
 ```
 
-Expected: `87`, then `All arkademy-canvas tests passed.`
+Expected: `86`, then `All arkademy-canvas tests passed.` (with the code as shown, its final state; the commit as first made counted 79, before `adf4f62e` added the inspiration-answer checks).
 
 - [ ] **Step 5: Commit**
 
@@ -1275,7 +1372,7 @@ node tests/app/arkademy-canvas.test.js | grep -c '^PASS'
 node tests/app/arkademy-canvas.test.js | tail -1
 ```
 
-Expected: `117`, then `All arkademy-canvas tests passed.`
+Expected: `116`, then `All arkademy-canvas tests passed.` (with the code as shown, its final state; the commit as first made counted 109, before `adf4f62e` added the inspiration-answer checks).
 
 - [ ] **Step 5: Commit**
 
@@ -1545,7 +1642,7 @@ node tests/app/arkademy-canvas.test.js | grep -c '^PASS'
 node tests/app/arkademy-canvas.test.js | tail -1
 ```
 
-Expected: `134`, then `All arkademy-canvas tests passed.`
+Expected: `133`, then `All arkademy-canvas tests passed.` (with the code as shown, its final state; the commit as first made counted 126, before `adf4f62e` added the inspiration-answer checks).
 
 - [ ] **Step 5: Commit**
 
@@ -2024,6 +2121,7 @@ import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "re
 import { flushSync } from "react-dom";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 
+import { ARKADEMY_KICKER } from "@/components/arkademy/QuestionCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2166,7 +2264,7 @@ export function QuestionEditor({
   return (
     <Card className="min-w-0 gap-5 p-4 sm:p-6">
       <div>
-        <p className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+        <p className={ARKADEMY_KICKER}>
           Question {step} of {total} · {question.block}
         </p>
         <h2
@@ -2580,6 +2678,7 @@ import { CanvasToolbar } from "@/components/arkademy/CanvasToolbar";
 import { InspirationList } from "@/components/arkademy/InspirationList";
 import { ParagraphView } from "@/components/arkademy/ParagraphView";
 import { ADD_ANSWER_ID, QUESTION_TITLE_ID, QuestionEditor, type AddResult } from "@/components/arkademy/QuestionEditor";
+import { ARKADEMY_KICKER } from "@/components/arkademy/QuestionCard";
 import { QuestionSteps } from "@/components/arkademy/QuestionSteps";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -2752,7 +2851,7 @@ function CanvasEditor({
         type: "addInspiration",
         question: question.key,
         entity: item.entity,
-        label: item.label,
+        text: item.answer,
         documentVersion,
       }),
     );
@@ -2815,7 +2914,7 @@ function CanvasEditor({
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
           <QuestionSteps questions={questions} statuses={statuses} current={step} onSelect={(n) => goTo(n, "heading")} />
-          <p className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+          <p className={ARKADEMY_KICKER}>
             {answeredCount} of {questions.length} answered{openCount > 0 && ` · ${openCount} left open`}
           </p>
         </div>
@@ -3106,21 +3205,16 @@ import { Button } from "@/components/ui/button";
 import { BMC_YOURS_PATH } from "@/lib/arkademy/tools";
 import { useHasCanvasDraft } from "@/lib/hooks/useCanvasDraft";
 
-interface StartYourOwnButtonProps {
-  size?: "default" | "lg";
-  /** `stone` on the cover, its one special action; `outline` where the page already has one (the tour's end card). */
-  variant?: "stone" | "outline";
-}
-
 /**
- * "Start your own", or "Continue your canvas" once this browser holds one.
- * The server renders "Start your own"; the label changes after hydration,
- * never during it.
+ * The page's one special action (the stone button), on the cover and on the
+ * tour's end card: "Start your own", or "Continue your canvas" once this
+ * browser holds one. The server renders "Start your own"; the label changes
+ * after hydration, never during it.
  */
-export function StartYourOwnButton({ size = "lg", variant = "stone" }: StartYourOwnButtonProps) {
+export function StartYourOwnButton({ size = "default" }: { size?: "default" | "lg" }) {
   const hasDraft = useHasCanvasDraft();
   return (
-    <Button asChild variant={variant} size={size}>
+    <Button asChild variant="stone" size={size}>
       <Link href={BMC_YOURS_PATH}>{hasDraft ? "Continue your canvas" : "Start your own"}</Link>
     </Button>
   );
@@ -3141,12 +3235,12 @@ import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
 import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { StrandedDraft } from "@/components/arkademy/StrandedDraft";
 import { YourCanvas } from "@/components/arkademy/YourCanvas";
-import { parseCanvasStep } from "@/lib/arkademy/canvas";
 import { ARKADEMY_HEAD_START_MS, settledWithin } from "@/lib/arkademy/head-start";
 import { indexArkademy } from "@/lib/arkademy/index-document";
 import { inspirationCatalog } from "@/lib/arkademy/inspirations";
 import { BMC_FALLBACK_TITLE, bmcYoursMetadata } from "@/lib/arkademy/metadata";
 import { BMC_TOOL_ID } from "@/lib/arkademy/schema";
+import { parseStepParam } from "@/lib/arkademy/tour";
 import { ARKADEMY_PATH, ARKADEMY_TOOL_PATHS } from "@/lib/arkademy/tools";
 import { getArkademy, type ArkademyLookup } from "@/lib/services/arkademy";
 import { cn } from "@/lib/utils";
@@ -3178,7 +3272,7 @@ export default async function YourCanvasPage({ searchParams }: { searchParams: P
     searchParams,
     settledWithin(lookupArkademy(), ARKADEMY_HEAD_START_MS),
   ]);
-  const initialStep = parseCanvasStep(step);
+  const initialStep = parseStepParam(step);
   return (
     <div className={cn(ARKADEMY_COLUMN, "pt-6 pb-24")}>
       {early ? (
@@ -3271,7 +3365,7 @@ npm run lint 2>&1 | grep problems
 npm run test:keyboard-shortcuts | tail -1
 ```
 
-Expected: `155`; `All arkademy-canvas tests passed.`; `tsc` silent; `✖ 3 problems (0 errors, 3 warnings)`; `All keyboard shortcut tests passed`.
+Expected: `154` (147 when first committed, before `adf4f62e`); `All arkademy-canvas tests passed.`; `tsc` silent; `✖ 3 problems (0 errors, 3 warnings)`; `All keyboard shortcut tests passed`.
 
 - [ ] **Step 13: Commit**
 
@@ -3282,56 +3376,94 @@ git commit -m "feat(arkademy): your own canvas — one question at a time, inspi
 
 ---
 
-### Task 8: "Start your own" on the cover
+### Task 8: "Start your own" on the cover and at the end of every tour
 
 **Files:**
-- Modify: `app/arkademy/business-model-canvas/page.tsx`
+- Modify: `tests/app/arkademy-tour.test.js` (part 3's suite: one check inverted, one added)
+- Modify: `app/arkademy/business-model-canvas/page.tsx`, `app/arkademy/business-model-canvas/tour/[example]/page.tsx`
 
-- [ ] **Step 1: Import the button**
+Part 3 left both places ready: `CoverHead`'s `actions` row and `CanvasWalk`'s `endActions`. Neither part 3 component changes.
 
-Immediately after the line
+- [ ] **Step 1: Invert part 3's check first**
 
-```tsx
-import { PromptBlock } from "@/components/arkademy/PromptBlock";
+In `tests/app/arkademy-tour.test.js`, replace the line
+
+```js
+  check("cover: no link to your own canvas yet (part 4)", !cover.includes("BMC_YOURS_PATH"));
 ```
 
-insert
+with
 
-```tsx
-import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";
+```js
+  // Inverted by part 4: the cover's actions row now leads with your own canvas.
+  check(
+    "cover: Start your own leads the hero's actions, before Play a tour (part 4)",
+    /actions=\{\s*<>\s*<StartYourOwnButton \/>[\s\S]*Play a tour/.test(cover),
+  );
+  const tourPage = fs.readFileSync(path.join(ROOT, "app", "arkademy", "business-model-canvas", "tour", "[example]", "page.tsx"), "utf8");
+  check("tour: the end card offers your own canvas (part 4)", tourPage.includes("endActions={<StartYourOwnButton />}"));
 ```
-
-- [ ] **Step 2: Insert the action after the tagline**
-
-Find the one line (`:73` at part 2's tip, inside `CoverHead`'s `<header>`):
-
-```tsx
-        {tagline && <p className="mt-4 text-lg leading-relaxed text-muted-foreground">{tagline}</p>}
-```
-
-Insert immediately after it:
-
-```tsx
-        {tagline && (
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <StartYourOwnButton />
-          </div>
-        )}
-```
-
-**If part 3 changed these lines:** part 3 adds "Play a tour" in the same place. If the header already holds an actions row after the tagline (a `div` whose children include "Play a tour"), do not add a second row: put `<StartYourOwnButton />` as that row's first child, before "Play a tour", so the stone special action leads. If part 3 rewrote the tagline line itself, insert after whatever line renders `{tagline}` inside `<header>`, inside the same `tagline &&` condition. The cover must keep exactly one `h1`.
-
-- [ ] **Step 3: Check and commit**
 
 ```bash
-npx tsc --noEmit
-npm run lint 2>&1 | grep problems
-npm run test:arkademy-paragraph | tail -1
-git add app/arkademy/business-model-canvas/page.tsx
-git commit -m "feat(arkademy): the cover's Start your own, or Continue your canvas"
+npm run test:arkademy-tour 2>&1 | grep -E "^FAIL|failed"
 ```
 
-Expected: `tsc` silent; 0 errors; `All arkademy-paragraph tests passed.`
+Expected:
+
+```
+FAIL: cover: Start your own leads the hero's actions, before Play a tour (part 4)
+FAIL: tour: the end card offers your own canvas (part 4)
+2 arkademy-tour test(s) failed
+```
+
+- [ ] **Step 2: The cover**
+
+In `app/arkademy/business-model-canvas/page.tsx`, after `import { PromptBlock } from "@/components/arkademy/PromptBlock";`, add `import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";`. In `CoverFor`'s ready branch, replace
+
+```tsx
+      actions={
+        <Button asChild variant="outline">
+          <a href="#examples">
+            <CirclePlayIcon aria-hidden="true" />
+            Play a tour
+          </a>
+        </Button>
+      }
+```
+
+with
+
+```tsx
+      actions={
+        <>
+          <StartYourOwnButton />
+          <Button asChild variant="outline">
+            <a href="#examples">
+              <CirclePlayIcon aria-hidden="true" />
+              Play a tour
+            </a>
+          </Button>
+        </>
+      }
+```
+
+- [ ] **Step 3: The tour's end card**
+
+In `app/arkademy/business-model-canvas/tour/[example]/page.tsx`, after `import { CanvasWalk } from "@/components/arkademy/CanvasWalk";`, add `import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";`. In `TourBody`'s `<CanvasWalk …>`, after `examplesHref={`${COVER_PATH}#examples`}`, add the prop `endActions={<StartYourOwnButton />}`.
+
+- [ ] **Step 4: Check and commit**
+
+```bash
+npm run test:arkademy-tour | tail -1
+npm run test:arkademy-canvas | tail -1
+npm run test:arkademy-paragraph | tail -1
+npx tsc --noEmit
+npm run lint 2>&1 | grep problems
+git add app/arkademy/business-model-canvas/page.tsx "app/arkademy/business-model-canvas/tour/[example]/page.tsx" components/arkademy/StartYourOwnButton.tsx tests/app/arkademy-tour.test.js
+git commit   # "feat(arkademy): Start your own on the cover and at the end of every tour", saying the tour check is inverted
+```
+
+Expected: the three suites pass; `tsc` silent; 0 errors. (The committed `StartYourOwnButton.tsx` lost a `variant` prop in this commit, and its default size became `default`; the file in Task 7 shows its final form.)
 
 ---
 
@@ -3381,38 +3513,21 @@ git commit -m "docs(arkademy): your own canvas in the folder map"
 
 ---
 
-### Task 10: The tour's end card offers "Start your own" (only if part 3 shipped it)
+### Task 10: An inspiration that starts with a name keeps its capital
 
 **Files:**
-- Modify, only if it exists: `components/arkademy/TourEndCard.tsx` (part 3's)
+- Modify: `lib/arkademy/inspirations.ts`, `lib/arkademy/canvas.ts`, `components/arkademy/YourCanvas.tsx`, `tests/app/arkademy-canvas.test.js`
 
-Not rehearsed: part 3 did not exist when this plan was written. The spec (§ "The tour → State and timing") has the end card offer "Choose another example" and, once part 4 has shipped, "Start your own".
+Found with the real library (§ "As built"). The tests and code shown in Tasks 2, 3 and 7 already hold this commit's changes:
+- the `inspirationAnswer` checks, `item.answer`, and the catalog's key list `entity,label,answer,companies`;
+- `addInspiration` with `text`;
+- `YourCanvas` passing `text: item.answer`.
 
-- [ ] **Step 1: Check**
+As committed:
 
-```bash
-test -f components/arkademy/TourEndCard.tsx && grep -n "Choose another example" components/arkademy/TourEndCard.tsx
-```
-
-If the file does not exist, or holds no "Choose another example", skip this task and say so in the PR body.
-
-- [ ] **Step 2: Add the action beside "Choose another example"**
-
-Add `import { StartYourOwnButton } from "@/components/arkademy/StartYourOwnButton";` with the file's other `@/components/arkademy/` imports. Then render `<StartYourOwnButton size="default" variant="outline" />` as the next sibling of the element that renders "Choose another example", inside the same container.
-
-If the end card is a server component, this is still fine: `StartYourOwnButton` is a client component with no props but these two plain strings. If part 3 left a slot for it (for example an `actions` prop or a comment naming part 4), use that slot instead.
-
-- [ ] **Step 3: Check and commit**
-
-```bash
-npx tsc --noEmit
-npm run lint 2>&1 | grep problems
-npm run test:arkademy-tour | tail -1
-git add components/arkademy/TourEndCard.tsx
-git commit -m "feat(arkademy): the tour's end card offers Start your own"
-```
-
-Expected: `tsc` silent; 0 errors; part 3's suite passes. In Task 11, play one tour to its end at 1440 px and check the end card shows "Start your own" (or "Continue your canvas" with a draft) beside "Choose another example".
+- [ ] **Step 1:** The test changes went in first: the `inspirationAnswer` cases, a catalog answer for an invented name ("Brine & Sons for salt", whose wording "Brine & Sons, who sell the salt" capitalises it), and the reducer's actions carrying `text`. `node tests/app/arkademy-canvas.test.js` then printed `FAIL: catalog: an inspiration carries no note` and `TypeError: inspirationAnswer is not a function`.
+- [ ] **Step 2:** `inspirations.ts` gained `bareWord`, `inspirationAnswer` and the catalog's `answer`; `availableInspirations` also compares answers; `canvas.ts` dropped its import of `answerFromLabel`; `YourCanvas` passes `text: item.answer`.
+- [ ] **Step 3:** `154` PASS, `tsc` silent, lint 0 errors; commit `fix(arkademy): an inspiration that starts with a name keeps its capital`.
 
 ---
 
@@ -3462,15 +3577,15 @@ Expected: `All arkademy-api integration tests passed.` (it truncates the table),
 
 ```bash
 rm -rf .next
-PORT=5347 npm run dev
+PORT=5847 npm run dev
 ```
 
 Run it in the background, with `DATABASE_URL` set to the scratch database. Then:
 
 ```bash
-for i in $(seq 1 60); do curl -s -o /dev/null -w '%{http_code}' http://localhost:5347/arkademy/business-model-canvas/yours | grep -q 200 && break; sleep 2; done
-curl -s http://localhost:5347/arkademy/business-model-canvas/yours | grep -o 'Loading your canvas\|noindex\|Your canvas</h1>' | sort -u
-curl -s http://localhost:5347/arkademy/business-model-canvas | grep -o 'Start your own' | head -1
+for i in $(seq 1 60); do curl -s -o /dev/null -w '%{http_code}' http://localhost:5847/arkademy/business-model-canvas/yours | grep -q 200 && break; sleep 2; done
+curl -s http://localhost:5847/arkademy/business-model-canvas/yours | grep -o 'Loading your canvas\|noindex\|Your canvas</h1>' | sort -u
+curl -s http://localhost:5847/arkademy/business-model-canvas | grep -o 'Start your own' | head -1
 ```
 
 Expected: `Loading your canvas`, `Your canvas</h1>`, `noindex` (the server sends the skeleton, never a draft); then `Start your own`.
@@ -3525,13 +3640,13 @@ const stored = draftFile ? fs.readFileSync(draftFile, "utf8") : null;
 `draft-full.json` (a draft written by the keyboard run in Step 5; this is what it stored):
 
 ```json
-{"v":1,"draft":{"name":"Tidy Harbour","answers":[{"id":"a1","question":"seg","text":"people who fish from the shore"},{"id":"a2","question":"seg","text":"harbour masters"},{"id":"a3","question":"vp","text":"tide times that work without signal"},{"id":"a4","question":"ch","text":"anglers swapping tips on the pier","inspiration":{"entity":"word-of-mouth","documentVersion":1}},{"id":"a5","question":"cr","text":"a help page inside the app"},{"id":"a6","question":"kr","text":"public tide data"},{"id":"a7","question":"ka","text":"updating the tables every season"},{"id":"a8","question":"ka","text":"answering emails"},{"id":"a9","question":"ka","text":"checking the harbours"},{"id":"a10","question":"ka","text":"fixing the clock"},{"id":"a11","question":"ka","text":"watching the moon"},{"id":"a12","question":"kp","text":"harbour offices that share local data"},{"id":"a13","question":"cost","text":"developer fees for the app stores"},{"id":"a14","question":"cost","text":"a server"}],"open":["rev"],"updatedAt":"2026-11-12T17:41:30.507Z"}}
+{"v":1,"draft":{"name":"Tidy Harbour","answers":[{"id":"a1","question":"seg","text":"people who fish from the shore"},{"id":"a2","question":"seg","text":"harbour masters"},{"id":"a3","question":"vp","text":"tide times that work without signal"},{"id":"a4","question":"ch","text":"anglers swapping tips on the pier","inspiration":{"entity":"word-of-mouth","documentVersion":1}},{"id":"a5","question":"cr","text":"a help page inside the app"},{"id":"a6","question":"kr","text":"public tide data"},{"id":"a7","question":"ka","text":"updating the tables every season"},{"id":"a8","question":"ka","text":"answering emails"},{"id":"a9","question":"ka","text":"checking the harbours"},{"id":"a10","question":"ka","text":"fixing the clock"},{"id":"a11","question":"ka","text":"watching the moon"},{"id":"a12","question":"kp","text":"harbour offices that share local data"},{"id":"a13","question":"cost","text":"developer fees for the app stores"},{"id":"a14","question":"cost","text":"a server"}],"open":["rev"],"updatedAt":"2026-11-12T18:34:40.139Z"}}
 ```
 
 ```bash
-PW=<playwright folder> node shots.js http://localhost:5347 <shots folder> empty /arkademy/business-model-canvas/yours
-PW=<playwright folder> node shots.js http://localhost:5347 <shots folder> half "/arkademy/business-model-canvas/yours?step=3" draft-half.json
-PW=<playwright folder> node shots.js http://localhost:5347 <shots folder> full "/arkademy/business-model-canvas/yours?step=7" draft-full.json
+PW=<playwright folder> node shots.js http://localhost:5847 <shots folder> empty /arkademy/business-model-canvas/yours
+PW=<playwright folder> node shots.js http://localhost:5847 <shots folder> half "/arkademy/business-model-canvas/yours?step=3" draft-half.json
+PW=<playwright folder> node shots.js http://localhost:5847 <shots folder> full "/arkademy/business-model-canvas/yours?step=7" draft-full.json
 ```
 
 Expected, for each of the eighteen lines: `"hscroll":false`, `"h1":1`, `"title":"Your Business Model Canvas | arkaik Arkademy"`, `"robots":"noindex, nofollow"`, `"errors":[]`.
@@ -3764,7 +3879,7 @@ async function tabTo(page, test, max = 40) {
 ```
 
 ```bash
-PW=<playwright folder> node interact.js http://localhost:5347 <scratch folder>
+PW=<playwright folder> node interact.js http://localhost:5847 <scratch folder>
 ```
 
 Expected, exactly (long lines as printed):
@@ -3877,7 +3992,7 @@ const [base, out, draftFile] = process.argv.slice(2);
 ```
 
 ```bash
-PW=<playwright folder> node link-check.js http://localhost:5347 <shots folder> draft-half.json
+PW=<playwright folder> node link-check.js http://localhost:5847 <shots folder> draft-half.json
 ```
 
 Expected:
@@ -3969,7 +4084,7 @@ const [base, out] = process.argv.slice(2);
 node stress.js tests/fixtures/arkademy/document.json <scratch folder>/stress.json
 npm run --silent arkademy -- check <scratch folder>/stress.json 2>&1 | tail -1
 npm run --silent arkademy -- publish <scratch folder>/stress.json > "$PGSCRATCH.publish.log" 2>&1; grep published "$PGSCRATCH.publish.log"
-PW=<playwright folder> node stress-shots.js http://localhost:5347 <shots folder>
+PW=<playwright folder> node stress-shots.js http://localhost:5847 <shots folder>
 npm run --silent arkademy -- publish tests/fixtures/arkademy/document.json > "$PGSCRATCH.publish.log" 2>&1; grep published "$PGSCRATCH.publish.log"
 ```
 
@@ -4011,10 +4126,10 @@ const [base, out, tag, p, draftFile] = process.argv.slice(2);
 ```
 
 ```bash
-PW=<playwright folder> node cover-shots.js http://localhost:5347 <shots folder> cover /arkademy/business-model-canvas draft-half.json
+PW=<playwright folder> node cover-shots.js http://localhost:5847 <shots folder> cover /arkademy/business-model-canvas draft-half.json
 psql -q "$DATABASE_URL" -c "truncate arkademy_documents"
-PW=<playwright folder> node cover-shots.js http://localhost:5347 <shots folder> nolibrary /arkademy/business-model-canvas/yours draft-half.json
-curl -s http://localhost:5347/arkademy/business-model-canvas/yours | grep -o 'being stocked. Come back soon.' | head -1
+PW=<playwright folder> node cover-shots.js http://localhost:5847 <shots folder> nolibrary /arkademy/business-model-canvas/yours draft-half.json
+curl -s http://localhost:5847/arkademy/business-model-canvas/yours | grep -o 'being stocked. Come back soon.' | head -1
 npm run --silent arkademy -- publish tests/fixtures/arkademy/document.json > "$PGSCRATCH.publish.log" 2>&1; grep published "$PGSCRATCH.publish.log"
 ```
 
@@ -4031,12 +4146,94 @@ published v1 (10.1 KB, 1 warning)
 
 Read `cover-1440-light.png`: the stone "Start your own" under the tagline. With part 3, "Play a tour" sits beside it, after it. Read `nolibrary-400-dark.png`: the dashed message, then "Your canvas is still saved in this browser. You can download it as it is." with "Download your saved canvas".
 
+- [ ] **Step 8b: The tour's end card, and the real library**
+
+`tour-end.js`:
+
+```js
+// The tour's last step, with and without a draft: the end card's actions, in order.
+const fs = require("fs");
+const { chromium } = require(process.env.PW + "/node_modules/playwright");
+const [base, out, draftFile] = process.argv.slice(2);
+(async () => {
+  const browser = await chromium.launch();
+  for (const [tag, width, scheme, withDraft] of [["tour-end", 1440, "light", false], ["tour-end-draft", 400, "dark", true]]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme });
+    if (withDraft) await ctx.addInitScript((v) => localStorage.setItem("arkaik:arkademy:bmc", v), fs.readFileSync(draftFile, "utf8"));
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(m.text()); });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(base + "/arkademy/business-model-canvas/tour/tidewise?step=9", { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const card = page.getByText("End of the tour").locator("xpath=ancestor::*[.//a][1]");
+    const actions = await card.locator("a").allInnerTexts();
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${out}/${tag}-${width}-${scheme}.png` });
+    console.log(tag, JSON.stringify({ actions, errors }));
+    await ctx.close();
+  }
+  await browser.close();
+})();
+```
+
+```bash
+PW=<playwright folder> node tour-end.js http://localhost:5847 <shots folder> draft-half.json
+```
+
+Expected:
+
+```
+tour-end {"actions":["Start your own","Next example: Inkwell","All examples"],"errors":[]}
+tour-end-draft {"actions":["Continue your canvas","Next example: Inkwell","All examples"],"errors":[]}
+```
+
+Optional, to judge the inspirations with real entities: publish the real library into the **scratch** database only (`npm run --silent arkademy -- publish arkademy-content/arkademy.json`). Then run `real-check.js` and republish the fixture before anything else.
+
+```js
+// The real library (scratch database only): key partners at 1440 and 400, every inspiration shown, one added.
+const { chromium } = require(process.env.PW + "/node_modules/playwright");
+const [base, out] = process.argv.slice(2);
+(async () => {
+  const browser = await chromium.launch();
+  const errors = [];
+  for (const [width, scheme] of [[1440, "light"], [400, "dark"]]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 1000 }, colorScheme: scheme });
+    const page = await ctx.newPage();
+    page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(m.text()); });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(base + "/arkademy/business-model-canvas/yours?step=8", { waitUntil: "networkidle" });
+    await page.waitForSelector("#canvas-question-title");
+    if (width < 768) await page.getByRole("button", { name: /^Stuck\?/ }).click();
+    await page.getByRole("button", { name: /^Show all/ }).click();
+    await page.locator("#canvas-inspirations button", { hasText: "Apple App Store" }).click();
+    await page.locator("#canvas-inspirations button", { hasText: "Third-party AI model providers" }).click();
+    const answers = await page.locator("ol[aria-label='Your answers'] textarea").evaluateAll((els) => els.map((e) => e.value));
+    const sentence = await page.locator("[data-canvas-link] [data-kind=sentence][data-question=kp]").innerText();
+    const hscroll = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    await page.screenshot({ path: `${out}/real-kp-${width}-${scheme}.png`, fullPage: true });
+    console.log(width, scheme, JSON.stringify({ answers, sentence, hscroll }));
+    await ctx.close();
+  }
+  console.log("errors", JSON.stringify(errors));
+  await browser.close();
+})();
+```
+
+Expected (built run):
+
+```
+1440 light {"answers":["Apple App Store and Google Play","third-party AI model providers"],"sentence":"This product leans on Apple App Store and Google Play, and third-party AI model providers.","hscroll":false}
+400 dark {"answers":["Apple App Store and Google Play","third-party AI model providers"],"sentence":"This product leans on Apple App Store and Google Play, and third-party AI model providers.","hscroll":false}
+errors []
+```
+
 - [ ] **Step 9: Clean up**
 
 ```bash
-lsof -nP -iTCP:5347 -sTCP:LISTEN     # note the PID; kill it and its parent `next dev --port 5347`
+lsof -nP -iTCP:5847 -sTCP:LISTEN     # note the PID; kill it and its parent `next dev --port 5847`
 pg_ctl -D "$PGSCRATCH/data" stop
-lsof -nP -iTCP:5347 -sTCP:LISTEN; lsof -nP -iTCP:6347 -sTCP:LISTEN
+lsof -nP -iTCP:5847 -sTCP:LISTEN; lsof -nP -iTCP:6847 -sTCP:LISTEN
 rm -rf .next
 git status --porcelain
 ```
@@ -4045,49 +4242,66 @@ Expected: `server stopped`; both `lsof` print nothing; `git status --porcelain` 
 
 ## Part done when
 
-On `feat/arkademy-your-canvas`, on top of parts 1–3, each of these passes:
+Real results on `feat/arkademy-your-canvas` at `adf4f62e`, on top of parts 1–3 (Node 26.7.0 and Node 20.19.5):
 
-```bash
-actionlint                                   # no output
-npm run lint                                 # 0 errors
-npx tsc --noEmit                             # no output (rm -rf .next first after a branch switch)
-npm run build                                # succeeds; ƒ /arkademy/business-model-canvas/yours
-npm run generate && git status --porcelain   # prints nothing
-npm run test:arkademy-canvas                 # 155 PASS, "All arkademy-canvas tests passed."
-npm run test:arkademy-paragraph              # passes
-npm run test:arkademy-schema                 # passes (loads the new modules too)
-npm run test:arkademy-tour                   # passes (part 3's)
-npm run test:keyboard-shortcuts              # passes
-npm run test:landing                         # passes
-npm run test:docs-visibility                 # passes
-DATABASE_URL=… npm run test:arkademy-api     # passes (local Postgres, migrated)
+```
+actionlint: clean
+✖ 3 problems (0 errors, 3 warnings)          # npm run lint: main's three img warnings
+tsc: clean                                     # rm -rf .next && npx tsc --noEmit
+arkademy-canvas: All arkademy-canvas tests passed. | node20: All arkademy-canvas tests passed.        # 154 PASS
+arkademy-tour: All arkademy-tour tests passed. | node20: All arkademy-tour tests passed.              # 138 PASS
+arkademy-paragraph: All arkademy-paragraph tests passed. | node20: All arkademy-paragraph tests passed.
+arkademy-schema: All arkademy-schema tests passed. | node20: All arkademy-schema tests passed.
+keyboard-shortcuts: All keyboard shortcut tests passed | node20: All keyboard shortcut tests passed
+docs-visibility: All docs-visibility tests passed | node20: All docs-visibility tests passed
+landing: All landing tests passed. | node20: All landing tests passed.
+api: All arkademy-api integration tests passed. | node20: All arkademy-api integration tests passed.  # scratch Postgres 16
+✓ Compiled successfully in 5.4s                # npm run build: ƒ /arkademy/business-model-canvas/yours, ƒ …/tour/[example]
+generate: ok                                   # git status --short prints nothing after it
 ```
 
-The visual check of Task 11 must show the pages described there at 400, 900 and 1440 px, light and dark:
-- no sideways scroll, one `h1`, no console error or warning, no hydration warning;
+The browser run (Task 11, dev server, part 1's fixture and the larger fictional document) printed exactly the outputs given there. In particular:
 - a canvas filled by keyboard alone;
-- the three exports producing what the screen shows;
-- the storage notices and Start over behaving as printed.
+- inspirations added and reworded;
+- a question left open and undone;
+- the five-answer cap, the duplicate refusal, reorder by button and by Alt+↓, remove, and blank-then-blur;
+- the clipboard holding the paragraph and the Markdown, and the JSON download;
+- reload with `?step`, and the landing step without it;
+- corrupt, newer and blocked storage;
+- Start over: Cancel returns focus to its button, and confirming focuses the name field;
+- two tabs converging;
+- the cover's button reading "Start your own", then "Continue your canvas" with a draft;
+- the tour's end card offering "Start your own" ("Continue your canvas" with a draft) before "Next example" and "All examples";
+- the hover link (a hovered block tints its sentence; the current sentence keeps its underline; the current block never takes the outline);
+- 400, 900 and 1440 px, light and dark, every page with no sideways scroll and one `h1`;
+- zero console errors or warnings, and no hydration warning.
 
-`git diff --stat feat/arkademy-tour..HEAD` lists exactly 21 files (22 with Task 10):
+`git diff --stat feat/arkademy-tour..HEAD` lists 23 files:
 - `.github/workflows/ci.yml`, `package.json`, `docs/architecture.md`;
-- `app/arkademy/business-model-canvas/page.tsx`, `app/arkademy/business-model-canvas/yours/page.tsx`;
+- the plan;
+- `app/arkademy/business-model-canvas/page.tsx`, `app/arkademy/business-model-canvas/tour/[example]/page.tsx`, `app/arkademy/business-model-canvas/yours/page.tsx`;
 - `components/arkademy/CanvasToolbar.tsx`, `InspirationList.tsx`, `QuestionEditor.tsx`, `QuestionSteps.tsx`, `StartOverDialog.tsx`, `StartYourOwnButton.tsx`, `StrandedDraft.tsx`, `YourCanvas.tsx`;
 - `lib/arkademy/canvas-export.ts`, `canvas-storage.ts`, `canvas.ts`, `inspirations.ts`;
 - `lib/hooks/useCanvasDraft.ts`, `lib/utils/download.ts`;
-- `tests/app/arkademy-canvas.test.js`;
-- (`components/arkademy/TourEndCard.tsx` with Task 10).
+- `tests/app/arkademy-canvas.test.js`, `tests/app/arkademy-tour.test.js`.
 
-`git log --oneline feat/arkademy-tour..HEAD` shows the commits of Tasks 2–9 (and 10).
+**With the real library** (scratch database only):
+- **Inspirations per question:** 30 segments, 39 value propositions, 21 channels, 17 relationships, 11 revenue streams, 27 resources, 21 activities, 20 partners and 8 costs.
+- **Long tails:** most entities are used by one company. All but four segments and all but one value proposition are singletons, so the first six are the shared ones and "Show all" opens a long list.
+- **How they read:** as answers mid-sentence ("This product leans on Apple App Store and Google Play, and third-party AI model providers."), with names kept since `adf4f62e`.
+- **Awkward:**
+  - with "Show all" on 20+ items, the inspirations column runs far below the question card at 1440 px;
+  - "No revenue yet" is offered as a revenue stream;
+  - most value propositions are one company's own promise rather than a shared pattern.
 
-**PR:** push with `gh stack submit --auto` (draft PRs), then set this part's PR:
+**PR:** not opened by this part's builder; the coordinator opens it with `gh stack submit --auto` and this body:
 
 - Title: `feat(arkademy): your own canvas, with inspirations (part 4/4)`
 - Body:
   - What the part adds: `/arkademy/business-model-canvas/yours`, one question at a time with the paragraph and the canvas building as you type, left open on purpose, inspirations from the library, the draft saved in this browser only, the three exports, Start over, and the cover's "Start your own".
   - The readings and deviations above, in one line each.
   - The screenshots' description from Task 11.
-  - Whether Task 10 ran.
+  - The adaptations to part 3's real code and the inspiration-answer fix (§ "As built").
   - Then the Lab Note: **this part carries the single note for the whole Arkademy**, so the body ends with exactly this section (reproduced from the spec's § "Lab Notes"; do not reword it, do not add `nodes:`), followed by the attribution lines your session's instructions give:
 
 ````markdown
