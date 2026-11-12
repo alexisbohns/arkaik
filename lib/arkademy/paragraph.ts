@@ -96,9 +96,15 @@ export function noteDate(note: UseNote): string {
   return note.source.dateKind === "accessed" ? `read on ${note.source.date}` : note.source.date;
 }
 
-/** The plain form of what goes inside a note's parentheses: `text; source, date`. */
+/**
+ * A note in plain text: `fact. Source: name, date` (`… read on date` for an
+ * undated page). A full stop and the word "Source" rather than a semicolon,
+ * which is the list's own separator, so in copied text a note never reads as
+ * the end of a list item; a note's text never ends in punctuation (the schema
+ * refuses it), so the full stop is never doubled.
+ */
 export function noteText(note: UseNote): string {
-  return `${note.text}; ${note.source.name}, ${noteDate(note)}`;
+  return `${note.text}. Source: ${note.source.name}, ${noteDate(note)}`;
 }
 
 function pushText(parts: ParagraphPart[], text: string): void {

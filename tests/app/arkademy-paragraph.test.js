@@ -145,8 +145,9 @@ check(
 // --- notes -------------------------------------------------------------------
 same("noteDate: published", noteDate(NOTE), "2026-02-01");
 same("noteDate: accessed", noteDate(UNDATED), "read on 2026-10-01");
-same("noteText: published", noteText(NOTE), "about 40 tonnes a year; Example Mill, annual report, 2026-02-01");
-same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill, partners page, read on 2026-10-01");
+same("noteText: published", noteText(NOTE), "about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01");
+same("noteText: accessed", noteText(UNDATED), "listed as a partner. Source: Example Mill, partners page, read on 2026-10-01");
+check("noteText: no semicolon, the list's own separator", !noteText(NOTE).includes(";") && !noteText(UNDATED).includes(";"));
 
 // --- composeParagraph: subject, pronoun, templates ------------------------------
 {
@@ -247,7 +248,7 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   same(
     "notes: text puts each note in parentheses after its answer, joined with semicolons",
     kp.text,
-    "Its partners are two millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01), and a co-op (listed as a partner; Example Mill, partners page, read on 2026-10-01).",
+    "Its partners are two millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01), and a co-op (listed as a partner. Source: Example Mill, partners page, read on 2026-10-01).",
   );
   same(
     "notes: parts cut the sentence at each note",
@@ -263,7 +264,7 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   const rebuilt = kp.parts.map((part) => (part.kind === "text" ? part.text : noteText(part.note))).join("");
   same("notes: the parts concatenate to the text", rebuilt, kp.text);
   const one = composeParagraph({ questions, state: state({ kp: [{ text: "millers", note: NOTE }] }), subject: "X" });
-  same("notes: a single noted answer", one[7].text, "Its partners are millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01).");
+  same("notes: a single noted answer", one[7].text, "Its partners are millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01).");
 }
 
 // --- paragraphText --------------------------------------------------------------
@@ -301,7 +302,7 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   same(
     "example: Tidewise's paragraph",
     paragraphText(tidePara),
-    "Tidewise is for people who fish from the shore. It offers tide times that work without signal. It reaches them through anglers swapping tips on the pier and app store search. It keeps them with a help page inside the app. It relies on public tide data (predictions for 412 harbours, refreshed every season; Tidewise, product page, 2026-03-02). It spends its days on updating the tables every season. Its partners are harbour offices that share local data. The main cost is developer fees for the app stores.",
+    "Tidewise is for people who fish from the shore. It offers tide times that work without signal. It reaches them through anglers swapping tips on the pier and app store search. It keeps them with a help page inside the app. It relies on public tide data (predictions for 412 harbours, refreshed every season. Source: Tidewise, product page, 2026-03-02). It spends its days on updating the tables every season. Its partners are harbour offices that share local data. The main cost is developer fees for the app stores.",
   );
   same("example: Tidewise's open question is a gap", tidePara[4].text, "left open on purpose: where the money comes from");
   const crumbPara = composeParagraph({ questions, state: crumb.questions, subject: crumb.company.name });
