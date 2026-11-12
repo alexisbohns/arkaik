@@ -131,7 +131,7 @@ export interface Use {
 export interface UseNote {
   text: string; // 1–200, the fact, "about $5.6B in the second quarter of 2026"
   source: {
-    name: string; // 1–80, who says so, "Anthropic, press release"
+    name: string; // 1–80, no parentheses, who says so, "Anthropic, press release"
     url: string; // https only, the page that states it
     date: string; // YYYY-MM-DD
     dateKind: NoteDateKind; // the page's own date, or the day an undated page was read
@@ -290,7 +290,8 @@ const useNoteSchema = z.strictObject({
     .refine((value) => !/[()]/.test(value), { message: "must not contain parentheses" })
     .refine((value) => !WORDING_BAD_ENDING.test(value), { message: "must not end with . ! ? ; : or ," }),
   source: z.strictObject({
-    name: text(1, 80),
+    // Set inside the note's parentheses too, so it holds none of its own.
+    name: text(1, 80).refine((value) => !/[()]/.test(value), { message: "must not contain parentheses" }),
     url: text(1, 500).refine(isHttpsUrl, { message: "must be an https URL" }),
     date: z.string().refine(isCalendarDate, { message: "must be a real date written YYYY-MM-DD" }),
     dateKind: z.enum(NOTE_DATE_KINDS),

@@ -73,6 +73,10 @@ function expectWarning(name, fn, findingPath) {
   const result = mutate(fn);
   check(name, result.ok === true && result.warnings.some((finding) => finding.path === findingPath), show(result));
 }
+function expectNoWarning(name, fn, findingPath) {
+  const result = mutate(fn);
+  check(name, result.ok === true && !result.warnings.some((finding) => finding.path === findingPath), show(result));
+}
 
 // --- The contract's names ----------------------------------------------------
 check("the format is version 1", ARKADEMY_FORMAT_VERSION === 1);
@@ -252,6 +256,13 @@ expectError(
 expectOk("an accessed date passes", (doc) => (doc.uses[noted].note.source.dateKind = "accessed"));
 expectOk("a source name of 80 characters passes", (doc) => (doc.uses[noted].note.source.name = pad(80)));
 expectError("a source name of 81 characters fails", (doc) => (doc.uses[noted].note.source.name = pad(81)), `${NOTE}.source.name`);
+expectError(
+  "parentheses in a source name fail (it is set inside the note's parentheses)",
+  (doc) => (doc.uses[noted].note.source.name = "Tidewise (press release)"),
+  `${NOTE}.source.name`,
+);
+expectError("a closing parenthesis alone in a source name fails", (doc) => (doc.uses[noted].note.source.name = "Tidewise)"), `${NOTE}.source.name`);
+expectOk("a source name with a comma passes", (doc) => (doc.uses[noted].note.source.name = "Tidewise, press release"));
 expectError("an http source fails", (doc) => (doc.uses[noted].note.source.url = "http://tidewise.example/harbours"), `${NOTE}.source.url`);
 expectError("a source that is not a URL fails", (doc) => (doc.uses[noted].note.source.url = "tidewise harbours"), `${NOTE}.source.url`);
 expectOk("a source URL of 500 characters passes", (doc) => (doc.uses[noted].note.source.url = `https://tidewise.example/${pad(475)}`));
@@ -376,7 +387,15 @@ expectWarning(
 expectWarning("a wording opening with The", (doc) => (doc.uses[0].text = "The households nearby"), "uses[0].text");
 expectWarning("a wording in the first person", (doc) => (doc.uses[0].text = "households near our shop"), "uses[0].text");
 expectWarning("a wording opening with and", (doc) => (doc.uses[0].text = "and the households nearby"), "uses[0].text");
-expectWarning("a label opening with We", (doc) => (doc.entities[0].label = "We deliver"), "entities[0].label");
+// Labels are sentence-case chips: the opener, first-person and conjunction
+// heuristics are for a use's wording only (spec § "Referential rules").
+expectNoWarning("a label opening with We draws no warning", (doc) => (doc.entities[0].label = "We deliver"), "entities[0].label");
+expectNoWarning("a label opening with The draws no warning", (doc) => (doc.entities[0].label = "The households nearby"), "entities[0].label");
+expectNoWarning("a label in the first person draws no warning", (doc) => (doc.entities[0].label = "households near our shop"), "entities[0].label");
+expectNoWarning("a label opening with and draws no warning", (doc) => (doc.entities[0].label = "and the households nearby"), "entities[0].label");
+check("labelWarnings is exported", typeof ark.labelWarnings === "function");
+check("labelWarnings ignores an opener", typeof ark.labelWarnings === "function" && ark.labelWarnings("We deliver").length === 0);
+check("labelWarnings still flags a figure", typeof ark.labelWarnings === "function" && ark.labelWarnings("40% of households").length === 1);
 expectWarning("a wording holding a percentage", (doc) => (doc.uses[0].text = "40% of households nearby"), "uses[0].text");
 expectWarning("a wording holding a currency sign", (doc) => (doc.uses[0].text = "households paying $5 a week"), "uses[0].text");
 expectWarning("a label holding a currency code", (doc) => (doc.entities[0].label = "households spending EUR 20"), "entities[0].label");

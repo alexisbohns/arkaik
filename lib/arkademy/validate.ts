@@ -55,10 +55,12 @@ const OPENERS = new Set(["The", "A", "An", "We", "It", "Our", "Nothing", "Free"]
 const PRONOUNS = new Set(["we", "our", "us", "my"]);
 const CONJUNCTIONS = new Set(["and", "or", "but"]);
 
+const FIGURE_OR_CLAIM_MESSAGE = "looks like a figure or a claim; put it in a sourced note";
+
 /**
- * The prototype validator's wording heuristics, as warning messages. A
- * wording can only be judged by reading the paragraph it lands in, so these
- * never refuse an upload.
+ * The prototype validator's wording heuristics for a use's `text`, as warning
+ * messages. A wording can only be judged by reading the paragraph it lands
+ * in, so these never refuse an upload.
  */
 export function wordingWarnings(wording: string): string[] {
   const words = wording.split(/[^A-Za-z']+/).filter((word) => word.length > 0);
@@ -66,10 +68,20 @@ export function wordingWarnings(wording: string): string[] {
   const first = words[0] ?? "";
   if (OPENERS.has(first)) messages.push(`opens with "${first}"; the paragraph reads better without it`);
   if (CONJUNCTIONS.has(first.toLowerCase())) messages.push(`opens with "${first}"`);
-  if (FIGURE_OR_CLAIM.test(wording)) messages.push("looks like a figure or a claim; put it in a sourced note");
+  if (FIGURE_OR_CLAIM.test(wording)) messages.push(FIGURE_OR_CLAIM_MESSAGE);
   const pronoun = words.find((word) => word === "I" || (PRONOUNS.has(word.toLowerCase()) && word !== "US"));
   if (pronoun !== undefined) messages.push(`speaks in the first person ("${pronoun}")`);
   return messages;
+}
+
+/**
+ * The heuristics for an entity's `label`. A label is a sentence-case chip,
+ * not a phrase set mid-sentence, so the opener, first-person and conjunction
+ * rules of {@link wordingWarnings} do not apply; only the figure-or-claim one
+ * does.
+ */
+export function labelWarnings(label: string): string[] {
+  return FIGURE_OR_CLAIM.test(label) ? [FIGURE_OR_CLAIM_MESSAGE] : [];
 }
 
 /**
@@ -269,7 +281,7 @@ export function validateArkademyDocument(input: unknown, options: { now?: Date }
     const first = labels.get(labelKey);
     if (first !== undefined) warn(`entities[${index}].label`, `repeats the ${entity.kind} label of entities[${first}]`);
     else labels.set(labelKey, index);
-    for (const message of wordingWarnings(entity.label)) warn(`entities[${index}].label`, message);
+    for (const message of labelWarnings(entity.label)) warn(`entities[${index}].label`, message);
   });
   document.uses.forEach((use, index) => {
     for (const message of wordingWarnings(use.text)) warn(`uses[${index}].text`, message);
