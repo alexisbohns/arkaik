@@ -118,19 +118,31 @@ function partsText(parts: readonly ParagraphPart[]): string {
   return parts.map((part) => (part.kind === "text" ? part.text : noteText(part.note))).join("");
 }
 
+/**
+ * How many questions, from the first, a paragraph or a grid shows for a
+ * `through` value — the one clamp both use, so they never disagree. Omitted,
+ * non-finite or past the last question: all of them. Below 1: none (the
+ * tour's first step before its sentence arrives). A fraction rounds down.
+ */
+export function clampThrough(through: number | undefined, count: number): number {
+  if (through === undefined || !Number.isFinite(through) || through > count) return count;
+  if (through < 1) return 0;
+  return Math.floor(through);
+}
+
 export function composeParagraph(input: {
   questions: readonly BmcQuestion[]; // the document's nine, canonical order
   state: readonly CanvasQuestionState[]; // nine, canonical order (matched by key)
   subject: string; // company name, or the visitor's product name
-  through?: number; // 1–9, default 9: questions after it are omitted
+  through?: number; // 0–9, default 9: questions after it are omitted (clampThrough)
 }): ParagraphSegment[] {
   const byKey = new Map(input.state.map((question) => [question.key, question]));
   const subject = input.subject.trim() || DEFAULT_SUBJECT;
-  const through = input.through ?? input.questions.length;
+  const through = clampThrough(input.through, input.questions.length);
   let subjectUsed = false;
   const segments: ParagraphSegment[] = [];
 
-  for (const question of input.questions.slice(0, Math.max(0, through))) {
+  for (const question of input.questions.slice(0, through)) {
     const state = byKey.get(question.key);
     // An answer that cleans to nothing ("...") reads as no answer at all.
     const answers = (state?.answers ?? [])

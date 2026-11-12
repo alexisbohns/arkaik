@@ -31,6 +31,7 @@ const {
   noteText,
   composeParagraph,
   paragraphText,
+  clampThrough,
   exampleCanvas,
   PROMPT_PLACEHOLDER,
   promptForDisplay,
@@ -235,6 +236,13 @@ check("noteText: no semicolon, the list's own separator", !noteText(NOTE).includ
   );
   same("through 9: all nine", composeParagraph({ questions, state: full, subject: "X", through: 9 }).length, 9);
   same("through omitted: all nine", composeParagraph({ questions, state: full, subject: "X" }).length, 9);
+  same("through 0: no segment", composeParagraph({ questions, state: full, subject: "X", through: 0 }), []);
+  same("through 10: all nine", composeParagraph({ questions, state: full, subject: "X", through: 10 }).length, 9);
+  same("through NaN: all nine", composeParagraph({ questions, state: full, subject: "X", through: NaN }).length, 9);
+  same("through -2: none", composeParagraph({ questions, state: full, subject: "X", through: -2 }).length, 0);
+  same("clampThrough: omitted, NaN, Infinity, -Infinity, 10 mean all", [undefined, NaN, Infinity, -Infinity, 10].map((t) => clampThrough(t, 9)), [9, 9, 9, 9, 9]);
+  same("clampThrough: 0, 0.5 and below mean none", [0, 0.5, -1].map((t) => clampThrough(t, 9)), [0, 0, 0]);
+  same("clampThrough: in range, a fraction rounds down", [1, 4, 4.9, 9].map((t) => clampThrough(t, 9)), [1, 4, 4, 9]);
 }
 
 // --- notes in a sentence ---------------------------------------------------------
@@ -445,6 +453,30 @@ const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
   }
   for (const note of [NOTE, UNDATED]) {
     same(`render: SourcedNote reads as noteText (${note.source.dateKind})`, textOf(render(SourcedNote, { note })), noteText(note));
+  }
+}
+
+// The grid draws the blocks after `through` faint, with the paragraph's own clamp.
+{
+  const example = exampleCanvas(index, "crumb-and-co");
+  const grid = (props) =>
+    render(CanvasGrid, { questions, state: example.questions, density: "full", idPrefix: "g", label: "Crumb", ...props });
+  const faintKeys = (html) => [...html.matchAll(/data-question="([a-z]+)"[^>]*data-faint=""/g)].map((m) => m[1]);
+  for (const [through, expected] of [
+    [undefined, []],
+    [0, BMC_QUESTION_KEYS],
+    [1, BMC_QUESTION_KEYS.slice(1)],
+    [9, []],
+    [10, []],
+    [NaN, []],
+  ]) {
+    const shown = composeParagraph({ questions, state: example.questions, subject: "X", through }).map((s) => s.question);
+    same(`grid: through ${through} draws faint exactly the questions the paragraph omits`, faintKeys(grid({ through })), expected);
+    same(
+      `grid: through ${through} agrees with the paragraph`,
+      BMC_QUESTION_KEYS.filter((key) => !faintKeys(grid({ through })).includes(key)),
+      shown,
+    );
   }
 }
 

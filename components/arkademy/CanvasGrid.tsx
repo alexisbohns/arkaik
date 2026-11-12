@@ -1,5 +1,5 @@
 import { SourcedNote } from "@/components/arkademy/SourcedNote";
-import type { CanvasQuestionState } from "@/lib/arkademy/paragraph";
+import { clampThrough, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
 import type { BmcQuestion, BmcQuestionKey } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +41,10 @@ export interface CanvasGridProps {
   headingLevel?: 3 | 4;
   /** The block that carries a ring: the current question (tour, your canvas). */
   current?: BmcQuestionKey;
-  /** 1–9 (tour): blocks after it are drawn faint with only their title. Default 9. */
+  /**
+   * 0–9 (tour): blocks after it are drawn faint with only their title. Default
+   * 9. Clamped by `clampThrough`, as the paragraph is, so the two agree.
+   */
   through?: number;
   /** Your own canvas (part 4): block titles become buttons that go to the question. */
   onSelectQuestion?: (question: BmcQuestionKey) => void;
@@ -71,7 +74,7 @@ export function CanvasGrid({
   const Heading = headingLevel === 4 ? "h4" : "h3";
   const byKey = new Map(state.map((question) => [question.key, question]));
   const mini = density === "mini";
-  const shown = through ?? questions.length;
+  const shown = clampThrough(through, questions.length);
 
   return (
     <div role="group" aria-label={label} className="@container">
@@ -89,6 +92,7 @@ export function CanvasGrid({
               role="group"
               aria-labelledby={headingId}
               data-question={question.key}
+              data-faint={faint ? "" : undefined}
               className={cn(
                 "flex min-w-0 flex-col rounded-lg border bg-background",
                 mini ? "gap-1.5 p-2.5" : "gap-2 p-3",
