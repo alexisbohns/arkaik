@@ -1,0 +1,279 @@
+#!/usr/bin/env node
+
+/**
+ * The cover's pure side (lib/arkademy/): the paragraph rule, an example's
+ * canvas, the baseline prompt's display form, the tool paths and cards, each
+ * page's metadata, and the sitemap's two Arkademy URLs. DB-free, so it runs in
+ * CI's `build` job.
+ *
+ * Cases that the fictional fixture (tests/fixtures/arkademy/document.json)
+ * does not hold are built in memory; the fixture itself is never edited.
+ */
+
+const fs = require("fs");
+const path = require("path");
+const { loadArkademy, cleanup } = require("./load-arkademy");
+
+const ROOT = path.join(__dirname, "..", "..");
+const FIXTURE = path.join(ROOT, "tests", "fixtures", "arkademy", "document.json");
+
+const {
+  BMC_QUESTION_KEYS,
+  PROMPT_TOKEN,
+  indexArkademy,
+  validateArkademyDocument,
+  SUBJECT_PRONOUN,
+  DEFAULT_SUBJECT,
+  cleanAnswer,
+  joinAnswers,
+  joinsWithSemicolons,
+  noteDate,
+  noteText,
+  composeParagraph,
+  paragraphText,
+  exampleCanvas,
+} = loadArkademy();
+
+let failures = 0;
+function check(name, cond, detail) {
+  if (cond) console.log(`PASS: ${name}`);
+  else {
+    failures++;
+    console.log(`FAIL: ${name}${detail === undefined ? "" : ` — ${detail}`}`);
+  }
+}
+function same(name, actual, expected) {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  check(name, a === e, `expected ${e}, got ${a}`);
+}
+
+const document = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+const validation = validateArkademyDocument(document, { now: new Date("2026-11-12T00:00:00Z") });
+check("the fixture validates", validation.ok, JSON.stringify(validation.errors));
+const tool = document.tools[0];
+const questions = tool.questions;
+const index = indexArkademy(validation.document);
+
+/** Nine questions, every one empty, with `answers` and `open` set per key. */
+function state(answers = {}, open = []) {
+  return BMC_QUESTION_KEYS.map((key) => ({
+    key,
+    answers: (answers[key] ?? []).map((answer) => (typeof answer === "string" ? { text: answer } : answer)),
+    open: open.includes(key),
+  }));
+}
+const sentences = (segments) => segments.filter((s) => s.kind === "sentence").map((s) => s.text);
+const NOTE = {
+  text: "about 40 tonnes a year",
+  source: { name: "Example Mill, annual report", url: "https://mill.example/report", date: "2026-02-01", dateKind: "published" },
+};
+const UNDATED = {
+  text: "listed as a partner",
+  source: { name: "Example Mill, partners page", url: "https://mill.example/partners", date: "2026-10-01", dateKind: "accessed" },
+};
+
+// --- cleanAnswer -------------------------------------------------------------
+same("clean: trims", cleanAnswer("  bread  "), "bread");
+same("clean: drops a trailing full stop", cleanAnswer("bread."), "bread");
+same("clean: drops dots and spaces mixed", cleanAnswer("bread . . "), "bread");
+same("clean: keeps other punctuation", cleanAnswer("bread!"), "bread!");
+same("clean: keeps an inner full stop", cleanAnswer("v2.0 maps"), "v2.0 maps");
+same("clean: only dots becomes empty", cleanAnswer("..."), "");
+
+// --- joinAnswers and the semicolon triggers ------------------------------------
+same("join: none", joinAnswers([]), "");
+same("join: one", joinAnswers(["a"]), "a");
+same("join: two", joinAnswers(["a", "b"]), "a and b");
+same("join: three", joinAnswers(["a", "b", "c"]), "a, b and c");
+same("join: four", joinAnswers(["a", "b", "c", "d"]), "a, b, c and d");
+same("join: five", joinAnswers(["a", "b", "c", "d", "e"]), "a, b, c, d and e");
+same("join: one item with a comma reads as itself", joinAnswers(["a, still"]), "a, still");
+same("join: two, a comma inside", joinAnswers(["a, still", "b"]), "a, still; and b");
+same("join: three, a comma inside", joinAnswers(["a", "b, still", "c"]), "a; b, still; and c");
+same("join: five, a comma inside", joinAnswers(["a", "b", "c", "d", "e, f"]), "a; b; c; d; and e, f");
+same("join: two, an 'and' inside", joinAnswers(["flour and butter", "wages"]), "flour and butter; and wages");
+same("join: three, an 'and' inside", joinAnswers(["a", "rock and roll", "c"]), "a; rock and roll; and c");
+same("join: 'and' inside a word is not 'and'", joinAnswers(["sandwiches", "brandy", "candles"]), "sandwiches, brandy and candles");
+same("join: a hyphenated 'and' is not 'and'", joinAnswers(["black-and-white prints", "posters"]), "black-and-white prints and posters");
+same("join: an explicit semicolon flag wins", joinAnswers(["a", "b"], true), "a; and b");
+same("join: an explicit comma flag wins", joinAnswers(["a, b", "c"], false), "a, b and c");
+check("semicolons: a plain list joins with commas", !joinsWithSemicolons([{ text: "a" }, { text: "b" }]));
+check("semicolons: a comma triggers them", joinsWithSemicolons([{ text: "a, b" }, { text: "c" }]));
+check("semicolons: 'and' as a word triggers them", joinsWithSemicolons([{ text: "a and b" }, { text: "c" }]));
+check("semicolons: a note triggers them", joinsWithSemicolons([{ text: "a", note: NOTE }, { text: "c" }]));
+check(
+  "semicolons: a note's own commas and 'and' are not looked at",
+  !joinsWithSemicolons([{ text: "a" }, { text: "c" }]) &&
+    joinsWithSemicolons([{ text: "a", note: { ...NOTE, text: "plain" } }, { text: "c" }]),
+);
+
+// --- notes -------------------------------------------------------------------
+same("noteDate: published", noteDate(NOTE), "2026-02-01");
+same("noteDate: accessed", noteDate(UNDATED), "read on 2026-10-01");
+same("noteText: published", noteText(NOTE), "about 40 tonnes a year; Example Mill, annual report, 2026-02-01");
+same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill, partners page, read on 2026-10-01");
+
+// --- composeParagraph: subject, pronoun, templates ------------------------------
+{
+  const all = state({
+    seg: ["neighbours"],
+    vp: ["warm bread."],
+    ch: ["word of mouth"],
+    cr: ["a newsletter"],
+    rev: ["subscriptions"],
+    kr: ["bakers"],
+    ka: ["baking"],
+    kp: ["millers"],
+    cost: ["flour"],
+  });
+  const segments = composeParagraph({ questions, state: all, subject: "Crumb & Co" });
+  same("compose: nine sentences in canonical order", segments.map((s) => s.question), BMC_QUESTION_KEYS);
+  same("compose: the subject opens the first sentence", segments[0].text, "Crumb & Co is for neighbours.");
+  same("compose: the pronoun after it, the answer cleaned", segments[1].text, `${SUBJECT_PRONOUN} offers warm bread.`);
+  same("compose: a template without {S}", segments[4].text, "On money: subscriptions.");
+  same("compose: the singular cost template at one answer", segments[8].text, "The main cost is flour.");
+  same(
+    "compose: a sentence with no note is one text part",
+    segments[0].parts,
+    [{ kind: "text", text: "Crumb & Co is for neighbours." }],
+  );
+}
+{
+  const segments = composeParagraph({ questions, state: state({ rev: ["fees"], kr: ["bakers"], ka: ["baking"] }), subject: "Crumb & Co" });
+  same(
+    "compose: a no-subject template first leaves the name for the next",
+    sentences(segments),
+    ["On money: fees.", "Crumb & Co relies on bakers.", "It spends its days on baking."],
+  );
+}
+{
+  const segments = composeParagraph({ questions, state: state({ seg: ["people"] }), subject: "   " });
+  same("compose: an empty subject becomes the default", segments[0].text, `${DEFAULT_SUBJECT} is for people.`);
+  const named = composeParagraph({ questions, state: state({ seg: ["people"] }), subject: "  Tidewise " });
+  same("compose: the subject is trimmed", named[0].text, "Tidewise is for people.");
+}
+{
+  const two = composeParagraph({ questions, state: state({ cost: ["flour", "wages"] }), subject: "X" });
+  same("compose: sentencePlural at two answers", two[8].text, "The main costs are flour and wages.");
+  const vp = composeParagraph({ questions, state: state({ vp: ["a", "b"] }), subject: "X" });
+  same("compose: no sentencePlural keeps the sentence at two answers", vp[1].text, "X offers a and b.");
+}
+
+// --- gaps ----------------------------------------------------------------------
+{
+  const segments = composeParagraph({ questions, state: state({ seg: ["people"] }, ["rev"]), subject: "X" });
+  same(
+    "gap: open on purpose",
+    segments[4],
+    { kind: "gap", question: "rev", open: true, text: "left open on purpose: where the money comes from" },
+  );
+  same("gap: not answered", segments[1], { kind: "gap", question: "vp", open: false, text: "open: what it does for them" });
+  const answered = composeParagraph({ questions, state: state({ rev: ["fees"] }, ["rev"]), subject: "X" });
+  same("gap: answers win over an open flag", answered[4].kind, "sentence");
+  const dots = composeParagraph({ questions, state: state({ seg: ["..."] }), subject: "X" });
+  same("gap: an answer that cleans to nothing is no answer", dots[0].kind, "gap");
+  const gapFirst = composeParagraph({ questions, state: state({ vp: ["bread"] }), subject: "X" });
+  same("gap: a gap does not consume the subject", gapFirst[1].text, "X offers bread.");
+}
+
+// --- through --------------------------------------------------------------------
+{
+  const full = state({ seg: ["a"], vp: ["b"], ch: ["c"], cr: ["d"], rev: ["e"], kr: ["f"], ka: ["g"], kp: ["h"], cost: ["i"] });
+  same("through 1: one segment", composeParagraph({ questions, state: full, subject: "X", through: 1 }).map((s) => s.question), ["seg"]);
+  same(
+    "through 4: four segments",
+    composeParagraph({ questions, state: full, subject: "X", through: 4 }).map((s) => s.question),
+    ["seg", "vp", "ch", "cr"],
+  );
+  same("through 9: all nine", composeParagraph({ questions, state: full, subject: "X", through: 9 }).length, 9);
+  same("through omitted: all nine", composeParagraph({ questions, state: full, subject: "X" }).length, 9);
+}
+
+// --- notes in a sentence ---------------------------------------------------------
+{
+  const segments = composeParagraph({
+    questions,
+    state: state({ kp: [{ text: "two millers.", note: NOTE }, { text: "a co-op", note: UNDATED }] }),
+    subject: "X",
+  });
+  const kp = segments[7];
+  same(
+    "notes: text puts each note in parentheses after its answer, joined with semicolons",
+    kp.text,
+    "Its partners are two millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01); and a co-op (listed as a partner; Example Mill, partners page, read on 2026-10-01).",
+  );
+  same(
+    "notes: parts cut the sentence at each note",
+    kp.parts,
+    [
+      { kind: "text", text: "Its partners are two millers (" },
+      { kind: "note", note: NOTE },
+      { kind: "text", text: "); and a co-op (" },
+      { kind: "note", note: UNDATED },
+      { kind: "text", text: ")." },
+    ],
+  );
+  const rebuilt = kp.parts.map((part) => (part.kind === "text" ? part.text : noteText(part.note))).join("");
+  same("notes: the parts concatenate to the text", rebuilt, kp.text);
+  const one = composeParagraph({ questions, state: state({ kp: [{ text: "millers", note: NOTE }] }), subject: "X" });
+  same("notes: a single noted answer", one[7].text, "Its partners are millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01).");
+}
+
+// --- paragraphText --------------------------------------------------------------
+{
+  const segments = composeParagraph({ questions, state: state({ seg: ["people"], ch: ["ads"] }, ["vp"]), subject: "X" });
+  same("text: sentences only, single spaces", paragraphText(segments), "X is for people. It reaches them through ads.");
+  same("text: nothing answered is empty", paragraphText(composeParagraph({ questions, state: state(), subject: "X" })), "");
+}
+
+// --- exampleCanvas on the fixture ------------------------------------------------
+{
+  const crumb = exampleCanvas(index, "crumb-and-co");
+  check("example: a known example", crumb !== null);
+  same("example: the company", crumb.company.id, "crumb-and-co");
+  same("example: nine questions in canonical order", crumb.questions.map((q) => q.key), BMC_QUESTION_KEYS);
+  same(
+    "example: answers in order with their entity ids",
+    crumb.questions.find((q) => q.key === "ka").answers.map((a) => a.entity),
+    ["overnight-baking", "delivery-rounds", "flour-sourcing", "order-packing", "order-taking"],
+  );
+  const tide = exampleCanvas(index, "tidewise");
+  same(
+    "example: uses stored out of order come back in order",
+    tide.questions.find((q) => q.key === "ch").answers.map((a) => a.text),
+    ["anglers swapping tips on the pier", "app store search"],
+  );
+  same("example: the open question", tide.questions.filter((q) => q.open).map((q) => q.key), ["rev"]);
+  same("example: no other open question", crumb.questions.filter((q) => q.open).length, 0);
+  const kr = tide.questions.find((q) => q.key === "kr").answers[0];
+  same("example: a note travels with its answer", kr.note && kr.note.source.dateKind, "published");
+  check("example: an answer without a note has no note key", !("note" in crumb.questions[0].answers[0]));
+  same("example: an unknown company is null", exampleCanvas(index, "nobody"), null);
+
+  const tidePara = composeParagraph({ questions, state: tide.questions, subject: tide.company.name });
+  same(
+    "example: Tidewise's paragraph",
+    paragraphText(tidePara),
+    "Tidewise is for people who fish from the shore. It offers tide times that work without signal. It reaches them through anglers swapping tips on the pier and app store search. It keeps them with a help page inside the app. It relies on public tide data (predictions for 412 harbours, refreshed every season; Tidewise, product page, 2026-03-02). It spends its days on updating the tables every season. Its partners are harbour offices that share local data. The main cost is developer fees for the app stores.",
+  );
+  same("example: Tidewise's open question is a gap", tidePara[4].text, "left open on purpose: where the money comes from");
+  const crumbPara = composeParagraph({ questions, state: crumb.questions, subject: crumb.company.name });
+  same(
+    "example: Crumb & Co's costs join with a semicolon ('flour and butter')",
+    crumbPara[8].text,
+    "The main costs are flour and butter; and night-shift wages.",
+  );
+  same(
+    "example: Crumb & Co's five activities join with commas",
+    crumbPara[6].text,
+    "It spends its days on baking through the night, planning the delivery round, sourcing flour from nearby mills, packing each order by hand and taking orders by text message.",
+  );
+}
+
+cleanup();
+if (failures > 0) {
+  console.log(`\n${failures} arkademy-paragraph test(s) failed`);
+  process.exit(1);
+}
+console.log("\nAll arkademy-paragraph tests passed.");
