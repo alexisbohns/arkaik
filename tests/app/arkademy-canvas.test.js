@@ -483,6 +483,96 @@ const index = A.indexArkademy(validation.document);
   same("filename: long names cut, no trailing dash", canvasFilename(`${"a".repeat(59)} b`), `${"a".repeat(59)}-business-model-canvas.json`);
 }
 
+// --- the components, rendered on the server ------------------------------------------
+// Through tests/app/load-arkademy-tsx.js (part 2's require hook). What the
+// server sends before the stored draft is read, and the markup each piece's
+// behaviour lives in.
+{
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  const { requireTsx } = require("./load-arkademy-tsx");
+  // YourCanvas takes ARKADEMY_SECTION_TITLE from ArkademyChrome.tsx, which
+  // imports lib/fonts.ts; next/font only runs inside Next's compiler, so this
+  // suite answers it with a font whose class is empty.
+  const Module = require("module");
+  const load = Module._load;
+  Module._load = function loadWithFontStub(request, ...rest) {
+    if (request === "next/font/google") return new Proxy({}, { get: () => () => ({ className: "", variable: "", style: {} }) });
+    return load.call(this, request, ...rest);
+  };
+  const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
+  const { YourCanvas } = requireTsx("components/arkademy/YourCanvas.tsx");
+  const { StartYourOwnButton } = requireTsx("components/arkademy/StartYourOwnButton.tsx");
+  const { QuestionEditor } = requireTsx("components/arkademy/QuestionEditor.tsx");
+  const { QuestionSteps } = requireTsx("components/arkademy/QuestionSteps.tsx");
+  const { InspirationList } = requireTsx("components/arkademy/InspirationList.tsx");
+  const { CanvasToolbar } = requireTsx("components/arkademy/CanvasToolbar.tsx");
+  const noop = () => {};
+
+  const server = render(YourCanvas, {
+    tool: { title: tool.title, questions: tool.questions },
+    catalog: A.inspirationCatalog(index),
+    documentVersion: 1,
+    initialStep: null,
+  });
+  check("server: the skeleton, named for assistive technology", server.includes('aria-label="Loading your canvas"'));
+  check("server: no draft in the HTML (it lives in the browser)", !server.includes("canvas-question-title") && !server.includes("canvas-name"));
+
+  const start = render(StartYourOwnButton, {});
+  check("cover action: the server says Start your own", start.includes(">Start your own</a>") && start.includes('href="/arkademy/business-model-canvas/yours"'));
+  check("cover action: the stone button", start.includes("stone stone-primary"));
+
+  const editorProps = (answers, step = 1, open = false) => ({
+    question: tool.questions[step - 1],
+    step,
+    total: 9,
+    answers,
+    open,
+    preview: null,
+    onAdd: () => "added",
+    onEdit: noop,
+    onRemove: noop,
+    onMove: noop,
+    onSetOpen: noop,
+    onBack: noop,
+    onNext: noop,
+  });
+  const empty = render(QuestionEditor, editorProps([]));
+  check("editor: kicker, question as the h2", empty.includes(">Question 1 of 9 · Customer segments</p>") && empty.includes(">Who is this for?</h2>"));
+  check("editor: no answer, so it can be left open", empty.includes("Leave this open on purpose"));
+  check("editor: Back disabled on the first question", /<button[^>]*disabled=""[^>]*>.*?Back<\/button>/.test(empty));
+  const fiveAnswers = ["a", "b", "c", "d", "e"].map((text, i) => ({ id: `a${i + 1}`, question: "ka", text }));
+  const five = render(QuestionEditor, editorProps(fiveAnswers, 7));
+  check("editor: five answers disable the add field", /<textarea[^>]*id="canvas-add-answer"[^>]*disabled=""/.test(five));
+  check("editor: and say why", five.includes("Five answers is the most a question takes."));
+  check("editor: with answers, no open checkbox", !five.includes("Leave this open on purpose"));
+  check("editor: the first cannot move up, the last cannot move down", /aria-label="Move answer 1 up" disabled=""/.test(five) && /aria-label="Move answer 5 down" disabled=""/.test(five));
+  check("editor: the ninth question's Next reads the paragraph", render(QuestionEditor, editorProps([], 9)).includes("Read your paragraph"));
+  check("editor: no keydown listener on window or document", !/(window|document)\.addEventListener\(\s*["']keydown/.test(fs.readFileSync(path.join(ROOT, "components/arkademy/QuestionEditor.tsx"), "utf8")));
+
+  const steps = render(QuestionSteps, {
+    questions: tool.questions,
+    statuses: ["answered", "empty", "empty", "empty", "open", "empty", "empty", "empty", "empty"],
+    current: 2,
+    onSelect: noop,
+  });
+  check("steps: each named with its state", steps.includes('aria-label="Question 1: Customer segments, answered"') && steps.includes('aria-label="Question 5: Revenue streams, left open on purpose"') && steps.includes('aria-label="Question 2: Value propositions, not answered yet"'));
+  same("steps: one current", (steps.match(/aria-current="step"/g) ?? []).length, 1);
+
+  const many = Array.from({ length: 9 }, (_, i) => ({ entity: `e-${i}`, label: `label ${i}`, companies: [{ id: "c", name: "Crumb & Co" }] }));
+  const list = render(InspirationList, { items: many, full: false, onAdd: noop });
+  same("inspirations: six first", (list.match(/<li>/g) ?? []).length, 6);
+  check("inspirations: then Show all", list.includes("Show all 9"));
+  check("inspirations: each names its companies", list.includes('aria-label="Add “label 0”, used by Crumb &amp; Co"'));
+  const fullList = render(InspirationList, { items: many.slice(0, 2), full: true, onAdd: noop });
+  same("inspirations: disabled at five answers", (fullList.match(/<button[^>]*disabled=""/g) ?? []).length, 2);
+
+  const bare = render(CanvasToolbar, { paragraph: "", markdown: "", hasContent: false, onDownload: noop, onStartOver: noop, focusAfterStartOver: "canvas-name" });
+  same("toolbar: nothing to export or clear, every button disabled", (bare.match(/<button[^>]*disabled=""/g) ?? []).length, 4);
+  const ready = render(CanvasToolbar, { paragraph: "It is.", markdown: "# x\n", hasContent: true, onDownload: noop, onStartOver: noop, focusAfterStartOver: "canvas-name" });
+  same("toolbar: with a canvas, none disabled", (ready.match(/disabled=""/g) ?? []).length, 0);
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-canvas test(s) failed`);
