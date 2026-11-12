@@ -593,31 +593,47 @@ export type ArkademyLookup =
   | { status: "error" }                            // Postgres failed
   | { status: "ready"; version: number; uploadedAt: string; document: ArkademyDocument };
 
-export const ARKADEMY_CACHE_SECONDS = 300;
+export const ARKADEMY_CACHE_SECONDS = 3600;
+export const ARKADEMY_CACHE_TAG = "arkademy";
+export const ARKADEMY_CACHE_KEY_PARTS: readonly string[]; // ["arkademy-current", "format-<F>", "schema-<R>"]
 export async function readCurrentArkademy(): Promise<StoredArkademyRow | null>; // one query, uncached
 export async function getArkademy(): Promise<ArkademyLookup>;
-export function arkademyEtag(version: number): string; // formatReadEtag(["arkademy", String(version)])
+export function expireArkademyCache(): void; // revalidateTag(ARKADEMY_CACHE_TAG, { expire: 0 })
+export function arkademyEtag(version: number): string; // W/"arkademy.<version>.f<F>.s<R>"
 ```
+
+`F` is `ARKADEMY_FORMAT_VERSION` and `R` is `ARKADEMY_SCHEMA_REVISION`, a
+constant in `lib/arkademy/schema.ts` that starts at 1 and is bumped by hand,
+in the same PR, on any change that makes the schema or the validator stricter
+without a format bump.
 
 - `getArkademy` returns `unconfigured` before touching anything when
   `servicesConfigured()` is false.
 - In production it reads through
-  `unstable_cache(fn, ["arkademy-current"], { revalidate: ARKADEMY_CACHE_SECONDS, tags: ["arkademy"] })`.
+  `unstable_cache(fn, ARKADEMY_CACHE_KEY_PARTS, { revalidate: ARKADEMY_CACHE_SECONDS, tags: [ARKADEMY_CACHE_TAG] })`.
+  The key carries the format and the schema revision: Next's data cache
+  outlives a deploy, and a build must never serve an entry an older build
+  stored, which its own schema might refuse.
   The cached function reads the row, upgrades and validates the document, and
   returns plain JSON (`uploadedAt` as an ISO string, since the cache
   serialises). A thrown error is not cached; `getArkademy` catches it outside
   the cache, logs the message (never the document), and returns `error`.
 - In development (`NODE_ENV !== "production"`) it reads Postgres directly, so
   an upload shows on the next reload.
-- A new upload is therefore live in production within five minutes. Nothing
-  calls `revalidateTag`: the upload script runs outside the app, and a purge
-  endpoint would need a secret this release does not want.
+- A new upload is live at once when the upload script can call
+  `POST /api/arkademy/revalidate` (§ "The read route"), which expires the tag
+  with `revalidateTag(tag, { expire: 0 })` — the immediate expiry of Next 16's
+  two-argument form; `"max"` would only mark the entry stale and serve the
+  old version once more. Without that call a write waits for the hour, plus
+  the one request that refreshes the stale entry, plus the CDN window.
 - Pages wrap it in React's `cache()` per request, as `/p/[id]` does
   (`app/p/[id]/page.tsx:44-53`), so `generateMetadata` and the page share one
   call.
 
-One cache refill reads the document once per five minutes, whatever the
-traffic. That is why there is no rate limit: a limiter in Postgres
+One cache refill reads the document at most once an hour, whatever the
+traffic, so the scale-to-zero database is not kept awake by readers or
+crawlers; a refresh every five minutes under any traffic would keep it awake
+for good. That is also why there is no rate limit: a limiter in Postgres
 (the Publik pattern, F4) would put a database write on every anonymous read,
 which is exactly the cost the cache removes.
 
@@ -628,15 +644,19 @@ which is exactly the cost the cache removes.
 
 | Lookup | Status | Body | `Cache-Control` |
 |---|---|---|---|
-| `ready` | 200 | `{ "version": 7, "uploaded_at": "…", "format_version": 1, "document": { … } }` | `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` |
+| `ready` | 200 | `{ "version": 7, "uploaded_at": "…", "format_version": 1, "document": { … } }` | `public, max-age=60, s-maxage=60, stale-while-revalidate=60` |
 | `ready`, `If-None-Match` matches | 304 | none | same |
 | `empty` | 404 | `{ "error": "no_document", "message": "No Arkademy document has been uploaded yet." }` | `public, max-age=60, s-maxage=60` |
 | `unconfigured` | 503 | `servicesUnavailable("Arkademy")` | `no-store` |
 | `invalid` | 500 | `{ "error": "document_invalid", "message": "…" }` | `no-store` |
 | `error` | 500 | `{ "error": "internal_error", "message": "Failed to load the Arkademy." }` | `no-store` |
 
-Every 200 and 304 carries `ETag: W/"arkademy.<version>"`, compared with
-`ifNoneMatchSatisfied` (`lib/services/graph/etag.ts:147`). The document is the
+Every 200 and 304 carries `ETag: W/"arkademy.<version>.f<F>.s<R>"`
+(`arkademyEtag`), compared with `ifNoneMatchSatisfied`
+(`lib/services/graph/etag.ts:147`); with the format and the schema revision
+in it, a client holding a tag from an older build gets the body again rather
+than a 304. The CDN window is short (a minute fresh, a minute stale) because
+the data cache behind the route is the long one and a publish expires it. The document is the
 validated one (after upgrade), not the stored bytes. JSON keys follow the
 repository's API style (`uploaded_at`, `format_version`); the document keeps
 its own camelCase.
@@ -646,6 +666,14 @@ pages; the pages read `getArkademy` in-process (F4, settled question 1). After
 part 1 deploys, check `curl -sI https://arkaik.app/api/arkademy` twice: a
 second response served from the CDN cache confirms `s-maxage` is honoured;
 if it is not, the `unstable_cache` layer alone still protects the database.
+
+`POST /api/arkademy/revalidate` (`app/api/arkademy/revalidate/route.ts`,
+`runtime = "nodejs"`, `dynamic = "force-dynamic"`) expires the cache. It
+requires `Authorization: Bearer <ARKADEMY_REVALIDATE_SECRET>`, compared in
+constant time (SHA-256 of both, then `timingSafeEqual`), and answers 404
+while that variable is unset on the deployment (so the route does not reveal
+itself there), 401 on a missing or wrong token, and 204 once
+`expireArkademyCache()` has run. Every answer is `no-store`.
 
 ### The upload script
 
@@ -691,8 +719,19 @@ canonical for one schema version) and hash it with SHA-256. In one
 transaction, read the current version and hash; if the hash is equal, print
 `unchanged (vN)` and exit 0; otherwise insert `version = current + 1` with
 `format_version`, the size and the note. Two concurrent publishes collide on
-the primary key and the loser exits 1. Print
-`published vN (… KB, W warnings) — live within 5 minutes`.
+the primary key and the loser exits 1 with a plain message. Print
+`published vN (… KB, W warnings)`, then one line about when it is live.
+
+**Making a write live.** After a publish or a rollback that wrote a row, when
+both `ARKADEMY_SITE_URL` (the app's origin; `https:`, or `http:` on this
+machine only) and `ARKADEMY_REVALIDATE_SECRET` are set in the script's
+environment, it calls `POST <ARKADEMY_SITE_URL>/api/arkademy/revalidate` with
+the bearer secret (no redirect followed, ten-second timeout) and prints
+`live now: …` when the call answered 204. Otherwise it prints
+`not live yet: …` with the reason and how long the version can take (up to
+an hour, plus up to two minutes at the CDN) and, when a variable is unset,
+how to set the two. A failed call never fails the command: the row is
+already committed.
 
 **`rollback`.** The target is `--to N`, or by default the newest version below
 the current one whose hash differs from the current hash. The script

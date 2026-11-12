@@ -20,7 +20,9 @@ const { cleanup: cleanupUploadBuild } = require("../../scripts/arkademy/load-ark
 const ROOT = path.join(__dirname, "..", "..");
 const FIXTURE = path.join(ROOT, "tests", "fixtures", "arkademy", "document.json");
 const ORIGIN = "https://arkademy.test";
-const READY_CACHE = "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
+// A short CDN window: the data cache behind the route is the long one, and a
+// publish clears it at once through POST /api/arkademy/revalidate.
+const READY_CACHE = "public, max-age=60, s-maxage=60, stale-while-revalidate=60";
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -54,7 +56,11 @@ async function main() {
 
   const api = loadArkademyApi();
   const { GET } = api;
-  const { getArkademy, arkademyEtag, ARKADEMY_CACHE_SECONDS } = api.arkademy;
+  const { getArkademy, arkademyEtag, ARKADEMY_CACHE_SECONDS, ARKADEMY_CACHE_TAG } = api.arkademy;
+  const { ARKADEMY_FORMAT_VERSION, ARKADEMY_SCHEMA_REVISION } = api.schema;
+  // The validator carries the format and the schema revision, so a deploy that
+  // changes either never answers 304 to a body the old build served.
+  const TAG = (version) => `W/"arkademy.${version}.f${ARKADEMY_FORMAT_VERSION}.s${ARKADEMY_SCHEMA_REVISION}"`;
   const upload = require("../../scripts/arkademy/upload.js");
   const client = new Client({ connectionString });
   await client.connect();
@@ -68,8 +74,10 @@ async function main() {
   try {
     await client.query("truncate arkademy_documents");
 
-    check("the cache window is five minutes", ARKADEMY_CACHE_SECONDS === 300);
-    check("the validator names the version", arkademyEtag(7) === 'W/"arkademy.7"');
+    check("the cache period is one hour", ARKADEMY_CACHE_SECONDS === 3600);
+    check("the cache tag", ARKADEMY_CACHE_TAG === "arkademy");
+    check("the validator names the version, the format and the schema revision", arkademyEtag(7) === 'W/"arkademy.7.f1.s1"', arkademyEtag(7));
+    check("the validator follows the two constants", arkademyEtag(7) === TAG(7));
 
     // --- Not configured ----------------------------------------------------
     delete process.env.DATABASE_URL;
@@ -115,16 +123,20 @@ async function main() {
       check("ready: version 1, format 1", body.version === 1 && body.format_version === 1, JSON.stringify({ ...body, document: undefined }));
       check("ready: uploaded_at is ISO 8601", new Date(body.uploaded_at).toISOString() === body.uploaded_at, body.uploaded_at);
       check("ready: the document as validated", JSON.stringify(body.document) === JSON.stringify(fixture()));
-      check("ready: ETag W/\"arkademy.1\"", res.headers.get("etag") === 'W/"arkademy.1"', res.headers.get("etag"));
+      check("ready: ETag W/\"arkademy.1.f1.s1\"", res.headers.get("etag") === TAG(1), res.headers.get("etag"));
       check("ready: CDN-cacheable", res.headers.get("cache-control") === READY_CACHE, res.headers.get("cache-control"));
     }
     {
-      const res = await GET(request({ "if-none-match": 'W/"arkademy.1"' }));
+      const res = await GET(request({ "if-none-match": TAG(1) }));
       check("conditional: a matching tag gets 304", res.status === 304, `status ${res.status}`);
       check("conditional: with no body", (await res.text()) === "");
-      check("conditional: the same validator and caching", res.headers.get("etag") === 'W/"arkademy.1"' && res.headers.get("cache-control") === READY_CACHE);
-      const stale = await GET(request({ "if-none-match": 'W/"arkademy.0"' }));
+      check("conditional: the same validator and caching", res.headers.get("etag") === TAG(1) && res.headers.get("cache-control") === READY_CACHE);
+      const stale = await GET(request({ "if-none-match": TAG(0) }));
       check("conditional: another tag gets the body", stale.status === 200, `status ${stale.status}`);
+      const oldShape = await GET(request({ "if-none-match": 'W/"arkademy.1"' }));
+      check("conditional: a tag without the format and revision gets the body", oldShape.status === 200, `status ${oldShape.status}`);
+      const otherRevision = await GET(request({ "if-none-match": `W/"arkademy.1.f${ARKADEMY_FORMAT_VERSION}.s${ARKADEMY_SCHEMA_REVISION + 1}"` }));
+      check("conditional: a tag from another schema revision gets the body", otherRevision.status === 200, `status ${otherRevision.status}`);
     }
 
     // --- Publishing again --------------------------------------------------
@@ -160,9 +172,9 @@ async function main() {
       changed.companies[1].oneLiner = "Tide tables for shore anglers";
       const v2 = await upload.publishDocument(client, changed, { note: "second" });
       check("changed: becomes v2", v2.status === "published" && v2.version === 2, JSON.stringify(v2));
-      const res = await GET(request({ "if-none-match": 'W/"arkademy.1"' }));
+      const res = await GET(request({ "if-none-match": TAG(1) }));
       const body = await res.json();
-      check("changed: the old tag no longer matches", res.status === 200 && res.headers.get("etag") === 'W/"arkademy.2"', `${res.status} ${res.headers.get("etag")}`);
+      check("changed: the old tag no longer matches", res.status === 200 && res.headers.get("etag") === TAG(2), `${res.status} ${res.headers.get("etag")}`);
       check("changed: the route serves v2", body.version === 2 && body.document.companies[1].oneLiner === "Tide tables for shore anglers");
     }
 
@@ -245,10 +257,11 @@ async function main() {
     {
       const { created, calls } = api.nextCache;
       check(
-        "cache: one wrapper, keyed and tagged as specified",
+        "cache: one wrapper, keyed by the format and the schema revision, tagged, one hour",
         created.length === 1 &&
-          JSON.stringify(created[0].keyParts) === JSON.stringify(["arkademy-current"]) &&
-          created[0].options.revalidate === 300 &&
+          JSON.stringify(created[0].keyParts) ===
+            JSON.stringify(["arkademy-current", `format-${ARKADEMY_FORMAT_VERSION}`, `schema-${ARKADEMY_SCHEMA_REVISION}`]) &&
+          created[0].options.revalidate === 3600 &&
           JSON.stringify(created[0].options.tags) === JSON.stringify(["arkademy"]),
         JSON.stringify(created),
       );
@@ -265,6 +278,133 @@ async function main() {
         else process.env.NODE_ENV = savedEnv;
       }
     }
+    // --- POST /api/arkademy/revalidate -------------------------------------------
+    {
+      const { POST } = api.revalidate;
+      const { revalidated } = api.nextCache;
+      const SECRET = "a-long-random-secret-for-the-suite";
+      const post = (headers = {}) => POST(new Request(`${ORIGIN}/api/arkademy/revalidate`, { method: "POST", headers }));
+      const savedSecret = process.env.ARKADEMY_REVALIDATE_SECRET;
+      try {
+        delete process.env.ARKADEMY_REVALIDATE_SECRET;
+        revalidated.length = 0;
+        const hidden = await post({ authorization: `Bearer ${SECRET}` });
+        check("revalidate: with no secret on the server, 404", hidden.status === 404, `status ${hidden.status}`);
+        check("revalidate: and nothing is revalidated", revalidated.length === 0);
+        check("revalidate: the 404 is never cached", hidden.headers.get("cache-control") === "no-store");
+
+        process.env.ARKADEMY_REVALIDATE_SECRET = SECRET;
+        for (const [name, headers] of [
+          ["no Authorization", {}],
+          ["a wrong token", { authorization: "Bearer not-the-secret" }],
+          ["a token of another length", { authorization: `Bearer ${SECRET}x` }],
+          ["the secret without the Bearer scheme", { authorization: SECRET }],
+          ["Basic credentials", { authorization: `Basic ${Buffer.from(`x:${SECRET}`).toString("base64")}` }],
+          ["an empty bearer", { authorization: "Bearer " }],
+        ]) {
+          revalidated.length = 0;
+          const res = await post(headers);
+          check(`revalidate: ${name} gets 401`, res.status === 401 && revalidated.length === 0, `status ${res.status}, ${revalidated.length} revalidated`);
+          check(`revalidate: ${name}: never cached, with a Bearer challenge`, res.headers.get("cache-control") === "no-store" && /^Bearer/.test(res.headers.get("www-authenticate") ?? ""));
+        }
+        revalidated.length = 0;
+        const ok = await post({ authorization: `Bearer ${SECRET}` });
+        check("revalidate: the right token gets 204 with no body", ok.status === 204 && (await ok.text()) === "", `status ${ok.status}`);
+        check(
+          "revalidate: it expires the arkademy tag at once (not stale-while-revalidate)",
+          JSON.stringify(revalidated) === JSON.stringify([{ tag: "arkademy", profile: { expire: 0 } }]),
+          JSON.stringify(revalidated),
+        );
+        check("revalidate: the 204 is never cached", ok.headers.get("cache-control") === "no-store");
+        const lower = await post({ authorization: `bearer ${SECRET}` });
+        check("revalidate: the scheme is case-insensitive", lower.status === 204, `status ${lower.status}`);
+        check("revalidate: only POST is exported", typeof api.revalidate.GET === "undefined");
+      } finally {
+        if (savedSecret === undefined) delete process.env.ARKADEMY_REVALIDATE_SECRET;
+        else process.env.ARKADEMY_REVALIDATE_SECRET = savedSecret;
+      }
+    }
+
+    // --- The upload script makes a write live --------------------------------------
+    // A stub site on this machine stands in for the deployment's revalidate route.
+    {
+      await client.query("truncate arkademy_documents");
+      const http = require("http");
+      const os = require("os");
+      const { spawn } = require("child_process");
+      const SECRET = "stub-site-secret";
+      const hits = [];
+      const site = http.createServer((req, res) => {
+        hits.push({ method: req.method, url: req.url, authorization: req.headers.authorization });
+        res.writeHead(req.headers.authorization === `Bearer ${SECRET}` ? 204 : 401).end();
+      });
+      await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
+      const siteUrl = `http://127.0.0.1:${site.address().port}`;
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arkademy-live-"));
+      const runScript = (args, extraEnv) =>
+        new Promise((resolve) => {
+          const env = { ...process.env, DATABASE_URL: connectionString, ...extraEnv };
+          delete env.PGHOST;
+          for (const key of Object.keys(extraEnv)) if (extraEnv[key] === undefined) delete env[key];
+          const child = spawn(process.execPath, [path.join(ROOT, "scripts", "arkademy", "upload.js"), ...args], { env });
+          let stdout = "";
+          let stderr = "";
+          child.stdout.on("data", (chunk) => (stdout += chunk));
+          child.stderr.on("data", (chunk) => (stderr += chunk));
+          child.on("close", (status) => resolve({ status, stdout, stderr }));
+        });
+      try {
+        const v1File = path.join(dir, "v1.json");
+        fs.writeFileSync(v1File, JSON.stringify(fixture()));
+        const quiet = await runScript(["publish", v1File], { ARKADEMY_SITE_URL: undefined, ARKADEMY_REVALIDATE_SECRET: undefined });
+        check(
+          "live: without the two variables the script says how long, and how to set them",
+          quiet.status === 0 && /published v1\b/.test(quiet.stdout) && /within an hour/.test(quiet.stdout) && /ARKADEMY_SITE_URL/.test(quiet.stdout) && hits.length === 0,
+          `${quiet.status} ${quiet.stdout} ${quiet.stderr}`,
+        );
+        const v2 = fixture();
+        v2.companies[1].oneLiner = "Tide tables for shore anglers";
+        const v2File = path.join(dir, "v2.json");
+        fs.writeFileSync(v2File, JSON.stringify(v2));
+        const loud = await runScript(["publish", v2File], { ARKADEMY_SITE_URL: siteUrl, ARKADEMY_REVALIDATE_SECRET: SECRET });
+        check("live: with them, the script calls the site and says live now", loud.status === 0 && /published v2\b/.test(loud.stdout) && /^live now/m.test(loud.stdout), `${loud.status} ${loud.stdout} ${loud.stderr}`);
+        check(
+          "live: one POST to the revalidate route with the bearer token",
+          hits.length === 1 && hits[0].method === "POST" && hits[0].url === "/api/arkademy/revalidate" && hits[0].authorization === `Bearer ${SECRET}`,
+          JSON.stringify(hits),
+        );
+        check("live: the secret is never printed", !loud.stdout.includes(SECRET) && !loud.stderr.includes(SECRET));
+        hits.length = 0;
+        const back = await runScript(["rollback"], { ARKADEMY_SITE_URL: siteUrl, ARKADEMY_REVALIDATE_SECRET: SECRET });
+        check("live: a rollback calls it too", back.status === 0 && /rolled back: v3 restores v1/.test(back.stdout) && /^live now/m.test(back.stdout) && hits.length === 1, `${back.status} ${back.stdout} ${back.stderr}`);
+        hits.length = 0;
+        const v4 = fixture();
+        v4.companies[1].oneLiner = "Tide tables for harbour pilots";
+        const v4File = path.join(dir, "v4.json");
+        fs.writeFileSync(v4File, JSON.stringify(v4));
+        const wrong = await runScript(["publish", v4File], { ARKADEMY_SITE_URL: siteUrl, ARKADEMY_REVALIDATE_SECRET: "not-it" });
+        check(
+          "live: a refused call never fails the publish, which is committed",
+          wrong.status === 0 && /published v4\b/.test(wrong.stdout) && /secret does not match/.test(wrong.stdout) && !/^live now/m.test(wrong.stdout) && (await rowCount()) === 4,
+          `${wrong.status} ${wrong.stdout} ${wrong.stderr}`,
+        );
+        site.close();
+        const v5 = fixture();
+        v5.companies[1].oneLiner = "Tide tables for kayakers";
+        const v5File = path.join(dir, "v5.json");
+        fs.writeFileSync(v5File, JSON.stringify(v5));
+        const down = await runScript(["publish", v5File], { ARKADEMY_SITE_URL: siteUrl, ARKADEMY_REVALIDATE_SECRET: SECRET });
+        check(
+          "live: an unreachable site never fails the publish either",
+          down.status === 0 && /published v5\b/.test(down.stdout) && /ECONNREFUSED/.test(down.stdout) && (await rowCount()) === 5,
+          `${down.status} ${down.stdout} ${down.stderr}`,
+        );
+      } finally {
+        site.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
     // --- Six publishes at once ------------------------------------------------
     // Each spawned run builds into its own directory; the runs that lose the
     // race on the version exit 1 with a plain message, never a stack trace.

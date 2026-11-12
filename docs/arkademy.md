@@ -115,7 +115,15 @@ the app reads Postgres on every request, so the next reload shows the upload.
 The table is created by `migrate-prod` when the migration lands on `main`.
 Publish with the production connection string — the value behind Vercel's
 production `DATABASE_URL` and the `PROD_DATABASE_URL` Actions secret — kept in
-a `.env.arkademy-prod` file (gitignored by `.env*`):
+a `.env.arkademy-prod` file (gitignored by `.env*`), beside the two variables
+that make a publish live at once:
+
+```
+# .env.arkademy-prod
+DATABASE_URL=postgres://…                    # production
+ARKADEMY_SITE_URL=https://arkaik.app
+ARKADEMY_REVALIDATE_SECRET=…                 # the same value as on Vercel
+```
 
 ```
 node --env-file=.env.arkademy-prod scripts/arkademy/upload.js publish --note "…" --yes
@@ -128,10 +136,53 @@ local `next build` or `next start` in that checkout would run against the
 production database. Next never reads `.env.arkademy-prod`; only the
 `--env-file` above does.
 
-The app caches the validated library for five minutes
-(`ARKADEMY_CACHE_SECONDS`), so a publish or a rollback is live after the
-first request more than five minutes after the previous refill. Nothing purges
-the cache from the script. Check with:
+### When a publish is live
+
+The app keeps the validated library in Next's data cache for an hour
+(`ARKADEMY_CACHE_SECONDS`, tag `arkademy`), so readers and crawlers wake the
+scale-to-zero database at most once an hour. A publish or a rollback does not
+wait for that hour when the script can reach the app:
+
+- **`ARKADEMY_REVALIDATE_SECRET`** on the Vercel deployment (Production) and in
+  `.env.arkademy-prod`, the same value: a long random string
+  (`openssl rand -hex 32`). Redeploy after setting it on Vercel. While it is
+  unset on a deployment, `POST /api/arkademy/revalidate` answers 404 there.
+- **`ARKADEMY_SITE_URL`** in `.env.arkademy-prod` only: the app's origin,
+  `https://arkaik.app` (`http://` is accepted for this machine only, since the
+  secret travels in the request).
+
+With both set, after a write the script calls
+`POST $ARKADEMY_SITE_URL/api/arkademy/revalidate` with
+`Authorization: Bearer $ARKADEMY_REVALIDATE_SECRET`; the app expires its
+cached copy at once and the next read goes to Postgres. The script prints one
+line: `live now: …` when the call answered 204; otherwise `not live yet: …`
+with the reason (a variable unset, 401 for a secret that does not match, 404
+for a deployment without the secret, a network error) and how long it can
+take. A failed call never fails the command: the version is already
+committed.
+
+How long "not live yet" lasts: until the cached entry is an hour old, plus one
+request (the first read after the hour still gets the old version while the
+cache refills), plus the route's CDN window (`s-maxage=60`,
+`stale-while-revalidate=60`: up to two minutes). An empty table is cached the
+same way, so the first publish into it follows the same rule. Even after
+`live now`, `GET /api/arkademy` can answer from the CDN for up to two more
+minutes.
+
+To make the current version live by hand (say, after a publish that ran
+without the variables):
+
+```
+curl -si -X POST -H "Authorization: Bearer $ARKADEMY_REVALIDATE_SECRET" https://arkaik.app/api/arkademy/revalidate   # 204
+```
+
+A deploy whose schema is stricter — a new `ARKADEMY_FORMAT_VERSION` or
+`ARKADEMY_SCHEMA_REVISION` (`lib/arkademy/schema.ts`; bump the revision by
+hand whenever the validator refuses something it used to accept) — never
+serves an entry an older build cached: both are in the cache key and in the
+ETag, `W/"arkademy.<version>.f<format>.s<revision>"`.
+
+Check with:
 
 ```
 curl -s https://arkaik.app/api/arkademy | head -c 200

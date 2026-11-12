@@ -1,8 +1,8 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 
-import type { ArkademyDocument } from "@/lib/arkademy/schema";
+import { ARKADEMY_FORMAT_VERSION, ARKADEMY_SCHEMA_REVISION, type ArkademyDocument } from "@/lib/arkademy/schema";
 import { upgradeArkademyDocument, validateArkademyDocument } from "@/lib/arkademy/validate";
 import { query, servicesConfigured } from "@/lib/services/db";
 import { formatReadEtag } from "@/lib/services/graph/etag";
@@ -16,9 +16,14 @@ import { formatReadEtag } from "@/lib/services/graph/etag";
  * reads the library any other way, and nothing reads it from a file.
  *
  * In production one cache entry holds the validated document for
- * ARKADEMY_CACHE_SECONDS, whatever the traffic, so anonymous readers and
- * crawlers never wake the (scale-to-zero) database per view. In development
- * it reads Postgres directly, so an upload shows on the next reload.
+ * ARKADEMY_CACHE_SECONDS (an hour), whatever the traffic, so anonymous readers
+ * and crawlers wake the (scale-to-zero) database at most once an hour. A
+ * publish or a rollback does not wait for that: the upload script calls
+ * POST /api/arkademy/revalidate, which expires the entry's tag at once
+ * (`expireArkademyCache`), and the next read refills it. The key carries the
+ * format and the schema revision, so a deploy that changes either starts from
+ * an empty entry. In development it reads Postgres directly, so an upload
+ * shows on the next reload.
  */
 
 export type ArkademyLookup =
@@ -37,7 +42,19 @@ export interface StoredArkademyRow {
   uploadedAt: string; // ISO 8601
 }
 
-export const ARKADEMY_CACHE_SECONDS = 300;
+/** The data cache's period: the longest a version can wait without a revalidate call. */
+export const ARKADEMY_CACHE_SECONDS = 3600;
+/** The tag on the cached loader; `expireArkademyCache` expires it. */
+export const ARKADEMY_CACHE_TAG = "arkademy";
+/**
+ * The cached loader's key. A build whose format or schema revision differs
+ * reads a different entry, never one an older build stored.
+ */
+export const ARKADEMY_CACHE_KEY_PARTS: readonly string[] = [
+  "arkademy-current",
+  `format-${ARKADEMY_FORMAT_VERSION}`,
+  `schema-${ARKADEMY_SCHEMA_REVISION}`,
+];
 
 /** One query, uncached: the newest version, or null on an empty table. */
 export async function readCurrentArkademy(): Promise<StoredArkademyRow | null> {
@@ -89,10 +106,21 @@ async function loadArkademy(): Promise<LoadedArkademy> {
   return { status: "ready", version: row.version, uploadedAt: row.uploadedAt, document: result.document };
 }
 
-const loadArkademyCached = unstable_cache(loadArkademy, ["arkademy-current"], {
+const loadArkademyCached = unstable_cache(loadArkademy, [...ARKADEMY_CACHE_KEY_PARTS], {
   revalidate: ARKADEMY_CACHE_SECONDS,
-  tags: ["arkademy"],
+  tags: [ARKADEMY_CACHE_TAG],
 });
+
+/**
+ * Expires the cached library at once, so the next read goes to Postgres and
+ * waits for it (no stale copy is served meanwhile). `{ expire: 0 }` is the
+ * Next 16 form of an immediate expiry: the one-argument `revalidateTag` is
+ * deprecated, and `"max"` would only mark the entry stale, serving the old
+ * version once more while it refills. Call it from a route handler only.
+ */
+export function expireArkademyCache(): void {
+  revalidateTag(ARKADEMY_CACHE_TAG, { expire: 0 });
+}
 
 /** The library, or why there is none. Never throws. */
 export async function getArkademy(): Promise<ArkademyLookup> {
@@ -105,7 +133,17 @@ export async function getArkademy(): Promise<ArkademyLookup> {
   }
 }
 
-/** The weak validator of a version: `W/"arkademy.<version>"`. */
+/**
+ * The weak validator of a version as this build serves it:
+ * `W/"arkademy.<version>.f<format>.s<schema revision>"`. The format and the
+ * revision are in it so a client holding a tag from an older build gets the
+ * body again rather than a 304.
+ */
 export function arkademyEtag(version: number): string {
-  return formatReadEtag(["arkademy", String(version)]);
+  return formatReadEtag([
+    "arkademy",
+    String(version),
+    `f${ARKADEMY_FORMAT_VERSION}`,
+    `s${ARKADEMY_SCHEMA_REVISION}`,
+  ]);
 }

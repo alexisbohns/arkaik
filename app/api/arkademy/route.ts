@@ -9,13 +9,15 @@ import { ifNoneMatchSatisfied } from "@/lib/services/graph/etag";
  * agents, scripts and anything else that is not a page.
  *
  * Node runtime for the `pg` driver; force-dynamic so the build never touches
- * the database. The data cache behind `getArkademy` and the CDN headers below
- * are what keep a read cheap.
+ * the database. The data cache behind `getArkademy` (an hour, expired at once
+ * by POST /api/arkademy/revalidate after a publish) is what keeps a read
+ * cheap; the CDN window below is short on purpose, so a revalidated version
+ * reaches every reader within two minutes.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const READY_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
+const READY_CACHE_CONTROL = "public, max-age=60, s-maxage=60, stale-while-revalidate=60";
 const EMPTY_CACHE_CONTROL = "public, max-age=60, s-maxage=60";
 const NO_STORE = "no-store";
 

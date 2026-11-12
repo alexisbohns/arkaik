@@ -14,8 +14,12 @@
  * `npm run db:migrate`. A write to any host but localhost needs --yes.
  *
  * Every write inserts a row into arkademy_documents (db/migrations/
- * 013_arkademy_documents.sql); nothing is ever updated or deleted. The app
- * serves a new version within ARKADEMY_CACHE_SECONDS (five minutes).
+ * 013_arkademy_documents.sql); nothing is ever updated or deleted. After a
+ * publish or a rollback that wrote a row, the script asks the app to expire
+ * its cached copy (POST /api/arkademy/revalidate) when ARKADEMY_SITE_URL and
+ * ARKADEMY_REVALIDATE_SECRET are both set, and says whether the version is
+ * live now or how long it can take. That call never fails the command: the
+ * row is committed before it is made.
  *
  * lib/arkademy/*.ts is loaded through ./load-arkademy-lib.js, so this runs
  * from a checkout with dev dependencies installed (`typescript`).
@@ -186,6 +190,92 @@ async function listVersions(client, limit = STATUS_LIMIT) {
     restoredFrom: row.restored_from,
     uploadedAt: new Date(row.uploaded_at).toISOString(),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Making a write live
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a version can wait when nothing expires the app's cache: the data
+ * cache's period (ARKADEMY_CACHE_SECONDS in lib/services/arkademy.ts, an
+ * hour) plus the route's CDN window (s-maxage=60 + stale-while-revalidate=60
+ * in app/api/arkademy/route.ts). Keep these words in step with both.
+ */
+const WAIT_WITHOUT_REVALIDATE = "within an hour (the app's cache period), plus up to 2 minutes at the CDN";
+const REVALIDATE_PATH = "/api/arkademy/revalidate";
+const REVALIDATE_TIMEOUT_MS = 10_000;
+
+/**
+ * Asks the deployment at `siteUrl` to expire its cached library, with the
+ * bearer `secret`. Never throws, never prints the secret.
+ *
+ * → { status: "unconfigured", missing }   one variable or both unset: nothing called
+ * → { status: "live" }                    the route answered 204
+ * → { status: "failed", reason }          anything else, said plainly
+ */
+async function requestRevalidation({
+  siteUrl = process.env.ARKADEMY_SITE_URL,
+  secret = process.env.ARKADEMY_REVALIDATE_SECRET,
+  fetchImpl = globalThis.fetch,
+  timeoutMs = REVALIDATE_TIMEOUT_MS,
+} = {}) {
+  const missing = [];
+  if (!siteUrl) missing.push("ARKADEMY_SITE_URL");
+  if (!secret) missing.push("ARKADEMY_REVALIDATE_SECRET");
+  if (missing.length > 0) return { status: "unconfigured", missing };
+
+  let url;
+  try {
+    url = new URL(REVALIDATE_PATH, siteUrl);
+  } catch {
+    return { status: "failed", reason: "ARKADEMY_SITE_URL is not a URL" };
+  }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocalHost(url.hostname))) {
+    return { status: "failed", reason: "ARKADEMY_SITE_URL must be https (the secret would travel in clear), or http on this machine" };
+  }
+  let response;
+  try {
+    response = await fetchImpl(url.href, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}` },
+      // A redirect (say, to www.) is reported, never followed with the token.
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    const cause = err && err.cause ? `: ${describeError(err.cause)}` : "";
+    return { status: "failed", reason: `the call to ${url.origin} failed (${describeError(err)}${cause})` };
+  }
+  if (response.status === 204) return { status: "live" };
+  if (response.status === 401) {
+    return { status: "failed", reason: `${url.origin} answered 401: the secret does not match the deployment's ARKADEMY_REVALIDATE_SECRET` };
+  }
+  if (response.status === 404) {
+    return {
+      status: "failed",
+      reason: `${url.origin} answered 404: ARKADEMY_REVALIDATE_SECRET is not set on that deployment, or ARKADEMY_SITE_URL is not the app`,
+    };
+  }
+  return { status: "failed", reason: `${url.origin} answered ${response.status}` };
+}
+
+/** The one line the script prints about when a written version is live. */
+function revalidationLine(result) {
+  if (result.status === "live") {
+    return "live now: the app's cache is cleared (GET /api/arkademy may answer from the CDN for up to 2 more minutes)";
+  }
+  if (result.status === "unconfigured") {
+    return (
+      `not live yet: expect it ${WAIT_WITHOUT_REVALIDATE}. ` +
+      `${result.missing.join(" and ")} ${result.missing.length === 1 ? "is" : "are"} not set; set ARKADEMY_SITE_URL ` +
+      "and ARKADEMY_REVALIDATE_SECRET to make a publish live at once (docs/arkademy.md § Production)"
+    );
+  }
+  return (
+    `not live yet: ${result.reason}. The version is published; expect it ${WAIT_WITHOUT_REVALIDATE}. ` +
+    "Check ARKADEMY_SITE_URL and ARKADEMY_REVALIDATE_SECRET (docs/arkademy.md § Production)"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -422,9 +512,8 @@ async function main(argv) {
       printFindings(outcome);
       throw new ScriptExit("the document did not validate; nothing written");
     }
-    console.log(
-      `published v${outcome.version} (${kilobytes(outcome.sizeBytes)}, ${plural(outcome.warnings.length, "warning")}) — live within 5 minutes`,
-    );
+    console.log(`published v${outcome.version} (${kilobytes(outcome.sizeBytes)}, ${plural(outcome.warnings.length, "warning")})`);
+    console.log(revalidationLine(await requestRevalidation()));
     return 0;
   }
 
@@ -469,7 +558,8 @@ async function main(argv) {
       console.log(`unchanged (v${outcome.version} already holds v${outcome.to}'s document)`);
       return 0;
     default:
-      console.log(`rolled back: v${outcome.version} restores v${outcome.to} — live within 5 minutes`);
+      console.log(`rolled back: v${outcome.version} restores v${outcome.to}`);
+      console.log(revalidationLine(await requestRevalidation()));
       return 0;
   }
 }
@@ -483,6 +573,8 @@ module.exports = {
   databaseTarget,
   isLocalHost,
   announce,
+  requestRevalidation,
+  revalidationLine,
   main,
 };
 

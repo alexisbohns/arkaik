@@ -19,6 +19,15 @@ import { z } from "zod";
  */
 
 export const ARKADEMY_FORMAT_VERSION = 1;
+/**
+ * Bump this by hand, in the same PR, on any change that makes the schema or
+ * the validator stricter WITHOUT a format bump (a new refusal, a tighter
+ * limit). It goes into the server's cache key and the route's ETag
+ * (lib/services/arkademy.ts), so a deploy never serves a cached document its
+ * own schema would refuse, nor answers 304 to a body an older build served.
+ * A format bump needs no revision bump: the format is in both already.
+ */
+export const ARKADEMY_SCHEMA_REVISION = 1;
 export const BMC_TOOL_ID = "business-model-canvas";
 export type ToolId = typeof BMC_TOOL_ID;
 

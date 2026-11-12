@@ -97,6 +97,11 @@ check(
 );
 check("the prompt token", PROMPT_TOKEN === "{{paragraph}}");
 check("the zod schema is exported", typeof arkademyDocumentSchema.safeParse === "function");
+check(
+  "the schema revision starts at 1 (bump it when the schema gets stricter without a format bump)",
+  ark.ARKADEMY_SCHEMA_REVISION === 1,
+  String(ark.ARKADEMY_SCHEMA_REVISION),
+);
 
 // --- The fixture -------------------------------------------------------------
 const valid = validateArkademyDocument(fixture());
@@ -972,6 +977,79 @@ const upload = require(path.join(ROOT, "scripts", "arkademy", "upload.js"));
   check("upload: publish --note --yes is a usage mistake", noteYes.status === 2 && /--note needs a value/.test(noteYes.stderr), `${noteYes.status} ${noteYes.stderr}`);
 }
 
+// --- Making a write live: the revalidate call ------------------------------------
+async function revalidationCalls() {
+  const { requestRevalidation, revalidationLine } = upload;
+  check("requestRevalidation and revalidationLine are exported", typeof requestRevalidation === "function" && typeof revalidationLine === "function");
+  if (typeof requestRevalidation !== "function" || typeof revalidationLine !== "function") return;
+  const SECRET = "s3cret-value-never-printed";
+  const calls = [];
+  const answering = (status) => async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(null, { status: status === 204 ? 204 : status });
+  };
+
+  calls.length = 0;
+  const none = await requestRevalidation({ siteUrl: undefined, secret: undefined, fetchImpl: answering(204) });
+  check("revalidate: with neither variable, nothing is called", none.status === "unconfigured" && calls.length === 0, JSON.stringify(none));
+  const noneLine = revalidationLine(none);
+  check(
+    "revalidate: and the line says how long and how to set the two variables",
+    /within an hour/.test(noneLine) && /2 minutes/.test(noneLine) && /ARKADEMY_SITE_URL/.test(noneLine) && /ARKADEMY_REVALIDATE_SECRET/.test(noneLine) && !/live now/.test(noneLine),
+    noneLine,
+  );
+  const half = await requestRevalidation({ siteUrl: "https://arkaik.example", secret: undefined, fetchImpl: answering(204) });
+  check("revalidate: one variable alone is not enough, and the line names the missing one", half.status === "unconfigured" && /ARKADEMY_REVALIDATE_SECRET is not set/.test(revalidationLine(half)), revalidationLine(half));
+
+  calls.length = 0;
+  const live = await requestRevalidation({ siteUrl: "https://arkaik.example", secret: SECRET, fetchImpl: answering(204) });
+  check("revalidate: a 204 means live now", live.status === "live" && /^live now/.test(revalidationLine(live)), JSON.stringify(live));
+  const call = calls[0];
+  check(
+    "revalidate: one POST to /api/arkademy/revalidate with the bearer token, redirects not followed",
+    calls.length === 1 &&
+      call.url === "https://arkaik.example/api/arkademy/revalidate" &&
+      call.init.method === "POST" &&
+      new Headers(call.init.headers).get("authorization") === `Bearer ${SECRET}` &&
+      call.init.redirect === "manual",
+    JSON.stringify(calls),
+  );
+  check("revalidate: a site URL with a trailing slash or a path still reaches the route", (await (async () => {
+    calls.length = 0;
+    await requestRevalidation({ siteUrl: "https://arkaik.example/some/page/", secret: SECRET, fetchImpl: answering(204) });
+    return calls[0]?.url === "https://arkaik.example/api/arkademy/revalidate";
+  })()));
+
+  for (const [status, pattern] of [
+    [401, /secret does not match/],
+    [404, /not set on that deployment/],
+    [500, /answered 500/],
+    [308, /answered 308/],
+  ]) {
+    const failed = await requestRevalidation({ siteUrl: "https://arkaik.example", secret: SECRET, fetchImpl: answering(status) });
+    const line = revalidationLine(failed);
+    check(`revalidate: a ${status} is a failure that says why and how long`, failed.status === "failed" && pattern.test(line) && /within an hour/.test(line) && !/^live now/.test(line), line);
+  }
+  const thrown = await requestRevalidation({
+    siteUrl: "https://arkaik.example",
+    secret: SECRET,
+    fetchImpl: async () => {
+      throw Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("getaddrinfo ENOTFOUND arkaik.example"), { code: "ENOTFOUND" }) });
+    },
+  });
+  check("revalidate: a network failure says why", thrown.status === "failed" && /ENOTFOUND/.test(revalidationLine(thrown)), revalidationLine(thrown));
+
+  calls.length = 0;
+  const plain = await requestRevalidation({ siteUrl: "http://arkaik.example", secret: SECRET, fetchImpl: answering(204) });
+  check("revalidate: http to another machine is refused before the secret leaves", plain.status === "failed" && calls.length === 0 && /https/.test(revalidationLine(plain)), revalidationLine(plain));
+  const local = await requestRevalidation({ siteUrl: "http://localhost:4931", secret: SECRET, fetchImpl: answering(204) });
+  check("revalidate: http to this machine is fine", local.status === "live", JSON.stringify(local));
+  const junk = await requestRevalidation({ siteUrl: "not a url", secret: SECRET, fetchImpl: answering(204) });
+  check("revalidate: a site URL that is not a URL is a failure, not a crash", junk.status === "failed", JSON.stringify(junk));
+  const lines = [none, half, live, plain, thrown].map(revalidationLine).join("\n");
+  check("revalidate: no line ever holds the secret", !lines.includes(SECRET));
+}
+
 // --- Two runs at once ---------------------------------------------------------
 // Each run builds lib/arkademy/ into a directory of its own and removes only
 // that one, so concurrent runs never delete each other's modules.
@@ -1000,11 +1078,13 @@ function leftoverBuildDirs() {
   return fs.readdirSync(path.join(ROOT, "scripts", "arkademy")).filter((name) => name.startsWith(".build"));
 }
 
-concurrentRuns().then(() => {
-  cleanup();
-  if (failures > 0) {
-    console.log(`\n${failures} arkademy-schema test(s) failed`);
-    process.exit(1);
-  }
-  console.log("\nAll arkademy-schema tests passed.");
-});
+revalidationCalls()
+  .then(concurrentRuns)
+  .then(() => {
+    cleanup();
+    if (failures > 0) {
+      console.log(`\n${failures} arkademy-schema test(s) failed`);
+      process.exit(1);
+    }
+    console.log("\nAll arkademy-schema tests passed.");
+  });

@@ -1,6 +1,7 @@
 /**
- * Loads the Arkademy read side — app/api/arkademy/route.ts, lib/services/
- * arkademy.ts and what they import — into a running Node process without a
+ * Loads the Arkademy read side — app/api/arkademy/route.ts, app/api/arkademy/
+ * revalidate/route.ts, lib/services/arkademy.ts and what they import — into a
+ * running Node process without a
  * bundler (the load-publik-api.js technique), for tests/services/
  * arkademy-api.test.js.
  *
@@ -17,7 +18,8 @@
  * Stubs: `server-only` is an empty module (it throws outside React Server
  * Components); `next/cache`'s `unstable_cache` returns the function itself and
  * records each wrapping and each call in `nextCache.created` / `nextCache.calls`,
- * so the suite can prove which path `getArkademy` takes.
+ * so the suite can prove which path `getArkademy` takes; its `revalidateTag`
+ * records each call in `nextCache.revalidated`.
  */
 
 const fs = require("fs");
@@ -52,7 +54,11 @@ function unstable_cache(fn, keyParts, options) {
     return fn(...args);
   };
 }
-module.exports = { unstable_cache, created, calls };
+const revalidated = [];
+function revalidateTag(tag, profile) {
+  revalidated.push({ tag, profile });
+}
+module.exports = { unstable_cache, revalidateTag, created, calls, revalidated };
 `;
 
 function transpile(srcAbsPath) {
@@ -90,6 +96,7 @@ function loadArkademyApi() {
   write("etag.js", transpile(path.join(ROOT, "lib", "services", "graph", "etag.ts")));
   write("services-arkademy.js", transpile(path.join(ROOT, "lib", "services", "arkademy.ts")));
   write("route.js", transpile(path.join(ROOT, "app", "api", "arkademy", "route.ts")));
+  write("revalidate-route.js", transpile(path.join(ROOT, "app", "api", "arkademy", "revalidate", "route.ts")));
 
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(BUILD_DIR)) delete require.cache[key];
@@ -98,6 +105,8 @@ function loadArkademyApi() {
   return {
     GET: route.GET,
     route,
+    revalidate: require(path.join(BUILD_DIR, "revalidate-route.js")),
+    schema: require(path.join(BUILD_DIR, "arkademy", "schema.js")),
     arkademy: require(path.join(BUILD_DIR, "services-arkademy.js")),
     db: require(path.join(BUILD_DIR, "db.js")),
     nextCache: require(path.join(BUILD_DIR, "next-cache-stub.js")),

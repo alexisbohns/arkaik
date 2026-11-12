@@ -291,27 +291,47 @@ a publish and a rollback each insert a row, and every version is kept.
 
 | Lookup | Status | Body | `Cache-Control` |
 |---|---|---|---|
-| ready | 200 | `{ "version", "uploaded_at", "format_version", "document" }` | `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` |
+| ready | 200 | `{ "version", "uploaded_at", "format_version", "document" }` | `public, max-age=60, s-maxage=60, stale-while-revalidate=60` |
 | ready, `If-None-Match` matches | 304 | none | same |
 | empty table | 404 | `{ "error": "no_document", "message" }` | `public, max-age=60, s-maxage=60` |
 | no `DATABASE_URL` | 503 | `services_unavailable` | `no-store` |
 | newest row fails this build's schema | 500 | `{ "error": "document_invalid", "message" }` | `no-store` |
 | Postgres failed | 500 | `{ "error": "internal_error", "message" }` | `no-store` |
 
-- Every 200 and 304 carries `ETag: W/"arkademy.<version>"`; `If-None-Match` is
-  compared weakly (`ifNoneMatchSatisfied`, as for the hosted reads).
+- Every 200 and 304 carries
+  `ETag: W/"arkademy.<version>.f<format>.s<schema revision>"`
+  (`ARKADEMY_FORMAT_VERSION`, `ARKADEMY_SCHEMA_REVISION`), so a client holding
+  a tag from a build with another format or schema gets the body again;
+  `If-None-Match` is compared weakly (`ifNoneMatchSatisfied`, as for the
+  hosted reads).
 - The body's `document` is the validated document — upgraded to the current
   format when the row is older — not the stored bytes. Response keys are
   snake_case; the document keeps its own camelCase.
 - **One loader, two readers.** `getArkademy` (`lib/services/arkademy.ts`) is the
   contract: the Arkademy pages call it in-process and the route wraps it. In
   production it reads through Next's data cache (`unstable_cache`, key
-  `arkademy-current`, tag `arkademy`, 300 s), so one refill per five minutes
-  reaches the database whatever the traffic — which is why there is no rate
+  `["arkademy-current", "format-<format>", "schema-<revision>"]`, tag
+  `arkademy`, 3600 s), so at most one refill an hour reaches the
+  scale-to-zero database whatever the traffic — which is why there is no rate
   limiter, whose Postgres write per request would cost exactly what the cache
-  saves. A thrown error is never cached. In development it reads Postgres
-  directly. Nothing calls `revalidateTag`: a publish is live within five
-  minutes.
+  saves. The key carries the format and the schema revision, so a deploy that
+  changes either never serves an entry an older build stored. A thrown error
+  is never cached. In development it reads Postgres directly.
+- **Making a write live.** `POST /api/arkademy/revalidate` expires the
+  `arkademy` tag at once (`revalidateTag("arkademy", { expire: 0 })`): the
+  next read refills from Postgres rather than serving the old entry while it
+  refreshes. The upload script calls it after a publish or a rollback when
+  `ARKADEMY_SITE_URL` and `ARKADEMY_REVALIDATE_SECRET` are set. Without it, a
+  write waits for the hour, plus one request, plus the CDN window.
+
+`POST /api/arkademy/revalidate` — not public: `Authorization: Bearer
+<ARKADEMY_REVALIDATE_SECRET>`, compared in constant time. No body.
+
+| Case | Status | Body | `Cache-Control` |
+|---|---|---|---|
+| `ARKADEMY_REVALIDATE_SECRET` unset on the deployment | 404 | none | `no-store` |
+| missing or wrong bearer token | 401, `WWW-Authenticate: Bearer` | `{ "error": "unauthorized", "message" }` | `no-store` |
+| the tag is expired | 204 | none | `no-store` |
 
 ## Tier Enforcement Points
 
