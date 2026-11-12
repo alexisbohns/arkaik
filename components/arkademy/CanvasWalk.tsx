@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 
 import { CanvasGrid } from "@/components/arkademy/CanvasGrid";
 import { CanvasLink } from "@/components/arkademy/CanvasLink";
@@ -82,8 +82,16 @@ export function CanvasWalk(props: CanvasWalkProps) {
 function TourWalk({ company, questions, state, initialStep, next, examplesHref, endActions }: TourWalkProps) {
   const timelines = useMemo(() => tourTimelines(questions, state), [questions, state]);
   const cardRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const player = useTourPlayer({ timelines, initialStep, cardRef });
   const { step, playing, ended } = player.state;
+
+  // When the tour plays to its end, the end card comes into view (at once under reduced
+  // motion). Focus stays where it is: nothing moves it on its own.
+  useEffect(() => {
+    if (!ended) return;
+    endRef.current?.scrollIntoView({ block: "nearest", behavior: player.reducedMotion ? "auto" : "smooth" });
+  }, [ended, player.reducedMotion]);
   const { view } = player;
   const question = questions[step - 1];
   const questionState = state[step - 1];
@@ -157,7 +165,11 @@ function TourWalk({ company, questions, state, initialStep, next, examplesHref, 
           sentenceShown={view.sentenceShown}
           headingId="tour-question"
         />
-        {atEnd && <TourEndCard company={company} next={next} examplesHref={examplesHref} actions={endActions} />}
+        {atEnd && (
+          <div ref={endRef} className="scroll-mt-4 scroll-mb-24 md:scroll-mb-4">
+            <TourEndCard company={company} next={next} examplesHref={examplesHref} actions={endActions} />
+          </div>
+        )}
         <p aria-live="polite" className="sr-only">
           {announcement}
         </p>
