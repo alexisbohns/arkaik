@@ -764,6 +764,100 @@ const upload = require(path.join(ROOT, "scripts", "arkademy", "upload.js"));
   usage("parseArgs: publish takes no --to", parse("publish", "--to", "2"), /takes no --to/);
 }
 
+// --- The production write guard ---------------------------------------------------
+// Local or remote is decided from the host and database the driver will
+// actually use (pg's resolved Client), never from a second parse of the URL.
+{
+  const { databaseTarget, isLocalHost, announce } = upload;
+  check("databaseTarget, isLocalHost and announce are exported", [databaseTarget, isLocalHost, announce].every((fn) => typeof fn === "function"));
+  if ([databaseTarget, isLocalHost, announce].every((fn) => typeof fn === "function")) {
+    const withEnv = (vars, fn) => {
+      const saved = {};
+      for (const key of Object.keys(vars)) {
+        saved[key] = process.env[key];
+        if (vars[key] === undefined) delete process.env[key];
+        else process.env[key] = vars[key];
+      }
+      try {
+        return fn();
+      } finally {
+        for (const key of Object.keys(saved)) {
+          if (saved[key] === undefined) delete process.env[key];
+          else process.env[key] = saved[key];
+        }
+      }
+    };
+    const target = (url, env = {}) => withEnv({ PGHOST: undefined, PGDATABASE: undefined, ...env }, () => databaseTarget(url));
+    const cases = [
+      ["a ?host= parameter overrides the URL's host", "postgres://u:pw@localhost/db?host=prod.example", {}, "prod.example", false],
+      ["PGHOST fills a URL with no host", "postgres:///db", { PGHOST: "prod.example" }, "prod.example", false],
+      ["no host at all is localhost", "postgres:///db", {}, "localhost", true],
+      ["localhost with a port", "postgres://u@localhost:5931/db", {}, "localhost", true],
+      ["127.0.0.1", "postgres://u@127.0.0.1/db", {}, "127.0.0.1", true],
+      ["any 127/8 address", "postgres://u@127.0.0.2/db", {}, "127.0.0.2", true],
+      ["::1", "postgres://u@[::1]/db", {}, "[::1]", true],
+      ["a Unix socket in the host", "postgres://u@%2Ftmp%2Fpg/db", {}, "/tmp/pg", true],
+      ["a Unix socket in ?host=", "postgres://u@db.example/db?host=/var/run/postgresql", {}, "/var/run/postgresql", true],
+      ["a remote host", "postgres://u:pw@ep-cool-name.eu-central-1.aws.neon.tech/neondb", {}, "ep-cool-name.eu-central-1.aws.neon.tech", false],
+      ["a name that merely starts with localhost", "postgres://u@localhost.prod.example/db", {}, "localhost.prod.example", false],
+      ["PGHOST does not override a URL's own host", "postgres://u@localhost/db", { PGHOST: "prod.example" }, "localhost", true],
+    ];
+    for (const [name, url, env, host, local] of cases) {
+      const resolved = target(url, env);
+      check(`guard: ${name}`, resolved.host === host && resolved.local === local, JSON.stringify({ host: resolved.host, local: resolved.local }));
+    }
+    check("guard: the database is the driver's", target("postgres://u@localhost/arkaik_test").database === "arkaik_test");
+    check("guard: PGDATABASE fills a URL with none", target("postgres://u@localhost", { PGDATABASE: "fromenv" }).database === "fromenv");
+    check("isLocalHost: the long form of ::1", isLocalHost("0:0:0:0:0:0:0:1") && isLocalHost("[::1]") && isLocalHost("::ffff:127.0.0.1"));
+    check("isLocalHost: LOCALHOST in capitals", isLocalHost("LOCALHOST"));
+    check("isLocalHost: neither 10.0.0.1 nor 0.0.0.0 nor an empty host", !isLocalHost("10.0.0.1") && !isLocalHost("0.0.0.0") && !isLocalHost(""));
+
+    const captured = [];
+    const realLog = console.log;
+    const attempt = (url, env, options) => {
+      console.log = (line) => captured.push(String(line));
+      try {
+        announce(target(url, env), options);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, code: err.code, message: err.message };
+      } finally {
+        console.log = realLog;
+      }
+    };
+    captured.length = 0;
+    const hidden = attempt("postgres://u:pw@localhost/db?host=prod.example", {}, { writes: true, yes: false });
+    check(
+      "guard: a ?host= override refuses a write without --yes",
+      !hidden.ok && hidden.code === 1 && /prod\.example is not this machine/.test(hidden.message),
+      JSON.stringify(hidden),
+    );
+    check("guard: and announces the host the driver will use", captured.some((line) => /on prod\.example/.test(line)) && !captured.some((line) => /on localhost/.test(line)), JSON.stringify(captured));
+    check("guard: the announcement never holds the password", captured.every((line) => !line.includes("pw")), JSON.stringify(captured));
+    captured.length = 0;
+    const viaEnv = attempt("postgres:///db", { PGHOST: "prod.example" }, { writes: true, yes: false });
+    check("guard: PGHOST refuses a write without --yes", !viaEnv.ok && /prod\.example is not this machine/.test(viaEnv.message), JSON.stringify(viaEnv));
+    check("guard: --yes lets a remote write through", attempt("postgres:///db", { PGHOST: "prod.example" }, { writes: true, yes: true }).ok);
+    check("guard: a read needs no --yes", attempt("postgres:///db", { PGHOST: "prod.example" }, { writes: false }).ok);
+    check("guard: a local write needs no --yes", attempt("postgres://u@localhost:5931/db", {}, { writes: true, yes: false }).ok);
+    check("guard: a socket write needs no --yes", attempt("postgres://u@%2Ftmp%2Fpg/db", {}, { writes: true, yes: false }).ok);
+  }
+
+  const { spawnSync } = require("child_process");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  for (const [name, env] of [
+    ["?host=", { DATABASE_URL: "postgres://u:pw@localhost/db?host=prod.example" }],
+    ["PGHOST", { DATABASE_URL: "postgres:///db", PGHOST: "prod.example" }],
+  ]) {
+    const result = spawnSync(process.execPath, [UPLOAD, "publish", FIXTURE], { encoding: "utf8", env: { ...process.env, PGHOST: "", ...env } });
+    check(
+      `upload: publish through ${name} to another host refuses without --yes`,
+      result.status === 1 && /database: db on prod\.example/.test(result.stdout) && /prod\.example is not this machine; add --yes/.test(result.stderr),
+      `${result.status} ${result.stdout.split("\n").slice(-2).join(" / ")} ${result.stderr}`,
+    );
+  }
+}
+
 // --- Files the script cannot read as a document ----------------------------------
 {
   const { spawnSync } = require("child_process");

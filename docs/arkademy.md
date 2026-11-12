@@ -76,9 +76,12 @@ npm run arkademy -- rollback [--to N] [--yes]
 `file` defaults to `$ARKADEMY_CONTENT`, then `arkademy-content/arkademy.json`.
 A relative path is read from the directory you typed the command in.
 
-The database is `DATABASE_URL`, as for `npm run db:migrate`. Before a write the
-script prints the database name and host (never the password) and refuses any
-host but `localhost`, `127.0.0.1` or `::1` without `--yes`. Exit codes: 0 done
+The database is `DATABASE_URL`, as for `npm run db:migrate`. Before anything
+else the script prints the database name and host the driver will actually
+connect to (never the password) — a `?host=` parameter in the URL and
+`PGHOST`/`PGDATABASE` in the environment count, exactly as they do when it
+connects — and refuses a write to anything but this machine (a Unix socket,
+`localhost`, an address in `127.0.0.0/8`, or `::1`) without `--yes`. Exit codes: 0 done
 (or nothing to do), 1 refused or failed, 2 a usage mistake.
 
 - **check** validates the file and prints its findings. Nothing else.

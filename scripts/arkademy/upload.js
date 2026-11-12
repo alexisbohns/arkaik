@@ -23,12 +23,12 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
 const { loadArkademyLib, cleanup } = require("./load-arkademy-lib");
 
 const ROOT = path.join(__dirname, "..", "..");
 const DEFAULT_FILE = path.join(ROOT, "arkademy-content", "arkademy.json");
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const STATUS_LIMIT = 10;
 /** A pretty-printed file may be larger than its compact JSON; past this it is not read at all. */
 const MAX_FILE_FACTOR = 4;
@@ -289,26 +289,50 @@ function printFindings({ errors = [], warnings = [] }) {
 const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
 const kilobytes = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
-/** Host and database name of DATABASE_URL — never the password. */
-function databaseTarget() {
-  const connectionString = process.env.DATABASE_URL;
+/**
+ * Whether `host`, as pg resolved it, is this machine: a Unix-socket directory
+ * (an absolute path), `localhost`, an address in 127.0.0.0/8, or ::1 in any
+ * spelling. Everything else is remote, including a name that merely starts
+ * with "localhost" and 0.0.0.0.
+ */
+function isLocalHost(host) {
+  if (typeof host !== "string" || host === "") return false;
+  if (host.startsWith("/")) return true;
+  const bare = host.replace(/^\[(.*)\]$/, "$1").toLowerCase().replace(/\.$/, "");
+  if (bare === "localhost") return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(bare)) return true;
+  if (/^::ffff:127(?:\.\d{1,3}){3}$/.test(bare)) return true;
+  return /^(?:0{0,4}:){2,7}0{0,3}1$/.test(bare) && net.isIPv6(bare);
+}
+
+/**
+ * The database a command will use, decided from the pg Client the driver
+ * connects with — built here, not yet connected — so a `?host=` parameter or
+ * PGHOST/PGDATABASE in the environment count exactly as they will when it
+ * connects. What it returns for printing never holds the password.
+ */
+function databaseTarget(connectionString = process.env.DATABASE_URL) {
   if (!connectionString) {
     throw new ScriptExit(
       "DATABASE_URL is not set. Pass it inline (DATABASE_URL=… npm run arkademy -- …) or with " +
         "node --env-file=.env.production.local scripts/arkademy/upload.js …",
     );
   }
+  const { Client } = require("pg");
+  let client;
   try {
-    const url = new URL(connectionString);
-    return {
-      connectionString,
-      host: url.hostname || "localhost",
-      database: decodeURIComponent(url.pathname.replace(/^\//, "")) || "(default)",
-      local: LOCAL_HOSTS.has(url.hostname || "localhost"),
-    };
-  } catch {
-    return { connectionString, host: "(unparsed)", database: "(unparsed)", local: false };
+    client = new Client({ connectionString });
+  } catch (err) {
+    throw new ScriptExit(`DATABASE_URL cannot be used: ${describeError(err)}`);
   }
+  const host = String(client.host ?? "");
+  return {
+    client,
+    host,
+    port: client.port,
+    database: client.database ? String(client.database) : "(default)",
+    local: isLocalHost(host),
+  };
 }
 
 /**
@@ -326,9 +350,9 @@ function describeError(err) {
   return "unknown error (no message or code)";
 }
 
+/** Connects the very Client `databaseTarget` resolved and announced. */
 async function withClient(target, fn) {
-  const { Client } = require("pg");
-  const client = new Client({ connectionString: target.connectionString });
+  const { client } = target;
   try {
     await client.connect();
   } catch (err) {
@@ -358,7 +382,8 @@ async function withClient(target, fn) {
 }
 
 function announce(target, { writes, yes }) {
-  console.log(`database: ${target.database} on ${target.host}`);
+  const where = target.host.startsWith("/") ? `the local socket in ${target.host}` : target.host;
+  console.log(`database: ${target.database} on ${where}`);
   if (writes && !target.local && !yes) {
     throw new ScriptExit(`${target.host} is not this machine; add --yes to write to it`);
   }
@@ -449,7 +474,17 @@ async function main(argv) {
   }
 }
 
-module.exports = { publishDocument, rollbackDocument, listVersions, parseArgs, describeError, main };
+module.exports = {
+  publishDocument,
+  rollbackDocument,
+  listVersions,
+  parseArgs,
+  describeError,
+  databaseTarget,
+  isLocalHost,
+  announce,
+  main,
+};
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(

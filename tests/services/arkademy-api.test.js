@@ -21,7 +21,6 @@ const ROOT = path.join(__dirname, "..", "..");
 const FIXTURE = path.join(ROOT, "tests", "fixtures", "arkademy", "document.json");
 const ORIGIN = "https://arkademy.test";
 const READY_CACHE = "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -44,8 +43,12 @@ async function main() {
     );
     process.exit(1);
   }
-  if (!LOCAL_HOSTS.has(new URL(connectionString).hostname)) {
-    console.error("\n[arkademy-api.test] this suite truncates arkademy_documents; it runs against localhost only.");
+  // The host the driver will connect to (a ?host= parameter and PGHOST count),
+  // judged by the upload script's own guard.
+  const { isLocalHost } = require("../../scripts/arkademy/upload.js");
+  const resolvedHost = String(new Client({ connectionString }).host);
+  if (!isLocalHost(resolvedHost)) {
+    console.error(`\n[arkademy-api.test] this suite truncates arkademy_documents; it runs against this machine only, not ${resolvedHost}.`);
     process.exit(1);
   }
 

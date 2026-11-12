@@ -674,8 +674,12 @@ Vercel's production `DATABASE_URL` and the `PROD_DATABASE_URL` Actions
 secret). Pass it inline or with Node's `--env-file` pointing at a
 `.env.*.local` file, which `.gitignore` already covers (`.env*`). Before
 writing, the script prints the target host and database name (never the
-password) and, when the host is not `localhost` or `127.0.0.1`, refuses to
-write without `--yes`.
+password) and, when the host is not this machine, refuses to write without
+`--yes`. Both are read from the `pg` Client the script then connects with
+(built first, connected after), so a `?host=` parameter or `PGHOST` cannot
+make the announcement and the connection disagree; a Unix-socket path,
+`localhost`, `127.0.0.0/8` and `::1` are this machine, everything else is
+remote.
 
 **`publish`, in order.** Read the file; refuse above `MAX_DOCUMENT_BYTES`;
 parse JSON; run `validateArkademyDocument`; print every warning; on any error
