@@ -3,8 +3,9 @@
 /**
  * The cover's pure side (lib/arkademy/): the paragraph rule, an example's
  * canvas, the baseline prompt's display form, the tool paths and cards, each
- * page's metadata, and the sitemap's two Arkademy URLs. DB-free, so it runs in
- * CI's `build` job.
+ * page's metadata; then the components rendered on the server
+ * (react-dom/server, through tests/app/load-arkademy-tsx.js) and the real
+ * sitemap function's Arkademy URLs. DB-free, so it runs in CI's `build` job.
  *
  * Cases that the fictional fixture (tests/fixtures/arkademy/document.json)
  * does not hold are built in memory; the fixture itself is never edited.
@@ -640,13 +641,23 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   check("ids: every aria-labelledby names an id on the page", labelled.every((id) => ids.includes(id)));
 }
 
-// --- the sitemap's source -----------------------------------------------------------
+// --- the sitemap ------------------------------------------------------------------------
+// The real function, required through the TSX loader, so a refactor of its
+// source cannot fool the check and a tour URL built with bmcTourPath() is caught.
 {
-  const sitemap = fs.readFileSync(path.join(ROOT, "app", "sitemap.ts"), "utf8");
-  check("sitemap: names the shell", sitemap.includes("`${base}/arkademy`"));
-  check("sitemap: names the cover", sitemap.includes("`${base}/arkademy/business-model-canvas`"));
-  check("sitemap: names no tour", !sitemap.includes("/tour/"));
-  check("sitemap: names no canvas of your own", !sitemap.includes("/yours"));
+  const sitemap = requireTsx("app/sitemap.ts").default;
+  const urls = sitemap().map((entry) => entry.url);
+  const arkademy = urls.filter((url) => url === `${ARKADEMY_SITE_URL}${ARKADEMY_PATH}` || url.startsWith(`${ARKADEMY_SITE_URL}${ARKADEMY_PATH}/`));
+  const covers = Object.values(ARKADEMY_TOOL_PATHS).map((p) => `${ARKADEMY_SITE_URL}${p}`);
+  check("sitemap: lists the shell", urls.includes(`${ARKADEMY_SITE_URL}${ARKADEMY_PATH}`), JSON.stringify(arkademy));
+  check("sitemap: lists the cover", urls.includes(`${ARKADEMY_SITE_URL}${ARKADEMY_TOOL_PATHS["business-model-canvas"]}`));
+  same(
+    "sitemap: under /arkademy, only the shell and the tools' covers (no tour, no canvas of your own)",
+    arkademy.filter((url) => url !== `${ARKADEMY_SITE_URL}${ARKADEMY_PATH}` && !covers.includes(url)),
+    [],
+  );
+  check("sitemap: no URL holds a tour path", !urls.some((url) => url.includes(bmcTourPath("x").replace(/x$/, ""))));
+  check("sitemap: no URL is the canvas of your own", !urls.includes(`${ARKADEMY_SITE_URL}${BMC_YOURS_PATH}`));
 }
 
 cleanup();
