@@ -2,10 +2,10 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { isBuiltInMapId } from "@arkaik/schema";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { CommandPalette } from "@/components/layout/CommandPalette";
-import { PageCommandsProvider } from "@/lib/hooks/usePageCommands";
+import { PageCommandsProvider, type PageNodeHandler } from "@/lib/hooks/usePageCommands";
 import { KeyboardShortcutsDialog } from "@/components/layout/KeyboardShortcutsDialog";
 import { PageError } from "@/components/layout/PageError";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
@@ -17,10 +17,18 @@ import {
   ProjectPanelsProvider,
   useProjectPanels,
 } from "@/lib/hooks/useProjectPanels";
+import { useNodes } from "@/lib/hooks/useNodes";
+import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useProjectExport } from "@/lib/hooks/useProjectExport";
-import { buildProjectCommands, type CommandActionId } from "@/lib/utils/command-palette";
+import {
+  buildNodeCommands,
+  buildProjectCommands,
+  summarizePaletteNodes,
+  type CommandActionId,
+} from "@/lib/utils/command-palette";
+import { nodeInScope } from "@/lib/utils/product-scope";
 import { GUARDED_HOTKEY, useShortcut } from "@/lib/hooks/useShortcut";
 import { isEditableElement } from "@/lib/utils/keyboard";
 
@@ -47,9 +55,14 @@ export default function ProjectLayout({
 function ProjectChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const id = useProjectId();
   const { project, error: projectError, reload: reloadProject } = useProject(id);
-  const { openRaw } = useProjectPanels();
+  // The same cached bundle `useProject` reads — no second fetch. The palette
+  // lists the flows and views of the scope the sidebar shows.
+  const { nodes } = useNodes(id);
+  const scope = useEffectiveProduct(id, project);
+  const { openRaw, openNode } = useProjectPanels();
   const { exportBundle } = useProjectExport(id);
   const { theme, setTheme } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -106,6 +119,41 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     [id, customMaps],
   );
 
+  // Search-only rows: they appear once something is typed, never on open.
+  // Stored membership is the whole answer for flows and views, so no graph.
+  const nodeCommands = useMemo(
+    () =>
+      buildNodeCommands(
+        summarizePaletteNodes(
+          nodes.filter(
+            (node) => (node.species === "flow" || node.species === "view") && nodeInScope(node, scope),
+          ),
+        ),
+      ),
+    [nodes, scope],
+  );
+
+  // A flow or view chosen in the palette. The page's own handler first (the
+  // Screens map flies to it). Then the panel, in place, wherever something on
+  // the page registered that it can show one (`usePageNodePanelHost`). A page
+  // state with no host — Overview, Settings, a loading or error screen, a "no
+  // map named X" card — hands off to the Library, which opens the panel from
+  // `?node=` on arrival; writing `?node=` here would show nothing.
+  const goToNode = useCallback(
+    (nodeId: string, pageHandler: PageNodeHandler | null, panelHost: boolean) => {
+      if (pageHandler) {
+        pageHandler(nodeId);
+        return;
+      }
+      if (panelHost) {
+        openNode({ nodeId });
+        return;
+      }
+      router.push(`/project/${id}/library?${NODE_PANEL_PARAM}=${encodeURIComponent(nodeId)}`);
+    },
+    [id, openNode, router],
+  );
+
   // ⌘K and ⌘? live in fields too (TanStack's default for a Mod chord): a chord
   // never competes with typing, and a palette or help you must click out of a
   // field to reach is one nobody uses. Both are properties of the app, not of
@@ -148,7 +196,7 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
     // Outermost so both the pages (which register their create action) and the
     // palette (which offers it) sit under it.
     <PageCommandsProvider>
-      {(pageCommands) => (
+      {(pageCommands, nodeHandler, nodePanelHost) => (
         <SidebarProvider defaultOpen>
           {/* The whole bundle, not just the title: the product selector in the
               sidebar header reads `project.metadata.products`, and two props off the
@@ -198,8 +246,11 @@ function ProjectChrome({ children }: { children: React.ReactNode }) {
             onOpenChange={setPaletteOpen}
             // The page's own actions first: on an empty query the palette lists in
             // declaration order, and "New node" is the reason most people opened it.
-            commands={pageCommands.length > 0 ? [...pageCommands, ...commands] : commands}
+            // Node rows last: they are search-only, so the idle list is unchanged,
+            // and on a tie the page outranks a node through authored order too.
+            commands={[...pageCommands, ...commands, ...nodeCommands]}
             onAction={handleCommandAction}
+            onNode={(nodeId) => goToNode(nodeId, nodeHandler, nodePanelHost)}
           />
           <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} inProject />
           <PublishDialog

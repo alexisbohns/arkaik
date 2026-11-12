@@ -136,6 +136,11 @@ export default function ProjectMapsPage() {
     <>
       <PageShell
         title="Maps"
+        // Node wiring for the panels ⌘K opens here: a flow or view chosen in
+        // the palette opens in place, and the panel resolves it against these.
+        allNodes={dataNodes}
+        allEdges={dataEdges}
+        scope={scope}
         action={{
           label: "New map",
           icon: PlusIcon,

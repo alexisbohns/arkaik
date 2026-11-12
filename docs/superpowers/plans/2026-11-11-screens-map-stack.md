@@ -307,12 +307,14 @@ export function summarizePaletteNodes(nodes: readonly {
   views: { id: string; title: string; firstFlowTitle: string | null }[];  // first listing flow, snapshot order
 };
 export function buildNodeCommands(input: ReturnType<typeof summarizePaletteNodes>): PaletteCommand[];
-// id "node:<id>", label = title, group and icon "flows" | "views", keywords [id],
+// id "node:<id>", label = title, group and icon "flows" | "views", keywords [id without its species prefix] ("V-home" → "home"),
 // hint "N screens" ("1 screen") | firstFlowTitle | "Not in a flow", searchOnly: true, target { kind: "node", nodeId }
 export function limitSearchOnly(matches: readonly CommandMatch[], perGroup?: number): CommandMatch[];
+/** limitSearchOnly(rankCommands(commands, query), perGroup) — what the overlay lists, and what its test checks. */
+export function paletteMatches(commands: readonly PaletteCommand[], query: string, perGroup?: number): CommandMatch[];
 ```
 
-`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. The overlay applies `limitSearchOnly` after `rankCommands`.
+`rankCommands`: an empty query drops `searchOnly` commands (the idle palette is unchanged); a search-only command's best score is lowered by `NODE_PENALTY`. A query containing a hyphen also scores (and completes) a node row's full id, read from its `node` target, as a keyword — so a pasted `V-home` finds its view, while a bare "v" or "f" matches no row by its species prefix. The overlay lists `paletteMatches(commands, query)`: `limitSearchOnly` after `rankCommands`.
 
 ```ts
 // components/layout/CommandPalette.tsx
@@ -322,12 +324,16 @@ interface CommandPaletteProps { /* existing */ onNode?: (nodeId: string) => void
 // lib/hooks/usePageCommands.tsx
 export type PageNodeHandler = (nodeId: string) => void;
 export function usePageNodeHandler(handler: PageNodeHandler | undefined): void;   // latest handler read through a ref
+/** "This page can show a node panel" while mounted with `enabled`; one token per host, each unmount removes its own. */
+export function usePageNodePanelHost(enabled: boolean): void;
 export function PageCommandsProvider(props: {
-  children: (commands: PaletteCommand[], nodeHandler: PageNodeHandler | null) => ReactNode;
+  children: (commands: PaletteCommand[], nodeHandler: PageNodeHandler | null, nodePanelHost: boolean) => ReactNode;
 }): JSX.Element;
+// components/panels/ProjectPanels.tsx — the one place node panels resolve — calls
+// `usePageNodePanelHost(allNodes !== NO_NODES)`: a page that hands it nodes is a host.
 ```
 
-Layout (`app/project/[id]/layout.tsx`): adds `useNodes(id)` and `useEffectiveProduct(id, project)`; rows from flows and views passing `nodeInScope(node, scope)` (stored membership suffices for these species), memoised on nodes and scope, appended after the catalogue. `onNode(nodeId)`: the page handler if one is registered; else, when `currentView` is `"overview"` or `"settings"`, `router.push(\`/project/${id}/library?node=${encodeURIComponent(nodeId)}\`)`; else `openNode({ nodeId })`. The Screens map's handler: a flow with a strip → camera to `stripIdOf(flowId)`'s rect + ring; a view with frames → select `frameIdsOf(wall, id)[0]` and frame it; anything else → `openNode({ nodeId })`.
+Layout (`app/project/[id]/layout.tsx`): adds `useNodes(id)` and `useEffectiveProduct(id, project)`; rows from flows and views passing `nodeInScope(node, scope)` (stored membership suffices for these species), memoised on nodes and scope, appended after the catalogue. `onNode(nodeId)`: the page handler if one is registered; else, when a panel host is registered (`nodePanelHost`), `openNode({ nodeId })`; else `router.push(\`/project/${id}/library?node=${encodeURIComponent(nodeId)}\`)`. No page list: Overview and Settings go to the Library because their `PageShell` gets no nodes and so registers no host, and so does every page state that renders no `PageShell` (loading, load error, "No map named X", an unrecognised kind). The Screens map's handler: a flow with a strip → camera to `stripIdOf(flowId)`'s rect + ring; a view with frames → select `frameIdsOf(wall, id)[0]` and frame it; anything else → `openNode({ nodeId })`.
 
 ## File map
 
@@ -339,7 +345,7 @@ Layout (`app/project/[id]/layout.tsx`): adds `useNodes(id)` and `useEffectivePro
 
 **Part 4.** Create `components/maps/screens/ScreenInspector.tsx`, `components/graph/nodes/WallChipNode.tsx`, `components/graph/nodes/wall-inspector.ts` (the inspector region's id, `WallInspectorContext` — its id while no panel is open, else null — and the focusable selector the Tab path uses). Modify `components/graph/Canvas.tsx` (`wallChip`), `components/maps/ScreensMap.tsx`, `components/graph/ScreensCanvas.tsx`, `components/graph/nodes/wall-node-data.ts`, `components/graph/nodes/WallFrameNode.tsx`, `lib/utils/keyboard-shortcuts.ts` (`wall-move`), `tests/app/keyboard-shortcuts.test.js`. Regenerate if a new lucide name is imported.
 
-**Part 5.** Modify `lib/utils/command-palette.ts`, `components/layout/CommandPalette.tsx`, `lib/hooks/usePageCommands.tsx`, `app/project/[id]/layout.tsx`, `components/maps/ScreensMap.tsx` (the handler only), `tests/app/command-palette.test.js`.
+**Part 5.** Modify `lib/utils/command-palette.ts`, `components/layout/CommandPalette.tsx`, `lib/hooks/usePageCommands.tsx`, `app/project/[id]/layout.tsx`, `components/maps/ScreensMap.tsx` (the handler only), `components/panels/ProjectPanels.tsx` (registers the panel host), `app/project/[id]/maps/page.tsx` (passes its nodes to `PageShell`), `tests/app/command-palette.test.js`.
 
 ## Verified facts
 
@@ -351,7 +357,7 @@ Read in the worktree at `2f697cd`. The spec's line references in F1, F2, F3, F5,
 4. **`STATUS_LABELS` and `PLATFORM_ICONS` live in `components/graph/nodes/node-styles.ts:44-58`**, which imports `lucide-react`. The pure model uses `STATUSES` (`lib/config/statuses.ts:3`) and `PLATFORMS` (`lib/config/platforms.ts:3`) labels; components may use `node-styles`.
 5. **`formatShotDate` renders `toLocaleDateString()`** (`lib/utils/screenshot-ops.ts:23-26`), not "3 Nov" as the spec's examples read. The wall uses it, so a date reads the same in the panel and on the wall; no test pins a date string.
 6. **`SegmentedControl` collapses labels below the viewport `md` breakpoint** (`components/ui/segmented-control.tsx:69-71`), not a container width, and `components/ui/` is not edited by hand (`docs/conventions.md` § Styling). The bar passes `collapseLabels` and overrides it from outside with container queries on its label spans: below a 33rem canvas (where the labelled bar stops fitting on one line) the lens shows icons only and the bar spans the width with its gutters; the 40rem container rule governs the Controls and the inspector sheet. Per-option `title`s, which the control takes no prop for, are copied from each option's accessible name by the bar.
-7. **Overview and Settings host no node panels**: their `PageShell` gets no `allNodes` (`app/project/[id]/overview/page.tsx:237`, `app/project/[id]/settings/page.tsx:92`), so `openNode` there resolves nothing (`components/panels/ProjectPanels.tsx:323`). Every other project page with a `PageShell` passes `allNodes`. Decision: ⌘K on those two pages goes to the Library with `?node=`, which `useProjectPanels.tsx:197-228` opens on arrival.
+7. **Overview and Settings host no node panels**: their `PageShell` gets no `allNodes` (`app/project/[id]/overview/page.tsx:237`, `app/project/[id]/settings/page.tsx:92`), so `openNode` there resolves nothing (`components/panels/ProjectPanels.tsx:323`). Every other project page with a `PageShell` passes `allNodes`. Decision: ⌘K on those two pages goes to the Library with `?node=`, which `useProjectPanels.tsx:197-228` opens on arrival. (Review: the rule is "no registered panel host", not a list of two pages — see § Part 5.)
 8. **`CommandPalette` is shared with the docs search** (`components/docs/DocsSearch.tsx:83`), so `onNode` is optional; and `runCommand` (`CommandPalette.tsx:209-228`) falls through to `target.external`/`target.href`, so the `node` branch must land with the union change or `tsc` fails.
 9. **No `typecheck` script exists**; CI typechecks through `npm run build` (`ci.yml:44-45`). Locally: `npx tsc --noEmit`.
 10. **No browser test runs in CI**, and Playwright is not a dependency. The visual and performance checks are manual.

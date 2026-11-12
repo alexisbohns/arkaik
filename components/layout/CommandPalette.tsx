@@ -35,7 +35,7 @@ import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import {
   COMMAND_GROUPS,
   completionSuffix,
-  rankCommands,
+  paletteMatches,
   type CommandActionId,
   type CommandGroupId,
   type CommandIconId,
@@ -87,6 +87,12 @@ interface CommandPaletteProps {
   placeholder?: string;
   /** Read to screen readers on open; says what this palette searches. */
   description?: string;
+  /**
+   * Runs a flow or view row (`target.kind === "node"`). Optional: the docs
+   * search shares this overlay and lists no nodes. The project layout decides
+   * what "go to it" means on the page on screen.
+   */
+  onNode?: (nodeId: string) => void;
 }
 
 interface PaletteSection {
@@ -134,6 +140,7 @@ export function CommandPalette({
   onAction,
   placeholder = "Jump to a map, a library, a setting…",
   description = "Search every page and action of this project, then press Enter to go there.",
+  onNode,
 }: CommandPaletteProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,6 +157,7 @@ export function CommandPalette({
         <PaletteBody
           commands={commands}
           onAction={onAction}
+          onNode={onNode}
           onClose={() => onOpenChange(false)}
           placeholder={placeholder}
         />
@@ -161,11 +169,12 @@ export function CommandPalette({
 interface PaletteBodyProps {
   commands: readonly PaletteCommand[];
   onAction: (action: CommandActionId) => void;
+  onNode?: (nodeId: string) => void;
   onClose: () => void;
   placeholder: string;
 }
 
-function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyProps) {
+function PaletteBody({ commands, onAction, onNode, onClose, placeholder }: PaletteBodyProps) {
   const router = useRouter();
   const modKey = useModKeyLabel();
   const listId = useId();
@@ -173,7 +182,8 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const matches = useMemo(() => rankCommands(commands, query), [commands, query]);
+  // Ranked, then each group's search-only rows capped (`paletteMatches`).
+  const matches = useMemo(() => paletteMatches(commands, query), [commands, query]);
 
   // Groups are laid out by their best result, so the top-ranked command is
   // always the first row of the first section — what Enter is about to run.
@@ -201,12 +211,16 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
     () => new Map(ordered.map((match, index) => [match.command.id, index])),
     [ordered],
   );
-  const active = ordered[activeIndex];
+  // Clamped where it is read, never stored: node rows come from live data, so
+  // the list can shrink under an unchanged index — and an index past the end
+  // would highlight nothing, drop `aria-activedescendant` and leave Enter dead.
+  const highlighted = Math.min(activeIndex, Math.max(ordered.length - 1, 0));
+  const active = ordered[highlighted];
   const suffix = completionSuffix(query, active);
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, sections]);
+  }, [highlighted, sections]);
 
   const runCommand = useCallback(
     (match: CommandMatch) => {
@@ -220,13 +234,19 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
         target.run();
         return;
       }
+      // Before the href branch: `CommandTarget` is a closed union, and what is
+      // left after this is the href target alone.
+      if (target.kind === "node") {
+        onNode?.(target.nodeId);
+        return;
+      }
       if (target.external) {
         window.open(target.href, "_blank", "noopener,noreferrer");
         return;
       }
       router.push(target.href);
     },
-    [onAction, onClose, router],
+    [onAction, onClose, onNode, router],
   );
 
   /** Every edit re-ranks, so the highlight returns to the top suggestion:
@@ -238,7 +258,8 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
 
   function moveActive(delta: number) {
     if (ordered.length === 0) return;
-    setActiveIndex((current) => (current + delta + ordered.length) % ordered.length);
+    // From the row on screen, not the stored index, which may be past the end.
+    setActiveIndex((highlighted + delta + ordered.length) % ordered.length);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -311,7 +332,7 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
             aria-expanded
             aria-controls={listId}
             aria-autocomplete="both"
-            aria-activedescendant={active ? `${listId}-${activeIndex}` : undefined}
+            aria-activedescendant={active ? `${listId}-${highlighted}` : undefined}
             className="relative w-full bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
             placeholder={placeholder}
             value={query}
@@ -341,7 +362,7 @@ function PaletteBody({ commands, onAction, onClose, placeholder }: PaletteBodyPr
               </div>
               {section.items.map((match) => {
                 const index = indexByCommandId.get(match.command.id) ?? 0;
-                const isActive = index === activeIndex;
+                const isActive = index === highlighted;
                 const Icon = COMMAND_ICONS[match.command.icon];
 
                 return (

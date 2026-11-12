@@ -13,25 +13,74 @@ export interface PageAction {
   disabled?: boolean;
 }
 
+/**
+ * What the page on screen does with a flow or view chosen in the palette —
+ * the Screens map flies to it. A page that registers none gets the layout's
+ * default: the node's panel where the page can show one (a registered panel
+ * host, `usePageNodePanelHost`), or the Library where it cannot.
+ */
+export type PageNodeHandler = (nodeId: string) => void;
+
 type Register = (command: PaletteCommand) => () => void;
+type RegisterNodeHandler = (handler: PageNodeHandler) => () => void;
+type RegisterNodePanelHost = () => () => void;
 
 const PageCommandsContext = createContext<Register | null>(null);
+const PageNodeHandlerContext = createContext<RegisterNodeHandler | null>(null);
+const PageNodePanelHostContext = createContext<RegisterNodePanelHost | null>(null);
 
 /**
  * Holds the commands the current page contributes to the palette, beside the
- * project-wide catalogue the layout builds. A page registers on mount and is
- * gone on unmount, so the palette only ever offers what the page on screen can
- * actually do.
+ * project-wide catalogue the layout builds, the page's node handler, and
+ * whether anything on the page can show a node panel. A page registers on
+ * mount and is gone on unmount, so the palette only ever offers what the page
+ * on screen can actually do.
  */
-export function PageCommandsProvider({ children }: { children: (commands: PaletteCommand[]) => ReactNode }) {
+export function PageCommandsProvider({
+  children,
+}: {
+  children: (
+    commands: PaletteCommand[],
+    nodeHandler: PageNodeHandler | null,
+    nodePanelHost: boolean,
+  ) => ReactNode;
+}) {
   const [commands, setCommands] = useState<PaletteCommand[]>([]);
+  // Boxed: a bare function in state would be taken for an updater and called.
+  const [nodeHandler, setNodeHandler] = useState<{ run: PageNodeHandler } | null>(null);
+  // One token per mounted host. A list rather than a flag: during a page
+  // change the arriving page's host can mount before the leaving one unmounts,
+  // and each unmount removes only its own token.
+  const [panelHosts, setPanelHosts] = useState<readonly object[]>([]);
 
   const register = useCallback<Register>((command) => {
     setCommands((previous) => [...previous.filter((entry) => entry.id !== command.id), command]);
     return () => setCommands((previous) => previous.filter((entry) => entry !== command));
   }, []);
 
-  return <PageCommandsContext.Provider value={register}>{children(commands)}</PageCommandsContext.Provider>;
+  const registerNodeHandler = useCallback<RegisterNodeHandler>((handler) => {
+    const entry = { run: handler };
+    setNodeHandler(entry);
+    // Only the entry this call installed is removed: a page that registered
+    // after it keeps its own.
+    return () => setNodeHandler((current) => (current === entry ? null : current));
+  }, []);
+
+  const registerNodePanelHost = useCallback<RegisterNodePanelHost>(() => {
+    const token = {};
+    setPanelHosts((previous) => [...previous, token]);
+    return () => setPanelHosts((previous) => previous.filter((entry) => entry !== token));
+  }, []);
+
+  return (
+    <PageCommandsContext.Provider value={register}>
+      <PageNodeHandlerContext.Provider value={registerNodeHandler}>
+        <PageNodePanelHostContext.Provider value={registerNodePanelHost}>
+          {children(commands, nodeHandler?.run ?? null, panelHosts.length > 0)}
+        </PageNodePanelHostContext.Provider>
+      </PageNodeHandlerContext.Provider>
+    </PageCommandsContext.Provider>
+  );
 }
 
 /**
@@ -65,4 +114,44 @@ export function usePageAction(action: PageAction | undefined) {
       target: { kind: "run", run: () => latest.current?.onClick() },
     });
   }, [register, label, disabled]);
+}
+
+/**
+ * Handle the palette's flow and view rows on this page for as long as it is
+ * mounted. Registered once, on whether a handler is given, never on its
+ * identity — callers pass a closure over their render's state — and the latest
+ * handler is read through a ref when a row runs, exactly as `usePageAction`
+ * reads its `onClick`.
+ */
+export function usePageNodeHandler(handler: PageNodeHandler | undefined) {
+  const register = useContext(PageNodeHandlerContext);
+  const latest = useRef(handler);
+  useEffect(() => {
+    latest.current = handler;
+  });
+
+  const enabled = handler !== undefined;
+
+  useEffect(() => {
+    if (!register || !enabled) return;
+    return register((nodeId) => latest.current?.(nodeId));
+  }, [register, enabled]);
+}
+
+/**
+ * Declare that this page can show a node panel for as long as the caller is
+ * mounted with `enabled` true. Called by the one component that resolves node
+ * panels against the page's nodes (`ProjectPanels`, when its page hands it
+ * nodes), so the palette's fallback follows what is actually on screen: a page
+ * state that renders no host — a loading screen, an error, a "no map named X"
+ * card, Overview, Settings — leaves the palette to send a chosen node to the
+ * Library instead of writing `?node=` to a page that cannot show it.
+ */
+export function usePageNodePanelHost(enabled: boolean) {
+  const register = useContext(PageNodePanelHostContext);
+
+  useEffect(() => {
+    if (!register || !enabled) return;
+    return register();
+  }, [register, enabled]);
 }

@@ -4,7 +4,7 @@
 
 **Goal:** Typing a view or flow name in ⌘K finds it. Flows and views are search-only rows (never on the idle palette), ranked below a page of the same shape, at most six per group. Choosing one flies the Screens map to its strip or frame, opens its panel in place on every page that hosts panels, and lands on the Library with its panel open from Overview and Settings.
 
-**Architecture:** The palette brain (`lib/utils/command-palette.ts`, import-free) gains two groups, a `node` target, a `searchOnly` flag with `NODE_PENALTY`, a per-group cap (`limitSearchOnly`), and two builders (`summarizePaletteNodes` walks playlists structurally; `buildNodeCommands` makes the rows). The overlay applies the cap after ranking and hands a node target to a new optional `onNode` prop. `usePageCommands.tsx` gains a page node handler beside the page actions. The project layout lists the scope's flows and views and routes a chosen node: the page's handler, else the Library on Overview and Settings, else `openNode`. The Screens map registers a handler that reuses part 2's strip jump and part 4's frame selection.
+**Architecture:** The palette brain (`lib/utils/command-palette.ts`, import-free) gains two groups, a `node` target, a `searchOnly` flag with `NODE_PENALTY`, a per-group cap (`limitSearchOnly`), and two builders (`summarizePaletteNodes` walks playlists structurally; `buildNodeCommands` makes the rows). The overlay applies the cap after ranking and hands a node target to a new optional `onNode` prop. `usePageCommands.tsx` gains a page node handler beside the page actions. The project layout lists the scope's flows and views and routes a chosen node: the page's handler, else `openNode` where a panel host is registered (`usePageNodePanelHost`, called by `ProjectPanels` when its page hands it nodes), else the Library. The Screens map registers a handler that reuses part 2's strip jump and part 4's frame selection.
 
 **Tech Stack:** TypeScript, React 19 with the React Compiler lint rules, Next.js App Router, TanStack Query (the cached bundle), plain Node test scripts with `ts.transpileModule` loaders.
 
@@ -1466,7 +1466,8 @@ Create `$SCRATCH/palette-check.js`:
  *
  *   BASE_URL   default http://localhost:4343
  *   WORKTREE   default /Users/alexis/code/arkaik-screen-wall (the seed is read from it)
- *   ONLY       optional comma list of steps: idle,overview,settings,journey,library,delivery,screens
+ *   ONLY       optional comma list of steps: idle,overview,settings,journey,library,delivery,screens,
+ *              maps,unknown,screens-panel,letters (the last four added by the review fixes)
  *
  * Screenshots land next to this script. Exit code 0 only when every check passed.
  */
@@ -1717,6 +1718,103 @@ async function viewportTransform(page) {
     await shot(page, "screens-view-landed");
   }
 
+  // --- review fixes ---------------------------------------------------------
+
+  // V1: the Maps index hands its nodes to the panels, so the panel ⌘K opens
+  // there shows the node instead of "This page has no node with that id".
+  if (runs("maps")) {
+    await visit("/maps", "h1");
+    await choose(page, "Path", "Path", "Not in a flow", "maps-view");
+    check("Maps index + view → its panel opens in place", await panelOpen(page, "Path"));
+    check("Maps index + view → stays on the Maps index", pathOf() === `/project/${projectId}/maps`, pathOf());
+    check("Maps index + view → ?node=V-timeline", await addressed("V-timeline"), page.url());
+    check(
+      "Maps index + view → the panel shows the node, not the missing-node notice",
+      (await page.getByText("This page has no node with that id", { exact: false }).count()) === 0,
+    );
+    await shot(page, "maps-view-landed");
+  }
+
+  // V2: a page state with no panel host (here the "No map named X" card) sends
+  // the node to the Library instead of writing ?node= to a page that shows nothing.
+  if (runs("unknown")) {
+    await page.goto(`${base}/maps/no-such-map`);
+    await page.getByText('No map named "no-such-map"', { exact: false }).waitFor({ state: "visible", timeout: 60_000 });
+    await choose(page, "Path", "Path", "Not in a flow", "unknown-map-view");
+    await page.waitForURL((url) => url.pathname === `/project/${projectId}/library`, { timeout: 15_000 }).catch(() => {});
+    check("unknown map + view → the Library", pathOf() === `/project/${projectId}/library`, pathOf());
+    check("unknown map + view → ?node=V-timeline", await addressed("V-timeline"), page.url());
+    check("unknown map + view → its panel opens", await panelOpen(page, "Path"));
+    await shot(page, "unknown-map-view-landed");
+  }
+
+  // V3: on Screens with a panel open, the chosen node's panel replaces it after
+  // the selection (a view) or the jump (a flow).
+  if (runs("screens-panel")) {
+    await page.goto(`${base}/maps/screens?node=V-home`);
+    check("Screens + ?node=V-home → the Home panel is open", await panelOpen(page, "Home"));
+    await page.waitForTimeout(1_500);
+
+    await choose(page, "Register", "Register", "Legal Consent", "screens-panel-view");
+    const selected = page.locator('[data-wall-frame="V-register@F-legal-consent:0"][aria-current="true"]');
+    check(
+      "Screens + panel + view → its first frame is selected",
+      await selected.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false),
+    );
+    check("Screens + panel + view → the panel now shows Register", await panelOpen(page, "Register"));
+    check(
+      "Screens + panel + view → the Home panel is gone",
+      Boolean(await waitFor(async () => (await page.getByRole("button", { name: "Close Home", exact: true }).count()) === 0)),
+    );
+    check("Screens + panel + view → ?node=V-register", await addressed("V-register"), page.url());
+    check("Screens + panel + view → its first frame is in view", Boolean(await waitFor(() => insideCanvas(page, "V-register@F-legal-consent:0"))));
+    check("Screens + panel + view → no inspector beside a panel", (await page.locator('section[aria-label$=" on the wall"]').count()) === 0);
+    await shot(page, "screens-panel-view-landed");
+
+    await page.waitForTimeout(1_000);
+    const before = await viewportTransform(page);
+    await choose(page, "Swap Glyph", "Swap Glyph", "2 screens", "screens-panel-flow");
+    check("Screens + panel + flow → the Swap Glyph strip header is in view", Boolean(await waitFor(() => insideCanvas(page, "strip:F-swap-glyph"))));
+    check("Screens + panel + flow → the camera moved", (await viewportTransform(page)) !== before);
+    check("Screens + panel + flow → the panel now shows Swap Glyph", await panelOpen(page, "Swap Glyph"));
+    check(
+      "Screens + panel + flow → the Register panel is gone",
+      Boolean(await waitFor(async () => (await page.getByRole("button", { name: "Close Register", exact: true }).count()) === 0)),
+    );
+    check("Screens + panel + flow → ?node=F-swap-glyph", await addressed("F-swap-glyph"), page.url());
+    await shot(page, "screens-panel-flow-landed");
+  }
+
+  // V5: one letter lists only the nodes whose own words carry it, and a page leads.
+  if (runs("letters")) {
+    await visit("/overview", "h1");
+    for (const [letter, group] of [["v", "Views"], ["f", "Flows"]]) {
+      const dialog = await openPalette(page);
+      await dialog.getByRole("combobox").fill(letter);
+      const sections = await waitFor(async () => {
+        const read = await readPalette(dialog);
+        return read.length > 0 ? read : null;
+      });
+      const rows = (sections ?? []).find((section) => section.heading === group)?.rows ?? [];
+      check(`"${letter}" still lists ${group} whose titles carry the letter`, rows.length > 0, `${rows.length} rows`);
+      const stray = rows.filter((row) => !row.label.toLowerCase().includes(letter));
+      check(`"${letter}" lists no ${group.toLowerCase()} row without a "${letter}" in its title`, stray.length === 0, stray.map((row) => row.label).join(", "));
+      const first = sections?.[0];
+      check(
+        `"${letter}" runs a page first, not a node`,
+        Boolean(first) && first.heading !== "Flows" && first.heading !== "Views",
+        first ? `${first.heading}: ${first.rows[0]?.label}` : "no rows",
+      );
+      check(
+        `"${letter}" highlights a row`,
+        Boolean(await dialog.getByRole("combobox").getAttribute("aria-activedescendant")),
+      );
+      await shot(page, `letter-${letter}`);
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+    }
+  }
+
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | "));
   console.log(`console errors: ${consoleErrors.length}`);
   for (const message of consoleErrors) console.log(`  console.error: ${message.slice(0, 200)}`);
@@ -1733,9 +1831,18 @@ async function viewportTransform(page) {
 It imports Pebbles through the `/projects` file input into a fresh browser context (so the project id is `pebbles`), then, at 1440×900:
 
 - **idle**: ⌘K on Overview, Journey and Screens lists no Flows or Views group and no node row;
-- **Overview / Settings** (cannot host a panel): a view (`Path`, `home` → Home) and a flow (`Swap Glyph`) land on `/library?node=<id>` with that node's panel open;
+- **Overview / Settings** (no panel host registered): a view (`Path`, `home` → Home) and a flow (`Swap Glyph`) land on `/library?node=<id>` with that node's panel open;
 - **Journey, Library, Delivery** (host panels): a view and a flow open the panel in place, the route unchanged, `?node=<id>` published;
 - **Screens**: a flow (`Swap Glyph`, a late strip) moves the camera until `strip:F-swap-glyph`'s header node is inside the canvas, with no panel and no `?node=`; a view (`Register`) moves the camera until its first frame `V-register@F-legal-consent:0` (the contract's frame id: `createVisualNodeId(viewId, "<flowId>:<path>")`) is inside the canvas, part 4's inspector `section[aria-label="Register on the wall"]` shows, and no `?node=` is published.
+
+Added by the review fixes:
+
+- **maps** (V1): on the Maps index a view (`Path`) opens its panel in place, showing the node — never "This page has no node with that id";
+- **unknown** (V2): on `/maps/no-such-map` (the "No map named" card, which renders no panel host) the view lands on `/library?node=V-timeline` with its panel open;
+- **screens-panel** (V3): on Screens with the Home panel open (`?node=V-home`), `Register` selects its first frame (`aria-current`) and its panel replaces Home's (`?node=V-register`, no inspector beside the panel); then `Swap Glyph` flies to its strip and its panel replaces Register's;
+- **letters** (V5): "v" and "f" each list some Views / Flows rows, none without the letter in its title, a page first and a row highlighted.
+
+`extra-panel-open.js` (same scratch directory, `node extra-panel-open.js <baseUrl>`) repeats the V3 view case on its own and exits non-zero unless the Register frame is selected and its panel replaced Home's. Before V3 it only logged, and the Home panel stayed open.
 
 Screenshots `p5-*.png` land in `$SCRATCH` (one per typed query, one per landing, one per idle check).
 
@@ -1798,9 +1905,44 @@ PASS Screens + view → the camera moved
 PASS Screens + view → its first frame is in view
 PASS Screens + view → the frame is selected (inspector shown)
 PASS Screens + view → no ?node=
+PASS "Path" puts Path first
+PASS "Path" → Path hints "Not in a flow"
+PASS Maps index + view → its panel opens in place
+PASS Maps index + view → stays on the Maps index
+PASS Maps index + view → ?node=V-timeline
+PASS Maps index + view → the panel shows the node, not the missing-node notice
+PASS "Path" puts Path first
+PASS "Path" → Path hints "Not in a flow"
+PASS unknown map + view → the Library
+PASS unknown map + view → ?node=V-timeline
+PASS unknown map + view → its panel opens
+PASS Screens + ?node=V-home → the Home panel is open
+PASS "Register" puts Register first
+PASS "Register" → Register hints "Legal Consent"
+PASS Screens + panel + view → its first frame is selected
+PASS Screens + panel + view → the panel now shows Register
+PASS Screens + panel + view → the Home panel is gone
+PASS Screens + panel + view → ?node=V-register
+PASS Screens + panel + view → its first frame is in view
+PASS Screens + panel + view → no inspector beside a panel
+PASS "Swap Glyph" puts Swap Glyph first
+PASS "Swap Glyph" → Swap Glyph hints "2 screens"
+PASS Screens + panel + flow → the Swap Glyph strip header is in view
+PASS Screens + panel + flow → the camera moved
+PASS Screens + panel + flow → the panel now shows Swap Glyph
+PASS Screens + panel + flow → the Register panel is gone
+PASS Screens + panel + flow → ?node=F-swap-glyph
+PASS "v" still lists Views whose titles carry the letter
+PASS "v" lists no views row without a "v" in its title
+PASS "v" runs a page first, not a node
+PASS "v" highlights a row
+PASS "f" still lists Flows whose titles carry the letter
+PASS "f" lists no flows row without a "f" in its title
+PASS "f" runs a page first, not a node
+PASS "f" highlights a row
 PASS no uncaught page errors
 console errors: 0
-RESULT: 50 passed, 0 failed
+RESULT: 85 passed, 0 failed
 ```
 
 Any `FAIL` line names the check and what it saw. A `console.error` line is printed under `console errors:`; restart the dev server and rerun before treating one as real, and do not call the part done while one remains. `ONLY=screens node palette-check.js` reruns a single step (it still imports first).
@@ -1825,8 +1967,8 @@ Open `p5-screens-flow-landed.png` (the Swap Glyph strip framed), `p5-screens-vie
   npm run build
   ```
 
-- Task 7's script prints `RESULT: 50 passed, 0 failed` with `console errors: 0`, and the four screenshots in Task 7 Step 5 show what they name.
-- `git diff --stat feat/screens-inspect..HEAD` lists only `lib/utils/command-palette.ts`, `components/layout/CommandPalette.tsx`, `lib/hooks/usePageCommands.tsx`, `app/project/[id]/layout.tsx`, `components/maps/ScreensMap.tsx`, `tests/app/command-palette.test.js`.
+- Task 7's script prints `RESULT: 85 passed, 0 failed` with `console errors: 0`, and the four screenshots in Task 7 Step 5 show what they name.
+- `git diff --stat feat/screens-inspect..HEAD` lists only `lib/utils/command-palette.ts`, `components/layout/CommandPalette.tsx`, `lib/hooks/usePageCommands.tsx`, `app/project/[id]/layout.tsx`, `components/maps/ScreensMap.tsx`, `tests/app/command-palette.test.js`, plus, from the review fixes, `components/panels/ProjectPanels.tsx`, `app/project/[id]/maps/page.tsx` and the two plan documents.
 - PR title: `feat(palette): jump to any view or flow from ⌘K (part 5/5)`. PR body section, ready to paste:
 
   ````markdown
