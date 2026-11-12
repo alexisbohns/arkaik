@@ -229,6 +229,12 @@ jobs:
       - name: Arkademy tour tests (timeline, reducer, step links, announcements, screen)
         run: npm run test:arkademy-tour
 
+      # Your own canvas's pure side (lib/arkademy/): the inspirations, the
+      # draft's reducer, browser storage's parse and serialise, and the three
+      # exports (paragraph, Markdown, JSON).
+      - name: Arkademy canvas tests (inspirations, draft reducer, storage, exports)
+        run: npm run test:arkademy-canvas
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
