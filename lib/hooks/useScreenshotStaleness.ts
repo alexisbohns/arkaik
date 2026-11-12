@@ -17,19 +17,33 @@ import { isScreenshotStale, STALENESS_EVENT_TYPES } from "@/lib/utils/screenshot
  * The journal read is PROJECTED to the three event types the rule consults, so
  * every open panel shares one cached fetch with any other reader of the same
  * projection.
+ *
+ * `relatedIds` names, per platform, the other nodes whose moves stale this
+ * node's shot — for a view, the covering acceptances that speak to that
+ * platform (`stalenessRelatedIds`), which is how a deploy or a merge recorded
+ * on an acceptance reaches the view it covers. Omitted, the rule reads the
+ * node's own events only, as the acceptance's Platforms section wants. It must
+ * be referentially stable (memoised by the caller): it is a memo dependency.
  */
 export function useScreenshotStaleness(
   nodeId: string,
   platforms: readonly PlatformId[],
   screenshotMeta: PlatformScreenshotMetaMap,
+  relatedIds?: Partial<Record<PlatformId, readonly string[]>>,
 ): Partial<Record<PlatformId, boolean>> {
   const projectId = useProjectId();
   const { journal } = useJournal(projectId, { types: STALENESS_EVENT_TYPES });
   return useMemo(() => {
     const out: Partial<Record<PlatformId, boolean>> = {};
     for (const platform of platforms) {
-      out[platform] = isScreenshotStale(screenshotMeta[platform], journal, nodeId, platform);
+      out[platform] = isScreenshotStale(
+        screenshotMeta[platform],
+        journal,
+        nodeId,
+        platform,
+        relatedIds?.[platform],
+      );
     }
     return out;
-  }, [journal, nodeId, platforms, screenshotMeta]);
+  }, [journal, nodeId, platforms, relatedIds, screenshotMeta]);
 }

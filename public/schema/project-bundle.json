@@ -156,7 +156,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Kebab-case, unique within the project; built-in ids (journey, system) are reserved."
+          "description": "Kebab-case, unique within the project; built-in ids (journey, system, screens) are reserved."
         },
         "title": {
           "type": "string",
@@ -168,17 +168,17 @@
         },
         "kind": {
           "type": "string",
-          "description": "Map kind: journey | system. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable."
+          "description": "Map kind: journey | system | screens. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable."
         },
         "species": {
-          "description": "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model).",
+          "description": "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model; screens: flow+view).",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "edge_types": {
-          "description": "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries).",
+          "description": "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries; screens: none).",
           "type": "array",
           "items": {
             "type": "string"

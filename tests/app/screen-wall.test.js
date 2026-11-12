@@ -1056,3 +1056,106 @@ const EQUIV_EXPECTED = {
   check("…and switching to iOS brings its start back to the left padding",
     nearView(kept, { x: 32 - ios.strips.get(firstId).x, y: atEnd.y, zoom: 1 }), show(kept));
 }
+
+// --- Map counts: the index and the Overview count what the wall draws ------
+// (Screens map stack, part 2.) The screens kind selects every scoped flow and
+// view and no edge, so its card count is exactly the wall's flow strips plus
+// its screens — under every scope, including Pebbles' Admin product, which has
+// views and no flow.
+{
+  const SCREENS = { id: "screens", title: "Screens", kind: "screens" };
+  const bundle = readSeed("pebbles.json");
+  const graph = buildProductGraph(bundle.nodes, bundle.edges);
+  for (const productId of [null, "admin", "app"]) {
+    const scope = resolveProductScope(bundle, productId);
+    const wall = buildWall({
+      nodes: bundle.nodes,
+      edges: bundle.edges,
+      events: [],
+      project: bundle.project,
+      definition: SCREENS,
+      scope,
+      graph,
+    });
+    const flows = wall.strips.filter((strip) => strip.flowId !== null).length;
+    const counts = wallModule.computeMapCounts(SCREENS, {
+      dataNodes: bundle.nodes,
+      dataEdges: bundle.edges,
+      project: bundle.project,
+      scope,
+      graph,
+    });
+    check(
+      `computeMapCounts(screens) under ${productId ?? "All products"} = the wall's flows + views, 0 edges`,
+      counts.nodes === flows + wall.screens.size && counts.edges === 0,
+      `${counts.nodes} nodes / ${counts.edges} edges vs ${flows} flows + ${wall.screens.size} views`,
+    );
+  }
+}
+
+// --- The shot cache: fingerprints, not whole values; failures remembered ----
+// (Screens map stack, part 2.) components/maps/screens/aspect-cache.ts runs in
+// the browser; here `window.requestAnimationFrame` is a queue the test flushes.
+{
+  const cache = wallModule.aspectCache;
+  const frames = [];
+  global.window = { requestAnimationFrame: (callback) => frames.push(callback) };
+  const flushFrames = () => {
+    while (frames.length > 0) frames.shift()();
+  };
+
+  const big = `data:image/png;base64,${"A".repeat(2_000_000)}`;
+  const bigTail = `${big.slice(0, -1)}B`;
+  const shotOf = (value, ts = null) => ({ value, form: "data", source: null, ts, commit: null });
+
+  const key = cache.shotKey(shotOf(big, "2026-11-01T00:00:00Z"));
+  check("shotKey: a multi-megabyte data URI keys in a few hundred characters", key.length < 300, key.length);
+  check("shotKey: the same shot keys the same", key === cache.shotKey(shotOf(big, "2026-11-01T00:00:00Z")));
+  check("shotKey: a different meta.ts keys differently",
+    key !== cache.shotKey(shotOf(big, "2026-11-02T00:00:00Z")) && key !== cache.shotKey(shotOf(big)));
+  check("shotKey: a change in the last characters keys differently", key !== cache.shotKey(shotOf(bigTail, "2026-11-01T00:00:00Z")));
+  check("shotKey: a change of length keys differently", cache.shotKey(shotOf("https://x/a.png")) !== cache.shotKey(shotOf("https://x/a.pngg")));
+  check("shotKey: a short URL keeps every character in its key",
+    cache.shotKey(shotOf("https://x/one.png")) !== cache.shotKey(shotOf("https://x/two.png")));
+
+  // Aspects: batched per frame, keyed by the fingerprint, never holding the value.
+  const before = cache.getAspectSnapshot();
+  let heard = 0;
+  const unsubscribe = cache.subscribeAspects(() => {
+    heard += 1;
+  });
+  cache.reportAspect("V-big", "web", key, 1.5);
+  check("reportAspect: nothing applies before the animation frame",
+    cache.getAspectSnapshot() === before && cache.aspectFrom(cache.getAspectSnapshot(), "V-big", "web", key) === undefined);
+  flushFrames();
+  const after = cache.getAspectSnapshot();
+  check("reportAspect: applied on the frame, listeners told once", after !== before && heard === 1, heard);
+  check("aspectFrom: answers for the slot's current key", cache.aspectFrom(after, "V-big", "web", key) === 1.5);
+  check("aspectFrom: a new shot in the slot starts from the default",
+    cache.aspectFrom(after, "V-big", "web", cache.shotKey(shotOf(bigTail, "2026-11-01T00:00:00Z"))) === undefined);
+  check("aspectFrom: another platform's slot is its own", cache.aspectFrom(after, "V-big", "ios", key) === undefined);
+  check("the cache keeps the fingerprint, never the multi-megabyte value",
+    JSON.stringify([...after.values()]).length < 1000, JSON.stringify([...after.values()]).length);
+  cache.reportAspect("V-big", "web", key, 1.5);
+  flushFrames();
+  check("reportAspect: the same report again changes nothing", cache.getAspectSnapshot() === after && heard === 1, heard);
+  unsubscribe();
+
+  // Failures: remembered for the tab, so a frame that comes back shows its ghost at once.
+  const urlKey = cache.shotKey(shotOf("https://x/broken.png", "2026-11-01T00:00:00Z"));
+  let told = 0;
+  const stop = cache.subscribeShotFailures(() => {
+    told += 1;
+  });
+  check("hasShotFailed: nothing has failed yet", cache.hasShotFailed("V-broken", "web", urlKey) === false);
+  cache.reportShotFailure("V-broken", "web", urlKey);
+  check("reportShotFailure: remembered at once, listeners told", cache.hasShotFailed("V-broken", "web", urlKey) === true && told === 1, told);
+  check("hasShotFailed: keyed like the aspects — another platform, another view or a new shot has not failed",
+    !cache.hasShotFailed("V-broken", "ios", urlKey) &&
+      !cache.hasShotFailed("V-other", "web", urlKey) &&
+      !cache.hasShotFailed("V-broken", "web", cache.shotKey(shotOf("https://x/broken.png", "2026-11-02T00:00:00Z"))));
+  cache.reportShotFailure("V-broken", "web", urlKey);
+  check("reportShotFailure: a repeat tells nobody", told === 1, told);
+  stop();
+  delete global.window;
+}

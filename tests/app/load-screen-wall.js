@@ -31,6 +31,8 @@ const MODULES = [
   ["lib/utils/screenshot-staleness.ts", "screenshot-staleness"],
   ["lib/utils/screen-wall.ts", "screen-wall"],
   ["lib/utils/screen-wall-layout.ts", "screen-wall-layout"],
+  // The map's tab-wide shot cache (part 2): imports only a type.
+  ["components/maps/screens/aspect-cache.ts", "aspect-cache"],
 ];
 
 // `@/lib/...` specifier → build output basename.
@@ -96,6 +98,8 @@ function loadScreenWall() {
     getBaseNodeId: require(path.join(BUILD_DIR, "graph-build.js")).getBaseNodeId,
     // The journal projection the app reads the wall's events through.
     STALENESS_EVENT_TYPES: require(path.join(BUILD_DIR, "screenshot-staleness.js")).STALENESS_EVENT_TYPES,
+    // The Screens map's shot cache, as its own namespace: it holds module state.
+    aspectCache: require(path.join(BUILD_DIR, "aspect-cache.js")),
     buildProductGraph: schema.buildProductGraph,
     acceptancesCovering: schema.acceptancesCovering,
   };

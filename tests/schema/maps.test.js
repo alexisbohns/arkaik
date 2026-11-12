@@ -72,6 +72,12 @@ const ids = (elements) => elements.map((el) => el.id).sort();
     "resolveMapDefaults: system defaults to view+api+dm / cross-layer edges",
   );
 
+  const screens = resolveMapDefaults({ id: "screens", title: "Screens", kind: "screens" });
+  assert(
+    JSON.stringify(screens.species) === JSON.stringify(["flow", "view"]) && screens.edge_types.length === 0,
+    "resolveMapDefaults: screens defaults to flow+view and no edge type",
+  );
+
   const explicit = resolveMapDefaults({ id: "x", title: "X", kind: "system", species: ["view"] });
   assert(
     JSON.stringify(explicit.species) === JSON.stringify(["view"]),
@@ -258,6 +264,38 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   );
 }
 
+// --- computeMapSubgraph: the screens kind -----------------------------------
+// A wall lists every flow and view in scope; it has no anchor to walk from, so
+// step 3 never runs for it — not for the built-in, not for a stored definition
+// that carries a root anyway.
+{
+  const screens = computeMapSubgraph({ id: "screens", title: "Screens", kind: "screens" }, nodes, edges);
+  assert(
+    JSON.stringify(ids(screens.nodes)) === JSON.stringify(["F-a", "V-b", "V-c"]) && screens.edges.length === 0,
+    "screens subgraph keeps flows and views, and no edge",
+  );
+
+  const anchored = computeMapSubgraph(
+    { id: "screens-anchored", title: "S", kind: "screens", root_node_id: "V-c", depth: 0 },
+    nodes,
+    edges,
+  );
+  assert(
+    JSON.stringify(ids(anchored.nodes)) === JSON.stringify(["F-a", "V-b", "V-c"]) && anchored.edges.length === 0,
+    "a screens definition ignores root_node_id and depth — the selection stays unbounded",
+  );
+
+  const dangling = computeMapSubgraph(
+    { id: "screens-dangling", title: "S", kind: "screens", root_node_id: "V-nope" },
+    nodes,
+    edges,
+  );
+  assert(
+    JSON.stringify(ids(dangling.nodes)) === JSON.stringify(["F-a", "V-b", "V-c"]),
+    "…and an unresolvable root on a screens definition empties nothing",
+  );
+}
+
 // --- computeMapSubgraph: generic passthrough --------------------------------
 {
   const decorated = nodes.map((node) => ({ ...node, extra: `decorated-${node.id}` }));
@@ -271,13 +309,17 @@ const ids = (elements) => elements.map((el) => el.id).sort();
 
 // --- listMaps ---------------------------------------------------------------
 {
-  assert(isBuiltInMapId("journey") && isBuiltInMapId("system") && !isBuiltInMapId("custom"), "isBuiltInMapId");
+  assert(
+    isBuiltInMapId("journey") && isBuiltInMapId("system") && isBuiltInMapId("screens") && !isBuiltInMapId("custom"),
+    "isBuiltInMapId",
+  );
 
   const project = {
     metadata: {
       maps: [
         { id: "custom", title: "Custom", kind: "journey", root_node_id: "V-b" },
         { id: "journey", title: "Shadow", kind: "journey" }, // reserved — skipped
+        { id: "screens", title: "Shadow screens", kind: "journey" }, // reserved — skipped
         { id: 42, title: "Bad id" }, // malformed — skipped
         "not-an-object", // malformed — skipped
         { id: "weird", title: "Weird", kind: "mystery" }, // unknown kind — listed
@@ -286,14 +328,23 @@ const ids = (elements) => elements.map((el) => el.id).sort();
   };
   const maps = listMaps(project);
   assert(
-    JSON.stringify(maps.map((m) => m.id)) === JSON.stringify(["journey", "system", "custom", "weird"]),
+    JSON.stringify(maps.map((m) => m.id)) === JSON.stringify(["journey", "system", "screens", "custom", "weird"]),
     "listMaps = built-ins, then stored (reserved ids and malformed entries skipped; unknown kinds listed)",
   );
   assert(
-    JSON.stringify(listMaps({}).map((m) => m.id)) === JSON.stringify(["journey", "system"]),
+    JSON.stringify(listMaps({}).map((m) => m.id)) === JSON.stringify(["journey", "system", "screens"]),
     "listMaps without metadata yields the built-ins",
   );
-  assert(BUILT_IN_MAPS.length === 2, "two built-in maps");
+  assert(BUILT_IN_MAPS.length === 3, "three built-in maps");
+  const screensMap = BUILT_IN_MAPS[2];
+  assert(
+    screensMap?.id === "screens" &&
+      screensMap?.title === "Screens" &&
+      screensMap?.kind === "screens" &&
+      screensMap?.description === "What is live, screen by screen — every flow as a strip of its screenshots." &&
+      screensMap?.root_node_id === undefined,
+    "the third built-in is Screens, kind screens, with no anchor",
+  );
 }
 
 // --- Product scope (docs/spec/maps.md § Product Scope) ----------------------

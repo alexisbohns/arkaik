@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MapIcon, MapPinnedIcon, NetworkIcon, RouteIcon, type LucideIcon } from "lucide-react";
+import { GalleryHorizontalEndIcon, MapIcon, MapPinnedIcon, NetworkIcon, RouteIcon, type LucideIcon } from "lucide-react";
 import type { MapDefinition } from "@arkaik/schema";
 import { OverviewSection } from "./OverviewSection";
 
@@ -15,6 +15,7 @@ export interface MapsCardEntry {
 function mapIcon(definition: MapDefinition): LucideIcon {
   if (definition.id === "journey") return RouteIcon;
   if (definition.id === "system") return NetworkIcon;
+  if (definition.id === "screens") return GalleryHorizontalEndIcon;
   return MapPinnedIcon;
 }
 

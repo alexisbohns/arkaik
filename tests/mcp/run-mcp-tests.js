@@ -190,7 +190,9 @@ async function main() {
   const maps = await callTool("list_maps", {});
   check(
     "list_maps returns built-ins + stored definitions with counts",
-    maps.body?.maps.length === 4 && maps.body.maps.some((entry) => entry.definition.id === "onboarding"),
+    maps.body?.maps.length === 5 &&
+      maps.body.maps.some((entry) => entry.definition.id === "onboarding") &&
+      maps.body.maps.some((entry) => entry.definition.id === "screens"),
     JSON.stringify(maps.body?.maps.map((entry) => [entry.definition.id, entry.nodeCount])),
   );
   const systemMap = await callTool("get_map", { map_id: "system" });
@@ -198,6 +200,16 @@ async function main() {
     "get_map computes the subgraph",
     systemMap.body?.nodes.length === 4 && systemMap.body.edges.length === 2,
     `system map: ${systemMap.body?.nodes.length} nodes / ${systemMap.body?.edges.length} edges (2 views + api + dm; both cross-layer edges)`,
+  );
+
+  // The Screens map's subgraph is every flow and view, and no edge: the wall
+  // model that draws strips is app-side, `get_map` serves the kind's selection.
+  const screensMap = await callTool("get_map", { map_id: "screens" });
+  check(
+    "get_map screens returns the flows and views and no edge",
+    JSON.stringify((screensMap.body?.nodes ?? []).map((node) => node.id).sort()) ===
+      JSON.stringify(["F-onboard", "V-profile", "V-welcome"]) && screensMap.body?.edges?.length === 0,
+    `screens map: ${JSON.stringify((screensMap.body?.nodes ?? []).map((node) => node.id))} / ${screensMap.body?.edges?.length} edges`,
   );
 
   // Audience symmetry (issue #319): a product-scoped map answers the same

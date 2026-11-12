@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { listMaps } from "@arkaik/schema";
 import { JourneyMap } from "@/components/maps/JourneyMap";
+import { ScreensMap } from "@/components/maps/ScreensMap";
 import { SystemMap } from "@/components/maps/SystemMap";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -61,6 +62,10 @@ export default function ProjectMapPage() {
 
   if (definition.kind === "system") {
     return <SystemMap projectId={id} definition={definition} />;
+  }
+
+  if (definition.kind === "screens") {
+    return <ScreensMap projectId={id} definition={definition} />;
   }
 
   return (

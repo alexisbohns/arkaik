@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ReactFlow, Controls, Background, type Node, type Edge, type NodeMouseHandler, type OnConnect, type OnNodesChange, type EdgeMouseHandler, type ReactFlowInstance } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
@@ -15,6 +15,10 @@ export type { CanvasFocus } from "./CameraFocus";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { ApiEndpointNode, DataModelNode } from "./nodes/SystemLayerNode";
+import { WallFrameNode } from "./nodes/WallFrameNode";
+import { WallHeaderNode } from "./nodes/WallHeaderNode";
+import { WallJumpNode } from "./nodes/WallJumpNode";
+import { WallMarkerNode } from "./nodes/WallMarkerNode";
 import { ComposeEdge } from "./edges/ComposeEdge";
 import { CrossLayerEdge } from "./edges/CrossLayerEdge";
 import { FloatingDottedEdge } from "./edges/FloatingDottedEdge";
@@ -25,6 +29,11 @@ const nodeTypes = {
   view: ViewNode,
   dataModel: DataModelNode,
   apiEndpoint: ApiEndpointNode,
+  // The Screens map (ScreensCanvas). Arm, end and empty markers share one type.
+  wallFrame: WallFrameNode,
+  wallHeader: WallHeaderNode,
+  wallMarker: WallMarkerNode,
+  wallJump: WallJumpNode,
 };
 
 const edgeTypes = {
@@ -90,6 +99,26 @@ interface CanvasProps {
   pin?: CanvasPin | null;
   /** The card a click selected: centred in the canvas once it has its final size. */
   focus?: CanvasFocus | null;
+  /** A click on the empty pane, forwarded to React Flow. */
+  onPaneClick?: (event: React.MouseEvent) => void;
+  /**
+   * Mount only the nodes and edges inside the viewport. Off by default; the
+   * Screens map turns it on so an off-screen screenshot never makes a request.
+   * Nodes then need `width`/`height` up front, or React Flow cannot tell
+   * whether they are visible before it has measured them.
+   */
+  onlyRenderVisibleElements?: boolean;
+  /**
+   * Frame the whole graph on mount (React Flow's `fitView`). On by default; a
+   * map that places its own first camera — the Screens map frames its first
+   * strip — turns it off, or the whole wall would flash at unreadable zoom.
+   */
+  initialFit?: boolean;
+  /**
+   * Rendered inside `<ReactFlow>`, after `CameraFocus`: the slot for a camera
+   * or overlay that needs React Flow's store (`WallCamera`).
+   */
+  children?: ReactNode;
 }
 
 export function Canvas({
@@ -107,6 +136,10 @@ export function Canvas({
   onMeasured,
   pin = null,
   focus = null,
+  onPaneClick,
+  onlyRenderVisibleElements = false,
+  initialFit = true,
+  children,
 }: CanvasProps) {
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -168,6 +201,12 @@ export function Canvas({
 
   const display = useMemo(() => {
     const nodesWithSize = spotlit.nodes.map((node) => {
+      // A node that states its own size (the Screens map's wall nodes) keeps
+      // it. React Flow prefers `measured` over `width`/`height` for culling,
+      // the minimap and centring, and an off-screen node is never measured
+      // again — so an echoed size would outlive a re-layout (a lens change)
+      // and cull frames that are on screen. No other map sets both.
+      if (node.width !== undefined && node.height !== undefined) return node;
       const size = measured[node.id];
       if (!size || (node.measured?.width === size.width && node.measured?.height === size.height)) {
         return node;
@@ -266,7 +305,8 @@ export function Canvas({
           edgeTypes={edgeTypes}
           colorMode={isDark ? "dark" : "light"}
           style={flowStyle}
-          fitView
+          fitView={initialFit}
+          onlyRenderVisibleElements={onlyRenderVisibleElements}
           minZoom={0.05}
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly}
@@ -286,10 +326,12 @@ export function Canvas({
           onNodeClick={onNodeClick}
           onConnect={readOnly ? undefined : onConnect}
           onEdgeClick={readOnly ? undefined : onEdgeClick}
+          onPaneClick={onPaneClick}
           onNodeMouseEnter={spotlight ? handleNodeMouseEnter : undefined}
           onNodeMouseLeave={spotlight ? handleNodeMouseLeave : undefined}
         >
           <CameraFocus focus={focus} />
+          {children}
           {!readOnly && <Controls />}
           {!readOnly && <Minimap colorBy={minimapColor} />}
           <Background />

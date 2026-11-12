@@ -278,19 +278,19 @@ export const MapDisplayOptionsSchema: z.ZodType<MapDisplayOptions> = z
 export const MapDefinitionSchema: z.ZodType<MapDefinition> = z
   .object({
     id: z.string().meta({
-      description: "Kebab-case, unique within the project; built-in ids (journey, system) are reserved.",
+      description: "Kebab-case, unique within the project; built-in ids (journey, system, screens) are reserved.",
     }),
     title: z.string().meta({ description: "Display title." }),
     description: z.string().optional().meta({ description: "What this map is for." }),
     kind: z.string().meta({
       description:
-        "Map kind: journey | system. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable.",
+        "Map kind: journey | system | screens. Selects the renderer and selection defaults; unrecognized kinds are preserved and listed as unrenderable.",
     }),
     species: z.array(z.string()).optional().meta({
-      description: "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model).",
+      description: "Node filter; defaults by kind (journey: flow+view; system: view+api-endpoint+data-model; screens: flow+view).",
     }),
     edge_types: z.array(z.string()).optional().meta({
-      description: "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries).",
+      description: "Edge filter; defaults by kind (journey: composes; system: calls+displays+queries; screens: none).",
     }),
     root_node_id: z.string().optional().meta({
       description: "Scope anchor: the subgraph is the undirected neighborhood reachable from this node.",

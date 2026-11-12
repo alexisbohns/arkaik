@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BookOpenIcon,
+  GalleryHorizontalEndIcon,
   GemIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
@@ -322,6 +323,18 @@ export function ProjectSidebar({
                 <Link href={`${mapsHref}/system`}>
                   <NetworkIcon />
                   <span>System</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={currentView === "maps" && currentMapId === "screens"}
+                tooltip="Screens map"
+              >
+                <Link href={`${mapsHref}/screens`}>
+                  <GalleryHorizontalEndIcon />
+                  <span>Screens</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

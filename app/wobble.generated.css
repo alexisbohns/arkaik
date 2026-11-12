@@ -48,6 +48,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-circle-x { filter: url(#wob-circle-x); }
 .lucide-clipboard-check { filter: url(#wob-clipboard-check); }
 .lucide-clipboard-list { filter: url(#wob-clipboard-list); }
+.lucide-clock { filter: url(#wob-clock); }
 .lucide-cloud { filter: url(#wob-cloud); }
 .lucide-cloud-download { filter: url(#wob-cloud-download); }
 .lucide-cloud-upload { filter: url(#wob-cloud-upload); }
@@ -75,6 +76,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-folder-open { filter: url(#wob-folder-open); }
 .lucide-folder-tree { filter: url(#wob-folder-tree); }
 .lucide-funnel-x { filter: url(#wob-funnel-x); }
+.lucide-gallery-horizontal-end { filter: url(#wob-gallery-horizontal-end); }
 .lucide-gauge { filter: url(#wob-gauge); }
 .lucide-gem { filter: url(#wob-gem); }
 .lucide-gift { filter: url(#wob-gift); }

@@ -24,9 +24,9 @@ import type { EdgeTypeId, SpeciesId } from "./ids";
 import { buildProductGraph, nodeInProduct, type ProductGraph } from "./products";
 
 /** Known renderer kinds (docs/spec/maps.md § MapDefinition). */
-export type MapKind = "journey" | "system";
+export type MapKind = "journey" | "system" | "screens";
 
-export const MAP_KINDS: readonly MapKind[] = ["journey", "system"];
+export const MAP_KINDS: readonly MapKind[] = ["journey", "system", "screens"];
 
 /** Layout hints for canvas renderers. Unknown keys round-trip like all format objects. */
 export interface MapLayoutHints extends Record<string, unknown> {
@@ -120,10 +120,13 @@ export interface MapDefinition extends Record<string, unknown> {
 const KIND_DEFAULTS: Record<MapKind, { species: SpeciesId[]; edge_types: EdgeTypeId[] }> = {
   journey: { species: ["flow", "view"], edge_types: ["composes"] },
   system: { species: ["view", "api-endpoint", "data-model"], edge_types: ["calls", "displays", "queries"] },
+  // A wall of screens: every flow gets a strip and every view a frame; no edge
+  // is drawn (the strips are the playlists, read app-side by the wall model).
+  screens: { species: ["flow", "view"], edge_types: [] },
 };
 
 /** Reserved ids of the maps every project has implicitly. */
-export const BUILT_IN_MAP_IDS = ["journey", "system"] as const;
+export const BUILT_IN_MAP_IDS = ["journey", "system", "screens"] as const;
 
 export function isBuiltInMapId(id: string): boolean {
   return (BUILT_IN_MAP_IDS as readonly string[]).includes(id);
@@ -143,6 +146,12 @@ export const BUILT_IN_MAPS: readonly MapDefinition[] = [
     description: "The model layer — views, API endpoints, and data models joined by cross-layer edges.",
     kind: "system",
     layout: { algorithm: "organic" },
+  },
+  {
+    id: "screens",
+    title: "Screens",
+    description: "What is live, screen by screen — every flow as a strip of its screenshots.",
+    kind: "screens",
   },
 ];
 
@@ -326,7 +335,9 @@ export interface MapSubgraphOptions {
  *    whose two endpoints both survived step 1.
  * 3. When `root_node_id` resolves to a surviving node: undirected BFS from it
  *    through the surviving edges, bounded by `depth` when present; keep the
- *    visited nodes and the surviving edges among them.
+ *    visited nodes and the surviving edges among them. A `screens` definition
+ *    skips this step: a wall has no anchor and no edges to walk, so its
+ *    `root_node_id` and `depth` are ignored and the selection stays unbounded.
  * 4. An unresolvable root yields the empty subgraph, never an error — the same
  *    posture as `computeChangelog` with an unknown version.
  *
@@ -379,7 +390,7 @@ export function computeMapSubgraph<
   );
 
   const rootId = definition.root_node_id;
-  if (rootId === undefined) {
+  if (rootId === undefined || definition.kind === "screens") {
     return { nodes: [...keptNodes], edges: [...keptEdges] };
   }
   if (!keptNodeIds.has(rootId)) {

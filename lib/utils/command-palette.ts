@@ -7,7 +7,7 @@
  * Two behaviours the overlay leans on:
  * - **Rank**, so the first row is the one Enter should validate.
  * - **Complete**, so Tab can fill the input with the active row's own wording
- *   (its label, or the synonym the user is actually typing — "screens" → Views).
+ *   (its label, or the synonym the user is actually typing — "pages" → Views).
  *
  * One brain, several catalogues: `buildProjectCommands` covers a project's
  * sidebar, `buildDocsCommands` covers the documentation tree. Everything below
@@ -21,6 +21,7 @@ export type CommandIconId =
   | "all-maps"
   | "journey"
   | "system"
+  | "screens"
   | "custom-map"
   | "library"
   | "acceptances"
@@ -74,7 +75,7 @@ export interface PaletteCommand {
   group: CommandGroupId;
   icon: CommandIconId;
   /** Synonyms people actually type. Matched at a lower weight than the label,
-   * and usable as a completion source, so "screens" completes to "screens". */
+   * and usable as a completion source, so "page" completes to "pages". */
   keywords: readonly string[];
   /** Secondary text on the row — where the command lands. */
   hint?: string;
@@ -323,6 +324,15 @@ export function buildProjectCommands({ projectId, customMaps }: ProjectCommandIn
       keywords: ["system map", "architecture", "data models", "endpoints"],
       hint: "Data models and endpoints",
       target: { kind: "href", href: `${base}/maps/system` },
+    },
+    {
+      id: "map-screens",
+      label: "Screens",
+      group: "maps",
+      icon: "screens",
+      keywords: ["screens map", "screenshots", "wall", "shots"],
+      hint: "What is live, screen by screen",
+      target: { kind: "href", href: `${base}/maps/screens` },
     },
     ...customMaps.map<PaletteCommand>((map) => ({
       id: `map-${map.id}`,

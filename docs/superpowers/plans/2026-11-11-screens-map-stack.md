@@ -208,12 +208,15 @@ Node `type` strings: `wallFrame`, `wallHeader`, `wallMarker` (arm, end and empty
 export function ScreensMap(props: { projectId: string; definition: MapDefinition }): JSX.Element;
 
 // components/graph/WallCamera.tsx — rendered as a Canvas child
-export interface WallCameraRequest { version: number; rect: Rect; minZoom: number; maxZoom: number }
+export type WallViewportFor = (size: { width: number; height: number }) => { x: number; y: number; zoom: number };
+export type WallCameraRequest =
+  | { version: number; rect: Rect; minZoom: number; maxZoom: number }   // frameViewport: jumps, frame clicks, selection, ?node=
+  | { version: number; viewport: WallViewportFor };                     // a ready viewport for the settled size: the opening camera
 export const WALL_CAMERA_PADDING = 32;   // frameViewport padding, px
 export const WALL_BAR_INSET = 72;        // frameViewport bottomInset, px (bar + gap)
 export function WallCamera(props: { request: WallCameraRequest | null }): null;
 // Each version applies once, 120ms after the last store width/height change (as CameraFocus), via
-// setViewport(frameViewport(…), { duration: prefersReducedMotion ? 0 : 300, interpolate: "linear" }).
+// setViewport(frameViewport(…) — or request.viewport({ width, height }) —, { duration: prefersReducedMotion ? 0 : 300, interpolate: "linear" }).
 
 // components/graph/ScreensCanvas.tsx
 export interface ScreensCanvasProps {
@@ -247,9 +250,11 @@ export interface ScreensBarProps {
 Controller rules fixed here because parts 3–5 extend them:
 
 - The rendered lens is always `resolveLens(prefs.screensLens, wall)`; nothing is written until the viewer chooses. In part 2 the bar renders nothing when `wall.platforms.length < 2`; from part 3 it always shows the gaps switch.
-- On the first render with a non-empty layout the controller issues one camera request for the first strip's rect (`minZoom` 0.4, `maxZoom` 1); part 4 replaces that target with the `?node=` target when one is on the wall. A jump tile requests its target strip with the same zooms and bumps `ring`. Part 4's selection request frames the frame box plus its chip column with `minZoom` 0.6, `maxZoom` 1.
+- On the first render with a non-empty layout (and, while the top pills are up, once their bottom edge is measured) the controller issues one opening request, `{ version: 1, viewport: (size) => openingViewport(layout, size, { top: <pills' bottom, or 0>, bottom: WALL_BAR_INSET }) }`: the first strip's header at the top-left of the canvas, zoom in [0.7, 1]. Only the first camera opens this way; part 4 replaces it with a `frameViewport` request for the `?node=` target when one is on the wall, and keeps the opening request otherwise. A jump tile requests its target strip with the same zooms and bumps `ring`. Part 4's selection request frames the frame box plus its chip column with `minZoom` 0.6, `maxZoom` 1.
+- A lens change keeps the reader's strip: `handleLensChange` reads the React Flow store (the controller wraps `ScreensCanvas` in a `ReactFlowProvider`, with a probe beside it that hands up the store and the strip nearest the viewport's centre), takes `stripNearViewport` under the old layout and, when `keepStripViewport` under the new one says so, issues `{ version, viewport: () => kept }` — same zoom and y, the strip's start `WALL_CAMERA_PADDING` in from the left. A product-scope change issues the opening request again only when the reader's strip is no longer on the wall, checked during render against the probe's last answer.
 - Part 2 frame activation = `openNode({ nodeId: viewId })` + `focus` on the frame (System map grammar). Part 4 replaces it with selection; a second activation of the selected frame opens the panel.
-- The aspect cache is module-level in `components/maps/screens/aspect-cache.ts`: keyed `viewId|platform`, stores `{ value, ratio }`, `aspectOf` answers only while `value` is the slot's current value; reports are batched per animation frame.
+- The aspect cache is module-level in `components/maps/screens/aspect-cache.ts`: keyed `viewId|platform`, stores `{ key, ratio }` where `key` is the shot's fingerprint (`shotKey(shot)`: length, `meta.ts` when present, first and last 64 characters — never the multi-megabyte value), `aspectOf` answers only while `key` is the slot's current shot's; reports (`onAspect`'s `value` argument carries the key) are batched per animation frame. Load failures live there too (`reportShotFailure` / `hasShotFailed`, same slot and key, applied at once), so a broken shot is requested once per tab.
+- A strip header's counts line follows its title directly, 8px after it; the rest of the header (which spans the strip) is empty. Nothing in a header sits at its far end, which is off screen on arrival for any strip wider than the canvas.
 - One icon for the Screens map in the sidebar, the Overview card and ⌘K: lucide `GalleryHorizontalEndIcon`; palette icon id `"screens"`.
 
 ### Persistence (`lib/hooks/useDisplayPreferences.ts`)

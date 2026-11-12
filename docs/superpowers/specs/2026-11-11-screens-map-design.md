@@ -67,7 +67,9 @@ change, the change is in § Verified facts and the open questions, not here.
 - **R8 Gaps only.** A switch that fades everything except stale shots and live
   screens with no shot, with a count.
 - **R9 Flow headers** show how many screens are live on the lens and how many
-  are stale or missing a shot.
+  are stale or missing a shot, on a counts line directly after the
+  flow's title (never at the header's far end, which is off screen on arrival
+  for any strip wider than the canvas).
 - **R10 Quick inspector.** Selecting a frame shows a small card: each
   platform's state, shot date, whether CI or a person recorded it, why a shot
   is stale, how it went live, and a button that opens the node panel.
@@ -774,6 +776,19 @@ hidden left handle on each chip.
 
 ### Interaction
 
+- **Arrival.** The first camera puts the first strip's header at the top-left
+  of the canvas, below the top pills and clear of the bottom bar, at the zoom
+  that fits the strip's width within [0.7, 1] (`openingViewport`); a wider
+  strip runs off to the right. Every later move frames with `frameViewport`,
+  except the two below.
+- **Lens and scope keep the reader's strip.** A lens change reshapes every
+  strip, so it keeps the reader in the strip whose row is nearest the
+  viewport's vertical centre (`stripNearViewport`, old layout): when the
+  viewport's horizontal centre would fall outside that strip's extent in the
+  new layout, the camera pans along it — same zoom, same vertical position —
+  to put the strip's start at the left edge, 32px in (`keepStripViewport`).
+  A product-scope change moves nothing unless that strip left the wall; then
+  the opening camera runs again.
 - **Part 2.** Click or Enter/Space on a frame → `openNode({ nodeId: viewId })`
   and `focus` on that frame (the System map's grammar). Header click → the
   flow's panel. Jump tile → camera to the target strip, `maxZoom` 1, `minZoom`
@@ -903,16 +918,22 @@ scope does not have, and nothing is written back until the viewer chooses.
   exists (no image config in `next.config.ts`) and arbitrary hosts cannot be
   optimised, so none is added.
 - **Proportions:** `onLoad` reports `naturalWidth / naturalHeight` through
-  `data.onAspect(viewId, platform, value, ratio)`. The controller batches
-  reports per animation frame into a module-level cache keyed by
-  `viewId|platform` that stores `{ value, ratio }`; `aspectOf` returns the ratio
-  only while the stored value is the slot's current value. The cache lives for
+  `data.onAspect(viewId, platform, value, ratio)`, where `value` is the shot's
+  fingerprint (`shotKey`: the value's length, its `meta.ts` when present, and
+  its first and last 64 characters), never the shot itself — a data URI can be
+  megabytes, and the cache is read on every re-layout and kept for the tab. The
+  controller batches reports per animation frame into a module-level cache
+  keyed by `viewId|platform` that stores `{ key, ratio }`; `aspectOf` returns
+  the ratio only while the stored key is the slot's current shot's. The cache lives for
   the tab, so returning to the map keeps proportions. A frame therefore changes
   width at most once per shot per tab.
 - **Forms:** `form` = `meta.form`, else `data:image/` → data, `http(s)://` →
   url, anything else → path. A path is never requested; its ghost says "Shot in
   the repo" / "Paths open from the bundle's folder, not in the app". A load
-  error shows "Shot didn't load" / the URL's host.
+  error shows "Shot didn't load" / the URL's host. A failure is remembered for the tab
+  in the same module cache, under the same slot and key, so a frame that
+  leaves the viewport and comes back shows that ghost at once instead of
+  requesting the broken image again.
 - **Ghost frames** (dashed border, faint hatch in `currentColor` at 10%): the
   table in § State truth table, plus the path and error cases above. An
   `absent` ghost has a solid light border and no hatch.

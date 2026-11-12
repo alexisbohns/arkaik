@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { PLATFORMS } from "@/lib/config/platforms";
+import type { WallLens } from "@/lib/utils/screen-wall";
 
 /**
  * How the Acceptances section of a view or flow panel draws one acceptance.
@@ -23,11 +25,19 @@ export type DeliveryCardDisplay = "compact" | "detailed";
 export interface DisplayPreferences {
   acceptanceDisplay: AcceptanceDisplay;
   deliveryCardDisplay: DeliveryCardDisplay;
+  /**
+   * The Screens map's platform lens, as this reader last chose it; `null` until
+   * they choose. Never rendered as-is: the map renders `resolveLens(stored,
+   * wall)`, so a lens the current scope does not offer falls back without
+   * anything being written back.
+   */
+  screensLens: WallLens | null;
 }
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   acceptanceDisplay: "rows",
   deliveryCardDisplay: "compact",
+  screensLens: null,
 };
 
 const STORAGE_PREFIX = "arkaik:display-prefs:";
@@ -61,6 +71,11 @@ function isDeliveryCardDisplay(value: unknown): value is DeliveryCardDisplay {
   return value === "compact" || value === "detailed";
 }
 
+/** A platform id only: "Side by side" is not a lens this build can draw. */
+function isScreensLens(value: unknown): value is WallLens {
+  return PLATFORMS.some((platform) => platform.id === value);
+}
+
 function read(projectId: string): DisplayPreferences {
   if (typeof window === "undefined") return DEFAULT_DISPLAY_PREFERENCES;
   try {
@@ -68,7 +83,7 @@ function read(projectId: string): DisplayPreferences {
     if (!stored) return DEFAULT_DISPLAY_PREFERENCES;
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_DISPLAY_PREFERENCES;
-    const { acceptanceDisplay, deliveryCardDisplay } = parsed as Partial<DisplayPreferences>;
+    const { acceptanceDisplay, deliveryCardDisplay, screensLens } = parsed as Partial<DisplayPreferences>;
     return {
       acceptanceDisplay: isAcceptanceDisplay(acceptanceDisplay)
         ? acceptanceDisplay
@@ -76,6 +91,7 @@ function read(projectId: string): DisplayPreferences {
       deliveryCardDisplay: isDeliveryCardDisplay(deliveryCardDisplay)
         ? deliveryCardDisplay
         : DEFAULT_DISPLAY_PREFERENCES.deliveryCardDisplay,
+      screensLens: isScreensLens(screensLens) ? screensLens : DEFAULT_DISPLAY_PREFERENCES.screensLens,
     };
   } catch {
     return DEFAULT_DISPLAY_PREFERENCES;
