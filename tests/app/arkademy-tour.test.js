@@ -37,6 +37,7 @@ const {
   tourEndAnnouncement,
   TOUR_KEEP_FOCUS_ATTRIBUTE,
   keyKeepsFocus,
+  elapsedAfterPause,
 } = loadArkademy();
 
 let failures = 0;
@@ -190,6 +191,17 @@ same("play: on a complete step, the next one", reduce(at(4, T(4), false), { type
 same("play: mid-step, resumes", reduce(at(4, 1200, false), { type: "play" }), at(4, 1200, true));
 same("play: while playing does nothing", reduce(at(4, 1200, true), { type: "play" }), at(4, 1200, true));
 same("pause: stops and keeps elapsed", reduce(at(4, 1200, true), { type: "pause" }), at(4, 1200, false));
+// Time spent in the phase is kept: Play then waits only for what is left of it.
+same("pause: keeps the time spent in the phase", reduce(at(4, 1200, true), { type: "pause", ms: 500 }), at(4, 1700, false));
+same("pause: never crosses the phase's end (it stops 1 ms short)", reduce(at(4, 1200, true), { type: "pause", ms: 5000 }), at(4, 2099, false));
+same("hidden: keeps the time spent too", reduce(at(4, 1200, true), { type: "hidden", ms: 300 }), at(4, 1500, false));
+same("pause: a negative time counts as none", reduce(at(4, 1200, true), { type: "pause", ms: -40 }), at(4, 1200, false));
+{
+  const t = stepTimeline(10, [10, 10]); // 1200, 2100; sentence 3000; total 6300
+  same("resume: 800 ms into the 900 ms answer phase", elapsedAfterPause(t, 1200, 800), 2000);
+  same("resume: the next boundary from there is the phase's end", nextBoundary(t, 2000), 2100);
+  same("resume: a step already complete stays as it is", elapsedAfterPause(t, 6300, 500), 6300);
+}
 same("hidden: stops and keeps elapsed", reduce(at(4, 1200, true), { type: "hidden" }), at(4, 1200, false));
 same("hidden: while paused does nothing", reduce(at(4, 1200, false), { type: "hidden" }), at(4, 1200, false));
 same("pause: on arrival stops the autoplay at its first phase", reduce(arrived, { type: "pause" }), at(1, 0, false));

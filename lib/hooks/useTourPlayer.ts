@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent, type RefObject } from "react";
 
 import {
   createTourReducer,
@@ -61,20 +61,28 @@ export function useTourPlayer({
   const timeline = timelines[state.step - 1];
   const view = reducedMotion ? stepView(timeline, timeline.total) : stepView(timeline, state.elapsed);
 
+  // When the running timeout was armed, so a pause keeps the time spent in the phase.
+  const armedAt = useRef<number | null>(null);
+  const spentMs = () => (armedAt.current === null ? 0 : performance.now() - armedAt.current);
+
   // The clock: one timeout to the next moment the step looks different.
   useEffect(() => {
     if (!state.playing) return;
     const target = reducedMotion ? timeline.total : nextBoundary(timeline, state.elapsed);
     if (target === null) return;
     const ms = Math.max(0, target - state.elapsed);
+    armedAt.current = performance.now();
     const id = window.setTimeout(() => dispatch({ type: "tick", ms }), ms);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+      armedAt.current = null;
+    };
   }, [state.playing, state.elapsed, timeline, reducedMotion]);
 
   // A hidden page pauses the tour; it does not resume by itself.
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") dispatch({ type: "hidden" });
+      if (document.visibilityState === "hidden") dispatch({ type: "hidden", ms: spentMs() });
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
@@ -102,8 +110,8 @@ export function useTourPlayer({
     dispatch(action);
   }
 
-  const toggle = () => dispatch({ type: state.playing ? "pause" : "play" });
-  const pause = () => dispatch({ type: "pause" });
+  const toggle = () => dispatch(state.playing ? { type: "pause", ms: spentMs() } : { type: "play" });
+  const pause = () => dispatch({ type: "pause", ms: spentMs() });
   const back = () => navigate({ type: "back" });
   const next = () => navigate({ type: "next" });
   const goto = (step: number) => navigate({ type: "goto", step });

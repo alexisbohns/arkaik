@@ -109,6 +109,18 @@ export function nextBoundary(timeline: StepTimeline, elapsed: number): number | 
   return after.length === 0 ? null : Math.min(...after);
 }
 
+/**
+ * Where a step stands once paused `spentMs` into its current phase: the time
+ * is kept, so Play waits only for the rest of the phase, but never reaches the
+ * phase's end (1 ms short of it) — what the phase reveals stays for the clock
+ * to reveal. A complete step stays as it is.
+ */
+export function elapsedAfterPause(timeline: StepTimeline, elapsed: number, spentMs: number): number {
+  const next = nextBoundary(timeline, elapsed);
+  if (next === null) return elapsed;
+  return Math.min(elapsed + Math.max(0, spentMs), next - 1);
+}
+
 export interface TourState {
   /** 1–9. */
   step: number;
@@ -127,12 +139,12 @@ export interface TourState {
 
 export type TourAction =
   | { type: "play" }
-  | { type: "pause" }
+  | { type: "pause"; ms?: number }
   | { type: "next" }
   | { type: "back" }
   | { type: "goto"; step: number }
   | { type: "tick"; ms: number }
-  | { type: "hidden" };
+  | { type: "hidden"; ms?: number };
 
 /**
  * Where a tour starts: without a step, step 1 at its first phase, waiting to
@@ -173,8 +185,9 @@ export function resolveTourState(
  *   and `next` on the last step do nothing. Each clears `ended`.
  * - `play`: after the end (or on the last step complete), from step 1; on a
  *   complete step, the next one; otherwise it resumes.
- * - `pause` and `hidden` (the page was hidden) stop and keep `elapsed`; the
- *   tour never resumes by itself.
+ * - `pause` and `hidden` (the page was hidden) stop, keeping the time already
+ *   spent in the phase (`ms`, `elapsedAfterPause`); Play waits only for the
+ *   rest of it. The tour never resumes by itself.
  */
 export function createTourReducer(
   timelines: readonly StepTimeline[],
@@ -218,7 +231,9 @@ export function createTourReducer(
       }
       case "pause":
       case "hidden":
-        return state.playing ? { ...state, playing: false } : state;
+        return state.playing
+          ? { ...state, playing: false, elapsed: elapsedAfterPause(timelines[state.step - 1], state.elapsed, action.ms ?? 0) }
+          : state;
     }
   };
 }
