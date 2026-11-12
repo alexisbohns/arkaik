@@ -4,6 +4,7 @@ import { useEffect, useMemo, useReducer, type KeyboardEvent, type RefObject } fr
 
 import {
   createTourReducer,
+  keyKeepsFocus,
   initialTourState,
   nextBoundary,
   parseStepParam,
@@ -113,6 +114,12 @@ export function useTourPlayer({
     // (rendered elsewhere in the DOM) are the card's, not the player's.
     if (!event.currentTarget.contains(event.target as Node)) return;
     const onRegion = event.target === event.currentTarget;
+    const navigation = ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key);
+    // The focused element may unmount with the step (an end-card link, a note
+    // marker): hand focus to the region first, so the next key still lands here.
+    if (navigation && !onRegion && !keyKeepsFocus(event.target as Element)) {
+      event.currentTarget.focus({ preventScroll: true });
+    }
     switch (event.key) {
       case "ArrowLeft":
         back();

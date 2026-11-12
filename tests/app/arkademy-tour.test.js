@@ -35,6 +35,8 @@ const {
   tourHref,
   stepAnnouncement,
   tourEndAnnouncement,
+  TOUR_KEEP_FOCUS_ATTRIBUTE,
+  keyKeepsFocus,
 } = loadArkademy();
 
 let failures = 0;
@@ -211,6 +213,19 @@ same("pause: on arrival stops the autoplay at its first phase", reduce(arrived, 
     if (state.step !== before) steps++;
   }
   same("a whole tour: eight step changes, then ended on step 9", { steps, state }, { steps: 8, state: at(9, T(9), false, true) });
+}
+
+// --- where focus goes on a navigation key -------------------------------------------------
+{
+  // A stand-in for an element: `closest` answers for the selectors it is "inside".
+  const element = (...inside) => ({ closest: (selector) => (inside.includes(selector) ? {} : null) });
+  const marked = `[${TOUR_KEEP_FOCUS_ATTRIBUTE}]`;
+  same("focus: the attribute", TOUR_KEEP_FOCUS_ATTRIBUTE, "data-tour-keep-focus");
+  same("focus: a step link or a control keeps it", keyKeepsFocus(element(marked)), true);
+  same("focus: an end-card link does not (it may unmount)", keyKeepsFocus(element()), false);
+  same("focus: a note marker does not", keyKeepsFocus(element("[data-note-marker]")), false);
+  same("focus: no target does not", keyKeepsFocus(null), false);
+  same("focus: a target without closest (a text node) does not", keyKeepsFocus({}), false);
 }
 
 // --- parseStepParam and tourHref -------------------------------------------------------------

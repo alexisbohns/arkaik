@@ -223,6 +223,23 @@ export function createTourReducer(
   };
 }
 
+/**
+ * Marks the elements a navigation key leaves focused: the step links and the
+ * controls, which stay on screen whatever the step. Anything else in the
+ * player — an end-card link, a note marker, an answer — may unmount when the
+ * step changes, and focus would fall to the page.
+ */
+export const TOUR_KEEP_FOCUS_ATTRIBUTE = "data-tour-keep-focus";
+
+/**
+ * Whether a navigation key (← → Home End) leaves focus where it is. When it
+ * does not, the player moves focus to its own region before the step changes,
+ * so the next key still reaches it.
+ */
+export function keyKeepsFocus(target: { closest?: (selector: string) => unknown } | null): boolean {
+  return typeof target?.closest === "function" && Boolean(target.closest(`[${TOUR_KEEP_FOCUS_ATTRIBUTE}]`));
+}
+
 /** `?step=N` as a step, N an integer from 1 to 9; anything else reads as absent. */
 export function parseStepParam(raw: string | string[] | undefined): number | null {
   if (typeof raw !== "string" || !/^[1-9][0-9]*$/.test(raw)) return null;

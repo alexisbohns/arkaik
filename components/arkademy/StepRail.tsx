@@ -56,6 +56,7 @@ export function StepRail({ steps, current, hrefFor, onSelect, className }: StepR
             <li key={step}>
               <a
                 href={hrefFor(step)}
+                data-tour-keep-focus=""
                 onClick={(event) => follow(event, step)}
                 aria-label={`Step ${step}: ${item.block}, ${STATUS_WORDS[item.status]}`}
                 aria-current={isCurrent ? "step" : undefined}

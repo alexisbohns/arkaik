@@ -39,6 +39,7 @@ export function TourControls({ step, steps, playing, atEnd, onBack, onToggle, on
       <div className="mx-auto flex max-w-md items-center gap-2 md:mx-0 md:max-w-none">
         <Button
           type="button"
+          data-tour-keep-focus=""
           variant="outline"
           onClick={onBack}
           aria-disabled={firstStep || undefined}
@@ -49,6 +50,7 @@ export function TourControls({ step, steps, playing, atEnd, onBack, onToggle, on
         </Button>
         <Button
           type="button"
+          data-tour-keep-focus=""
           onClick={onToggle}
           aria-label={playLabel}
           className="h-11 flex-[1.4] md:h-9 md:w-28 md:flex-none"
@@ -64,6 +66,7 @@ export function TourControls({ step, steps, playing, atEnd, onBack, onToggle, on
         </Button>
         <Button
           type="button"
+          data-tour-keep-focus=""
           variant="outline"
           onClick={onNext}
           aria-disabled={lastStep || undefined}
