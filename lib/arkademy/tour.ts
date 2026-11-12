@@ -1,6 +1,6 @@
 import { displayAnswers, joinAnswers } from "./paragraph";
 import type { CanvasQuestionState } from "./paragraph";
-import { BMC_QUESTION_KEYS } from "./schema";
+import { BMC_QUESTION_KEYS } from "./constants";
 import type { BmcQuestion, Company } from "./schema";
 import { bmcTourPath } from "./tools";
 
