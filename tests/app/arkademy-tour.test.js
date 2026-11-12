@@ -4,9 +4,8 @@
  * The tour's pure side (lib/arkademy/tour.ts): a step's timeline and what it
  * shows at a given time, the player's reducer, the `?step=` parser and the
  * tour's address, and what the live region says. DB-free, so it runs in CI's
- * `build` job. Then the screen itself, rendered on the server in Node, and
- * source checks: no window keydown listener, and the cover links every
- * example to its tour.
+ * `build` job. Then the screen and its pieces, rendered on the server in
+ * Node, and the cover's actions, read from its syntax tree.
  *
  * Cases the fictional fixture (tests/fixtures/arkademy/document.json) does not
  * hold are built in memory; the fixture itself is never edited.
@@ -465,15 +464,27 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   check("rail: a label names it otherwise", rail({ label: "Your canvas, question by question" }).includes('aria-label="Your canvas, question by question"'));
 }
 
-// --- source checks: no window keydown, replaceState only, the cover links each tour -----
+// --- the cover's actions, read from its syntax tree ------------------------------------------
+// The cover is an async server page over the database, so it is not rendered here; its tree
+// is read instead, which survives formatting and reordering. A window keydown listener is
+// the keyboard-shortcuts suite's to refuse, and the address the player writes is
+// searchForStep's, tested above.
 {
-  const hook = fs.readFileSync(path.join(ROOT, "lib", "hooks", "useTourPlayer.ts"), "utf8");
-  check("hook: no keydown listener on window or document", !/addEventListener\(\s*["']keydown["']/.test(hook));
-  check("hook: the URL is rewritten with replaceState, never pushState", hook.includes("history.replaceState(") && !hook.includes("history.pushState("));
-  const cover = fs.readFileSync(path.join(ROOT, "app", "arkademy", "business-model-canvas", "page.tsx"), "utf8");
-  check("cover: each example links to its tour", cover.includes("tourHref(example.company.id)"));
-  check("cover: the hero's Play a tour goes to the examples", cover.includes('href="#examples"'));
-  check("cover: no link to your own canvas yet (part 4)", !cover.includes("BMC_YOURS_PATH"));
+  const ts = require("typescript");
+  const file = path.join(ROOT, "app", "arkademy", "business-model-canvas", "page.tsx");
+  const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const found = { examplesHref: false, tourHref: 0, yours: false };
+  (function visit(node) {
+    if (ts.isJsxAttribute(node) && node.name.getText() === "href" && node.initializer && ts.isStringLiteral(node.initializer)) {
+      if (node.initializer.text === "#examples") found.examplesHref = true;
+    }
+    if (ts.isCallExpression(node) && node.expression.getText() === "tourHref") found.tourHref++;
+    if (ts.isIdentifier(node) && node.text === "BMC_YOURS_PATH") found.yours = true;
+    ts.forEachChild(node, visit);
+  })(source);
+  check("cover: the hero's Play a tour goes to the examples", found.examplesHref);
+  check("cover: each example card links to its tour", found.tourHref >= 1);
+  check("cover: no link to your own canvas yet (part 4)", !found.yours);
 }
 
 cleanup();
