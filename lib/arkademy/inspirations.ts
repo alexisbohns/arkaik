@@ -1,4 +1,5 @@
 import type { ArkademyIndex } from "./index-document";
+import { cleanAnswer } from "./paragraph";
 import { BMC_QUESTION_KEYS, BMC_QUESTION_KIND } from "./schema";
 import type { BmcQuestionKey } from "./schema";
 
@@ -100,12 +101,13 @@ export function availableInspirations(
 ): Inspiration[] {
   // A label typed as an answer (any case) is on the canvas already.
   const chosen = new Set(answers.flatMap((answer) => (answer.inspiration ? [answer.inspiration.entity] : [])));
-  const texts = new Set(answers.map((answer) => answer.text.trim().toLocaleLowerCase("en")));
+  const key = (text: string) => cleanAnswer(text).toLocaleLowerCase("en");
+  const texts = new Set(answers.map((answer) => key(answer.text)));
   return list.filter(
     (inspiration) =>
       !chosen.has(inspiration.entity) &&
-      !texts.has(inspiration.label.trim().toLocaleLowerCase("en")) &&
-      !texts.has(inspiration.answer.trim().toLocaleLowerCase("en")),
+      !texts.has(key(inspiration.label)) &&
+      !texts.has(key(inspiration.answer)),
   );
 }
 

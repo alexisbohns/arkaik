@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { hasWords, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
+import { duplicateAnswers, hasWords, oneLine, type DraftAnswer } from "@/lib/arkademy/canvas";
 import { ANSWER_MAX_LENGTH, MAX_ANSWERS_PER_QUESTION, type BmcQuestion } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +84,8 @@ export function QuestionEditor({
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<"duplicate" | "empty" | null>(null);
   const full = answers.length >= MAX_ANSWERS_PER_QUESTION;
+  // An edit can repeat an earlier answer: the field is marked and named, never emptied.
+  const duplicates = duplicateAnswers(answers);
   const left = ANSWER_MAX_LENGTH - text.length;
 
   function add() {
@@ -164,64 +166,74 @@ export function QuestionEditor({
 
       {answers.length > 0 && (
         <ol aria-label="Your answers" className="flex flex-col gap-2">
-          {answers.map((answer, i) => (
-            <li key={answer.id} className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
-              <span aria-hidden="true" className="w-4 shrink-0 pt-2 font-mono text-[11px] text-muted-foreground tabular-nums">
-                {i + 1}
-              </span>
-              <Textarea
-                id={answerFieldId(answer.id)}
-                rows={1}
-                value={answer.text}
-                maxLength={ANSWER_MAX_LENGTH}
-                aria-label={`Answer ${i + 1} of ${answers.length}`}
-                onChange={(event) => onEdit(answer.id, event.target.value)}
-                onBlur={(event) => {
-                  // A field emptied, or left with only punctuation ("..."), is no answer.
-                  if (!hasWords(event.target.value)) onRemove(answer.id);
-                }}
-                onKeyDown={(event) => onAnswerKeyDown(event, answer.id)}
-                className={cn(FIELD, "min-w-60 flex-1")}
-              />
-              {/* Beside the field when it keeps 15rem, under it on a phone. */}
-              <div className="ml-auto flex shrink-0">
-                <Button
-                  id={moveButtonId(answer.id, -1)}
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground"
-                  aria-label={`Move answer ${i + 1} up`}
-                  disabled={i === 0}
-                  onClick={() => move(answer.id, -1, "button")}
-                >
-                  <ArrowUpIcon />
-                </Button>
-                <Button
-                  id={moveButtonId(answer.id, 1)}
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground"
-                  aria-label={`Move answer ${i + 1} down`}
-                  disabled={i === answers.length - 1}
-                  onClick={() => move(answer.id, 1, "button")}
-                >
-                  <ArrowDownIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground"
-                  aria-label={`Remove answer ${i + 1}`}
-                  onClick={() => remove(answer.id, i)}
-                >
-                  <XIcon />
-                </Button>
-              </div>
-            </li>
-          ))}
+          {answers.map((answer, i) => {
+            const repeats = duplicates.get(answer.id);
+            return (
+              <li key={answer.id} className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
+                <span aria-hidden="true" className="w-4 shrink-0 pt-2 font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {i + 1}
+                </span>
+                <Textarea
+                  id={answerFieldId(answer.id)}
+                  rows={1}
+                  value={answer.text}
+                  maxLength={ANSWER_MAX_LENGTH}
+                  aria-label={`Answer ${i + 1} of ${answers.length}`}
+                  aria-invalid={repeats !== undefined || undefined}
+                  aria-describedby={repeats !== undefined ? `${answerFieldId(answer.id)}-repeats` : undefined}
+                  onChange={(event) => onEdit(answer.id, event.target.value)}
+                  onBlur={(event) => {
+                    // A field emptied, or left with only punctuation ("..."), is no answer.
+                    if (!hasWords(event.target.value)) onRemove(answer.id);
+                  }}
+                  onKeyDown={(event) => onAnswerKeyDown(event, answer.id)}
+                  className={cn(FIELD, "min-w-60 flex-1")}
+                />
+                {/* Beside the field when it keeps 15rem, under it on a phone. */}
+                <div className="ml-auto flex shrink-0">
+                  <Button
+                    id={moveButtonId(answer.id, -1)}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 text-muted-foreground"
+                    aria-label={`Move answer ${i + 1} up`}
+                    disabled={i === 0}
+                    onClick={() => move(answer.id, -1, "button")}
+                  >
+                    <ArrowUpIcon />
+                  </Button>
+                  <Button
+                    id={moveButtonId(answer.id, 1)}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 text-muted-foreground"
+                    aria-label={`Move answer ${i + 1} down`}
+                    disabled={i === answers.length - 1}
+                    onClick={() => move(answer.id, 1, "button")}
+                  >
+                    <ArrowDownIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 text-muted-foreground"
+                    aria-label={`Remove answer ${i + 1}`}
+                    onClick={() => remove(answer.id, i)}
+                  >
+                    <XIcon />
+                  </Button>
+                </div>
+                {repeats !== undefined && (
+                  <p id={`${answerFieldId(answer.id)}-repeats`} className="basis-full pl-5.5 text-xs text-foreground">
+                    Same as answer {repeats}.
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ol>
       )}
 

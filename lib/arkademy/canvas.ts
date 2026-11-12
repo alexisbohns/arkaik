@@ -104,13 +104,42 @@ export function answersOf(draft: CanvasDraft, question: BmcQuestionKey): DraftAn
   return draft.answers.filter((answer) => answer.question === question);
 }
 
-function sameText(a: string, b: string): boolean {
-  return a.trim().toLocaleLowerCase("en") === b.trim().toLocaleLowerCase("en");
+/** A text as the paragraph reads it, case-folded: what two answers are compared on. */
+function answerKey(text: string): string {
+  return cleanAnswer(text).toLocaleLowerCase("en");
 }
 
-/** Whether a question already holds this text, compared trimmed and case-insensitively. */
+function sameText(a: string, b: string): boolean {
+  return answerKey(a) === answerKey(b);
+}
+
+/**
+ * Whether a question already holds this text, compared as the paragraph
+ * reads them, case-folded: "bakers", "bakers." and "Bakers!" are one answer.
+ */
 export function hasAnswerText(draft: CanvasDraft, question: BmcQuestionKey, text: string): boolean {
   return answersOf(draft, question).some((answer) => sameText(answer.text, text));
+}
+
+/**
+ * The answers that repeat an earlier one of the same question (an edit can
+ * make one): each id mapped to the 1-based position of the answer it repeats.
+ * The editor marks them and leaves the visitor's words alone.
+ */
+export function duplicateAnswers(answers: readonly DraftAnswer[]): Map<string, number> {
+  const duplicates = new Map<string, number>();
+  const first = new Map<string, number>(); // question + key → 1-based position in its question
+  const positions = new Map<string, number>(); // question → answers seen so far
+  for (const answer of answers) {
+    const position = (positions.get(answer.question) ?? 0) + 1;
+    positions.set(answer.question, position);
+    if (!hasWords(answer.text)) continue;
+    const key = `${answer.question}\u0000${answerKey(answer.text)}`;
+    const earlier = first.get(key);
+    if (earlier === undefined) first.set(key, position);
+    else duplicates.set(answer.id, earlier);
+  }
+  return duplicates;
 }
 
 /** The id the next answer gets: one more than the highest `aN` in use. */

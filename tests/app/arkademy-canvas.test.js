@@ -105,6 +105,11 @@ const index = A.indexArkademy(validation.document);
     ["word-of-mouth"],
   );
   same("available: nothing to drop", availableInspirations(channels, []).length, 2);
+  same(
+    "available: an answer typed with closing punctuation still matches its label",
+    availableInspirations(channels, [{ text: "Word of mouth!" }]).map((i) => i.entity),
+    ["app-stores"],
+  );
 
   same("answerFromLabel: sentence case lowered", answerFromLabel("A product map that stays true"), "a product map that stays true");
   same("answerFromLabel: a name with an inner capital kept", answerFromLabel("GitHub sponsors"), "GitHub sponsors");
@@ -319,6 +324,26 @@ const index = A.indexArkademy(validation.document);
     "setOpen is not refused by an answer that cleans to nothing",
     draftReducer(typing, { type: "setOpen", question: "seg", open: true }).open,
     ["seg"],
+  );
+}
+
+// --- duplicates, as the paragraph reads them ---------------------------------------------
+{
+  const { draftReducer, emptyDraft, hasAnswerText, duplicateAnswers } = A;
+  const one = draftReducer(emptyDraft(), { type: "add", question: "seg", text: "bakers" });
+  check("add: \"bakers.\" duplicates \"bakers\"", draftReducer(one, { type: "add", question: "seg", text: "bakers." }) === one);
+  check("add: \"Bakers!\" duplicates \"bakers\"", draftReducer(one, { type: "add", question: "seg", text: "Bakers!" }) === one);
+  check("hasAnswerText: cleaned and case-folded", hasAnswerText(one, "seg", "  BAKERS?  "));
+  check("hasAnswerText: other words are not a duplicate", !hasAnswerText(one, "seg", "bakers at dawn"));
+  const two = draftReducer(one, { type: "add", question: "seg", text: "millers" });
+  const edited = draftReducer(two, { type: "edit", id: "a2", text: "Bakers." });
+  same("edit: a duplicate is kept as typed (the field is marked, not emptied)", edited.answers[1].text, "Bakers.");
+  same("duplicateAnswers: each later duplicate names the answer it repeats (1-based)", [...duplicateAnswers(edited.answers).entries()], [["a2", 1]]);
+  same("duplicateAnswers: none", [...duplicateAnswers(two.answers).entries()], []);
+  same(
+    "duplicateAnswers: blank and punctuation-only answers are not duplicates of each other",
+    [...duplicateAnswers([{ id: "a1", question: "seg", text: "..." }, { id: "a2", question: "seg", text: "!" }]).entries()],
+    [],
   );
 }
 
