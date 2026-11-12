@@ -18,12 +18,17 @@
  * the neighbours a fix in a shared view plausibly moved — the auditor can say
  * "unchanged" in two seconds, but has to be pointed there to say it.
  *
+ * **A plan record closes the window per cell** (the Kritik planner, spec "The
+ * window closes per cell"). A `quality.audit.completed` whose `scope` names a
+ * plan re-scored a known list of cells and nothing else, so it is never the
+ * audit a scope is measured from, and it clears only the cells it lists.
+ *
  * Same two disciplines as `quality-regressions.ts` and `quality-trend.ts`:
- * zod-free and fs-free (the runtime imports are `orderEvents` and a constant),
- * and nothing mutates its input. Lenient and total: no events, no recorded
- * audit, no findings — each is an empty scope, never a throw. A scope is a
- * plan; refusing to produce one would only send the auditor back to the
- * comprehensive audit this exists to spare them.
+ * zod-free and fs-free (the runtime imports are `orderEvents`, a constant and
+ * `quality-plan.ts`'s pure readers), and nothing mutates its input. Lenient and
+ * total: no events, no recorded audit, no findings — each is an empty scope,
+ * never a throw. A scope is a plan; refusing to produce one would only send the
+ * auditor back to the comprehensive audit this exists to spare them.
  */
 
 import { orderEvents, type JournalEvent } from "./journal";
@@ -36,7 +41,7 @@ import {
   type QualityFinding,
   type QualitySection,
 } from "./quality";
-import { isPlanId, isPlanPartId } from "./quality-plan";
+import { isPlanId, isPlanPartId, readPlanScope } from "./quality-plan";
 
 /**
  * One cell to re-score.
@@ -60,6 +65,7 @@ export interface AuditScope {
    * The audit the scope is measured from — `null` when no audit has been
    * recorded, which is an empty scope rather than "everything since the start":
    * with no recorded reading there is nothing for a re-score to be a re-score of.
+   * Never a plan record: a project whose only records are plans has none.
    */
   since: string | null;
   /** When that audit was recorded; `null` whenever `since` names no recorded audit. */
@@ -89,7 +95,11 @@ export interface AuditScope {
 }
 
 export interface AuditScopeOptions {
-  /** The audit to measure from. Default: the newest `quality.audit.completed`. */
+  /**
+   * The audit to measure from. Default: the newest `quality.audit.completed`
+   * that is not a plan record nor a part recorded on its own. A plan id or a part id names no anchor, so it
+   * gives an empty scope whose `since` is `null`.
+   */
   since?: string;
   /** Add the one-hop node neighbours. Default: on. */
   widen?: boolean;
@@ -104,19 +114,138 @@ const stringsOf = (value: unknown): string[] => rowsOf<unknown>(value).filter(is
 /** Same `criterion::surface` key `quality-regressions.ts` uses, for the same reasons. */
 const cellKey = (criterionId: string, surface: string): string => `${criterionId}::${surface}`;
 
+/** The journal's object rows in `orderEvents` order — the one order every reader here uses. */
+const orderedRows = (events: readonly JournalEvent[] | null | undefined): JournalEvent[] =>
+  orderEvents(rowsOf<JournalEvent>(events).filter((event) => typeof event === "object" && event !== null));
+
+/**
+ * Whether `event` is a plan record: a `quality.audit.completed` whose `scope`
+ * names a plan (`matrix <planId> --record --plan`), or whose `audit_id` is a
+ * plan id. The second reading catches a damaged record — `scope.plan` missing
+ * or not a string — which would otherwise pass for a full audit, become the
+ * anchor and clear every stale cell; it is read as a plan with no parts and no
+ * scored cells. Lenient: anything else, malformed rows included, is not one.
+ */
+export function isPlanRecord(event: unknown): boolean {
+  if (typeof event !== "object" || event === null) return false;
+  const { type, scope, audit_id: auditId } = event as { type?: unknown; scope?: unknown; audit_id?: unknown };
+  return type === "quality.audit.completed" && (readPlanScope(scope) !== null || isPlanId(auditId));
+}
+
+/** One recorded plan, as its event carries it. */
+export interface RecordedPlan {
+  plan: string;
+  /** The plan's part ids, plan order. */
+  parts: string[];
+  /** `criterion::surface` per cell the plan re-scored. */
+  scored: string[];
+  /** When it was recorded; `null` for a row with no `ts`. */
+  ts: string | null;
+}
+
+/**
+ * Every plan record in the journal, in journal order, one entry per record. A
+ * damaged one (see {@link isPlanRecord}) is listed under its `audit_id`, with
+ * no parts and no scored cells: nothing it carries can be trusted to say which.
+ */
+export function recordedPlans(events: readonly JournalEvent[]): RecordedPlan[] {
+  const plans: RecordedPlan[] = [];
+  for (const event of orderedRows(events)) {
+    if (!isPlanRecord(event)) continue;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    const ts = isString(event.ts) ? event.ts : null;
+    if (reading === null) plans.push({ plan: (event as { audit_id?: unknown }).audit_id as string, parts: [], scored: [], ts });
+    else plans.push({ plan: reading.plan, parts: stringsOf(reading.parts), scored: stringsOf(reading.scored), ts });
+  }
+  return plans;
+}
+
 /**
  * Every audit id the journal has a `quality.audit.completed` for, in recording
  * order, each once. What a caller names in the refusal when `since` asks for an
  * audit that was never recorded.
+ *
+ * A plan record's parts follow its plan id: each part is an audit directory
+ * whose reading the plan recorded, so a score written into one after the
+ * record would silently rewrite history — every guard that asks "is this id
+ * recorded?" has to see them.
  */
 export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
   const ids: string[] = [];
-  for (const event of orderEvents(rowsOf<JournalEvent>(events))) {
-    if (event?.type !== "quality.audit.completed") continue;
-    const id = (event as { audit_id?: unknown }).audit_id;
+  const note = (id: unknown) => {
     if (isString(id) && !ids.includes(id)) ids.push(id);
+  };
+  for (const event of orderedRows(events)) {
+    if (event.type !== "quality.audit.completed") continue;
+    note((event as { audit_id?: unknown }).audit_id);
+    for (const part of readPlanScope((event as { scope?: unknown }).scope)?.parts ?? []) note(part);
   }
   return ids;
+}
+
+/**
+ * Whether `event` is a record a scope can never be measured from: a plan
+ * record, or a record under a plan part's id. The second has no plan marker —
+ * an older CLI or MCP server, or a hand-edited journal, recorded the part on
+ * its own — but a part is never a scope's anchor, and `--since <partId>` is
+ * refused by the id's shape, so the default anchor must agree.
+ */
+function neverAnAnchor(event: unknown): boolean {
+  return isPlanRecord(event) || isPlanPartId((event as { audit_id?: unknown } | null)?.audit_id);
+}
+
+/**
+ * {@link recordedAuditIds} over the records a scope can be measured from: every
+ * one but a plan record or a part recorded on its own, so neither a plan id nor
+ * a part id is ever offered as a `since`.
+ */
+export function recordedSinceIds(events: readonly JournalEvent[]): string[] {
+  return recordedAuditIds(rowsOf<JournalEvent>(events).filter((event) => !neverAnAnchor(event)));
+}
+
+/**
+ * The index in `ordered` of the record a scope is measured from: the newest
+ * `quality.audit.completed` that is not a plan record (rule 1) nor a part
+ * recorded on its own, or the newest recording of `since` when one is named.
+ * `-1` when there is none — and a `since` naming a plan or a part never
+ * matches, because no record an anchor may be carries that id.
+ */
+function anchorIndex(ordered: readonly JournalEvent[], since: string | undefined): number {
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const event = ordered[i];
+    if (event.type !== "quality.audit.completed" || neverAnAnchor(event)) continue;
+    if (since !== undefined && (event as { audit_id?: unknown }).audit_id !== since) continue;
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * Whether `id` names a plan or one of its parts: by its shape, or because a
+ * plan record in `ordered` carries it as its `audit_id`, its `scope.plan` or
+ * one of its `parts`. Such an id is never a scope's `since`.
+ */
+function namesPlan(ordered: readonly JournalEvent[], id: string): boolean {
+  if (isPlanId(id) || isPlanPartId(id)) return true;
+  return ordered.some((event) => {
+    if (!isPlanRecord(event)) return false;
+    if ((event as { audit_id?: unknown }).audit_id === id) return true;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    return reading !== null && (reading.plan === id || reading.parts.includes(id));
+  });
+}
+
+/**
+ * The audit id of the newest record that is not a plan record, nor a part
+ * recorded on its own — the `since` an unscoped {@link deriveAuditScope}
+ * measures from, and the `since` a plan record carries. `null` when there is none, or when that record names no id.
+ */
+export function scopeAnchorId(events: readonly JournalEvent[]): string | null {
+  const ordered = orderedRows(events);
+  const at = anchorIndex(ordered, undefined);
+  if (at === -1) return null;
+  const id = (ordered[at] as { audit_id?: unknown }).audit_id;
+  return isString(id) ? id : null;
 }
 
 /**
@@ -124,14 +253,26 @@ export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
  *
  * - **The window.** Every `quality.finding.resolved` ordered (by `orderEvents`)
  *   after the `since` audit's recording. A re-recorded audit id is measured
- *   from its latest recording, the reading the trend keeps too.
+ *   from its latest recording, the reading the trend keeps too. `since`
+ *   defaults to the newest recording that is not a plan record; a plan record
+ *   — or a part recorded on its own — is never the audit a scope is measured from.
+ * - **Per cell, after a plan.** The last plan record whose `scored` lists a
+ *   cell sets that cell's floor, and a resolution counts toward the cell only
+ *   above it. The floor is when the plan's part scored the cell — the newest
+ *   `ts` among the section's assessments of that cell whose `audit_id` is one
+ *   of the record's `parts` — and a resolution is above it when its own `ts`
+ *   is later (raw strings, the key `orderEvents` sorts by): a part is scored
+ *   before its plan is recorded, sometimes days before, and a fix landing in
+ *   between is not in that score. With no such timed assessment the floor is
+ *   the record's own place in the journal. A finding resolved more than once
+ *   counts by its latest resolution.
  * - **Direct cells.** Each resolved finding's own `(criterion_id, surface)`,
  *   read from `section.findings` — the event does not carry them — when
  *   `score` could re-score it; a finding whose cell it could not (a retired
  *   criterion, an undeclared surface) is reported in `unscorable`. A
  *   `cross-surface` finding scopes every surface its criterion applies to: the
  *   contract lens has no column of its own, so the fix lands in the columns
- *   either side of it.
+ *   either side of it. The per-cell rule then judges each of those cells alone.
  * - **Accepted and refuted are out.** An accepted risk is a decision, not a
  *   fix, and the code did not change; the same goes for a refutation. Neither
  *   writes a `resolved` event in a repository, and a finding whose section
@@ -139,9 +280,13 @@ export function recordedAuditIds(events: readonly JournalEvent[]): string[] {
  *   read the way the findings board reads it.
  * - **Widening** (default on) is one hop over `node_ids`: any *assessed* cell
  *   whose criterion applies to its surface, and whose findings share a node id
- *   with a resolved finding, joins with `because: [node ids]`. One hop only — a
+ *   with a resolved finding, joins with `because: [node ids]` — counting a
+ *   node only through a resolution that counts for that cell. One hop only — a
  *   second would pull the whole graph in, and a scope that says "everything"
  *   is the comprehensive audit again.
+ * - **Reported lists.** `findings` and `resolved_by` hold only the findings
+ *   that still drive a listed cell; `unknown` and `unscorable` hold every
+ *   resolution in the window, plan or no plan.
  */
 export function deriveAuditScope(
   events: readonly JournalEvent[],
@@ -149,20 +294,15 @@ export function deriveAuditScope(
   library: Pick<KritikLibrary, "criteria">,
   options: AuditScopeOptions = {},
 ): AuditScope {
-  const ordered = orderEvents(rowsOf<JournalEvent>(events).filter((event) => typeof event === "object" && event !== null));
+  const ordered = orderedRows(events);
+  // Rule 1: the anchor is never a plan record.
+  const sinceIndex = anchorIndex(ordered, options.since);
 
-  let sinceIndex = -1;
-  for (let i = ordered.length - 1; i >= 0; i--) {
-    const event = ordered[i];
-    if (event.type !== "quality.audit.completed") continue;
-    const id = (event as { audit_id?: unknown }).audit_id;
-    if (options.since !== undefined && id !== options.since) continue;
-    sinceIndex = i;
-    break;
-  }
-
+  // An unrecorded `since` is echoed back, so the caller can say which audit
+  // it never found — unless it names a plan or a part, which `since` never is.
+  const asked = options.since;
   const empty: AuditScope = {
-    since: options.since ?? null,
+    since: asked === undefined || namesPlan(ordered, asked) ? null : asked,
     since_ts: null,
     cells: [],
     findings: [],
@@ -178,18 +318,70 @@ export function deriveAuditScope(
   const since = isString(anchorId) ? anchorId : null;
   const sinceTs = isString(anchor.ts) ? anchor.ts : null;
 
-  // Resolutions in order, one entry per finding. A later NAMED `resolved_by`
-  // wins over an earlier one — the rule `foldQualityEvents` applies, so the
-  // run sheet and the findings board name the same PR.
-  const resolutions = new Map<string, { resolved_by?: string; node_ids: Set<string> }>();
-  for (const event of ordered.slice(sinceIndex + 1)) {
+  // When each audit scored each cell: the newest `ts` per (cell, audit id)
+  // among every assessment row the section holds, not only the latest per
+  // cell — a later audit may have outvoted a plan part's score in the merge.
+  const scoredAt = new Map<string, Map<string, string>>();
+  for (const assessment of rowsOf<QualityAssessment>(section?.assessments)) {
+    if (!isString(assessment?.criterion_id) || !isString(assessment?.surface) || !isString(assessment?.audit_id)) continue;
+    if (!isString(assessment.ts)) continue;
+    const key = cellKey(assessment.criterion_id, assessment.surface);
+    const byAudit = scoredAt.get(key) ?? new Map<string, string>();
+    const seen = byAudit.get(assessment.audit_id);
+    if (seen === undefined || seen < assessment.ts) byAudit.set(assessment.audit_id, assessment.ts);
+    scoredAt.set(key, byAudit);
+  }
+
+  // Rule 2's floor per cell, set by the last plan record that re-scored it: the
+  // `ts` its part scored the cell at when the section holds it, else the
+  // record's own index. Plan records before the anchor need no entry — the
+  // anchor's index is already higher, and so is every resolution counted here.
+  // A damaged plan record (no readable `scope.plan`) names no cell, so it sets
+  // no floor: it is skipped here exactly as it is skipped as an anchor.
+  const planFloor = new Map<string, { index: number; ts: string | null }>();
+  for (let i = sinceIndex + 1; i < ordered.length; i++) {
+    const event = ordered[i];
+    if (event.type !== "quality.audit.completed") continue;
+    const reading = readPlanScope((event as { scope?: unknown }).scope);
+    if (reading === null) continue;
+    for (const key of reading.scored) {
+      let ts: string | null = null;
+      for (const part of reading.parts) {
+        const at = scoredAt.get(key)?.get(part);
+        if (at !== undefined && (ts === null || ts < at)) ts = at;
+      }
+      planFloor.set(key, { index: i, ts });
+    }
+  }
+  // The raw `ts` string `orderEvents` sorts by, so "later" here and "after" in
+  // `ordered` never disagree: a greater index never has a smaller key.
+  const sortKeyAt = (index: number): string => {
+    const ts = ordered[index]?.ts;
+    return typeof ts === "string" ? ts : "";
+  };
+  /** Whether the resolution at `index` counts for `key` under rule 2. */
+  const countsFor = (key: string, index: number): boolean => {
+    const floor = planFloor.get(key);
+    if (floor === undefined) return index > sinceIndex;
+    return floor.ts !== null ? sortKeyAt(index) > floor.ts : index > floor.index;
+  };
+
+  // Resolutions in order, one entry per finding: the index of its latest
+  // resolution, and each node id an event carried with the index of the
+  // latest event that carried it. A later NAMED `resolved_by` wins over an
+  // earlier one — the rule `foldQualityEvents` applies, so the run sheet and
+  // the findings board name the same PR.
+  const resolutions = new Map<string, { last: number; resolved_by?: string; nodes: Map<string, number> }>();
+  for (let i = sinceIndex + 1; i < ordered.length; i++) {
+    const event = ordered[i];
     if (event.type !== "quality.finding.resolved") continue;
     const findingId = (event as { finding_id?: unknown }).finding_id;
     if (!isString(findingId)) continue;
-    const entry = resolutions.get(findingId) ?? { node_ids: new Set<string>() };
+    const entry = resolutions.get(findingId) ?? { last: i, nodes: new Map<string, number>() };
+    entry.last = i;
     const by = (event as { resolved_by?: unknown }).resolved_by;
     if (isString(by)) entry.resolved_by = by;
-    for (const node of stringsOf((event as { node_ids?: unknown }).node_ids)) entry.node_ids.add(node);
+    for (const node of stringsOf((event as { node_ids?: unknown }).node_ids)) entry.nodes.set(node, i);
     resolutions.set(findingId, entry);
   }
   if (resolutions.size === 0) return { ...empty, since, since_ts: sinceTs };
@@ -254,7 +446,12 @@ export function deriveAuditScope(
   const unknown: string[] = [];
   const unscorable: string[] = [];
   const resolvedBy: Record<string, string> = {};
-  const resolvedNodes = new Set<string>();
+  // Node id → index of the latest counted resolution that touched it. Whether
+  // it counts for a candidate cell is decided per cell, against that cell's floor.
+  const resolvedNodes = new Map<string, number>();
+  const touch = (node: string, index: number) => {
+    if ((resolvedNodes.get(node) ?? -1) < index) resolvedNodes.set(node, index);
+  };
 
   for (const [findingId, resolution] of resolutions) {
     const finding = findingById.get(findingId);
@@ -271,17 +468,23 @@ export function deriveAuditScope(
       scorable(finding.criterion_id, surface),
     );
     // The fix still happened, and still touched its nodes — so it widens even
-    // when its own cell is one nothing can re-score.
-    for (const node of stringsOf(finding.node_ids)) resolvedNodes.add(node);
-    for (const node of resolution.node_ids) resolvedNodes.add(node);
+    // when its own cell is one nothing can re-score. The finding's own nodes
+    // date from its latest resolution; an event's nodes from that event.
+    for (const node of stringsOf(finding.node_ids)) touch(node, resolution.last);
+    for (const [node, index] of resolution.nodes) touch(node, index);
     if (targets.length === 0) {
       unscorable.push(findingId);
       continue;
     }
 
+    // Rules 2 to 4, per target cell: a plan whose part scored the cell after
+    // this finding's latest resolution already holds the fix.
+    const live = targets.filter((surface) => countsFor(cellKey(finding.criterion_id, surface), resolution.last));
+    if (live.length === 0) continue;
+
     drivers.push(findingId);
     if (resolution.resolved_by !== undefined) resolvedBy[findingId] = resolution.resolved_by;
-    for (const surface of targets) addDirect(finding.criterion_id, surface, findingId);
+    for (const surface of live) addDirect(finding.criterion_id, surface, findingId);
   }
 
   let widened = 0;
@@ -314,7 +517,15 @@ export function deriveAuditScope(
       // merely might have.
       if (!criterionById.has(assessment.criterion_id)) continue;
       if (!surfaces.includes(assessment.surface) || !scorable(assessment.criterion_id, assessment.surface)) continue;
-      const shared = [...(nodesByCell.get(key) ?? [])].filter((node) => resolvedNodes.has(node)).sort();
+      // Rule 5: a node counts for this cell only through a resolution above
+      // the cell's floor — a plan whose part scored this cell after it holds it.
+      // The node's latest index is enough: a greater index never sorts earlier.
+      const shared = [...(nodesByCell.get(key) ?? [])]
+        .filter((node) => {
+          const at = resolvedNodes.get(node);
+          return at !== undefined && countsFor(key, at);
+        })
+        .sort();
       if (shared.length === 0) continue;
       cells.set(key, { criterion_id: assessment.criterion_id, surface: assessment.surface, kind: "widened", because: shared });
       widened++;
@@ -484,12 +695,16 @@ function suggestedAuditId({ since, month, requested, known, recorded }: ScopedAu
 
 /**
  * The one-line total a run sheet ends on — built here so the CLI and the MCP
- * tool cannot word the same scope two ways.
+ * tool cannot word the same scope two ways. With no driving finding — an
+ * empty scope, or only widened cells left after a plan cleared the direct
+ * ones — the "from N resolved findings" clause is left out rather than read
+ * "from 0".
  */
 export function scopeSummary(scope: AuditScope): string {
   const direct = scope.cells.length - scope.widened;
   const cells = `${scope.cells.length} cell${scope.cells.length === 1 ? "" : "s"} to re-score`;
   const split = scope.widened > 0 ? ` (${direct} direct, ${scope.widened} widened)` : "";
-  const from = `${scope.findings.length} resolved finding${scope.findings.length === 1 ? "" : "s"}`;
-  return `${cells}${split} from ${from}${scope.since !== null ? ` since ${scope.since}` : ""}`;
+  const count = scope.findings.length;
+  const from = count > 0 ? ` from ${count} resolved finding${count === 1 ? "" : "s"}` : "";
+  return `${cells}${split}${from}${scope.since !== null ? ` since ${scope.since}` : ""}`;
 }

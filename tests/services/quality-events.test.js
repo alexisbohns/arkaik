@@ -634,6 +634,122 @@ const PRIOR_BOTH = [RESOLUTION, RESOLUTION_2];
   check("the out_of_scope detail points at kritik_scope", detailOf(outside).endsWith("kritik_scope lists the cells."), detailOf(outside));
 }
 
+// --- the Kritik planner, part 3: a plan record in a hosted journal ------------
+//
+// Hosted sessions cannot record a plan, but a project restored from a repo that
+// has one reads it. The journal below: the 2026-08 audit recorded, F-1 (SEC-01)
+// and F-2 (SEC-02) resolved after it, then a plan that re-scored SEC-01 on web.
+// The plan record is built by hand — this suite needs only its shape.
+{
+  const PLAN_ID = "2026-09-zplan-1000";
+  const PART_ID = `${PLAN_ID}-sec-web`;
+  const RECORDED = {
+    id: "01K0000000000000000000AUD1", ts: "2026-08-15T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: "2026-08", framework_version: "1.0.0", scores: {}, counts: {},
+  };
+  const PLAN_RECORD = {
+    id: "01K0000000000000000000PLN1", ts: "2026-09-10T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: PLAN_ID, framework_version: "1.0.0", scores: {}, counts: {},
+    scope: {
+      partial: true, cells: 1, since: "2026-08", plan: PLAN_ID, parts: [PART_ID], scored: ["SEC-01::web"],
+      coverage: { scored: 1, assessed: 2, applicable: 2, surfaces: { web: { assessed: 2, applicable: 2 } } },
+    },
+  };
+  const JOURNAL = [RECORDED, RESOLUTION, RESOLUTION_2, PLAN_RECORD];
+  // The restored section carries the part's re-score of SEC-01 on web.
+  const AFTER_PLAN = () =>
+    RESTORED({
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e1", audit_id: PART_ID, ts: "2026-09-05T00:00:00.000Z" },
+        { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+      ],
+    });
+
+  const scope = schema.deriveAuditScope(JOURNAL, foldQualityEvents(AFTER_PLAN(), JOURNAL), LIB);
+  check("plan record (hosted): the scope is measured from the recorded audit, not the plan", scope.since === "2026-08", JSON.stringify(scope));
+  check(
+    "plan record (hosted): it lists the stale cell the plan did not re-score, and only that one",
+    scope.cells.map((cell) => `${cell.surface}:${cell.criterion_id}`).join() === "web:SEC-02",
+    JSON.stringify(scope.cells),
+  );
+
+  const rescored = planQualityEvents(AFTER_PLAN(), JOURNAL, [SCORE()], "arkaik-agent", NOW);
+  check("plan record (hosted): a score on the cell the plan re-scored refuses out_of_scope", reasonsOf(rescored) === "out_of_scope", JSON.stringify(rescored));
+  check("plan record (hosted): the refusal names the non-plan audit", detailOf(rescored).includes("since 2026-08"), detailOf(rescored));
+
+  const other = planQualityEvents(AFTER_PLAN(), JOURNAL, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check("plan record (hosted): a score on the other stale cell is accepted, with no baseline", typesOf(other) === "quality.assessment.scored", typesOf(other));
+  check(
+    "plan record (hosted): in a month holding a plan, it lands in <partId>-scoped, measured from 2026-08",
+    other.ok && other.events[0].audit_id === `${PART_ID}-scoped` && other.events[0].scope?.since === "2026-08",
+    JSON.stringify(other),
+  );
+
+  // Without the part's assessment in the section, only the journal names the
+  // part — so this holds only because recordedAuditIds returns a plan's parts.
+  const journalOnly = planQualityEvents(RESTORED(), JOURNAL, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check(
+    "plan record (hosted): the part id reaches the naming rule through recordedAuditIds alone",
+    journalOnly.ok && journalOnly.events[0].audit_id === `${PART_ID}-scoped`,
+    JSON.stringify(journalOnly),
+  );
+
+  const intoPart = planQualityEvents(AFTER_PLAN(), JOURNAL, [SCORE({ criterion_id: "SEC-02", audit_id: PART_ID })], "arkaik-agent", NOW);
+  check(
+    "plan record (hosted): a score asked into a recorded plan's part refuses audit_id_conflict",
+    reasonsOf(intoPart) === "audit_id_conflict" && detailOf(intoPart).includes("already recorded"),
+    JSON.stringify(intoPart),
+  );
+  const completePart = planQualityEvents(AFTER_PLAN(), JOURNAL, [COMPLETE(PART_ID)], "arkaik-agent", NOW);
+  check("plan record (hosted): completing a recorded plan's part refuses already_recorded", reasonsOf(completePart) === "already_recorded", JSON.stringify(completePart));
+
+  const both = planQualityEvents(AFTER_PLAN(), JOURNAL, [SCORE({ criterion_id: "SEC-02" }), COMPLETE(`${PART_ID}-scoped`)], "arkaik-agent", NOW);
+  check(
+    "plan record (hosted): score and complete in one batch record a scoped reading from 2026-08",
+    typesOf(both) === "quality.assessment.scored,quality.audit.completed" &&
+      JSON.stringify(both.events[1].scope) === JSON.stringify({ partial: true, cells: 1, since: "2026-08" }),
+    JSON.stringify(both),
+  );
+}
+
+// A restored project whose only recorded event is a plan record: the 2026-08
+// audit sits in the snapshot unrecorded, a part re-scored SEC-01 on web, and
+// F-1 and F-2 were resolved before the plan was recorded. The plan record is
+// not a recorded audit, so the implicit baseline still anchors the scope.
+{
+  const PLAN_ID = "2026-09-zplan-1000";
+  const PART_ID = `${PLAN_ID}-sec-web`;
+  const PLAN_RECORD = {
+    id: "01K0000000000000000000PLN2", ts: "2026-09-10T00:00:00.000Z", type: "quality.audit.completed",
+    audit_id: PLAN_ID, framework_version: "1.0.0", scores: {}, counts: {},
+    scope: { partial: true, cells: 1, plan: PLAN_ID, parts: [PART_ID], scored: ["SEC-01::web"] },
+  };
+  const JOURNAL = [RESOLUTION, RESOLUTION_2, PLAN_RECORD];
+  const UNRECORDED = () =>
+    RESTORED({
+      assessments: [
+        { criterion_id: "SEC-01", surface: "web", level: 1, evidence: "e1", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+        { criterion_id: "SEC-02", surface: "web", level: 2, evidence: "e2", audit_id: "2026-08", ts: "2026-08-10T00:00:00.000Z" },
+        { criterion_id: "SEC-01", surface: "web", level: 3, evidence: "e3", audit_id: PART_ID, ts: "2026-09-05T00:00:00.000Z" },
+      ],
+    });
+
+  const scope = schema.deriveAuditScope(schema.withImplicitBaseline(JOURNAL, UNRECORDED(), LIB), foldQualityEvents(UNRECORDED(), JOURNAL), LIB);
+  check(
+    "plan record only (hosted): the implicit baseline still anchors the scope, and the other stale cell is listed",
+    scope.since === "2026-08" && scope.cells.map((cell) => `${cell.surface}:${cell.criterion_id}`).join() === "web:SEC-02",
+    JSON.stringify(scope),
+  );
+  const other = planQualityEvents(UNRECORDED(), JOURNAL, [SCORE({ criterion_id: "SEC-02" })], "arkaik-agent", NOW);
+  check(
+    "plan record only (hosted): a score on that cell is accepted, and records the baseline first",
+    typesOf(other) === "quality.audit.completed,quality.assessment.scored" && other.events[0].baseline === true && other.events[0].audit_id === "2026-08",
+    typesOf(other),
+  );
+  const rescored = planQualityEvents(UNRECORDED(), JOURNAL, [SCORE()], "arkaik-agent", NOW);
+  check("plan record only (hosted): the cell the plan re-scored refuses out_of_scope", reasonsOf(rescored) === "out_of_scope", JSON.stringify(rescored));
+}
+
 // --- requiredScopeFor --------------------------------------------------------
 
 {

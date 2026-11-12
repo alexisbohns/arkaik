@@ -15,7 +15,16 @@
  */
 
 const { loadSchema } = require("./load-schema");
-const { deriveAuditScope, recordedAuditIds, scopeSummary, scopedAuditId } = loadSchema();
+const {
+  deriveAuditScope,
+  isPlanRecord,
+  recordedAuditIds,
+  recordedPlans,
+  recordedSinceIds,
+  scopeAnchorId,
+  scopeSummary,
+  scopedAuditId,
+} = loadSchema();
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -48,7 +57,7 @@ const find = (id, criterion, surface, over = {}) => ({
 
 let seq = 0;
 const ev = (type, ts, payload = {}) => ({ id: `01EV${String(++seq).padStart(4, "0")}`, ts, type, actor: "test", ...payload });
-const audit = (auditId, ts) => ev("quality.audit.completed", ts, { audit_id: auditId, framework_version: "1.0.0" });
+const audit = (auditId, ts, payload = {}) => ev("quality.audit.completed", ts, { audit_id: auditId, framework_version: "1.0.0", ...payload });
 const resolved = (findingId, ts, payload = {}) => ev("quality.finding.resolved", ts, { finding_id: findingId, ...payload });
 
 const SECTION = {
@@ -350,6 +359,684 @@ const cellIds = (scope) => scope.cells.map((cell) => `${cell.surface}:${cell.cri
     "a summary with no widening says nothing about it",
     scopeSummary(deriveAuditScope(events.slice(0, 2), SECTION, LIBRARY, { widen: false })) === "1 cell to re-score from 1 resolved finding since 2026-08",
   );
+  check(
+    "an empty scope's summary drops the finding count and keeps the since",
+    scopeSummary(deriveAuditScope(events.slice(0, 1), SECTION, LIBRARY)) === "0 cells to re-score since 2026-08",
+    scopeSummary(deriveAuditScope(events.slice(0, 1), SECTION, LIBRARY)),
+  );
+  check("with no since either, the summary is the cell count alone", scopeSummary(deriveAuditScope([], SECTION, LIBRARY)) === "0 cells to re-score");
+}
+
+// --- no plan record: exactly as before ------------------------------------------
+//
+// The two literals were printed by deriveAuditScope on main, before the planner
+// existed, over this same journal: a July audit, a scoped re-audit's
+// record, a re-resolved finding, an unknown id, a retired criterion, an
+// accepted risk, a cross-surface finding and event-carried node ids. Every
+// change the planner makes to the scope must leave them byte-identical.
+
+const NO_PLAN_JOURNAL = [
+  audit("2026-07", "2026-07-31T00:00:00.000Z"),
+  resolved("F-7", "2026-08-05T00:00:00.000Z"),
+  audit("2026-08", "2026-08-31T00:00:00.000Z"),
+  audit("2026-09-scoped", "2026-09-01T00:00:00.000Z", { scope: { partial: true, cells: 1, since: "2026-08" } }),
+  resolved("F-1", "2026-09-02T00:00:00.000Z", { resolved_by: "https://pr/1" }),
+  resolved("F-3", "2026-09-03T00:00:00.000Z", { node_ids: ["V-login"] }),
+  resolved("F-4", "2026-09-04T00:00:00.000Z"),
+  resolved("F-5", "2026-09-05T00:00:00.000Z"),
+  resolved("F-404", "2026-09-06T00:00:00.000Z"),
+  resolved("F-6", "2026-09-07T00:00:00.000Z", { resolved_by: "https://pr/6" }),
+  resolved("F-1", "2026-09-08T00:00:00.000Z"),
+];
+const NO_PLAN_SHUFFLED = [...NO_PLAN_JOURNAL].reverse();
+const GOLDEN_DEFAULT =
+  "{\"since\":\"2026-09-scoped\",\"since_ts\":\"2026-09-01T00:00:00.000Z\",\"cells\":[{\"criterion_id\":\"SEC-01\",\"surface\":\"web\",\"kind\":\"direct\",\"because\":[\"F-1\",\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-03\",\"surface\":\"web\",\"kind\":\"widened\",\"because\":[\"V-home\",\"V-login\"],\"current\":{\"level\":1,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-3\"],\"current\":{\"level\":3,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-02\",\"surface\":\"supabase\",\"kind\":\"widened\",\"because\":[\"V-login\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-6\"]}],\"findings\":[\"F-1\",\"F-3\",\"F-6\"],\"resolved_by\":{\"F-1\":\"https://pr/1\",\"F-6\":\"https://pr/6\"},\"unknown\":[\"F-404\"],\"unscorable\":[\"F-4\"],\"widened\":2}";
+const GOLDEN_SINCE_JULY =
+  "{\"since\":\"2026-07\",\"since_ts\":\"2026-07-31T00:00:00.000Z\",\"cells\":[{\"criterion_id\":\"SEC-01\",\"surface\":\"web\",\"kind\":\"direct\",\"because\":[\"F-1\",\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-03\",\"surface\":\"web\",\"kind\":\"widened\",\"because\":[\"V-home\",\"V-login\"],\"current\":{\"level\":1,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-3\"],\"current\":{\"level\":3,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"ios\",\"kind\":\"direct\",\"because\":[\"F-6\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"A11Y-02\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-7\"],\"current\":{\"level\":2,\"audit_id\":\"2026-08\"}},{\"criterion_id\":\"SEC-01\",\"surface\":\"supabase\",\"kind\":\"direct\",\"because\":[\"F-6\"]}],\"findings\":[\"F-7\",\"F-1\",\"F-3\",\"F-6\"],\"resolved_by\":{\"F-1\":\"https://pr/1\",\"F-6\":\"https://pr/6\"},\"unknown\":[\"F-404\"],\"unscorable\":[\"F-4\"],\"widened\":1}";
+
+{
+  check(
+    "no plan record: the default scope is byte-identical to main's",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)) === GOLDEN_DEFAULT,
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)),
+  );
+  check(
+    "no plan record: an explicit since is byte-identical to main's",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY, { since: "2026-07" })) === GOLDEN_SINCE_JULY,
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY, { since: "2026-07" })),
+  );
+  check(
+    "no plan record: recordedAuditIds is unchanged",
+    recordedAuditIds(NO_PLAN_SHUFFLED).join() === "2026-07,2026-08,2026-09-scoped",
+    recordedAuditIds(NO_PLAN_SHUFFLED).join(),
+  );
+}
+
+// --- plan records (the Kritik planner): reading them ----------------------------
+//
+// A plan record is a `quality.audit.completed` whose `scope` names a plan
+// (stack contract, "The recorded event"). Built by hand here: this suite needs
+// only the event's shape, not the command that writes it.
+
+const PLAN = "2026-09-zplan-1000";
+const PART_SEC_WEB = `${PLAN}-sec-web`;
+const PART_A11Y_IOS = `${PLAN}-a11y-ios`;
+const planRecord = (planId, ts, scored, parts = [`${planId}-sec-web`]) =>
+  audit(planId, ts, {
+    scope: {
+      partial: true,
+      cells: scored.length,
+      since: "2026-08",
+      plan: planId,
+      parts,
+      scored,
+      coverage: { scored: scored.length, assessed: 7, applicable: 12, surfaces: { web: { assessed: 4, applicable: 5 } } },
+    },
+  });
+const T = (day, hour = 0) => `2026-09-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+const AUG = () => audit("2026-08", "2026-08-31T00:00:00.000Z");
+
+{
+  const record = planRecord(PLAN, T(10), ["SEC-01::web", "A11Y-01::ios"], [PART_SEC_WEB, PART_A11Y_IOS]);
+  const scopedRecord = audit("2026-09-scoped", T(11), { scope: { partial: true, cells: 1, since: "2026-08" } });
+  check("a plan record is one", isPlanRecord(record) === true);
+  check("a scoped re-audit's record is not a plan record", isPlanRecord(scopedRecord) === false);
+  check("a plain record is not a plan record", isPlanRecord(AUG()) === false);
+  check("a scope.plan on any other event type is not a plan record", isPlanRecord(resolved("F-1", T(10), { scope: { plan: PLAN } })) === false);
+  check(
+    "an empty or missing plan id is not a plan record, and nothing malformed throws",
+    [null, undefined, 7, "x", {}, audit("2026-09", T(10), { scope: { plan: "" } }), audit("2026-09", T(10), { scope: null })].every(
+      (value) => isPlanRecord(value) === false,
+    ),
+  );
+
+  const journal = [record, AUG(), scopedRecord];
+  check(
+    "recordedAuditIds returns each plan record's parts right after its plan id",
+    recordedAuditIds(journal).join() === `2026-08,${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS},2026-09-scoped`,
+    recordedAuditIds(journal).join(),
+  );
+  check(
+    "a part named by two records is listed once",
+    recordedAuditIds([...journal, planRecord("2026-09-zplan-1100", T(12), ["SEC-03::web"], [PART_SEC_WEB])]).join() ===
+      `2026-08,${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS},2026-09-scoped,2026-09-zplan-1100`,
+  );
+  check("recordedSinceIds leaves plan ids and part ids out", recordedSinceIds(journal).join() === "2026-08,2026-09-scoped", recordedSinceIds(journal).join());
+
+  const plans = recordedPlans(journal);
+  check(
+    "recordedPlans reads the plan, its parts, its scored cells and when",
+    plans.length === 1 &&
+      plans[0].plan === PLAN &&
+      plans[0].parts.join() === `${PART_SEC_WEB},${PART_A11Y_IOS}` &&
+      plans[0].scored.join() === "SEC-01::web,A11Y-01::ios" &&
+      plans[0].ts === T(10),
+    JSON.stringify(plans),
+  );
+  check(
+    "recordedPlans keeps journal order, not array order",
+    recordedPlans([planRecord("2026-09-zplan-1100", T(12), ["SEC-03::web"]), record]).map((plan) => plan.plan).join() ===
+      `${PLAN},2026-09-zplan-1100`,
+  );
+  check("the readers never throw on malformed rows", recordedAuditIds([null, 7, record]).join() === `${PLAN},${PART_SEC_WEB},${PART_A11Y_IOS}`);
+
+  check("no plan record: recordedPlans is empty", recordedPlans(NO_PLAN_SHUFFLED).length === 0);
+  check(
+    "no plan record: recordedSinceIds equals recordedAuditIds",
+    recordedSinceIds(NO_PLAN_SHUFFLED).join() === recordedAuditIds(NO_PLAN_SHUFFLED).join(),
+  );
+}
+
+// --- a malformed plan record is still a plan record ------------------------------
+//
+// A record whose audit_id is a plan id but whose scope.plan is missing or not a
+// string is a damaged plan record, never a full audit: read as one, it would
+// become the anchor and clear every stale cell.
+
+{
+  const damaged = [
+    audit(PLAN, T(10)),
+    audit(PLAN, T(10), { scope: null }),
+    audit(PLAN, T(10), { scope: { plan: "" } }),
+    audit(PLAN, T(10), { scope: { plan: 7, parts: [PART_SEC_WEB], scored: ["SEC-01::web"] } }),
+    audit(PLAN, T(10), { scope: { partial: true, cells: 1, parts: [PART_SEC_WEB], scored: ["SEC-01::web"] } }),
+  ];
+  check("a record whose audit_id is a plan id is a plan record, whatever its scope", damaged.every((record) => isPlanRecord(record) === true));
+  check("a plan-shaped audit_id on another event type is not a plan record", isPlanRecord(resolved("F-1", T(10), { audit_id: PLAN })) === false);
+
+  const missingPlan = damaged[4];
+  const plans = recordedPlans([AUG(), missingPlan]);
+  check(
+    "recordedPlans lists a damaged plan record under its audit_id, with no parts and no scored cells",
+    plans.length === 1 && plans[0].plan === PLAN && plans[0].parts.length === 0 && plans[0].scored.length === 0 && plans[0].ts === T(10),
+    JSON.stringify(plans),
+  );
+  check(
+    "a damaged plan record is never the anchor",
+    damaged.every((record) => scopeAnchorId([AUG(), record]) === "2026-08") && scopeAnchorId([missingPlan]) === null,
+  );
+  check("recordedSinceIds leaves a damaged plan record out", recordedSinceIds([AUG(), missingPlan]).join() === "2026-08");
+
+  const events = [AUG(), resolved("F-1", T(2)), resolved("F-3", T(3)), missingPlan];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check(
+    "a damaged plan record clears nothing: since stays on the audit, and its scored list is not read",
+    scope.since === "2026-08" && cellIds(scope).join() === "web:SEC-01:direct,ios:A11Y-01:direct",
+    JSON.stringify(scope),
+  );
+  const only = deriveAuditScope([resolved("F-1", T(2)), missingPlan], SECTION, LIBRARY);
+  check("with only a damaged plan record there is still no anchor", only.since === null && only.cells.length === 0, JSON.stringify(only));
+}
+
+// --- rule 1: a plan record is never the audit a scope is measured from ---------
+
+{
+  const events = [AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["A11Y-01::ios"])];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check("rule 1: since skips the plan record", scope.since === "2026-08" && scope.since_ts === "2026-08-31T00:00:00.000Z", JSON.stringify(scope));
+  check("rule 1: a fix before the plan still counts for a cell the plan did not re-score", cellIds(scope).join() === "web:SEC-01:direct", cellIds(scope).join());
+  check("rule 1: scopeAnchorId names the same audit", scopeAnchorId(events) === "2026-08", String(scopeAnchorId(events)));
+
+  const onlyPlans = [planRecord(PLAN, T(10), ["SEC-01::web"]), resolved("F-3", T(11))];
+  const first = deriveAuditScope(onlyPlans, SECTION, LIBRARY);
+  check(
+    "rule 1: with only plan records there is nothing to measure from — an empty scope",
+    first.since === null && first.since_ts === null && first.cells.length === 0 && first.findings.length === 0,
+    JSON.stringify(first),
+  );
+  check("rule 1: scopeAnchorId is null with only plan records", scopeAnchorId(onlyPlans) === null);
+
+  // AuditScope.since is never a plan record, so an empty scope asked from a
+  // plan or a part says null rather than echoing the id back.
+  const byPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: PLAN });
+  check("rule 1: since naming a plan finds no anchor, and names none", byPlan.since === null && byPlan.since_ts === null && byPlan.cells.length === 0, JSON.stringify(byPlan));
+  const byPart = deriveAuditScope(events, SECTION, LIBRARY, { since: PART_SEC_WEB });
+  check("rule 1: nor does since naming a part", byPart.since === null && byPart.since_ts === null && byPart.cells.length === 0, JSON.stringify(byPart));
+  const unrecordedPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: "2026-12-zplan-0100" });
+  check("rule 1: a plan-shaped id never recorded names none either", unrecordedPlan.since === null && unrecordedPlan.cells.length === 0, JSON.stringify(unrecordedPlan));
+  const oddlyNamed = [
+    AUG(),
+    resolved("F-1", T(2)),
+    audit("custom-plan", T(10), { scope: { partial: true, cells: 0, plan: "custom-plan", parts: ["custom-part"], scored: [] } }),
+  ];
+  check(
+    "rule 1: nor does the id or a part of a recorded plan whose ids are not plan-shaped",
+    ["custom-plan", "custom-part"].every((since) => {
+      const scope = deriveAuditScope(oddlyNamed, SECTION, LIBRARY, { since });
+      return scope.since === null && scope.since_ts === null && scope.cells.length === 0;
+    }),
+  );
+  const notAPlan = deriveAuditScope(events, SECTION, LIBRARY, { since: "2026-01" });
+  check("rule 1: an unrecorded id that is not a plan's still names itself", notAPlan.since === "2026-01" && notAPlan.since_ts === null, JSON.stringify(notAPlan));
+
+  check("no plan record: scopeAnchorId is the scope's since", scopeAnchorId(NO_PLAN_SHUFFLED) === "2026-09-scoped");
+  check("scopeAnchorId of nothing is null, never a throw", scopeAnchorId([]) === null && scopeAnchorId(null) === null && scopeAnchorId([null, 7]) === null);
+  check(
+    "a plan record that re-scored nothing changes nothing",
+    JSON.stringify(deriveAuditScope([...NO_PLAN_JOURNAL, planRecord(PLAN, "2026-09-09T00:00:00.000Z", [])], SECTION, LIBRARY)) === GOLDEN_DEFAULT,
+    JSON.stringify(deriveAuditScope([...NO_PLAN_JOURNAL, planRecord(PLAN, "2026-09-09T00:00:00.000Z", [])], SECTION, LIBRARY)),
+  );
+}
+
+// --- a part recorded on its own is never the anchor either -----------------------
+//
+// An older CLI or MCP server, or a hand-edited journal, can leave a
+// `quality.audit.completed` under a part id with no plan marker. It is not a
+// plan record, but `--since <partId>` is refused by the id's shape, so the
+// default anchor must agree and skip it too.
+
+{
+  const partAlone = audit(PART_SEC_WEB, T(10));
+  check("(precondition) a part recorded on its own is not a plan record", isPlanRecord(partAlone) === false);
+  const events = [AUG(), resolved("F-1", T(2)), partAlone, resolved("F-3", T(11))];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check(
+    "a part recorded on its own is never the anchor: since stays on the audit before it",
+    scope.since === "2026-08" && scope.since_ts === "2026-08-31T00:00:00.000Z",
+    JSON.stringify(scope),
+  );
+  check(
+    "and a fix before that record still counts",
+    cellIds(scope).join() === "web:SEC-01:direct,ios:A11Y-01:direct",
+    cellIds(scope).join(),
+  );
+  check("scopeAnchorId skips it", scopeAnchorId(events) === "2026-08", String(scopeAnchorId(events)));
+  check("recordedSinceIds leaves it out", recordedSinceIds(events).join() === "2026-08", recordedSinceIds(events).join());
+  check("recordedAuditIds still lists it: it is recorded", recordedAuditIds(events).join() === `2026-08,${PART_SEC_WEB}`, recordedAuditIds(events).join());
+  const only = [resolved("F-1", T(2)), partAlone];
+  check(
+    "with only a part recorded on its own there is no anchor",
+    deriveAuditScope(only, SECTION, LIBRARY).since === null && scopeAnchorId(only) === null && recordedSinceIds(only).length === 0,
+  );
+  const asked = deriveAuditScope(events, SECTION, LIBRARY, { since: PART_SEC_WEB });
+  check("since naming it finds no anchor and names none", asked.since === null && asked.cells.length === 0, JSON.stringify(asked));
+  const scopedPart = audit(`${PART_SEC_WEB}-scoped`, T(12), { scope: { partial: true, cells: 1, since: "2026-08" } });
+  check(
+    "a scoped re-audit named after a part is not a part: it is still an anchor",
+    scopeAnchorId([...events, scopedPart]) === `${PART_SEC_WEB}-scoped` && recordedSinceIds([...events, scopedPart]).includes(`${PART_SEC_WEB}-scoped`),
+  );
+  check(
+    "no such record: the golden scope is unchanged",
+    JSON.stringify(deriveAuditScope(NO_PLAN_SHUFFLED, SECTION, LIBRARY)) === GOLDEN_DEFAULT &&
+      recordedSinceIds(NO_PLAN_SHUFFLED).join() === "2026-07,2026-08,2026-09-scoped" &&
+      scopeAnchorId(NO_PLAN_SHUFFLED) === "2026-09-scoped",
+  );
+}
+
+// --- rules 2, 3, 4, 6 and 7: a resolution counts per cell ----------------------
+
+// Rule 2: one clearing rule, in orderEvents order.
+{
+  const before = [AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  check(
+    "rule 2: a resolution before the plan that re-scored its cell no longer counts",
+    deriveAuditScope(before, SECTION, LIBRARY, { widen: false }).cells.length === 0,
+    cellIds(deriveAuditScope(before, SECTION, LIBRARY, { widen: false })).join(),
+  );
+  check(
+    "rule 2: the journal's order decides, never the array's",
+    deriveAuditScope([...before].reverse(), SECTION, LIBRARY, { widen: false }).cells.length === 0,
+  );
+
+  const after = [AUG(), planRecord(PLAN, T(10), ["SEC-01::web"]), resolved("F-1", T(11))];
+  check(
+    "rule 2: a resolution after the plan counts",
+    cellIds(deriveAuditScope(after, SECTION, LIBRARY, { widen: false })).join() === "web:SEC-01:direct",
+  );
+
+  // Same ts: orderEvents falls back to the event id, and `ev` mints ids in call order.
+  const tieResolved = resolved("F-1", T(10));
+  const tiePlan = planRecord(PLAN, T(10), ["SEC-01::web"]);
+  check(
+    "rule 2: on a ts tie, the id order orderEvents uses decides",
+    deriveAuditScope([AUG(), tiePlan, tieResolved], SECTION, LIBRARY, { widen: false }).cells.length === 0,
+  );
+  const tiePlanFirst = planRecord(PLAN, T(10), ["SEC-01::web"]);
+  const tieResolvedSecond = resolved("F-1", T(10));
+  check(
+    "rule 2: and the other way round, a resolution whose id sorts after the plan's counts",
+    cellIds(deriveAuditScope([AUG(), tieResolvedSecond, tiePlanFirst], SECTION, LIBRARY, { widen: false })).join() === "web:SEC-01:direct",
+  );
+
+  const twice = [AUG(), resolved("F-1", T(2), { resolved_by: "https://pr/1" }), planRecord(PLAN, T(10), ["SEC-01::web"]), resolved("F-1", T(11))];
+  const again = deriveAuditScope(twice, SECTION, LIBRARY, { widen: false });
+  check(
+    "rule 2: a finding resolved before and after the plan counts by its latest resolution",
+    cellIds(again).join() === "web:SEC-01:direct" && again.findings.join() === "F-1",
+    JSON.stringify(again),
+  );
+  check("rule 2: its named resolver is still the latest named one", again.resolved_by["F-1"] === "https://pr/1", JSON.stringify(again.resolved_by));
+
+  const explicit = [audit("2026-07", "2026-07-31T00:00:00.000Z"), AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  check(
+    "rule 2: with an explicit older since, a plan after it still clears the cells it re-scored",
+    deriveAuditScope(explicit, SECTION, LIBRARY, { since: "2026-07", widen: false }).cells.length === 0,
+    cellIds(deriveAuditScope(explicit, SECTION, LIBRARY, { since: "2026-07", widen: false })).join(),
+  );
+
+  const stale = [AUG(), planRecord(PLAN, T(1), ["SEC-01::web"]), audit("2026-09", T(5)), resolved("F-1", T(6))];
+  check(
+    "rule 2: a plan record before the anchor clears nothing after it",
+    cellIds(deriveAuditScope(stale, SECTION, LIBRARY, { widen: false })).join() === "web:SEC-01:direct",
+  );
+}
+
+// Rule 3: direct cells.
+{
+  const events = [AUG(), resolved("F-1", T(2)), resolved("F-3", T(3)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check("rule 3: the cell the plan re-scored leaves; the one it did not stays", cellIds(scope).join() === "ios:A11Y-01:direct", cellIds(scope).join());
+  check("rule 3: the kept cell's because names its own finding", scope.cells[0]?.because.join() === "F-3", JSON.stringify(scope.cells));
+
+  const section = { ...SECTION, findings: [...SECTION.findings, find("F-11", "SEC-01", "web")] };
+  const mixed = deriveAuditScope(
+    [AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"]), resolved("F-11", T(11))],
+    section,
+    LIBRARY,
+    { widen: false },
+  );
+  check(
+    "rule 3: a listed cell's because holds only the findings that still count",
+    cellIds(mixed).join() === "web:SEC-01:direct" && mixed.cells[0].because.join() === "F-11",
+    JSON.stringify(mixed.cells),
+  );
+}
+
+// Rule 4: a cross-surface finding fans out, then each cell is judged alone.
+{
+  const events = [AUG(), resolved("F-6", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check(
+    "rule 4: a plan that re-scored web clears web and leaves the other surfaces listed",
+    cellIds(scope).join() === "ios:SEC-01:direct,supabase:SEC-01:direct",
+    cellIds(scope).join(),
+  );
+  check("rule 4: the finding still drives the cells it left", scope.findings.join() === "F-6", scope.findings.join());
+
+  const all = deriveAuditScope(
+    [AUG(), resolved("F-6", T(2)), planRecord(PLAN, T(10), ["SEC-01::web", "SEC-01::ios", "SEC-01::supabase"])],
+    SECTION,
+    LIBRARY,
+    { widen: false },
+  );
+  check("rule 4: a plan that re-scored every surface clears the finding", all.cells.length === 0 && all.findings.length === 0, JSON.stringify(all));
+}
+
+// Rule 6: a cell can come back.
+{
+  const section = {
+    ...SECTION,
+    // The part scored the cell on the 5th: after F-1's fix, before the plan
+    // was recorded (`assess` would date it from the id, which is no date).
+    assessments: [...SECTION.assessments, { ...assess("SEC-01", "web", 3, PART_SEC_WEB), ts: T(5) }],
+    findings: [...SECTION.findings, find("F-11", "SEC-01", "web")],
+  };
+  const cleared =[AUG(), resolved("F-1", T(2)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  check("rule 6 (precondition): the plan cleared SEC-01 x web", deriveAuditScope(cleared, section, LIBRARY, { widen: false }).cells.length === 0);
+
+  const back = deriveAuditScope([...cleared, resolved("F-11", T(12))], section, LIBRARY, { widen: false });
+  check("rule 6: a finding resolved after the plan makes the cell stale again", cellIds(back).join() === "web:SEC-01:direct", cellIds(back).join());
+  check(
+    "rule 6: the score it would replace is the plan part's",
+    back.cells[0]?.current?.level === 3 && back.cells[0]?.current?.audit_id === PART_SEC_WEB,
+    JSON.stringify(back.cells[0]),
+  );
+
+  const secondPlan = deriveAuditScope(
+    [...cleared, resolved("F-11", T(12)), planRecord("2026-09-zplan-2000", T(20), ["SEC-01::web"])],
+    section,
+    LIBRARY,
+    { widen: false },
+  );
+  check("rule 6: the LAST plan record that re-scored the cell is the one that counts", secondPlan.cells.length === 0, cellIds(secondPlan).join());
+
+  const otherPlan = deriveAuditScope(
+    [...cleared, resolved("F-11", T(12)), planRecord("2026-09-zplan-2000", T(20), ["SEC-03::web"])],
+    section,
+    LIBRARY,
+    { widen: false },
+  );
+  check("rule 6: a later plan that did not re-score the cell leaves it listed", cellIds(otherPlan).join() === "web:SEC-01:direct", cellIds(otherPlan).join());
+}
+
+// Rule 7: the reported lists.
+{
+  const events = [
+    AUG(),
+    resolved("F-1", T(2), { resolved_by: "https://pr/1" }),
+    resolved("F-3", T(3), { resolved_by: "https://pr/3" }),
+    resolved("F-404", T(4)),
+    resolved("F-4", T(5)),
+    planRecord(PLAN, T(10), ["SEC-01::web", "SEC-09::web"]),
+  ];
+  const scope = deriveAuditScope(events, SECTION, LIBRARY, { widen: false });
+  check("rule 7: findings keeps only the findings that still drive a listed cell", scope.findings.join() === "F-3", scope.findings.join());
+  check(
+    "rule 7: resolved_by keeps only those findings too",
+    JSON.stringify(scope.resolved_by) === JSON.stringify({ "F-3": "https://pr/3" }),
+    JSON.stringify(scope.resolved_by),
+  );
+  check("rule 7: unknown is computed as before", scope.unknown.join() === "F-404", scope.unknown.join());
+  check("rule 7: unscorable is computed as before, plan or no plan", scope.unscorable.join() === "F-4", scope.unscorable.join());
+  check(
+    "rule 7: the summary counts what is left",
+    scopeSummary(scope) === "1 cell to re-score from 1 resolved finding since 2026-08",
+    scopeSummary(scope),
+  );
+}
+
+// A full record, or a scoped re-audit's, still clears everything.
+{
+  const plan = [AUG(), resolved("F-1", T(2)), resolved("F-3", T(3)), planRecord(PLAN, T(10), ["SEC-01::web"])];
+  check("(precondition) after the plan, A11Y-01 x ios is listed", cellIds(deriveAuditScope(plan, SECTION, LIBRARY, { widen: false })).join() === "ios:A11Y-01:direct");
+  const full = deriveAuditScope([...plan, audit("2026-10", "2026-10-01T00:00:00.000Z")], SECTION, LIBRARY);
+  check("a full record after a plan still moves since and clears all", full.since === "2026-10" && full.cells.length === 0, JSON.stringify(full));
+  const scoped = deriveAuditScope(
+    [...plan, audit("2026-09-scoped", T(20), { scope: { partial: true, cells: 1, since: "2026-08" } })],
+    SECTION,
+    LIBRARY,
+  );
+  check("so does a scoped re-audit's record", scoped.since === "2026-09-scoped" && scoped.cells.length === 0, JSON.stringify(scoped));
+}
+
+// --- rule 5: widened cells ------------------------------------------------------
+
+// Rule 5: widened cells count a node only through a resolution that counts for them.
+{
+  const base = [AUG(), resolved("F-1", T(2))];
+  check(
+    "(precondition) without a plan, F-1's V-home widens SEC-03 x web in",
+    cellIds(deriveAuditScope(base, SECTION, LIBRARY)).join() === "web:SEC-01:direct,web:SEC-03:widened",
+    cellIds(deriveAuditScope(base, SECTION, LIBRARY)).join(),
+  );
+
+  const rescored = deriveAuditScope([...base, planRecord(PLAN, T(10), ["SEC-03::web"])], SECTION, LIBRARY);
+  check(
+    "rule 5: a widened cell the plan re-scored leaves the scope",
+    cellIds(rescored).join() === "web:SEC-01:direct" && rescored.widened === 0,
+    cellIds(rescored).join(),
+  );
+
+  const directOnly = deriveAuditScope([...base, planRecord(PLAN, T(10), ["SEC-01::web"])], SECTION, LIBRARY);
+  check(
+    "rule 5: one it did not re-score stays widened, though the direct cell that pulled it in was cleared",
+    cellIds(directOnly).join() === "web:SEC-03:widened" && directOnly.cells[0].because.join() === "V-home" && directOnly.findings.length === 0,
+    JSON.stringify(directOnly),
+  );
+  check(
+    "rule 5: with only a widened cell left, the summary never says it came from 0 resolved findings",
+    scopeSummary(directOnly) === "1 cell to re-score (0 direct, 1 widened) since 2026-08",
+    scopeSummary(directOnly),
+  );
+
+  const later = deriveAuditScope(
+    [...base, planRecord(PLAN, T(10), ["SEC-03::web"]), resolved("F-3", T(11), { node_ids: ["V-home"] })],
+    SECTION,
+    LIBRARY,
+  );
+  check(
+    "rule 5: a later fix touching one of its nodes widens it back in",
+    cellIds(later).join() === "web:SEC-01:direct,web:SEC-03:widened,ios:A11Y-01:direct" &&
+      later.cells.find((cell) => cell.criterion_id === "SEC-03")?.because.join() === "V-home",
+    cellIds(later).join(),
+  );
+
+  // F-1's event before the plan carries V-settings; its resolution after the
+  // plan does not. V-settings dates from the first event, so A11Y-01 x ios —
+  // re-scored by the plan in between — is not widened back by it.
+  const dated = deriveAuditScope(
+    [AUG(), resolved("F-1", T(2), { node_ids: ["V-settings"] }), planRecord(PLAN, T(10), ["A11Y-01::ios"]), resolved("F-1", T(11))],
+    SECTION,
+    LIBRARY,
+  );
+  check(
+    "rule 5: a node an event carried dates from that event, not from the finding's latest resolution",
+    !cellIds(dated).includes("ios:A11Y-01:widened"),
+    cellIds(dated).join(),
+  );
+  const undated = deriveAuditScope(
+    [AUG(), resolved("F-1", T(2), { node_ids: ["V-settings"] }), resolved("F-1", T(11))],
+    SECTION,
+    LIBRARY,
+  );
+  check("(precondition) without the plan, that V-settings does widen A11Y-01 x ios", cellIds(undated).includes("ios:A11Y-01:widened"), cellIds(undated).join());
+}
+
+// --- the floor is when the part scored the cell, not when the plan was recorded --
+//
+// A plan's parts are scored first, possibly over days, and the plan is recorded
+// once at the end. A fix that lands after a part scored its cell is not in that
+// score, even though the plan record comes later still.
+
+{
+  const NOV_PLAN = "2026-11-zplan-0100";
+  const NOV_PART = `${NOV_PLAN}-sec-web`;
+  const D = (day, hour = 0) => `2026-11-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+  const OCT = () => audit("2026-10", D(1));
+  const partScore = (criterion, ts, part = NOV_PART) => ({ ...assess(criterion, "web", 3, part), ts });
+  const sectionWith = (...rows) => ({ ...SECTION, assessments: [...SECTION.assessments, ...rows] });
+  const novPlan = (ts, scored, parts = [NOV_PART], planId = NOV_PLAN) => planRecord(planId, ts, scored, parts);
+
+  const section = sectionWith(partScore("SEC-01", D(2)));
+  const late = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], section, LIBRARY, { widen: false });
+  check(
+    "floor: a fix after the part scored the cell, before the plan was recorded, keeps the cell listed",
+    cellIds(late).join() === "web:SEC-01:direct" && late.cells[0].because.join() === "F-1" && late.findings.join() === "F-1",
+    JSON.stringify(late),
+  );
+
+  const early = deriveAuditScope([OCT(), resolved("F-1", D(1, 12)), novPlan(D(4), ["SEC-01::web"])], section, LIBRARY, { widen: false });
+  check("floor: a fix before the part scored the cell is in its score, so the cell stays cleared", early.cells.length === 0, JSON.stringify(early));
+
+  const untimed = { ...SECTION, assessments: [...SECTION.assessments, { ...assess("SEC-01", "web", 3, NOV_PART), ts: undefined }] };
+  const fallback = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], untimed, LIBRARY, { widen: false });
+  check("floor: a part assessment with no ts falls back to the plan record's place in the journal", fallback.cells.length === 0, JSON.stringify(fallback));
+  const fallbackAfter = deriveAuditScope([OCT(), novPlan(D(4), ["SEC-01::web"]), resolved("F-1", D(5))], untimed, LIBRARY, { widen: false });
+  check("floor: and under that fallback, a fix after the record still counts", cellIds(fallbackAfter).join() === "web:SEC-01:direct", cellIds(fallbackAfter).join());
+
+  const otherAudit = sectionWith(partScore("SEC-01", D(2), "2026-11-zplan-0100-a11y-ios"));
+  const notAPart = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-01::web"])], otherAudit, LIBRARY, { widen: false });
+  check("floor: an assessment from an audit that is not one of the plan's parts is not its score", notAPart.cells.length === 0, JSON.stringify(notAPart));
+
+  // Two plans re-scored SEC-01 x web: the first's part on day 2 (recorded day
+  // 4), the second's on day 6 (recorded day 8). The second plan decides.
+  const SECOND = "2026-11-zplan-0500";
+  const SECOND_PART = `${SECOND}-sec-web`;
+  const twoSection = sectionWith(partScore("SEC-01", D(2)), partScore("SEC-01", D(6), SECOND_PART));
+  const twoPlans = (fix) =>
+    deriveAuditScope(
+      [OCT(), novPlan(D(4), ["SEC-01::web"]), novPlan(D(8), ["SEC-01::web"], [SECOND_PART], SECOND), fix],
+      twoSection,
+      LIBRARY,
+      { widen: false },
+    );
+  check("two plans: a fix between the two parts' scores is in the later one's score", twoPlans(resolved("F-1", D(5))).cells.length === 0, cellIds(twoPlans(resolved("F-1", D(5)))).join());
+  check(
+    "two plans: a fix after the later part scored, before its plan was recorded, keeps the cell listed",
+    cellIds(twoPlans(resolved("F-1", D(7)))).join() === "web:SEC-01:direct",
+    cellIds(twoPlans(resolved("F-1", D(7)))).join(),
+  );
+
+  // Widening: F-1's V-home reaches SEC-03 x web, which the part scored on day 2.
+  const widenSection = sectionWith(partScore("SEC-03", D(2)));
+  const widenLate = deriveAuditScope([OCT(), resolved("F-1", D(3)), novPlan(D(4), ["SEC-03::web"])], widenSection, LIBRARY);
+  check(
+    "floor: a widened cell the part scored before the fix stays widened in",
+    cellIds(widenLate).join() === "web:SEC-01:direct,web:SEC-03:widened" &&
+      widenLate.cells.find((cell) => cell.criterion_id === "SEC-03")?.because.join() === "V-home",
+    cellIds(widenLate).join(),
+  );
+  const widenEarly = deriveAuditScope([OCT(), resolved("F-1", D(1, 12)), novPlan(D(4), ["SEC-03::web"])], widenSection, LIBRARY);
+  check("floor: one the part scored after the fix leaves", cellIds(widenEarly).join() === "web:SEC-01:direct", cellIds(widenEarly).join());
+}
+
+// --- adversarial: widening and a cross-surface finding under a plan --------------
+//
+// F-12 is a contract finding on SEC-03 (web and iOS) carrying V-pay; F-13, open
+// on A11Y-01 x ios, carries V-pay too. Resolving F-12 fans out to both SEC-03
+// cells and widens A11Y-01 x ios in through V-pay.
+
+{
+  const section = {
+    ...SECTION,
+    findings: [
+      ...SECTION.findings,
+      find("F-12", "SEC-03", "cross-surface", { node_ids: ["V-pay"] }),
+      find("F-13", "A11Y-01", "ios", { status: "open", node_ids: ["V-pay"] }),
+    ],
+  };
+  const base = [AUG(), resolved("F-12", T(2))];
+  const ids = (events) => cellIds(deriveAuditScope(events, section, LIBRARY)).join();
+  check(
+    "(precondition) with no plan, F-12 lists both SEC-03 cells and widens A11Y-01 x ios in",
+    ids(base) === "web:SEC-03:direct,ios:A11Y-01:widened,ios:SEC-03:direct",
+    ids(base),
+  );
+  check(
+    "cross-surface + widening: a plan re-scoring web and the widened cell leaves only iOS's direct cell",
+    ids([...base, planRecord(PLAN, T(10), ["SEC-03::web", "A11Y-01::ios"])]) === "ios:SEC-03:direct",
+    ids([...base, planRecord(PLAN, T(10), ["SEC-03::web", "A11Y-01::ios"])]),
+  );
+  const bothDirect = deriveAuditScope([...base, planRecord(PLAN, T(10), ["SEC-03::web", "SEC-03::ios"])], section, LIBRARY);
+  check(
+    "cross-surface + widening: clearing every fanned-out cell keeps the widened one, driven by no finding",
+    cellIds(bothDirect).join() === "ios:A11Y-01:widened" && bothDirect.findings.length === 0 && bothDirect.cells[0].because.join() === "V-pay",
+    JSON.stringify(bothDirect),
+  );
+  check(
+    "cross-surface + widening: a cleared fanned-out cell does not come back as widened through the finding's own node",
+    !cellIds(bothDirect).some((id) => id.includes("SEC-03")),
+    cellIds(bothDirect).join(),
+  );
+  check(
+    "cross-surface + widening: a fix after the plan on the shared node brings both back",
+    ids([...base, planRecord(PLAN, T(10), ["SEC-03::web", "SEC-03::ios", "A11Y-01::ios"]), resolved("F-12", T(11))]) ===
+      "web:SEC-03:direct,ios:A11Y-01:widened,ios:SEC-03:direct",
+  );
+}
+
+// --- adversarial: malformed plan records reaching the scope ----------------------
+//
+// A plan record whose scope.plan is readable but whose other fields are damaged
+// must never clear a cell it does not name, invent one, or throw.
+
+{
+  const malformed = (scopeOver) => {
+    const record = planRecord(PLAN, "2026-09-09T00:00:00.000Z", ["SEC-01::web"]);
+    const scope = { ...record.scope, ...scopeOver };
+    for (const key of Object.keys(scopeOver)) if (scopeOver[key] === undefined) delete scope[key];
+    return { ...record, scope };
+  };
+  const harmless = {
+    "scored missing": malformed({ scored: undefined }),
+    "scored a string": malformed({ scored: "SEC-01::web" }),
+    "scored an object": malformed({ scored: { "SEC-01::web": true } }),
+    "scored keys in another format": malformed({
+      scored: ["SEC-01:web", "web::SEC-01", "sec-01::web", "SEC-01::web ", "SEC-01", { criterion_id: "SEC-01", surface: "web" }, null, 7],
+    }),
+    "scored keys for cells that do not exist": malformed({ scored: ["SEC-99::web", "SEC-01::android", "SEC-02::web", "::", "SEC-01::cross-surface"] }),
+  };
+  check(
+    "(precondition) the same record, well formed, does clear SEC-01 x web from the golden scope",
+    JSON.stringify(deriveAuditScope([...NO_PLAN_JOURNAL, malformed({})], SECTION, LIBRARY)) !== GOLDEN_DEFAULT &&
+      !cellIds(deriveAuditScope([...NO_PLAN_JOURNAL, malformed({})], SECTION, LIBRARY)).includes("web:SEC-01:direct"),
+  );
+  for (const [name, record] of Object.entries(harmless)) {
+    const events = [...NO_PLAN_JOURNAL, record];
+    const before = JSON.stringify(events);
+    let result;
+    let threw = false;
+    try {
+      result = JSON.stringify(deriveAuditScope(events, SECTION, LIBRARY));
+    } catch (error) {
+      threw = error;
+    }
+    check(`a plan record with ${name} clears nothing and adds nothing`, threw === false && result === GOLDEN_DEFAULT, String(threw) || result);
+    check(`a plan record with ${name} is not mutated`, JSON.stringify(events) === before);
+  }
+
+  // parts missing or damaged: no part names the assessment that would date
+  // the floor, so the record's own place in the journal is the floor.
+  const section = { ...SECTION, assessments: [...SECTION.assessments, { ...assess("SEC-01", "web", 3, PART_SEC_WEB), ts: T(5) }] };
+  const withParts = (scopeOver) => {
+    const record = planRecord(PLAN, T(10), ["SEC-01::web"]);
+    const scope = { ...record.scope, ...scopeOver };
+    for (const key of Object.keys(scopeOver)) if (scopeOver[key] === undefined) delete scope[key];
+    return deriveAuditScope([AUG(), resolved("F-1", T(6)), { ...record, scope }], section, LIBRARY, { widen: false });
+  };
+  check(
+    "(precondition) with its parts, the plan's part dates the floor and F-1 after it keeps the cell",
+    cellIds(withParts({})).join() === "web:SEC-01:direct",
+    cellIds(withParts({})).join(),
+  );
+  for (const [name, parts] of [["missing", undefined], ["a string", PART_SEC_WEB], ["junk entries", [7, null, ""]]]) {
+    const scope = withParts({ parts });
+    check(
+      `a plan record whose parts are ${name} falls back to its place in the journal`,
+      scope.since === "2026-08" && scope.cells.length === 0,
+      JSON.stringify(scope),
+    );
+  }
 }
 
 // --- scopedAuditId (issue #473): the shared naming rule ----------------------
