@@ -36,7 +36,7 @@ export interface CanvasGridProps {
    * answer (`SourcedNote`). `mini` (cover cards): three, then "+N more"; no notes.
    */
   density: "full" | "mini";
-  /** Unique on the page: block headings get the ids `${idPrefix}-${key}`. */
+  /** Unique on the page: block headings get the ids `${idPrefix}--${key}` (two hyphens, which no slug holds). */
   idPrefix: string;
   /** Names the grid for assistive technology: "Tidewise's canvas". */
   label: string;
@@ -89,7 +89,8 @@ export function CanvasGrid({
           const open = answers.length === 0 && entry?.open === true;
           const faint = i >= shown;
           const listed = mini ? answers.slice(0, CANVAS_MINI_ANSWERS) : answers;
-          const headingId = `${idPrefix}-${question.key}`;
+          // "--", which a slug never holds: "example-acme--cost" cannot be company "acme-cost"'s heading.
+          const headingId = `${idPrefix}--${question.key}`;
           return (
             <div
               key={question.key}

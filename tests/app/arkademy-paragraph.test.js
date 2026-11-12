@@ -587,6 +587,19 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   check("card: the paragraph spans the card (no width cap)", paragraphTag !== null && !/max-w-/.test(paragraphTag[1]), paragraphTag && paragraphTag[1]);
 }
 
+// Two companies whose ids differ by a block key ("acme" and "acme-cost") must not share an id on one page.
+{
+  const crumb = exampleCanvas(index, "crumb-and-co");
+  const page = ["acme", "acme-cost"]
+    .map((id) => render(ExampleCard, { company: { ...crumb.company, id, name: id }, questions, state: crumb.questions }))
+    .join("");
+  const ids = [...page.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+  same("ids: every id on a page of cards is unique", ids.filter((id, i) => ids.indexOf(id) !== i), []);
+  check("ids: a block heading joins the prefix and the key with --", ids.includes("example-acme--cost"), JSON.stringify(ids.slice(0, 4)));
+  const labelled = [...page.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]);
+  check("ids: every aria-labelledby names an id on the page", labelled.every((id) => ids.includes(id)));
+}
+
 // --- the sitemap's source -----------------------------------------------------------
 {
   const sitemap = fs.readFileSync(path.join(ROOT, "app", "sitemap.ts"), "utf8");
