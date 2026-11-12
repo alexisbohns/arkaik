@@ -196,6 +196,41 @@ const envelope = (draft, v = 1) =>
   p.leave();
 }
 
+// --- a failed write is retried on the next change ---------------------------------------
+{
+  const p = page();
+  browser.storage.refuseWrites = true;
+  dispatchDraft({ type: "rename", name: "Full" });
+  advance(300);
+  same("full: not saved", p.view().persistence, "unavailable");
+  browser.storage.refuseWrites = false;
+  dispatchDraft({ type: "rename", name: "Full, then freed" });
+  advance(300);
+  same("space freed: the next change is written", storedDraft().name, "Full, then freed");
+  same("and the notice clears", p.view().persistence, "on");
+  p.leave();
+}
+{
+  const p = page({ refuseWrites: true });
+  browser.storage.refuseWrites = false;
+  dispatchDraft({ type: "rename", name: "Probe failed at load" });
+  advance(300);
+  same("a probe that failed at load is retried too", [p.view().persistence, storedDraft().name], ["on", "Probe failed at load"]);
+  p.leave();
+}
+{
+  const p = page({ blocked: true, stored: { [KEY]: envelope({ name: "Unseen" }) } });
+  browser.blocked = false;
+  dispatchDraft({ type: "rename", name: "Would overwrite" });
+  advance(300);
+  same(
+    "storage that could not be read at load is never written (it may hold a draft this page never saw)",
+    [p.view().persistence, storedDraft().name],
+    ["unavailable", "Unseen"],
+  );
+  p.leave();
+}
+
 // --- a newer build's draft, an unreadable one ---------------------------------------------
 {
   const newer = JSON.stringify({ v: 2, draft: { name: "From the future", answers: [] } });

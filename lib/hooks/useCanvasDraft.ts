@@ -53,6 +53,13 @@ const PROBE_KEY = "arkaik:arkademy:bmc:probe";
 let view: CanvasDraftView = LOADING;
 const listeners = new Set<() => void>();
 let writeTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Whether the stored value could be read at load. A storage that refused a
+ * write (full, a zero quota) is tried again on the next change; one that
+ * could not even be read is never written, since it may hold a draft this
+ * page has not seen.
+ */
+let readAtLoad = false;
 
 function emit() {
   for (const listener of listeners) listener();
@@ -82,9 +89,11 @@ function load() {
   const storage = browserStorage();
   let raw: string | null = null;
   let available = storage !== null;
+  readAtLoad = false;
   if (storage) {
     try {
       raw = storage.getItem(DRAFT_STORAGE_KEY);
+      readAtLoad = true;
     } catch {
       available = false;
     }
@@ -114,15 +123,21 @@ function load() {
 function write() {
   clearTimeout(writeTimer);
   writeTimer = undefined;
-  if (view.phase !== "ready" || view.persistence !== "on") return;
+  if (view.phase !== "ready" || view.persistence === "newer" || !readAtLoad) return;
   const storage = browserStorage();
   try {
     if (!storage) throw new Error("no storage");
     if (draftIsEmpty(view.draft)) storage.removeItem(DRAFT_STORAGE_KEY);
     else storage.setItem(DRAFT_STORAGE_KEY, serializeDraft(view.draft));
+    if (view.persistence !== "on") {
+      view = { ...view, persistence: "on" };
+      emit();
+    }
   } catch {
-    view = { ...view, persistence: "unavailable" };
-    emit();
+    if (view.persistence !== "unavailable") {
+      view = { ...view, persistence: "unavailable" };
+      emit();
+    }
   }
 }
 
