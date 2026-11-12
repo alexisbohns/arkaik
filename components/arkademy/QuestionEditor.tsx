@@ -57,6 +57,11 @@ export function isEnter(event: KeyboardEvent<HTMLElement>): boolean {
   });
 }
 
+/** Shift+Enter would put a line break in a one-line answer (later turned into a space, the caret thrown to the end). */
+function isShiftEnter(event: KeyboardEvent<HTMLElement>): boolean {
+  return event.key === "Enter" && event.shiftKey;
+}
+
 function focusById(id: string) {
   document.getElementById(id)?.focus();
 }
@@ -112,6 +117,16 @@ export function QuestionEditor({
   }
 
   function onAddKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (isShiftEnter(event)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Escape" && text !== "") {
+      event.preventDefault();
+      setText("");
+      setProblem(null);
+      return;
+    }
     if (!isEnter(event)) return;
     event.preventDefault();
     if (text.trim() === "") onNext(true);
@@ -132,7 +147,9 @@ export function QuestionEditor({
   }
 
   function onAnswerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>, id: string) {
-    if (isEnter(event)) {
+    if (isShiftEnter(event)) {
+      event.preventDefault();
+    } else if (isEnter(event)) {
       event.preventDefault();
       focusById(ADD_ANSWER_ID);
     } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
