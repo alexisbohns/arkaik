@@ -382,7 +382,8 @@ export interface UseNote {
   source: {
     name: string;            // 1–80, who says so, "Anthropic, press release"
     url: string;             // https only, the page that states it
-    date: string;            // YYYY-MM-DD, when the source was published
+    date: string;            // YYYY-MM-DD
+    dateKind: "published" | "accessed";  // the page's own date, or the day an undated page was read
   };
 }
 
@@ -408,8 +409,11 @@ about belongs in a note, never in `text` or in a label. So "compute and
 infrastructure" stays an entity several companies can share, and a company's
 reported spend on it is a note on that company's use.
 
-- A note always has a source: a name, an `https` link and the date the source
-  was published. A fact with no source a reader can open is left out of the
+- A note always has a source: a name, an `https` link and a date. The date is
+  the one the source carries (`dateKind: "published"`: a filing, a press
+  release, a dated article); for a page that shows no date (a pricing page, an
+  About page) it is the day the page was read (`dateKind: "accessed"`), and
+  the pages say "read on" before it. A fact with no source a reader can open is left out of the
   library; there is no unsourced note.
 - A note belongs to one use. It is never shown on an entity, in the
   inspirations, or on another company's use of the same entity, and adding an
@@ -428,7 +432,8 @@ reported spend on it is a note on that company's use.
   single line, trimmed, with no parentheses and no trailing punctuation
   (it is set inside parentheses); `source.name` is 1–80 characters, single
   line; `source.url` parses as a URL with the `https:` protocol and is at most
-  500 characters; `source.date` matches `YYYY-MM-DD`, is a real calendar date
+  500 characters; `source.dateKind` is required and is one of the two values;
+  `source.date` matches `YYYY-MM-DD`, is a real calendar date
   and is not in the future at upload time (a warning, not an error, since the
   check depends on the clock).
 
@@ -868,7 +873,9 @@ The rule:
      `"left open on purpose: " + gap` when `open`, else `"open: " + gap`.
 5. **Notes.** An answer with a note reads as the cleaned answer, a space, then
    the note in parentheses. `noteText(note)` is the plain form of what goes
-   inside them: `note.text + "; " + note.source.name + ", " + note.source.date`
+   inside them: `note.text + "; " + note.source.name + ", " + date`, where `date` is
+   `note.source.date` when `dateKind` is `"published"` and
+   `"read on " + note.source.date` when it is `"accessed"`
    (so `compute and infrastructure (about $5.6B in the second quarter of 2026;
    Example Source, 2026-08-14)`). The join rule (2) chooses its separator from
    the cleaned answers alone, never from note text. A sentence segment's
