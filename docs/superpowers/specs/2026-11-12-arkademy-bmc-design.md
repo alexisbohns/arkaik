@@ -49,7 +49,7 @@ lives in the repository.
 
 These were taken with the owner and are not reopened here. Where the code
 complicates one, the complication is in § "Verified facts" and, if it needs
-the owner, in § "Open questions".
+the owner, in § "Settled questions".
 
 - **D1 Access.** Public, no sign-in, for everything in this release.
 - **D2 Your canvas** is saved in this browser only. No user data in the
@@ -179,7 +179,7 @@ follows it.
   repository's server pages read Postgres in-process rather than calling their
   own HTTP routes (`app/p/[id]/page.tsx:22-24`, "same process, no HTTP
   self-call"). **Change:** pages and route share one server loader; the route
-  is the public contract for everything that is not a page. Open question 1.
+  is the public contract for everything that is not a page. Settled question 1.
 - Not verified from the repository: whether the production CDN caches a route
   handler's response on `s-maxage`. Part 1 checks it after deploy
   (§ "The read route").
@@ -579,7 +579,7 @@ repository's API style (`uploaded_at`, `format_version`); the document keeps
 its own camelCase.
 
 The route is the contract for agents, scripts and anything outside the
-pages; the pages read `getArkademy` in-process (F4, open question 1). After
+pages; the pages read `getArkademy` in-process (F4, settled question 1). After
 part 1 deploys, check `curl -sI https://arkaik.app/api/arkademy` twice: a
 second response served from the CDN cache confirms `s-maxage` is honoured;
 if it is not, the `unstable_cache` layer alone still protects the database.
@@ -1316,78 +1316,44 @@ This branch; this spec is its first commit. Nothing visible.
   `canvasMarkdown` byte-exact for an answered, an open and an empty question,
   with and without a name; `canvasJson` shape; `canvasFilename` for a name,
   accents, punctuation only and empty.
-- **Lab Note:** below.
+- **Lab Note:** the single note for the whole tool, below.
 
 ## Lab Notes
 
-Molecule `arkaik`. Part 1 changes nothing a user sees: no note, label
-`no-lab-note`. `nodes:` is omitted throughout because the self-map has no
-Arkademy node yet (F9). Whether these notes go out while the Arkademy is
-reachable by URL only is open question 2; they are written to the rule in
-`CLAUDE.md`. After opening each PR, read its comments for the reminder's
-verdict.
-
-Part 2:
-
-```yaml
-en:
-  title: "Meet the Arkademy: the Business Model Canvas, by example"
-  summary: "A new corner for learning product thinking opens with its first tool, the Business Model Canvas as nine plain questions. Browse worked examples, each as a canvas and a paragraph, and copy a ready-made prompt for your agent."
-fr:
-  title: "Voici l'Arkademy : le Business Model Canvas, par l'exemple"
-  summary: "Un nouvel espace pour apprendre à penser produit ouvre avec son premier outil : le Business Model Canvas en neuf questions simples. Parcours des exemples complets, chacun en canvas et en paragraphe, et copie un prompt prêt à donner à ton agent."
-suggested:
-  molecule: arkaik
-  type: feature
-  tags: [arkademy, business-model-canvas]
-```
-
-Part 3:
-
-```yaml
-en:
-  title: "Watch a business model fill itself in"
-  summary: "Pick an example and play its tour: each question appears, its answers arrive, and the paragraph and the canvas grow step by step. Pause, step back, or share a link to any step."
-fr:
-  title: "Regarde un business model se remplir tout seul"
-  summary: "Choisis un exemple et lance sa visite : chaque question s'affiche, ses réponses arrivent, et le paragraphe comme le canvas se construisent pas à pas. Mets en pause, reviens en arrière ou partage le lien d'une étape."
-suggested:
-  molecule: arkaik
-  type: feature
-  tags: [arkademy, business-model-canvas]
-```
+Molecule `arkaik`. The owner chose to announce the Arkademy once, with the last
+part. Parts 1, 2 and 3 therefore carry no note and the label `no-lab-note`
+(part 1 changes nothing a user sees; parts 2 and 3 are user-facing but stay
+quiet on purpose). Part 4 carries one note for the whole tool. `nodes:` is
+omitted because the self-map has no Arkademy node yet (F9). After opening each
+PR, read its comments for the reminder's verdict.
 
 Part 4:
 
 ```yaml
 en:
-  title: "Your own Business Model Canvas, one question at a time"
-  summary: "Answer the nine questions for your product, borrow an inspiration from the examples when you are stuck, and leave a question open on purpose when that is the honest answer. Your canvas stays in this browser; copy it as a paragraph or Markdown, or download it."
+  title: "Meet the Arkademy: the Business Model Canvas, by example"
+  summary: "A new corner for learning product thinking opens with its first tool: the Business Model Canvas as nine plain questions. Play a worked example step by step, then answer the questions for your own product, with inspirations from the examples when you are stuck. Find it at arkaik.app/arkademy."
 fr:
-  title: "Ton propre Business Model Canvas, une question à la fois"
-  summary: "Réponds aux neuf questions pour ton produit, pioche une inspiration dans les exemples quand tu sèches, et laisse une question ouverte exprès quand c'est la réponse honnête. Ton canvas reste dans ce navigateur : copie-le en paragraphe ou en Markdown, ou télécharge-le."
+  title: "Voici l'Arkademy : le Business Model Canvas, par l'exemple"
+  summary: "Un nouvel espace pour apprendre à penser produit ouvre avec son premier outil : le Business Model Canvas en neuf questions simples. Regarde un exemple se construire pas à pas, puis réponds aux questions pour ton produit, en piochant des inspirations quand tu sèches. C'est par ici : arkaik.app/arkademy."
 suggested:
   molecule: arkaik
   type: feature
   tags: [arkademy, business-model-canvas]
 ```
 
-## Open questions
+## Settled questions
 
-1. **"Reads it only through a route."** The pages read the library in-process
-   through `getArkademy`, the same cached loader the public route uses, rather
-   than calling `/api/arkademy` over HTTP from the server (F4). Both read only
-   the database, never a file. *Recommendation:* accept this reading of D3; an
-   HTTP self-call would add a hop and an absolute-URL dependency for nothing.
-2. **Lab Notes for a URL-only area.** A note lands in the public changelog and
-   the Ariko feed, which announces the Arkademy while D11 keeps it out of the
-   app's navigation; the cover is also indexable and in the sitemap (D10).
-   *Recommendation:* carry the three notes as drafted — nothing about the
-   Arkademy is secret, D11 is about the app's own entry points — unless a
-   quiet launch is wanted, in which case label parts 2–4 `no-lab-note` and
-   write one note in the PR that adds the entry point.
-3. **"Copy as prompt" on your own canvas.** The baseline prompt has a
-   `{{paragraph}}` slot; your canvas could offer one more button that copies
-   the prompt with the visitor's paragraph filled in, which is the pitch's
-   promise made literal. *Recommendation:* add it to part 4 (one button and a
-   one-line pure function, `fillPrompt(text, paragraph)`).
+The three questions this spec first left open were answered by the owner on
+2026-11-12.
+
+1. **"Reads it only through a route."** Settled: the pages read the library
+   in-process through `getArkademy`, the same cached loader the public route
+   uses (F4). Both read only the database, never a file.
+2. **Lab Notes for a URL-only area.** Settled: announce once, with the last
+   part. Parts 1 to 3 are labelled `no-lab-note`; part 4 carries the single
+   note above.
+3. **"Copy as prompt" on your own canvas.** Settled: not in this MVP. Your own
+   canvas has three exports only (copy the paragraph, copy as Markdown,
+   download JSON); the baseline prompt stays on the cover as a text to copy.
+   No `fillPrompt` function is added.
