@@ -353,10 +353,7 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   const arrival = walk(null);
   check("screen, no step: the play button offers to pause (autoplay)", arrival.includes('aria-label="Pause the tour"'));
   same("screen, no step: step 1 is current", current(arrival), "Step 1: Customer segments, answered");
-  check(
-    "screen, no step: the answer has not arrived — kept in place, hidden",
-    /<li aria-hidden="true"[^>]*>people who fish from the shore/.test(arrival),
-  );
+  check("screen, no step: the answer has not arrived — it is not on the page yet", !arrival.includes("people who fish from the shore"));
   check("screen, no step: the paragraph is still empty", arrival.includes("The paragraph starts with the first question"));
   check("screen, no step: the block is being answered", arrival.includes('aria-label="Customer segments, being answered"'));
   // Empty on the server, filled after hydration: a live region announces changes, so step 1
@@ -372,7 +369,7 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   check("screen, step 5: paused", open.includes('aria-label="Play the tour"'));
   same("screen, step 5: step 5 is current", current(open), "Step 5: Revenue streams, left open on purpose");
   check("screen, step 5: says it is left open on purpose", open.includes("Tidewise leaves this open on purpose."));
-  check("screen, step 5: nothing waits to arrive", !open.includes('aria-hidden="true" class="rounded-lg border border-dashed'));
+  check("screen, step 5: nothing on the page waits hidden", !/<(li|div|p)[^>]*aria-hidden="true"/.test(open));
   check("screen, step 5: the paragraph ends on the gap", /data-kind="gap"[^>]*>[\s\S]*?left open on purpose: where the money comes from/.test(open));
   check("screen, step 5: the block says so too", open.includes("Left open on purpose."));
 
@@ -402,6 +399,29 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   );
   check("screen, step 9: the page's end actions come first in the end card", /End of the tour[\s\S]*Start your own[\s\S]*All examples/.test(withAction));
   check("screen, step 9: no next example with a single example", !withAction.includes("Next example"));
+
+  // The card mid-step: the answers that have arrived, and a slim count — no space kept for the rest.
+  const { QuestionCard } = requireTsx("components/arkademy/QuestionCard.tsx");
+  const crumb = exampleCanvas(index, "crumb-and-co");
+  const card = (visibleAnswers, sentenceShown) =>
+    renderToStaticMarkup(
+      React.createElement(QuestionCard, {
+        question: questions[6],
+        number: 7,
+        total: 9,
+        company: crumb.company,
+        state: crumb.questions[6],
+        visibleAnswers,
+        sentence: undefined,
+        sentenceShown,
+        headingId: "q",
+      }),
+    );
+  same("card: two of five arrived, two listed", (card(2, false).match(/<li/g) ?? []).length, 2);
+  check("card: and counted", card(2, false).includes("2 of 5"));
+  same("card: all arrived, all listed", (card(5, true).match(/<li/g) ?? []).length, 5);
+  check("card: no count once all are there", !/\d of 5/.test(card(5, true)));
+  check("card: nothing kept hidden", !/aria-hidden="true"/.test(card(2, false).replace(/<svg[^>]*>/g, "")));
 
   const { StepRail } = requireTsx("components/arkademy/StepRail.tsx");
   const rail = (props) =>

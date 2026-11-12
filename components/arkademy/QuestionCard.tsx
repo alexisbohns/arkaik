@@ -11,19 +11,14 @@ import { cn } from "@/lib/utils";
 export const ARKADEMY_KICKER = "font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase";
 
 /**
- * Something that arrives during a step. Its place is kept from the step's
- * start so nothing below it jumps; until it arrives it is invisible and
- * hidden from assistive technology (`visibility: hidden` takes it out of the
- * accessibility tree and the tab order).
+ * Something that arrives during a step is added to the page when it arrives
+ * (never before, so a reader never meets it early) and fades in once, with a
+ * short rise, from `@starting-style`. Nothing is reserved for what has not
+ * arrived: the content below moves as answers arrive; the controls sit above
+ * the card (fixed to the bottom on phones), so they never move.
  */
-function arrival(shown: boolean): string {
-  return shown
-    ? "visible opacity-100 translate-y-0"
-    : "invisible opacity-0 motion-safe:translate-y-1";
-}
-
-const ARRIVAL_MOTION =
-  "motion-safe:transition-[opacity,translate,visibility] motion-safe:duration-500 motion-safe:ease-out";
+const ARRIVAL =
+  "motion-safe:transition-[opacity,translate] motion-safe:duration-500 motion-safe:ease-out motion-safe:starting:translate-y-1 motion-safe:starting:opacity-0";
 
 interface QuestionCardProps {
   question: BmcQuestion;
@@ -33,7 +28,7 @@ interface QuestionCardProps {
   company: Pick<Company, "name">;
   /** The example's answers to this question (shown through `displayAnswers`), or that it is left open. */
   state: CanvasQuestionState;
-  /** How many answers have arrived. */
+  /** How many answers have arrived; only those are on the page, with an "N of M" count until all are. */
   visibleAnswers: number;
   /** This question's segment of the paragraph: its sentence, or its gap. */
   sentence: ParagraphSegment | undefined;
@@ -89,56 +84,52 @@ export function QuestionCard({
         <div>
           <p className={ARKADEMY_KICKER}>
             {company.name}&apos;s {answers.length === 1 ? "answer" : "answers"}
+            {visibleAnswers < answers.length && (
+              <span className="tabular-nums">
+                {" "}
+                · {visibleAnswers} of {answers.length}
+              </span>
+            )}
           </p>
-          <ul className="mt-2 flex flex-col gap-2">
-            {answers.map((answer, i) => {
-              const shown = i < visibleAnswers;
-              return (
+          {visibleAnswers > 0 && (
+            <ul className="mt-2 flex flex-col gap-2">
+              {answers.slice(0, visibleAnswers).map((answer, i) => (
                 <li
                   key={`${question.key}-${i}`}
-                  aria-hidden={shown ? undefined : true}
-                  className={cn(
-                    "rounded-lg border bg-background px-3 py-2 text-[15px] leading-snug break-words",
-                    ARRIVAL_MOTION,
-                    arrival(shown),
-                  )}
+                  className={cn("rounded-lg border bg-background px-3 py-2 text-[15px] leading-snug break-words", ARRIVAL)}
                 >
                   {answer.text}
                   {answer.note && <SourcedNote note={answer.note} answer={answer.text} />}
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          )}
         </div>
       ) : (
-        <div
-          key={question.key}
-          aria-hidden={sentenceShown ? undefined : true}
-          className={cn(
-            "rounded-lg border border-dashed border-muted-foreground/45 px-3 py-2.5 text-sm leading-relaxed",
-            ARRIVAL_MOTION,
-            arrival(sentenceShown),
-          )}
-        >
-          {state.open ? (
-            <>
-              <p className="font-medium">{company.name} leaves this open on purpose.</p>
-              <p className="mt-1 text-muted-foreground">
-                Not knowing yet is an answer too: the paragraph keeps the gap in view instead of filling it.
-              </p>
-            </>
-          ) : (
-            <p className="text-muted-foreground">{company.name} has not answered this one.</p>
-          )}
-        </div>
+        sentenceShown && (
+          <div
+            key={question.key}
+            className={cn(
+              "rounded-lg border border-dashed border-muted-foreground/45 px-3 py-2.5 text-sm leading-relaxed",
+              ARRIVAL,
+            )}
+          >
+            {state.open ? (
+              <>
+                <p className="font-medium">{company.name} leaves this open on purpose.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Not knowing yet is an answer too: the paragraph keeps the gap in view instead of filling it.
+                </p>
+              </>
+            ) : (
+              <p className="text-muted-foreground">{company.name} has not answered this one.</p>
+            )}
+          </div>
+        )
       )}
 
-      {plainSentence && (
-        <div
-          key={`${question.key}-sentence`}
-          aria-hidden={sentenceShown ? undefined : true}
-          className={cn("border-t pt-4", ARRIVAL_MOTION, arrival(sentenceShown))}
-        >
+      {plainSentence && sentenceShown && (
+        <div key={`${question.key}-sentence`} className={cn("border-t pt-4", ARRIVAL)}>
           <p className={ARKADEMY_KICKER}>In the paragraph</p>
           <ParagraphView segments={[plainSentence]} className="mt-2" />
         </div>
