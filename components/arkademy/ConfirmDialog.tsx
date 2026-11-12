@@ -32,8 +32,9 @@ interface ConfirmDialogProps {
  * of `DeleteConfirmDialog` (components/graph/DeleteConfirmDialog.tsx): a
  * title, one sentence, Cancel first (it takes the focus), then the red
  * action. The opening button is the dialog's trigger, so Cancel and Escape
- * give it the focus back (Radix returns focus only to a `DialogTrigger`);
- * after a confirmation the focus goes to `focusAfterConfirm`.
+ * give it the focus back (Radix returns focus only to a `DialogTrigger`).
+ * A confirmed action runs once the dialog has closed, then the focus goes
+ * to `focusAfterConfirm`.
  */
 export function ConfirmDialog({
   trigger,
@@ -63,7 +64,12 @@ export function ConfirmDialog({
         className="sm:max-w-sm"
         onCloseAutoFocus={(event) => {
           if (!confirmed) return;
+          // The action runs once the dialog has closed: it may remove the
+          // button that opened it (Discard removes its own notice), which
+          // would leave the focus nowhere.
           event.preventDefault();
+          setConfirmed(false);
+          onConfirm();
           document.getElementById(focusAfterConfirm)?.focus();
         }}
       >
@@ -80,7 +86,6 @@ export function ConfirmDialog({
             onClick={() => {
               setConfirmed(true);
               setOpen(false);
-              onConfirm();
             }}
           >
             {confirmLabel}
