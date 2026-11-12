@@ -204,7 +204,7 @@ lib/landing/
     QuestionEditor.tsx      # The current question in edit mode: answers (reword, reorder, remove), add, open on purpose
     InspirationList.tsx     # The library's entities for the current question, most shared first; one click adds one
     CanvasToolbar.tsx       # Copy the paragraph, Copy as Markdown, Download JSON, Start over
-    StartOverDialog.tsx     # Start over and its destructive confirmation (the button is the dialog's trigger)
+    ConfirmDialog.tsx       # A destructive action and its confirmation: Start over, discarding kept text (the button is the trigger)
     StartYourOwnButton.tsx  # "Start your own" / "Continue your canvas": the cover and the tour's end card
     StrandedDraft.tsx       # Your own canvas without a library: download the saved draft as it is
   publik/                   # PublishDialog, ImportSnapshotButton

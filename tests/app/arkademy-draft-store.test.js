@@ -69,7 +69,7 @@ function fire(type, event = {}) {
   for (const fn of [...(browser.listeners.get(type) ?? [])]) fn(event);
 }
 
-const { canvasDraftStore, dispatchDraft, DRAFT_WRITE_DELAY_MS } = requireTsx("lib/hooks/useCanvasDraft.ts");
+const { canvasDraftStore, dispatchDraft, discardKeptAside, DRAFT_WRITE_DELAY_MS } = requireTsx("lib/hooks/useCanvasDraft.ts");
 
 // Fake timers, installed after the modules load.
 let now = 0;
@@ -245,7 +245,24 @@ const envelope = (draft, v = 1) =>
 {
   const p = page({ stored: { [KEY]: "{oops" } });
   same("unreadable: an empty canvas", p.view().draft.name, "");
-  same("unreadable: the value is copied aside before anything is written", browser.storage.getItem(UNREADABLE) !== null, true);
+  same("unreadable: the value is copied aside before anything is written", JSON.parse(browser.storage.getItem(UNREADABLE)), ["{oops"]);
+  same("unreadable: the page offers it", p.view().keptAside, ["{oops"]);
+  dispatchDraft({ type: "rename", name: "A new canvas" });
+  advance(300);
+  p.leave();
+  const later = page({ stored: Object.fromEntries(browser.storage.map) });
+  same("a later load, the draft readable again: the kept text is still offered", later.view().keptAside, ["{oops"]);
+  later.leave();
+  const again = page({ stored: { ...Object.fromEntries(browser.storage.map), [KEY]: "{second" } });
+  same("a second unreadable value is kept beside the first, never over it", again.view().keptAside, ["{oops", "{second"]);
+  discardKeptAside();
+  same("discarded: the key is removed", browser.storage.getItem(UNREADABLE), null);
+  same("discarded: nothing offered", again.view().keptAside, []);
+  again.leave();
+}
+{
+  const p = page({ stored: { [UNREADABLE]: "{from an older build" } });
+  same("a bare kept value (no list) is still offered", p.view().keptAside, ["{from an older build"]);
   p.leave();
 }
 

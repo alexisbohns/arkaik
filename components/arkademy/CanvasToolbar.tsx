@@ -1,9 +1,9 @@
 "use client";
 
-import { CopyIcon, DownloadIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, RotateCcwIcon } from "lucide-react";
 
 import { CopyButton } from "@/components/arkademy/CopyButton";
-import { StartOverDialog } from "@/components/arkademy/StartOverDialog";
+import { ConfirmDialog } from "@/components/arkademy/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 
 interface CanvasToolbarProps {
@@ -22,7 +22,7 @@ interface CanvasToolbarProps {
 /**
  * The paragraph card's actions: the three exports (spec § "Exports") and
  * Start over, which asks first in the app's destructive confirmation
- * (`StartOverDialog`: Cancel, then the red action). A copy button with
+ * (`ConfirmDialog`: Cancel, then the red action). A copy button with
  * nothing to copy is drawn disabled rather than copying an empty string.
  */
 export function CanvasToolbar({
@@ -55,7 +55,20 @@ export function CanvasToolbar({
         <DownloadIcon aria-hidden="true" />
         Download JSON
       </Button>
-      <StartOverDialog disabled={!hasContent} onConfirm={onStartOver} focusAfterConfirm={focusAfterStartOver} />
+      <ConfirmDialog
+        trigger={
+          <>
+            <RotateCcwIcon aria-hidden="true" />
+            Start over
+          </>
+        }
+        disabled={!hasContent}
+        title="Start over?"
+        description="Your product's name and every answer leave this browser. Download JSON first if you want to keep a copy."
+        confirmLabel="Start over"
+        onConfirm={onStartOver}
+        focusAfterConfirm={focusAfterStartOver}
+      />
     </div>
   );
 }

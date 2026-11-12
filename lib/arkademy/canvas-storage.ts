@@ -17,8 +17,31 @@ export const DRAFT_UNREADABLE_KEY = "arkaik:arkademy:bmc:unreadable";
 export const DRAFT_FORMAT = 1;
 /** `DRAFT_UPGRADES[n]` turns a version-n draft into a version-(n+1) one. Empty at version 1. */
 export const DRAFT_UPGRADES: Readonly<Record<number, (old: unknown) => unknown>> = {};
-/** The file an unreadable stored value downloads as. */
-export const UNREADABLE_DRAFT_FILENAME = "business-model-canvas-unreadable.txt";
+/**
+ * The values kept aside, oldest first. The key holds a JSON list of strings;
+ * anything else there (a bare value) is one kept value. Every unreadable
+ * value found is kept, so a second one never replaces the first.
+ */
+export function readKeptAside(raw: string | null): string[] {
+  if (raw === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) return parsed;
+  } catch {
+    // a bare value: kept as it is
+  }
+  return [raw];
+}
+
+/** The kept values with one more, unless it is kept already. */
+export function keepAside(kept: readonly string[], raw: string): string[] {
+  return kept.includes(raw) ? [...kept] : [...kept, raw];
+}
+
+/** The file a kept value downloads as: numbered when there are several. */
+export function unreadableFilename(index: number, count: number): string {
+  return count === 1 ? "business-model-canvas-unreadable.txt" : `business-model-canvas-unreadable-${index + 1}.txt`;
+}
 
 export type StoredDraftRead =
   | { status: "none" }

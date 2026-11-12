@@ -514,6 +514,18 @@ const index = A.indexArkademy(validation.document);
   same("repaired ids keep counting", draftReducer(r, { type: "add", question: "kr", text: "boats" }).answers.at(-1).id, "a13");
 }
 
+// --- text kept aside from unreadable drafts ---------------------------------------------
+{
+  const { readKeptAside, keepAside, unreadableFilename } = A;
+  same("kept aside: nothing", readKeptAside(null), []);
+  same("kept aside: a list", readKeptAside(JSON.stringify(["{oops", "{bad"])), ["{oops", "{bad"]);
+  same("kept aside: a bare value (or anything not a list of strings) is one kept value", readKeptAside("{oops"), ["{oops"]);
+  same("keep aside: a new value joins the older ones, never replaces them", keepAside(["{oops"], "{bad"), ["{oops", "{bad"]);
+  same("keep aside: the same value twice is kept once", keepAside(["{oops"], "{oops"), ["{oops"]);
+  same("files: one", unreadableFilename(0, 1), "business-model-canvas-unreadable.txt");
+  same("files: several", [unreadableFilename(0, 2), unreadableFilename(1, 2)], ["business-model-canvas-unreadable-1.txt", "business-model-canvas-unreadable-2.txt"]);
+}
+
 // --- exports -------------------------------------------------------------------------
 {
   const { canvasMarkdown, canvasJson, canvasJsonText, canvasFilename, canvasParagraphText, draftState, emptyDraft } = A;

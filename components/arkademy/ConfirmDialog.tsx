@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcwIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,22 +13,37 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-interface StartOverDialogProps {
-  /** Nothing to clear: the button is disabled. */
-  disabled: boolean;
+interface ConfirmDialogProps {
+  /** The button that opens the dialog: its words and icon. */
+  trigger: ReactNode;
+  /** Nothing to act on: the button is disabled. */
+  disabled?: boolean;
+  title: string;
+  description: string;
+  /** The red action's words: "Start over", "Discard". */
+  confirmLabel: string;
   onConfirm: () => void;
-  /** Where focus goes once the canvas is cleared (the button is disabled by then). */
+  /** Where focus goes once confirmed (the opening button may be gone or disabled by then). */
   focusAfterConfirm: string;
 }
 
 /**
- * "Start over" and its confirmation, in the app's destructive style — the
- * shape of `DeleteConfirmDialog` (components/graph/DeleteConfirmDialog.tsx): a
- * title, one sentence, Cancel first (it takes the focus), then the red action.
- * The button is the dialog's trigger, so Cancel and Escape give it the focus
- * back; after a confirmed start over the focus goes to `focusAfterConfirm`.
+ * A destructive action and its confirmation, in the app's style — the shape
+ * of `DeleteConfirmDialog` (components/graph/DeleteConfirmDialog.tsx): a
+ * title, one sentence, Cancel first (it takes the focus), then the red
+ * action. The opening button is the dialog's trigger, so Cancel and Escape
+ * give it the focus back (Radix returns focus only to a `DialogTrigger`);
+ * after a confirmation the focus goes to `focusAfterConfirm`.
  */
-export function StartOverDialog({ disabled, onConfirm, focusAfterConfirm }: StartOverDialogProps) {
+export function ConfirmDialog({
+  trigger,
+  disabled = false,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  focusAfterConfirm,
+}: ConfirmDialogProps) {
   const [open, setOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   return (
@@ -42,8 +56,7 @@ export function StartOverDialog({ disabled, onConfirm, focusAfterConfirm }: Star
     >
       <DialogTrigger asChild>
         <Button type="button" variant="ghost" size="sm" disabled={disabled} className="text-muted-foreground">
-          <RotateCcwIcon aria-hidden="true" />
-          Start over
+          {trigger}
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -55,11 +68,8 @@ export function StartOverDialog({ disabled, onConfirm, focusAfterConfirm }: Star
         }}
       >
         <DialogHeader>
-          <DialogTitle>Start over?</DialogTitle>
-          <DialogDescription>
-            Your product&apos;s name and every answer leave this browser. Download JSON first if you want to keep a
-            copy.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -73,7 +83,7 @@ export function StartOverDialog({ disabled, onConfirm, focusAfterConfirm }: Star
               onConfirm();
             }}
           >
-            Start over
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

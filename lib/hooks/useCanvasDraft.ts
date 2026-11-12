@@ -7,6 +7,8 @@ import type { CanvasDraft, DraftAction } from "@/lib/arkademy/canvas";
 import {
   DRAFT_STORAGE_KEY,
   DRAFT_UNREADABLE_KEY,
+  keepAside,
+  readKeptAside,
   readStoredDraft,
   serializeDraft,
 } from "@/lib/arkademy/canvas-storage";
@@ -43,8 +45,12 @@ export type CanvasDraftView =
       /** The step a visit lands on without `?step=`, fixed when the draft was read. */
       startStep: number;
       persistence: DraftPersistence;
-      /** A stored value this build could not read, copied aside before anything overwrote it. */
-      unreadable: string | null;
+      /**
+       * Stored values this build could not read, copied aside before anything
+       * overwrote them, oldest first. Read from their key on every load, so
+       * the page offers them until the visitor discards them.
+       */
+      keptAside: string[];
     };
 
 const LOADING: CanvasDraftView = { phase: "loading" };
@@ -103,21 +109,31 @@ function load() {
   const read = readStoredDraft(raw);
   let draft = emptyDraft();
   let persistence: DraftPersistence = available ? "on" : "unavailable";
-  let unreadable: string | null = null;
+  let keptAside: string[] = [];
+  if (storage && readAtLoad) {
+    try {
+      keptAside = readKeptAside(storage.getItem(DRAFT_UNREADABLE_KEY));
+    } catch {
+      keptAside = [];
+    }
+  }
   if (read.status === "ok") draft = read.draft;
   if (read.status === "newer") {
     draft = read.draft;
     if (available) persistence = "newer";
   }
   if (read.status === "unreadable") {
-    unreadable = read.raw;
-    try {
-      storage?.setItem(DRAFT_UNREADABLE_KEY, read.raw);
-    } catch {
-      persistence = "unavailable";
+    const kept = keepAside(keptAside, read.raw);
+    if (kept.length !== keptAside.length) {
+      try {
+        storage?.setItem(DRAFT_UNREADABLE_KEY, JSON.stringify(kept));
+      } catch {
+        persistence = "unavailable";
+      }
     }
+    keptAside = kept;
   }
-  view = { phase: "ready", draft, startStep: firstUnfinishedStep(draft), persistence, unreadable };
+  view = { phase: "ready", draft, startStep: firstUnfinishedStep(draft), persistence, keptAside };
 }
 
 function write() {
@@ -198,10 +214,15 @@ export function dispatchDraft(action: DraftAction) {
   if (writeTimer === undefined) writeTimer = setTimeout(write, DRAFT_WRITE_DELAY_MS);
 }
 
-/** Hides the unreadable notice; the copy kept aside stays where it is. */
-export function dismissUnreadableDraft() {
-  if (view.phase !== "ready" || view.unreadable === null) return;
-  view = { ...view, unreadable: null };
+/** Deletes the text kept aside from unreadable drafts (the page asks first). */
+export function discardKeptAside() {
+  if (view.phase !== "ready") return;
+  try {
+    browserStorage()?.removeItem(DRAFT_UNREADABLE_KEY);
+  } catch {
+    // Nothing to do: the page stops offering it either way.
+  }
+  view = { ...view, keptAside: [] };
   emit();
 }
 

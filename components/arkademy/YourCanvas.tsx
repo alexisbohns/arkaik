@@ -10,6 +10,7 @@ import { ARKADEMY_SECTION_TITLE } from "@/components/arkademy/ArkademyChrome";
 import { CanvasGrid } from "@/components/arkademy/CanvasGrid";
 import { CanvasLink } from "@/components/arkademy/CanvasLink";
 import { CanvasToolbar } from "@/components/arkademy/CanvasToolbar";
+import { ConfirmDialog } from "@/components/arkademy/ConfirmDialog";
 import { InspirationList } from "@/components/arkademy/InspirationList";
 import { ParagraphView } from "@/components/arkademy/ParagraphView";
 import { ADD_ANSWER_ID, isEnter, QUESTION_TITLE_ID, QuestionEditor, type AddResult } from "@/components/arkademy/QuestionEditor";
@@ -41,12 +42,12 @@ import {
   canvasParagraphText,
   type CanvasTool,
 } from "@/lib/arkademy/canvas-export";
-import { UNREADABLE_DRAFT_FILENAME } from "@/lib/arkademy/canvas-storage";
+import { unreadableFilename } from "@/lib/arkademy/canvas-storage";
 import { availableInspirations, type Inspiration } from "@/lib/arkademy/inspirations";
 import { composeParagraph, DEFAULT_SUBJECT, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
 import { BMC_TOOL_ID, MAX_ANSWERS_PER_QUESTION, type BmcQuestion, type BmcQuestionKey } from "@/lib/arkademy/schema";
 import { ARKADEMY_TOOL_PATHS } from "@/lib/arkademy/tools";
-import { dismissUnreadableDraft, dispatchDraft, useCanvasDraft, type DraftPersistence } from "@/lib/hooks/useCanvasDraft";
+import { discardKeptAside, dispatchDraft, useCanvasDraft, type DraftPersistence } from "@/lib/hooks/useCanvasDraft";
 import { downloadTextFile } from "@/lib/utils/download";
 import { cn } from "@/lib/utils";
 
@@ -108,7 +109,7 @@ export function YourCanvas(props: YourCanvasProps) {
       draft={view.draft}
       startStep={view.startStep}
       persistence={view.persistence}
-      unreadable={view.unreadable}
+      keptAside={view.keptAside}
     />
   );
 }
@@ -121,12 +122,12 @@ function CanvasEditor({
   draft,
   startStep,
   persistence,
-  unreadable,
+  keptAside,
 }: YourCanvasProps & {
   draft: CanvasDraft;
   startStep: number;
   persistence: DraftPersistence;
-  unreadable: string | null;
+  keptAside: string[];
 }) {
   const [step, setStep] = useState(initialStep ?? startStep);
   const [inspirationsShown, setInspirationsShown] = useState(false);
@@ -255,7 +256,7 @@ function CanvasEditor({
     <div className="flex flex-col gap-8">
       <Notices
         persistence={persistence}
-        unreadable={unreadable}
+        keptAside={keptAside}
         hasContent={hasContent}
         onDownload={download}
       />
@@ -459,16 +460,16 @@ function SentencePreview({
 
 function Notices({
   persistence,
-  unreadable,
+  keptAside,
   hasContent,
   onDownload,
 }: {
   persistence: DraftPersistence;
-  unreadable: string | null;
+  keptAside: string[];
   hasContent: boolean;
   onDownload: () => void;
 }) {
-  if (persistence === "on" && unreadable === null) return null;
+  if (persistence === "on" && keptAside.length === 0) return null;
   return (
     <div role="status" className="flex flex-col gap-3">
       {persistence === "unavailable" && (
@@ -493,23 +494,35 @@ function Notices({
           }
         />
       )}
-      {unreadable !== null && (
+      {keptAside.length > 0 && (
         <Notice
-          text="A canvas saved here earlier could not be read, so this one starts empty. Its text is kept aside in this browser."
+          text={
+            keptAside.length === 1
+              ? "A canvas saved here earlier could not be read, so it was set aside. Its text is kept in this browser until you discard it."
+              : `${keptAside.length} canvases saved here earlier could not be read, so they were set aside. Their text is kept in this browser until you discard it.`
+          }
           action={
             <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => downloadTextFile(UNREADABLE_DRAFT_FILENAME, unreadable, "text/plain")}
-              >
-                <DownloadIcon aria-hidden="true" />
-                Download the old text
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={dismissUnreadableDraft}>
-                Dismiss
-              </Button>
+              {keptAside.map((raw, i) => (
+                <Button
+                  key={i}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadTextFile(unreadableFilename(i, keptAside.length), raw, "text/plain")}
+                >
+                  <DownloadIcon aria-hidden="true" />
+                  {keptAside.length === 1 ? "Download the old text" : `Download text ${i + 1}`}
+                </Button>
+              ))}
+              <ConfirmDialog
+                trigger="Discard"
+                title="Discard the text set aside?"
+                description="The unreadable canvas text kept in this browser is deleted. Download it first if you may need it."
+                confirmLabel="Discard"
+                onConfirm={discardKeptAside}
+                focusAfterConfirm={NAME_ID}
+              />
             </>
           }
         />
