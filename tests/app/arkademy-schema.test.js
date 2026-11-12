@@ -1,0 +1,409 @@
+#!/usr/bin/env node
+
+/**
+ * The Arkademy library document (lib/arkademy/): the schema's field rules,
+ * the referential rules and warnings of validateArkademyDocument, the format
+ * upgrade, and the index the pages read. DB-free, so it runs in CI's `build`
+ * job.
+ *
+ * Every invalid case is the fictional fixture (tests/fixtures/arkademy/
+ * document.json) mutated in memory, so each one breaks exactly one rule and
+ * the fixture itself stays the single valid example.
+ */
+
+const fs = require("fs");
+const path = require("path");
+const { loadArkademy, cleanup } = require("./load-arkademy");
+
+const ROOT = path.join(__dirname, "..", "..");
+const FIXTURE = path.join(ROOT, "tests", "fixtures", "arkademy", "document.json");
+
+const ark = loadArkademy();
+const {
+  ARKADEMY_FORMAT_VERSION,
+  BMC_TOOL_ID,
+  BMC_QUESTION_KEYS,
+  ENTITY_KINDS,
+  BMC_QUESTION_KIND,
+  ANSWER_MAX_LENGTH,
+  MAX_ANSWERS_PER_QUESTION,
+  MAX_DOCUMENT_BYTES,
+  PROMPT_TOKEN,
+  NOTE_MAX_LENGTH,
+  NOTE_DATE_KINDS,
+  arkademyDocumentSchema,
+  validateArkademyDocument,
+  upgradeArkademyDocument,
+  formatFindingPath,
+  documentByteLength,
+  wordingWarnings,
+  templateProblems,
+} = ark;
+
+let failures = 0;
+function check(name, cond, detail) {
+  if (cond) console.log(`PASS: ${name}`);
+  else {
+    failures++;
+    console.log(`FAIL: ${name}${detail === undefined ? "" : ` — ${detail}`}`);
+  }
+}
+
+const fixture = () => JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+const doc0 = fixture();
+const useIndex = (company, question, order) =>
+  doc0.uses.findIndex((use) => use.company === company && use.question === question && use.order === order);
+const entityIndex = (id) => doc0.entities.findIndex((entity) => entity.id === id);
+
+function mutate(fn) {
+  const doc = fixture();
+  fn(doc);
+  return validateArkademyDocument(doc);
+}
+const show = (result) => JSON.stringify(result.ok ? { ok: true, warnings: result.warnings } : result.errors);
+function expectError(name, fn, findingPath) {
+  const result = mutate(fn);
+  check(name, !result.ok && result.errors.some((finding) => finding.path === findingPath), show(result));
+}
+function expectOk(name, fn) {
+  const result = mutate(fn);
+  check(name, result.ok === true, show(result));
+}
+function expectWarning(name, fn, findingPath) {
+  const result = mutate(fn);
+  check(name, result.ok === true && result.warnings.some((finding) => finding.path === findingPath), show(result));
+}
+
+// --- The contract's names ----------------------------------------------------
+check("the format is version 1", ARKADEMY_FORMAT_VERSION === 1);
+check("the BMC tool id", BMC_TOOL_ID === "business-model-canvas");
+check(
+  "the nine question keys in canonical order",
+  JSON.stringify(BMC_QUESTION_KEYS) === JSON.stringify(["seg", "vp", "ch", "cr", "rev", "kr", "ka", "kp", "cost"]),
+);
+check("nine entity kinds", ENTITY_KINDS.length === 9);
+check(
+  "each question names its kind, and each kind is used once",
+  BMC_QUESTION_KEYS.every((key) => ENTITY_KINDS.includes(BMC_QUESTION_KIND[key])) &&
+    new Set(BMC_QUESTION_KEYS.map((key) => BMC_QUESTION_KIND[key])).size === 9,
+);
+check(
+  "the limits",
+  ANSWER_MAX_LENGTH === 140 && MAX_ANSWERS_PER_QUESTION === 5 && MAX_DOCUMENT_BYTES === 1048576,
+);
+check("the prompt token", PROMPT_TOKEN === "{{paragraph}}");
+check("the zod schema is exported", typeof arkademyDocumentSchema.safeParse === "function");
+
+// --- The fixture -------------------------------------------------------------
+const valid = validateArkademyDocument(fixture());
+check("the fixture validates", valid.ok === true, show(valid));
+check(
+  "the fixture's only warning is its unused entity",
+  valid.ok &&
+    valid.warnings.length === 1 &&
+    valid.warnings[0].level === "warning" &&
+    valid.warnings[0].path === `entities[${entityIndex("pop-up-stalls")}]`,
+  show(valid),
+);
+check(
+  "the parse keeps the fixture's content and key order",
+  valid.ok && JSON.stringify(valid.document) === JSON.stringify(doc0),
+);
+{
+  const shuffled = fixture();
+  const company = shuffled.companies[0];
+  shuffled.companies[0] = Object.fromEntries(Object.entries(company).reverse());
+  shuffled.tools[0] = Object.fromEntries(Object.entries(shuffled.tools[0]).reverse());
+  const result = validateArkademyDocument(shuffled);
+  check(
+    "the parse puts keys in the schema's order, so the text is canonical",
+    JSON.stringify(shuffled) !== JSON.stringify(doc0) && result.ok && JSON.stringify(result.document) === JSON.stringify(doc0),
+  );
+}
+
+// --- Paths and sizes ---------------------------------------------------------
+check("a path with indices", formatFindingPath(["uses", 12, "entity"]) === "uses[12].entity");
+check("a nested path", formatFindingPath(["tools", 0, "questions", 3, "key"]) === "tools[0].questions[3].key");
+check("the document's own path", formatFindingPath([]) === "$");
+check(
+  "the size is the UTF-8 length of the compact JSON",
+  documentByteLength(doc0) === Buffer.byteLength(JSON.stringify(doc0), "utf8"),
+);
+
+// --- Structure ---------------------------------------------------------------
+expectError("formatVersion 2 is refused", (doc) => (doc.formatVersion = 2), "formatVersion");
+expectError("an unknown top-level key is refused", (doc) => (doc.extra = true), "$");
+expectError("an unknown key in a use is refused", (doc) => (doc.uses[0].weight = 1), "uses[0]");
+expectError("an unknown key in a question is refused", (doc) => (doc.tools[0].questions[2].hints = "x"), "tools[0].questions[2]");
+expectError("two tools are refused in format 1", (doc) => doc.tools.push(doc.tools[0]), "tools");
+expectError("a document with no company is refused", (doc) => (doc.companies = []), "companies");
+expectError("a tool with no example is refused", (doc) => (doc.tools[0].examples = []), "tools[0].examples");
+expectError("a missing open list is refused", (doc) => delete doc.open, "open");
+
+// --- Field constraints at their bounds -----------------------------------------
+const pad = (length) => "x".repeat(length);
+expectOk("a use's text of 140 characters passes", (doc) => (doc.uses[0].text = pad(140)));
+expectError("a use's text of 141 characters fails", (doc) => (doc.uses[0].text = pad(141)), "uses[0].text");
+expectError("an empty use text fails", (doc) => (doc.uses[0].text = ""), "uses[0].text");
+expectOk("an entity label of 140 characters passes", (doc) => (doc.entities[0].label = pad(140)));
+expectError("an entity label of 141 characters fails", (doc) => (doc.entities[0].label = pad(141)), "entities[0].label");
+expectError("a newline in a use's text fails", (doc) => (doc.uses[0].text = "two\nlines"), "uses[0].text");
+expectError("a carriage return in a label fails", (doc) => (doc.entities[0].label = "two\rlines"), "entities[0].label");
+expectError("a leading space fails", (doc) => (doc.uses[0].text = " households"), "uses[0].text");
+expectError("a trailing space fails", (doc) => (doc.companies[0].name = "Crumb & Co "), "companies[0].name");
+for (const mark of [".", "!", "?", ";", ":", ","]) {
+  expectError(`a wording ending in "${mark}" fails`, (doc) => (doc.uses[0].text = `households nearby${mark}`), "uses[0].text");
+  expectError(`a label ending in "${mark}" fails`, (doc) => (doc.entities[0].label = `households nearby${mark}`), "entities[0].label");
+}
+expectOk("a comma inside a wording passes", (doc) => (doc.uses[0].text = "bread, still warm"));
+expectOk("a company name of 40 characters passes", (doc) => (doc.companies[0].name = pad(40)));
+expectError("a company name of 41 characters fails", (doc) => (doc.companies[0].name = pad(41)), "companies[0].name");
+expectError("an empty note fails", (doc) => (doc.companies[1].note = ""), "companies[1].note");
+expectError("a note of 401 characters fails", (doc) => (doc.companies[0].note = pad(401)), "companies[0].note");
+expectError("a non-boolean simulation fails", (doc) => (doc.companies[0].simulation = "yes"), "companies[0].simulation");
+const unused = entityIndex("pop-up-stalls");
+expectOk("a slug of 64 characters passes", (doc) => (doc.entities[unused].id = pad(64)));
+expectError("a slug of 65 characters fails", (doc) => (doc.entities[unused].id = pad(65)), `entities[${unused}].id`);
+expectError("a slug with a capital fails", (doc) => (doc.entities[unused].id = "Pop-up"), `entities[${unused}].id`);
+expectError("a slug with a double hyphen fails", (doc) => (doc.entities[unused].id = "pop--up"), `entities[${unused}].id`);
+expectError("a slug ending in a hyphen fails", (doc) => (doc.entities[unused].id = "pop-up-"), `entities[${unused}].id`);
+expectError("an unknown entity kind fails", (doc) => (doc.entities[unused].kind = "competitor"), `entities[${unused}].kind`);
+expectError("a negative order fails", (doc) => (doc.uses[0].order = -1), "uses[0].order");
+expectError("a fractional order fails", (doc) => (doc.uses[0].order = 1.5), "uses[0].order");
+expectOk("an empty hint passes", (doc) => (doc.tools[0].questions[0].hint = ""));
+expectError("a hint of 301 characters fails", (doc) => (doc.tools[0].questions[0].hint = pad(301)), "tools[0].questions[0].hint");
+expectError("a block title of 41 characters fails", (doc) => (doc.tools[0].questions[0].block = pad(41)), "tools[0].questions[0].block");
+expectError("a gap of 61 characters fails", (doc) => (doc.tools[0].questions[0].gap = pad(61)), "tools[0].questions[0].gap");
+expectError("a title of 61 characters fails", (doc) => (doc.tools[0].title = pad(61)), "tools[0].title");
+expectError("a tagline of 161 characters fails", (doc) => (doc.tools[0].tagline = pad(161)), "tools[0].tagline");
+expectError("a headline of 121 characters fails", (doc) => (doc.tools[0].pitch.headline = pad(121)), "tools[0].pitch.headline");
+expectError(
+  "seven pitch paragraphs fail",
+  (doc) => (doc.tools[0].pitch.body = Array.from({ length: 7 }, () => "A paragraph.")),
+  "tools[0].pitch.body",
+);
+expectError("a pitch paragraph of 801 characters fails", (doc) => (doc.tools[0].pitch.body[0] = pad(801)), "tools[0].pitch.body[0]");
+expectOk("a newline inside a pitch paragraph passes", (doc) => (doc.tools[0].pitch.body[0] = "one\ntwo"));
+expectError("a newline in the headline fails", (doc) => (doc.tools[0].pitch.headline = "one\ntwo"), "tools[0].pitch.headline");
+expectOk("a prompt without the token passes", (doc) => (doc.tools[0].prompt.text = "Just a prompt."));
+expectError(
+  "a second prompt token fails",
+  (doc) => (doc.tools[0].prompt.text = `${PROMPT_TOKEN}\n\n${PROMPT_TOKEN}`),
+  "tools[0].prompt.text",
+);
+expectError("a prompt of 4001 characters fails", (doc) => (doc.tools[0].prompt.text = pad(4001)), "tools[0].prompt.text");
+
+// --- Templates ---------------------------------------------------------------
+const SENTENCE = "tools[0].questions[0].sentence";
+expectError("a template without {L} fails", (doc) => (doc.tools[0].questions[0].sentence = "{S} is for people."), SENTENCE);
+expectError("a template with {L} twice fails", (doc) => (doc.tools[0].questions[0].sentence = "{S} is for {L} and {L}."), SENTENCE);
+expectError("{S} twice fails", (doc) => (doc.tools[0].questions[0].sentence = "{S} and {S} are for {L}."), SENTENCE);
+expectError("{S} anywhere but the start fails", (doc) => (doc.tools[0].questions[0].sentence = "Made for {L}, says {S}."), SENTENCE);
+expectError("a template opening with {L} fails", (doc) => (doc.tools[0].questions[4].sentence = "{L} pays."), "tools[0].questions[4].sentence");
+expectError("an unknown token fails", (doc) => (doc.tools[0].questions[0].sentence = "{S} is for {X} and {L}."), SENTENCE);
+expectError(
+  "a plural that adds {S} fails",
+  (doc) => (doc.tools[0].questions[8].sentencePlural = "{S} spends most on {L}."),
+  "tools[0].questions[8].sentencePlural",
+);
+expectError(
+  "a plural that drops {S} fails",
+  (doc) => (doc.tools[0].questions[0].sentencePlural = "It is for {L}."),
+  "tools[0].questions[0].sentencePlural",
+);
+expectOk("a plural that keeps {S} passes", (doc) => (doc.tools[0].questions[0].sentencePlural = "{S} is for {L} alike."));
+expectError(
+  "a plural template is checked like a sentence",
+  (doc) => (doc.tools[0].questions[8].sentencePlural = "The main costs are many."),
+  "tools[0].questions[8].sentencePlural",
+);
+check("templateProblems passes a sound template", templateProblems("{S} is for {L}.").length === 0);
+check("templateProblems names every broken rule", templateProblems("{X} {S}").length === 3, JSON.stringify(templateProblems("{X} {S}")));
+
+// --- Notes on a use ----------------------------------------------------------
+const noted = doc0.uses.findIndex((use) => use.note !== undefined);
+const NOTE = `uses[${noted}].note`;
+check("the fixture has a use with a sourced note", noted >= 0 && doc0.uses[noted].note.source.url.startsWith("https://"));
+check("the note limit", NOTE_MAX_LENGTH === 200);
+check("the two date kinds", JSON.stringify(NOTE_DATE_KINDS) === JSON.stringify(["published", "accessed"]));
+const accessed = doc0.uses.findIndex((use) => use.note !== undefined && use.note.source.dateKind === "accessed");
+check(
+  "the fixture has a note of each date kind",
+  doc0.uses[noted].note.source.dateKind === "published" && accessed >= 0,
+);
+expectOk("a note text of 200 characters passes", (doc) => (doc.uses[noted].note.text = pad(200)));
+expectError("a note text of 201 characters fails", (doc) => (doc.uses[noted].note.text = pad(201)), `${NOTE}.text`);
+expectError("an empty note text fails", (doc) => (doc.uses[noted].note.text = ""), `${NOTE}.text`);
+expectError("a newline in a note fails", (doc) => (doc.uses[noted].note.text = "two\nlines"), `${NOTE}.text`);
+expectError("parentheses in a note fail", (doc) => (doc.uses[noted].note.text = "412 harbours (and counting)"), `${NOTE}.text`);
+for (const mark of [".", "!", "?", ";", ":", ","]) {
+  expectError(`a note ending in "${mark}" fails`, (doc) => (doc.uses[noted].note.text = `412 harbours${mark}`), `${NOTE}.text`);
+}
+expectOk("a figure inside a note passes", (doc) => (doc.uses[noted].note.text = "about $5.6B, up 40% in a year"));
+expectError("a note without a source fails", (doc) => delete doc.uses[noted].note.source, `${NOTE}.source`);
+expectError("an unknown key in a note fails", (doc) => (doc.uses[noted].note.author = "x"), NOTE);
+expectError("an unknown key in a source fails", (doc) => (doc.uses[noted].note.source.page = 3), `${NOTE}.source`);
+expectError("a source without a dateKind fails", (doc) => delete doc.uses[noted].note.source.dateKind, `${NOTE}.source.dateKind`);
+expectError(
+  "an unknown dateKind fails",
+  (doc) => (doc.uses[noted].note.source.dateKind = "retrieved"),
+  `${NOTE}.source.dateKind`,
+);
+expectOk("an accessed date passes", (doc) => (doc.uses[noted].note.source.dateKind = "accessed"));
+expectOk("a source name of 80 characters passes", (doc) => (doc.uses[noted].note.source.name = pad(80)));
+expectError("a source name of 81 characters fails", (doc) => (doc.uses[noted].note.source.name = pad(81)), `${NOTE}.source.name`);
+expectError("an http source fails", (doc) => (doc.uses[noted].note.source.url = "http://tidewise.example/harbours"), `${NOTE}.source.url`);
+expectError("a source that is not a URL fails", (doc) => (doc.uses[noted].note.source.url = "tidewise harbours"), `${NOTE}.source.url`);
+expectOk("a source URL of 500 characters passes", (doc) => (doc.uses[noted].note.source.url = `https://tidewise.example/${pad(475)}`));
+expectError(
+  "a source URL of 501 characters fails",
+  (doc) => (doc.uses[noted].note.source.url = `https://tidewise.example/${pad(476)}`),
+  `${NOTE}.source.url`,
+);
+expectError("a date in another format fails", (doc) => (doc.uses[noted].note.source.date = "02/03/2026"), `${NOTE}.source.date`);
+expectError("a date that does not exist fails", (doc) => (doc.uses[noted].note.source.date = "2026-02-30"), `${NOTE}.source.date`);
+expectOk("the 29th of February of a leap year passes", (doc) => (doc.uses[noted].note.source.date = "2028-02-29"));
+{
+  const doc = fixture();
+  const date = doc.uses[noted].note.source.date;
+  const sameDay = validateArkademyDocument(doc, { now: new Date(`${date}T12:00:00Z`) });
+  check(
+    "a note dated today is not in the future",
+    sameDay.ok && !sameDay.warnings.some((finding) => finding.path === `${NOTE}.source.date`),
+    show(sameDay),
+  );
+  const early = validateArkademyDocument(doc, { now: new Date("2026-01-01T12:00:00Z") });
+  check(
+    "a note dated after today is a warning, not an error",
+    early.ok && early.warnings.some((finding) => finding.path === `${NOTE}.source.date`),
+    show(early),
+  );
+}
+expectWarning("a note dated far ahead warns on today's clock", (doc) => (doc.uses[noted].note.source.date = "2999-01-01"), `${NOTE}.source.date`);
+expectWarning(
+  "an accessed date in the future warns too",
+  (doc) => (doc.uses[accessed].note.source.date = "2999-01-01"),
+  `uses[${accessed}].note.source.date`,
+);
+
+// --- Referential errors ------------------------------------------------------
+expectError(
+  "rule 1: a repeated company id",
+  (doc) => doc.companies.push({ ...doc.companies[2], name: "Inkwell again" }),
+  "companies[3].id",
+);
+expectError(
+  "rule 1: a repeated entity id",
+  (doc) => doc.entities.push({ id: "word-of-mouth", kind: "channel", label: "recommendations" }),
+  `entities[${doc0.entities.length}].id`,
+);
+expectError(
+  "rule 2: questions out of canonical order",
+  (doc) => {
+    const [first, second] = doc.tools[0].questions;
+    doc.tools[0].questions[0] = second;
+    doc.tools[0].questions[1] = first;
+  },
+  "tools[0].questions[0].key",
+);
+expectError("rule 2: eight questions", (doc) => doc.tools[0].questions.pop(), "tools[0].questions");
+expectError("rule 3: an example naming no company", (doc) => doc.tools[0].examples.push("nobody"), "tools[0].examples[3]");
+expectError("rule 3: a repeated example", (doc) => doc.tools[0].examples.push("tidewise"), "tools[0].examples[3]");
+expectError(
+  "rule 4: a use by a company that is not an example",
+  (doc) => {
+    doc.companies.push({ id: "spare", name: "Spare", oneLiner: "Not an example", simulation: false });
+    doc.uses[0].company = "spare";
+  },
+  "uses[0].company",
+);
+expectError("rule 4: a use naming no entity", (doc) => (doc.uses[0].entity = "nothing-here"), "uses[0].entity");
+expectError(
+  "rule 4: a use whose entity is of another kind",
+  (doc) => (doc.uses[useIndex("crumb-and-co", "seg", 0)].entity = "word-of-mouth"),
+  `uses[${useIndex("crumb-and-co", "seg", 0)}].entity`,
+);
+expectError(
+  "rule 5: a sixth answer to one question",
+  (doc) => {
+    doc.entities.push({ id: "oven-cleaning", kind: "activity", label: "cleaning the ovens" });
+    doc.uses.push({ tool: BMC_TOOL_ID, company: "crumb-and-co", question: "ka", entity: "oven-cleaning", text: "cleaning the ovens", order: 5 });
+  },
+  `uses[${doc0.uses.length}]`,
+);
+expectError(
+  "rule 5: a repeated order",
+  (doc) => (doc.uses[useIndex("crumb-and-co", "ka", 1)].order = 0),
+  `uses[${useIndex("crumb-and-co", "ka", 1)}].order`,
+);
+expectError(
+  "rule 5: a repeated entity",
+  (doc) => (doc.uses[useIndex("crumb-and-co", "ka", 1)].entity = "overnight-baking"),
+  `uses[${useIndex("crumb-and-co", "ka", 1)}].entity`,
+);
+expectError(
+  "rule 6: an open question by a company that is not an example",
+  (doc) => (doc.open[0].company = "nobody"),
+  "open[0].company",
+);
+expectError("rule 6: a repeated open question", (doc) => doc.open.push({ ...doc.open[0] }), "open[1]");
+expectError(
+  "rule 6: an open question the company also answers",
+  (doc) => doc.open.push({ tool: BMC_TOOL_ID, company: "crumb-and-co", question: "seg" }),
+  "open[1]",
+);
+expectError("rule 6: an unknown question key", (doc) => (doc.open[0].question = "risk"), "open[0].question");
+{
+  const result = mutate((doc) => (doc.tools[0].pitch.body[0] = "x".repeat(MAX_DOCUMENT_BYTES)));
+  check(
+    "rule 7: a document over the size limit is refused before it is parsed",
+    !result.ok && result.errors.length === 1 && result.errors[0].path === "$" && /limit/.test(result.errors[0].message),
+    show(result),
+  );
+}
+
+// --- Warnings ----------------------------------------------------------------
+expectWarning(
+  "an example that neither answers nor leaves open a question",
+  (doc) => (doc.open = []),
+  "tools[0].examples[1]",
+);
+expectWarning(
+  "two entities of one kind sharing a label, whatever the case",
+  (doc) => (doc.entities[unused].label = "Word of Mouth"),
+  `entities[${unused}].label`,
+);
+expectWarning("a wording opening with The", (doc) => (doc.uses[0].text = "The households nearby"), "uses[0].text");
+expectWarning("a wording in the first person", (doc) => (doc.uses[0].text = "households near our shop"), "uses[0].text");
+expectWarning("a wording opening with and", (doc) => (doc.uses[0].text = "and the households nearby"), "uses[0].text");
+expectWarning("a label opening with We", (doc) => (doc.entities[0].label = "We deliver"), "entities[0].label");
+expectWarning("a wording holding a percentage", (doc) => (doc.uses[0].text = "40% of households nearby"), "uses[0].text");
+expectWarning("a wording holding a currency sign", (doc) => (doc.uses[0].text = "households paying $5 a week"), "uses[0].text");
+expectWarning("a label holding a currency code", (doc) => (doc.entities[0].label = "households spending EUR 20"), "entities[0].label");
+expectWarning("a wording holding a press claim", (doc) => (doc.uses[0].text = "reportedly the most loyal households"), "uses[0].text");
+expectWarning("a wording quoting a source", (doc) => (doc.uses[0].text = "households, according to the survey"), "uses[0].text");
+check("a digit alone is not a figure", wordingWarnings("a 3-step setup").length === 0);
+check("a pound sign is a currency", wordingWarnings("bread at £2").length === 1);
+check("the opener rule is case-sensitive", wordingWarnings("the households nearby").length === 0);
+check("US is not a pronoun", wordingWarnings("households across the US").length === 0);
+check("I is a pronoun", wordingWarnings("what I bake").length === 1);
+check("a pronoun must be a whole word", wordingWarnings("business users").length === 0);
+
+// --- Format upgrades ---------------------------------------------------------
+{
+  const doc = fixture();
+  const same = upgradeArkademyDocument(doc, 1);
+  check("format 1 needs no upgrade", same.ok === true && same.document === doc);
+  const newer = upgradeArkademyDocument(doc, 2);
+  check("a newer format is refused", newer.ok === false && /newer/.test(newer.message), JSON.stringify(newer));
+  check("format 99 is refused", upgradeArkademyDocument(doc, 99).ok === false);
+  check("format 0 is refused", upgradeArkademyDocument(doc, 0).ok === false);
+  check("a fractional format is refused", upgradeArkademyDocument(doc, 1.5).ok === false);
+}
+
+cleanup();
+if (failures > 0) {
+  console.log(`\n${failures} arkademy-schema test(s) failed`);
+  process.exit(1);
+}
+console.log("\nAll arkademy-schema tests passed.");

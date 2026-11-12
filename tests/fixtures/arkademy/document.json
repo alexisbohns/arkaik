@@ -1,0 +1,108 @@
+{
+  "formatVersion": 1,
+  "tools": [
+    {
+      "id": "business-model-canvas",
+      "title": "Business Model Canvas",
+      "tagline": "Nine plain questions about how a product lives, answered by example.",
+      "pitch": {
+        "headline": "A business model is nine answers that agree with each other",
+        "body": [
+          "Each example answers the same nine questions and reads them back as one paragraph.",
+          "Read a few, then answer them for your own product.\nThe paragraph is a baseline any agent prompt can start from."
+        ]
+      },
+      "prompt": {
+        "label": "A baseline prompt",
+        "text": "You are helping me think about a product.\nHere is its business model in one paragraph:\n\n{{paragraph}}\n\nAsk me the one question that would change it most."
+      },
+      "questions": [
+        {"key": "seg", "block": "Customer segments", "prompt": "Who is this for?", "hint": "Name the people who would miss it most.", "gap": "who it is for", "sentence": "{S} is for {L}."},
+        {"key": "vp", "block": "Value propositions", "prompt": "What does it do for them?", "hint": "Say what changes for them, not what it is.", "gap": "what it does for them", "sentence": "{S} offers {L}."},
+        {"key": "ch", "block": "Channels", "prompt": "How do they find out about it, and how do they get it?", "hint": "Think of the first time someone hears of it.", "gap": "how they find it", "sentence": "{S} reaches them through {L}."},
+        {"key": "cr", "block": "Customer relationships", "prompt": "How does it keep them?", "hint": "What happens after the first visit?", "gap": "how they stay", "sentence": "{S} keeps them with {L}."},
+        {"key": "rev", "block": "Revenue streams", "prompt": "Where does the money come from?", "hint": "Who pays, and for what?", "gap": "where the money comes from", "sentence": "On money: {L}."},
+        {"key": "kr", "block": "Key resources", "prompt": "What does it need to exist?", "hint": "People, data, tools, places.", "gap": "what it needs", "sentence": "{S} relies on {L}."},
+        {"key": "ka", "block": "Key activities", "prompt": "What must it keep doing well?", "hint": "The work that stops everything when it stops.", "gap": "what it keeps doing", "sentence": "{S} spends its days on {L}."},
+        {"key": "kp", "block": "Key partners", "prompt": "Who does it rely on?", "hint": "", "gap": "who it relies on", "sentence": "Its partners are {L}."},
+        {"key": "cost", "block": "Cost structure", "prompt": "What costs the most?", "hint": "Name the two or three biggest lines.", "gap": "what it costs", "sentence": "The main cost is {L}.", "sentencePlural": "The main costs are {L}."}
+      ],
+      "examples": ["crumb-and-co", "tidewise", "inkwell"]
+    }
+  ],
+  "companies": [
+    {"id": "crumb-and-co", "name": "Crumb & Co", "oneLiner": "A neighbourhood bakery that sells bread by subscription", "simulation": true, "note": "A simulation: every number behind it is invented for the test suite."},
+    {"id": "tidewise", "name": "Tidewise", "oneLiner": "Tide tables for people who fish from the shore", "simulation": false},
+    {"id": "inkwell", "name": "Inkwell", "oneLiner": "A shared notebook for teams that write together", "simulation": false}
+  ],
+  "entities": [
+    {"id": "local-households", "kind": "segment", "label": "households within walking distance"},
+    {"id": "shore-anglers", "kind": "segment", "label": "people who fish from the shore"},
+    {"id": "writing-teams", "kind": "segment", "label": "small teams that write together"},
+    {"id": "fresh-bread-delivered", "kind": "value-proposition", "label": "fresh bread delivered before breakfast"},
+    {"id": "tide-times-offline", "kind": "value-proposition", "label": "tide times that work offline"},
+    {"id": "one-shared-draft", "kind": "value-proposition", "label": "one draft everybody edits at once"},
+    {"id": "word-of-mouth", "kind": "channel", "label": "word of mouth"},
+    {"id": "app-stores", "kind": "channel", "label": "app stores"},
+    {"id": "pop-up-stalls", "kind": "channel", "label": "pop-up market stalls"},
+    {"id": "weekly-newsletter", "kind": "relationship", "label": "a weekly newsletter"},
+    {"id": "in-app-help", "kind": "relationship", "label": "help inside the product"},
+    {"id": "onboarding-calls", "kind": "relationship", "label": "onboarding calls"},
+    {"id": "subscriptions", "kind": "revenue-stream", "label": "monthly subscriptions"},
+    {"id": "skilled-bakers", "kind": "resource", "label": "skilled bakers"},
+    {"id": "tide-data", "kind": "resource", "label": "public tide data"},
+    {"id": "editing-engine", "kind": "resource", "label": "a real-time editing engine"},
+    {"id": "overnight-baking", "kind": "activity", "label": "baking overnight"},
+    {"id": "delivery-rounds", "kind": "activity", "label": "planning delivery rounds"},
+    {"id": "flour-sourcing", "kind": "activity", "label": "sourcing flour"},
+    {"id": "order-packing", "kind": "activity", "label": "packing orders"},
+    {"id": "order-taking", "kind": "activity", "label": "taking orders"},
+    {"id": "table-updates", "kind": "activity", "label": "updating the tables every season"},
+    {"id": "weekly-releases", "kind": "activity", "label": "shipping small improvements"},
+    {"id": "local-millers", "kind": "partner", "label": "local millers"},
+    {"id": "harbour-offices", "kind": "partner", "label": "harbour offices"},
+    {"id": "cloud-host", "kind": "partner", "label": "a cloud host"},
+    {"id": "ingredients", "kind": "cost", "label": "ingredients"},
+    {"id": "night-wages", "kind": "cost", "label": "night-shift wages"},
+    {"id": "store-fees", "kind": "cost", "label": "app store fees"},
+    {"id": "hosting", "kind": "cost", "label": "hosting"}
+  ],
+  "uses": [
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "seg", "entity": "local-households", "text": "households within a ten-minute walk", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "vp", "entity": "fresh-bread-delivered", "text": "bread, still warm, at the door before breakfast", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ch", "entity": "word-of-mouth", "text": "neighbours telling neighbours", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "cr", "entity": "weekly-newsletter", "text": "a weekly note about what is in the oven", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "rev", "entity": "subscriptions", "text": "a monthly bread subscription", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "kr", "entity": "skilled-bakers", "text": "two skilled bakers", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ka", "entity": "overnight-baking", "text": "baking through the night", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ka", "entity": "delivery-rounds", "text": "planning the delivery round", "order": 1},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ka", "entity": "flour-sourcing", "text": "sourcing flour from nearby mills", "order": 2},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ka", "entity": "order-packing", "text": "packing each order by hand", "order": 3},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "ka", "entity": "order-taking", "text": "taking orders by text message", "order": 4},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "kp", "entity": "local-millers", "text": "two local millers", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "cost", "entity": "ingredients", "text": "flour and butter", "order": 0},
+    {"tool": "business-model-canvas", "company": "crumb-and-co", "question": "cost", "entity": "night-wages", "text": "night-shift wages", "order": 1},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "seg", "entity": "shore-anglers", "text": "people who fish from the shore", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "vp", "entity": "tide-times-offline", "text": "tide times that work without signal", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "ch", "entity": "app-stores", "text": "app store search", "order": 1},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "ch", "entity": "word-of-mouth", "text": "anglers swapping tips on the pier", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "cr", "entity": "in-app-help", "text": "a help page inside the app", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "kr", "entity": "tide-data", "text": "public tide data", "order": 0, "note": {"text": "predictions for 412 harbours, refreshed every season", "source": {"name": "Tidewise, product page", "url": "https://tidewise.example/harbours", "date": "2026-03-02", "dateKind": "published"}}},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "ka", "entity": "table-updates", "text": "updating the tables every season", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "kp", "entity": "harbour-offices", "text": "harbour offices that share local data", "order": 0},
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "cost", "entity": "store-fees", "text": "developer fees for the app stores", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "seg", "entity": "writing-teams", "text": "small teams that write together", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "vp", "entity": "one-shared-draft", "text": "one draft everybody edits at once", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "ch", "entity": "word-of-mouth", "text": "writers recommending it to writers", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "ch", "entity": "app-stores", "text": "desktop app stores", "order": 1},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "cr", "entity": "onboarding-calls", "text": "a call to set up each new team", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "rev", "entity": "subscriptions", "text": "a subscription per seat", "order": 0, "note": {"text": "eight euros per seat a month, billed yearly", "source": {"name": "Inkwell, pricing page", "url": "https://inkwell.example/pricing", "date": "2026-10-01", "dateKind": "accessed"}}},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "kr", "entity": "editing-engine", "text": "a real-time editing engine", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "ka", "entity": "weekly-releases", "text": "shipping small improvements every week", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "kp", "entity": "cloud-host", "text": "a cloud host", "order": 0},
+    {"tool": "business-model-canvas", "company": "inkwell", "question": "cost", "entity": "hosting", "text": "hosting the shared drafts", "order": 0}
+  ],
+  "open": [
+    {"tool": "business-model-canvas", "company": "tidewise", "question": "rev"}
+  ]
+}
