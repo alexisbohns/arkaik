@@ -31,7 +31,11 @@ Two content rules no validator can check:
   `note`, with its source: a name, an `https` link and a date — the date the
   source carries (`dateKind: "published"`), or for an undated page such as a
   pricing page the day it was read (`dateKind: "accessed"`). A fact with no
-  source a reader can open stays out of the library.
+  source a reader can open stays out of the library. The link carries no
+  username or password and is written the way a browser normalises it: a
+  lowercase scheme and host, no `:443`, no `/../`, spaces and accented
+  characters percent-encoded (`https://example.com/mar%C3%A9e`). Paste it
+  from the address bar; a bare origin may leave out its trailing slash.
   `check` warns on a wording that looks like a figure or a press claim, and on
   a note dated in the future.
 

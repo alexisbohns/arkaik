@@ -255,12 +255,31 @@ export function isCalendarDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-function isHttpsUrl(value: string): boolean {
+/**
+ * Why `value` cannot be a note's source link, or null when it can. The rule:
+ * it parses as a WHATWG URL with the `https:` protocol, carries no username
+ * or password, and is written exactly as `new URL(value).href` writes it, the
+ * one exception being a bare origin (no path, query or fragment), which may
+ * leave out its trailing slash. So a lowercase scheme and host, no default
+ * port, no dot segments, and every space or non-ASCII character
+ * percent-encoded. The messages name the rule, never the URL.
+ */
+export function sourceUrlProblem(value: string): string | null {
+  let url: URL;
   try {
-    return new URL(value).protocol === "https:";
+    url = new URL(value);
   } catch {
-    return false;
+    return "must be an https URL";
   }
+  if (url.protocol !== "https:") return "must be an https URL";
+  if (url.username !== "" || url.password !== "" || /^[^/?#]*\/\/[^/?#]*@/.test(value)) {
+    return "must not carry a username or password";
+  }
+  const bareOrigin = url.pathname === "/" && url.search === "" && url.hash === "" && url.href === `${value}/`;
+  if (url.href !== value && !bareOrigin) {
+    return "must be written in its normalised form (lowercase scheme and host, no default port, no dot segments, spaces and non-ASCII characters percent-encoded)";
+  }
+  return null;
 }
 
 function count(haystack: string, needle: string): number {
@@ -360,7 +379,10 @@ const useNoteSchema = z.strictObject({
   source: z.strictObject({
     // Set inside the note's parentheses too, so it holds none of its own.
     name: text(1, 80).refine((value) => !/[()]/.test(value), { message: "must not contain parentheses" }),
-    url: text(1, 500).refine(isHttpsUrl, { message: "must be an https URL" }),
+    url: text(1, 500).superRefine((value, ctx) => {
+      const problem = sourceUrlProblem(value);
+      if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
+    }),
     date: z.string().refine(isCalendarDate, { message: "must be a real date written YYYY-MM-DD" }),
     dateKind: z.enum(NOTE_DATE_KINDS),
   }),

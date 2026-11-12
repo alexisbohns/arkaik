@@ -431,7 +431,9 @@ reported spend on it is a note on that company's use.
 - **Notes** (`Use.note`): `text` is 1–200 characters (`NOTE_MAX_LENGTH`),
   single line, trimmed, with no parentheses and no trailing punctuation
   (it is set inside parentheses); `source.name` is 1–80 characters, single
-  line, with no parentheses (it is set inside the note's parentheses too); `source.url` parses as a URL with the `https:` protocol and is at most
+  line, with no parentheses (it is set inside the note's parentheses too); `source.url` parses as a URL with the `https:` protocol, carries no username
+  or password, is written exactly as `new URL(url).href` writes it (a bare
+  origin may leave out its trailing slash; `sourceUrlProblem`) and is at most
   500 characters; `source.dateKind` is required and is one of the two values;
   `source.date` matches `YYYY-MM-DD`, is a real calendar date
   and is not in the future at upload time (a warning, not an error, since the

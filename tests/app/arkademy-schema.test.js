@@ -265,6 +265,32 @@ expectError("a closing parenthesis alone in a source name fails", (doc) => (doc.
 expectOk("a source name with a comma passes", (doc) => (doc.uses[noted].note.source.name = "Tidewise, press release"));
 expectError("an http source fails", (doc) => (doc.uses[noted].note.source.url = "http://tidewise.example/harbours"), `${NOTE}.source.url`);
 expectError("a source that is not a URL fails", (doc) => (doc.uses[noted].note.source.url = "tidewise harbours"), `${NOTE}.source.url`);
+{
+  const URL_PATH = `${NOTE}.source.url`;
+  const setUrl = (url) => (doc) => (doc.uses[noted].note.source.url = url);
+  expectError("a source URL with a username fails", setUrl("https://reader@tidewise.example/harbours"), URL_PATH);
+  expectError("a source URL with a username and password fails", setUrl("https://reader:secret@tidewise.example/harbours"), URL_PATH);
+  expectError("a source URL with an empty password fails", setUrl("https://reader:@tidewise.example/harbours"), URL_PATH);
+  expectError("an upper-case host is not the written form", setUrl("https://Tidewise.example/harbours"), URL_PATH);
+  expectError("an upper-case scheme is not the written form", setUrl("HTTPS://tidewise.example/harbours"), URL_PATH);
+  expectError("the default port is not the written form", setUrl("https://tidewise.example:443/harbours"), URL_PATH);
+  expectError("a dot segment is not the written form", setUrl("https://tidewise.example/a/../harbours"), URL_PATH);
+  expectError("an unencoded space is not the written form", setUrl("https://tidewise.example/tide tables"), URL_PATH);
+  expectError("a backslash is not the written form", setUrl("https:\\\\tidewise.example\\harbours"), URL_PATH);
+  expectError("a single slash after the scheme is not the written form", setUrl("https:/tidewise.example/harbours"), URL_PATH);
+  expectError("an unencoded non-ASCII path is not the written form", setUrl("https://tidewise.example/marée"), URL_PATH);
+  expectError("a bare origin with a query but no slash is not the written form", setUrl("https://tidewise.example?a=1"), URL_PATH);
+  expectOk("a bare origin without its trailing slash passes", setUrl("https://tidewise.example"));
+  expectOk("a bare origin with its trailing slash passes", setUrl("https://tidewise.example/"));
+  expectOk("a percent-encoded path, a query and a fragment pass", setUrl("https://tidewise.example/mar%C3%A9e?year=2026#tables"));
+  expectOk("a non-default port passes", setUrl("https://tidewise.example:8443/harbours"));
+  const message = mutate(setUrl("https://reader:secret@tidewise.example/harbours"));
+  check(
+    "the URL message never echoes the URL",
+    !message.ok && message.errors.every((finding) => !finding.message.includes("secret") && !finding.message.includes("tidewise")),
+    show(message),
+  );
+}
 expectOk("a source URL of 500 characters passes", (doc) => (doc.uses[noted].note.source.url = `https://tidewise.example/${pad(475)}`));
 expectError(
   "a source URL of 501 characters fails",
