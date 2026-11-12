@@ -210,6 +210,13 @@ jobs:
       - name: Screenshot staleness tests (derived from the journal, never stored)
         run: npm run test:screenshot-staleness
 
+      # The Arkademy library document's rules (lib/arkademy/): field bounds,
+      # referential rules, warnings, the index, and the upload script's `check`
+      # spawned with no database. Pure, so it gates here rather than only in
+      # the Postgres job below.
+      - name: Arkademy library tests (schema, referential rules, index, upload check)
+        run: npm run test:arkademy-schema
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
@@ -419,6 +426,8 @@ jobs:
         run: npm run test:graph
       - name: Pollen feed integration tests (opt-in, cursor paging, 410 reset)
         run: npm run test:pollen-feed
+      - name: Arkademy read route + upload integration tests (publish, 304, rollback)
+        run: npm run test:arkademy-api
       - name: GitHub webhook integration tests (signature, replay guard, promotion)
         run: npm run test:github
       - name: Lab-Note webhook integration tests (journal append, dedupe, refusals)

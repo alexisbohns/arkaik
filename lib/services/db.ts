@@ -1,6 +1,8 @@
 import "server-only";
 
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
+import { Socket } from "node:net";
+
+import { Client, Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
 /**
  * Server-only Postgres access for the arkaik services surface
@@ -93,6 +95,52 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   params?: readonly unknown[],
 ): Promise<QueryResult<T>> {
   return getPool().query<T>(text, params as unknown[] | undefined);
+}
+
+/**
+ * One parameterized query that gives up after `timeoutMs`, from opening the
+ * connection to the last row: it rejects with "the database did not answer
+ * within N ms" and destroys its socket. A database that accepts the connection
+ * and never answers otherwise hangs the request for good, since the pool sets
+ * no connection, statement or query timeout.
+ *
+ * It runs on a connection of its own, not the pool's, so an abandoned query
+ * leaves no pool slot waiting on a dead socket. That costs a connection per
+ * call: use it for a rare read (the Arkademy's library, cached for an hour in
+ * production), never on a hot path. `query`, `withTransaction` and the Auth.js
+ * adapter keep the pool's behaviour, waiting as long as it takes: a deadline
+ * there would turn a Neon cold start into a failed sign-in or a lost write.
+ */
+export async function queryWithin<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params: readonly unknown[] | undefined,
+  timeoutMs: number,
+): Promise<QueryResult<T>> {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is not set.");
+  // Our own socket, so the deadline can destroy it: `client.end()` only
+  // half-closes, and a server that never reads never closes its side.
+  const socket = new Socket();
+  const client = new Client({ connectionString, stream: () => socket });
+  // A socket error after the deadline has no caller left to tell.
+  client.on("error", () => {});
+  const work = client.connect().then(() => client.query<T>(text, params as unknown[] | undefined));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let late = false;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      late = true;
+      reject(new Error(`the database did not answer within ${timeoutMs} ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+    work.catch(() => {});
+    if (late) socket.destroy();
+    else client.end().catch(() => {});
+  }
 }
 
 /**

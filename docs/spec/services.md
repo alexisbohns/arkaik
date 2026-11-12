@@ -258,6 +258,86 @@ event (full note under `lab_note`, actor `github-app`) per linked project,
 idempotent by content — see [journal.md](journal.md) § Event Vocabulary and
 `lib/services/github/lab-note.ts`.
 
+## Arkademy
+
+The Arkademy's library — its tools, example companies, entities and uses — is
+one versioned JSON document in Postgres, uploaded by hand with
+`npm run arkademy -- publish` from a folder git ignores. The shape is
+`lib/arkademy/schema.ts` (zod, strict: an unknown key is an error), checked
+with `validateArkademyDocument` (`lib/arkademy/validate.ts`); the operator
+guide is `docs/arkademy.md`.
+
+### Storage
+
+```sql
+arkademy_documents (
+  version        int  primary key check (version > 0),
+  format_version int  not null,
+  document       jsonb not null,
+  sha256         text not null,            -- of the canonical JSON text uploaded
+  size_bytes     int  not null,
+  note           text,
+  restored_from  int  references arkademy_documents (version),
+  uploaded_at    timestamptz not null default now()
+)
+```
+
+Append-only (migration 013): the current document is the highest `version`;
+a publish and a rollback each insert a row, and every version is kept.
+
+### Protocol
+
+`GET /api/arkademy` — public, no parameters, not rate-limited.
+
+| Lookup | Status | Body | `Cache-Control` |
+|---|---|---|---|
+| ready | 200 | `{ "version", "uploaded_at", "format_version", "document" }` | `public, max-age=60, s-maxage=60, stale-while-revalidate=60` |
+| ready, `If-None-Match` matches | 304 | none | same |
+| empty table | 404 | `{ "error": "no_document", "message" }` | `public, max-age=60, s-maxage=60` |
+| no `DATABASE_URL` | 503 | `services_unavailable` | `no-store` |
+| newest row fails this build's schema | 500 | `{ "error": "document_invalid", "message" }` | `no-store` |
+| Postgres failed, or did not answer within 5 s | 500 | `{ "error": "internal_error", "message" }` | `no-store` |
+
+- Every 200 and 304 carries
+  `ETag: W/"arkademy.<version>.f<format>.s<schema revision>"`
+  (`ARKADEMY_FORMAT_VERSION`, `ARKADEMY_SCHEMA_REVISION`), so a client holding
+  a tag from a build with another format or schema gets the body again;
+  `If-None-Match` is compared weakly (`ifNoneMatchSatisfied`, as for the
+  hosted reads).
+- The body's `document` is the validated document — upgraded to the current
+  format when the row is older — not the stored bytes. Response keys are
+  snake_case; the document keeps its own camelCase.
+- **One loader, two readers.** `getArkademy` (`lib/services/arkademy.ts`) is the
+  contract: the Arkademy pages call it in-process and the route wraps it. In
+  production it reads through Next's data cache (`unstable_cache`, key
+  `["arkademy-current", "format-<format>", "schema-<revision>"]`, tag
+  `arkademy`, 3600 s), so at most one refill an hour reaches the
+  scale-to-zero database whatever the traffic — which is why there is no rate
+  limiter, whose Postgres write per request would cost exactly what the cache
+  saves. The key carries the format and the schema revision, so a deploy that
+  changes either never serves an entry an older build stored. A thrown error
+  is never cached. In development it reads Postgres directly.
+- **A bounded read.** The library's one query runs through `queryWithin`
+  (`lib/services/db.ts`) with `ARKADEMY_READ_TIMEOUT_MS` (5 s), connection
+  included, on a connection of its own that is destroyed at the deadline: a
+  database that accepts and never answers ends in the `error` lookup, uncached,
+  instead of hanging the page. The pool's other users keep no timeout.
+- **Making a write live.** `POST /api/arkademy/revalidate` expires the
+  `arkademy` tag at once (`revalidateTag("arkademy", { expire: 0 })`): the
+  next read refills from Postgres rather than serving the old entry while it
+  refreshes. The upload script calls it after a publish or a rollback when
+  `ARKADEMY_SITE_URL` and `ARKADEMY_REVALIDATE_SECRET` are set. Without it, a
+  write waits for the hour, plus one request, plus the CDN window.
+
+`POST /api/arkademy/revalidate` — not public: `Authorization: Bearer
+<ARKADEMY_REVALIDATE_SECRET>`, compared in constant time. No body.
+
+| Case | Status | Body | `Cache-Control` |
+|---|---|---|---|
+| `ARKADEMY_REVALIDATE_SECRET` unset on the deployment | 404 | none | `no-store` |
+| missing or wrong bearer token | 401, `WWW-Authenticate: Bearer` | `{ "error": "unauthorized", "message" }` | `no-store` |
+| the tag is expired | 204 | none | `no-store` |
+
 ## Tier Enforcement Points
 
 M4 builds the sockets Basik/Klub will plug into, and nothing else:

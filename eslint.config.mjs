@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "docs/arkaik-skill/scripts/**",
     "tests/**",
     "scripts/**",
+    // The Arkademy's library content and its working scripts: gitignored, never
+    // part of the app (docs/arkademy.md).
+    "arkademy-content/**",
     // Standalone Node migration runner (db/migrate.mjs) + plain-SQL migrations.
     "db/**",
     // Claude Code plugin: a byte-identical generated copy of

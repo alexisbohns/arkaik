@@ -36,6 +36,7 @@
 /tests/services/.test-build-lab-note-parse/
 /tests/services/.test-build-auth-errors/
 /tests/services/.test-build-once-changed-files/
+/tests/services/.test-build-arkademy/
 /tests/mcp/.test-build-remote-store/
 /tests/app/.test-build-delivery/
 /tests/app/.test-build-journey-graph/
@@ -54,6 +55,7 @@
 /tests/app/.test-build-screenshot-staleness/
 /tests/app/.test-build-screen-wall/
 /tests/app/.test-build-screen-inspector/
+/tests/app/.test-build-arkademy/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests
 # (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
@@ -114,3 +116,9 @@ next-env.d.ts
 # working material, not part of the repo
 /docs/quality/
 /tests/landing/.test-build-landing/
+
+# The Arkademy library's content: never committed, uploaded with
+# `npm run arkademy -- publish` (docs/arkademy.md)
+/arkademy-content/
+# transient CJS build of lib/arkademy/ emitted by scripts/arkademy/upload.js
+/scripts/arkademy/.build-*/

@@ -12,6 +12,7 @@
     "lint": "eslint",
     "generate": "node scripts/generate/index.js",
     "db:migrate": "node db/migrate.mjs",
+    "arkademy": "node scripts/arkademy/upload.js",
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
     "test:fixtures": "node tests/fixtures/run-fixture-tests.js",
     "test:schema": "node tests/schema/parity.test.js",
@@ -36,6 +37,8 @@
     "test:live": "node tests/services/live.test.js",
     "test:screenshot-door": "node tests/services/screenshots.test.js",
     "test:screenshot-staleness": "node tests/app/screenshot-staleness.test.js",
+    "test:arkademy-schema": "node tests/app/arkademy-schema.test.js",
+    "test:arkademy-api": "node tests/services/arkademy-api.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",
@@ -152,7 +155,8 @@
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
