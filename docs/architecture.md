@@ -63,6 +63,7 @@ app/
     [id]/
       page.tsx          # Publik snapshot preview (server-rendered)
   api/
+    arkademy/           # GET the Arkademy library: public, cached (spec/services.md § Arkademy)
     graph/              # Hosted projects: CRUD + the validated `mutations` write path
     tokens/             # `ark_` token mint/revoke
     github/webhook/     # GitHub App events → acceptance ref promotion

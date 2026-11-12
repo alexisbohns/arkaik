@@ -258,6 +258,61 @@ event (full note under `lab_note`, actor `github-app`) per linked project,
 idempotent by content — see [journal.md](journal.md) § Event Vocabulary and
 `lib/services/github/lab-note.ts`.
 
+## Arkademy
+
+The Arkademy's library — its tools, example companies, entities and uses — is
+one versioned JSON document in Postgres, uploaded by hand with
+`npm run arkademy -- publish` from a folder git ignores. The shape is
+`lib/arkademy/schema.ts` (zod, strict: an unknown key is an error), checked
+with `validateArkademyDocument` (`lib/arkademy/validate.ts`); the operator
+guide is `docs/arkademy.md`.
+
+### Storage
+
+```sql
+arkademy_documents (
+  version        int  primary key check (version > 0),
+  format_version int  not null,
+  document       jsonb not null,
+  sha256         text not null,            -- of the canonical JSON text uploaded
+  size_bytes     int  not null,
+  note           text,
+  restored_from  int  references arkademy_documents (version),
+  uploaded_at    timestamptz not null default now()
+)
+```
+
+Append-only (migration 013): the current document is the highest `version`;
+a publish and a rollback each insert a row, and every version is kept.
+
+### Protocol
+
+`GET /api/arkademy` — public, no parameters, not rate-limited.
+
+| Lookup | Status | Body | `Cache-Control` |
+|---|---|---|---|
+| ready | 200 | `{ "version", "uploaded_at", "format_version", "document" }` | `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` |
+| ready, `If-None-Match` matches | 304 | none | same |
+| empty table | 404 | `{ "error": "no_document", "message" }` | `public, max-age=60, s-maxage=60` |
+| no `DATABASE_URL` | 503 | `services_unavailable` | `no-store` |
+| newest row fails this build's schema | 500 | `{ "error": "document_invalid", "message" }` | `no-store` |
+| Postgres failed | 500 | `{ "error": "internal_error", "message" }` | `no-store` |
+
+- Every 200 and 304 carries `ETag: W/"arkademy.<version>"`; `If-None-Match` is
+  compared weakly (`ifNoneMatchSatisfied`, as for the hosted reads).
+- The body's `document` is the validated document — upgraded to the current
+  format when the row is older — not the stored bytes. Response keys are
+  snake_case; the document keeps its own camelCase.
+- **One loader, two readers.** `getArkademy` (`lib/services/arkademy.ts`) is the
+  contract: the Arkademy pages call it in-process and the route wraps it. In
+  production it reads through Next's data cache (`unstable_cache`, key
+  `arkademy-current`, tag `arkademy`, 300 s), so one refill per five minutes
+  reaches the database whatever the traffic — which is why there is no rate
+  limiter, whose Postgres write per request would cost exactly what the cache
+  saves. A thrown error is never cached. In development it reads Postgres
+  directly. Nothing calls `revalidateTag`: a publish is live within five
+  minutes.
+
 ## Tier Enforcement Points
 
 M4 builds the sockets Basik/Klub will plug into, and nothing else:

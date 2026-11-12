@@ -62,8 +62,12 @@ export const PUBLISHED_DOC_AREAS: readonly string[] = [
  * - `rfcs` — proposals, including ones that were never taken up.
  * - `arkaik-skill`, `arkaik-bootstrap-skill`, `kritik-skill` — packaged skill
  *   sources, not pages; they ship as plugins and carry scripts rather than prose.
+ * - `arkademy` — the operator guide for uploading the Arkademy library: how the
+ *   owner runs the upload script against production. Its public contract (the
+ *   route and the table) is in `spec/services.md`.
  */
 export const INTERNAL_DOC_AREAS: readonly string[] = [
+  "arkademy",
   "arkaik-bootstrap-skill",
   "arkaik-skill",
   "audit",
