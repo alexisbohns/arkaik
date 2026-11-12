@@ -45,6 +45,87 @@ export function documentByteLength(input: unknown): number | null {
 }
 
 /**
+ * The path of every own `__proto__` key in `input`. `JSON.parse` keeps such a
+ * key as an ordinary own property, but zod drops it without a word, so a
+ * document holding one would lose that data silently. Iterative, so a deeply
+ * nested value cannot overflow the stack.
+ */
+function protoKeyPaths(input: unknown): PropertyKey[][] {
+  const found: PropertyKey[][] = [];
+  const stack: { value: unknown; path: PropertyKey[] }[] = [{ value: input, path: [] }];
+  while (stack.length > 0) {
+    const { value, path } = stack.pop()!;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => stack.push({ value: item, path: [...path, index] }));
+    } else if (value !== null && typeof value === "object") {
+      if (Object.prototype.hasOwnProperty.call(value, "__proto__")) found.push([...path, "__proto__"]);
+      for (const key of Object.keys(value)) {
+        if (key !== "__proto__") stack.push({ value: (value as Record<string, unknown>)[key], path: [...path, key] });
+      }
+    }
+  }
+  return found.sort((a, b) => formatFindingPath(a).localeCompare(formatFindingPath(b)));
+}
+
+type JsonFrame =
+  | { kind: "object"; keys: Set<string>; key: string | null; expectKey: boolean }
+  | { kind: "array"; index: number };
+
+/**
+ * Every key repeated within one object of a JSON text, as error findings
+ * named by path (`uses[3].text`). `JSON.parse` keeps the last of two equal
+ * keys and drops the first without a word; this finds them in the text
+ * itself. `text` must already be valid JSON (parse it first): the scan only
+ * tracks strings, brackets, colons and commas. Keys compare by their decoded
+ * value, so `"a"` and `"\u0061"` are the same key.
+ */
+export function duplicateJsonKeys(text: string): ArkademyFinding[] {
+  const findings: ArkademyFinding[] = [];
+  const stack: JsonFrame[] = [];
+  const currentPath = () => stack.map((frame) => (frame.kind === "object" ? (frame.key ?? "") : frame.index));
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index];
+    if (char === '"') {
+      let end = index + 1;
+      while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+      const top = stack[stack.length - 1];
+      if (top && top.kind === "object" && top.expectKey) {
+        let key: string;
+        try {
+          key = JSON.parse(text.slice(index, end + 1)) as string;
+        } catch {
+          key = text.slice(index + 1, end);
+        }
+        top.expectKey = false;
+        top.key = key;
+        if (top.keys.has(key)) {
+          findings.push({
+            level: "error",
+            path: formatFindingPath(currentPath()),
+            message: `repeats the key "${key}" of the same object; JSON keeps only the last, so the first would be lost`,
+          });
+        } else {
+          top.keys.add(key);
+        }
+      }
+      index = end + 1;
+      continue;
+    }
+    if (char === "{") stack.push({ kind: "object", keys: new Set(), key: null, expectKey: true });
+    else if (char === "[") stack.push({ kind: "array", index: 0 });
+    else if (char === "}" || char === "]") stack.pop();
+    else if (char === ",") {
+      const top = stack[stack.length - 1];
+      if (top?.kind === "object") top.expectKey = true;
+      else if (top?.kind === "array") top.index += 1;
+    }
+    index += 1;
+  }
+  return findings;
+}
+
+/**
  * A wording that looks like it holds a figure or a press claim: a digit
  * followed by `%`, a currency sign or code, or "reported", "reportedly",
  * "according to". Such a fact probably belongs in a sourced note.
@@ -140,6 +221,10 @@ export function validateArkademyDocument(input: unknown, options: { now?: Date }
   if (bytes > MAX_DOCUMENT_BYTES) {
     error("$", `is ${bytes} bytes of JSON; the limit is ${MAX_DOCUMENT_BYTES}`);
     return { ok: false, errors, warnings };
+  }
+
+  for (const path of protoKeyPaths(input)) {
+    error(formatFindingPath(path), 'is a "__proto__" key, which the document cannot hold: it would be dropped without a word');
   }
 
   const parsed = arkademyDocumentSchema.safeParse(input);

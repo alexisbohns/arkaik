@@ -246,8 +246,9 @@ function readDocumentFile(file, maxBytes) {
   if (size > maxBytes * MAX_FILE_FACTOR) {
     throw new ScriptExit(`${file} is ${size} bytes; the document may hold at most ${maxBytes} bytes of JSON`);
   }
+  const text = fs.readFileSync(file, "utf8");
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return { text, input: JSON.parse(text) };
   } catch (err) {
     throw new ScriptExit(`${file} is not JSON: ${err.message}`);
   }
@@ -312,14 +313,17 @@ function announce(target, { writes, yes }) {
 
 async function main(argv) {
   const args = parseArgs(argv);
-  const { validateArkademyDocument, MAX_DOCUMENT_BYTES } = arkademy();
+  const { validateArkademyDocument, duplicateJsonKeys, MAX_DOCUMENT_BYTES } = arkademy();
 
   if (args.command === "check" || args.command === "publish") {
     const file = resolveFile(args.file);
-    const input = readDocumentFile(file, MAX_DOCUMENT_BYTES);
+    const { text, input } = readDocumentFile(file, MAX_DOCUMENT_BYTES);
+    // JSON.parse keeps the last of two equal keys; the text shows both.
+    const repeated = duplicateJsonKeys(text);
     const result = validateArkademyDocument(input);
-    printFindings(result);
-    if (!result.ok) throw new ScriptExit(`${plural(result.errors.length, "error")} in ${file}; nothing written`);
+    const errors = [...repeated, ...(result.ok ? [] : result.errors)];
+    printFindings({ errors, warnings: result.warnings });
+    if (errors.length > 0) throw new ScriptExit(`${plural(errors.length, "error")} in ${file}; nothing written`);
     const { document } = result;
     const { sizeBytes } = canonical(document);
     console.log(

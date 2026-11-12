@@ -44,6 +44,11 @@ carriage return nowhere), DEL, U+2028 and U+2029, zero-width characters
 The error names the code point. Accents, emoji and no-break spaces (U+00A0,
 U+202F) are fine.
 
+A key written twice in one object is an error (`JSON.parse` would keep the
+last and drop the first without a word), and so is a `__proto__` key anywhere
+(it would be dropped too). `check` and `publish` read the file's text for the
+first; the second is `validateArkademyDocument`'s.
+
 `tests/fixtures/arkademy/document.json` is a small, fictional, valid document
 to copy the shape from.
 

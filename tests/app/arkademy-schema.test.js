@@ -361,6 +361,57 @@ expectWarning(
   );
 }
 
+// --- Keys JSON.parse would lose ------------------------------------------------
+{
+  const withProto = (place) => {
+    const doc = fixture();
+    const target = place(doc);
+    Object.defineProperty(target, "__proto__", { value: { x: 1 }, enumerable: true, configurable: true, writable: true });
+    return validateArkademyDocument(doc);
+  };
+  const top = withProto((doc) => doc);
+  check(
+    "a __proto__ key at the top is refused with its path",
+    !top.ok && top.errors.some((finding) => finding.path === "__proto__"),
+    show(top),
+  );
+  const inUse = withProto((doc) => doc.uses[2]);
+  check("a __proto__ key in a use is refused with its path", !inUse.ok && inUse.errors.some((finding) => finding.path === "uses[2].__proto__"), show(inUse));
+  const deep = withProto((doc) => doc.uses[noted].note.source);
+  check(
+    "a __proto__ key deep in a note is refused with its path",
+    !deep.ok && deep.errors.some((finding) => finding.path === `${NOTE}.source.__proto__`),
+    show(deep),
+  );
+  const parsed = JSON.parse('{"__proto__": 1}');
+  check("JSON.parse keeps __proto__ as an own key (what the walk relies on)", Object.hasOwn(parsed, "__proto__"));
+
+  const { duplicateJsonKeys } = ark;
+  check("duplicateJsonKeys is exported", typeof duplicateJsonKeys === "function");
+  if (typeof duplicateJsonKeys === "function") {
+    const text = fs.readFileSync(FIXTURE, "utf8");
+    check("the fixture has no duplicate key", duplicateJsonKeys(text).length === 0, JSON.stringify(duplicateJsonKeys(text)));
+    check(
+      "a repeated top-level key, with its path",
+      JSON.stringify(duplicateJsonKeys('{"open": [], "formatVersion": 1, "open": []}').map((f) => f.path)) === JSON.stringify(["open"]),
+      JSON.stringify(duplicateJsonKeys('{"open": [], "formatVersion": 1, "open": []}')),
+    );
+    const nested = '{"uses": [{"text": "a"}, {"text": "b", "order": 1, "text": "c"}], "x": {"y": {"z": 1, "z": 2}}}';
+    check(
+      "repeated keys in an array item and deep in objects, each with its path",
+      JSON.stringify(duplicateJsonKeys(nested).map((f) => f.path)) === JSON.stringify(["uses[1].text", "x.y.z"]),
+      JSON.stringify(duplicateJsonKeys(nested)),
+    );
+    check("the same key in two objects is no repeat", duplicateJsonKeys('[{"a": 1}, {"a": 2}, {"b": {"a": 3}}]').length === 0);
+    check("an escaped spelling of a key is the same key", duplicateJsonKeys('{"a": 1, "\\u0061": 2}').length === 1);
+    check(
+      "braces, quotes and colons inside strings do not confuse it",
+      duplicateJsonKeys('{"a": "}{\\":,[", "b": ["{\\"a\\": 1}"], "c": {"a": "x"}}').length === 0,
+    );
+    check("a repeat is an error finding", duplicateJsonKeys('{"a": 1, "a": 2}')[0]?.level === "error");
+  }
+}
+
 // --- Referential errors ------------------------------------------------------
 expectError(
   "rule 1: a repeated company id",
@@ -559,6 +610,16 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
       nul.status === 1 && nul.stderr.includes("uses[0].text") && /U\+0000/.test(nul.stderr) && !/\n\s+at /.test(nul.stderr),
       `${nul.status} ${nul.stderr}`,
     );
+
+    const dupFile = path.join(dir, "duplicate.json");
+    const dupText = JSON.stringify(fixture(), null, 2).replace('"formatVersion": 1,', '"formatVersion": 1,\n  "open": [],');
+    fs.writeFileSync(dupFile, dupText);
+    const dup = run("check", dupFile);
+    check("upload check: a repeated key is refused with its path", dup.status === 1 && /\bopen\b/.test(dup.stderr) && /repeat/.test(dup.stderr), `${dup.status} ${dup.stderr}`);
+    const protoFile = path.join(dir, "proto.json");
+    fs.writeFileSync(protoFile, JSON.stringify(fixture()).replace('{"tool":"business-model-canvas",', '{"__proto__": {"x": 1}, "tool":"business-model-canvas",'));
+    const proto = run("check", protoFile);
+    check("upload check: a __proto__ key is refused with its path", proto.status === 1 && proto.stderr.includes("uses[0].__proto__"), `${proto.status} ${proto.stderr}`);
 
     const notJson = path.join(dir, "not-json.json");
     fs.writeFileSync(notJson, "{ nope");
