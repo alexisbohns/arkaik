@@ -27,8 +27,12 @@ export interface CanvasQuestionState {
   open: boolean; // left open on purpose; ignored when answers is non-empty
 }
 
-/** A sentence in pieces, so a page can render a note's source as a link. */
-export type ParagraphPart = { kind: "text"; text: string } | { kind: "note"; note: UseNote };
+/**
+ * A sentence in pieces, so a page knows where each note's marker goes: a
+ * `note` part follows the answer it belongs to (`answer`, cleaned) and adds
+ * nothing to the sentence's `text`.
+ */
+export type ParagraphPart = { kind: "text"; text: string } | { kind: "note"; note: UseNote; answer: string };
 
 export type ParagraphSegment =
   | { kind: "sentence"; question: BmcQuestionKey; text: string; parts: ParagraphPart[] }
@@ -86,19 +90,20 @@ const AND_WORD = /(?:^|\s)(?:and|&)(?:\s|$)/i;
 
 /**
  * Whether a list of answers joins with semicolons: when any cleaned answer
- * contains a comma, "and" as a word (any case) or a standalone "&", or carries a note. A comma-joined list
- * of such items cannot be read back into its items. Looks at whether an
- * answer has a note, never at the note's own text.
+ * contains a comma, "and" as a word (any case) or a standalone "&" — a
+ * comma-joined list of such items cannot be read back into its items. Notes
+ * play no part: on screen a note is a marker that adds no words to the
+ * sentence, so `note` is accepted and ignored, as is the note's own text.
  */
 export function joinsWithSemicolons(answers: readonly { text: string; note?: UseNote }[]): boolean {
-  return answers.some((answer) => answer.note !== undefined || answer.text.includes(",") || AND_WORD.test(answer.text));
+  return answers.some((answer) => answer.text.includes(",") || AND_WORD.test(answer.text));
 }
 
 /**
  * `a`, `a and b`, `a, b and c`; in the semicolon case (`joinsWithSemicolons`)
  * `a, and b` (two items, no comma in either), `a, b; and c` (two items, a
  * comma in one), `a; b; and c`. The texts are taken as given (clean them first).
- * Pass `semicolon` when the answers carry notes, which plain texts cannot show.
+ * `semicolon` overrides the rule when given.
  */
 export function joinAnswers(
   texts: readonly string[],
@@ -130,8 +135,11 @@ function pushText(parts: ParagraphPart[], text: string): void {
   else parts.push({ kind: "text", text });
 }
 
-function partsText(parts: readonly ParagraphPart[]): string {
-  return parts.map((part) => (part.kind === "text" ? part.text : noteText(part.note))).join("");
+/** A sentence's text from its parts: notes left out, or in parentheses after their answer. */
+function partsText(parts: readonly ParagraphPart[], withNotes: boolean): string {
+  return parts
+    .map((part) => (part.kind === "text" ? part.text : withNotes ? ` (${noteText(part.note)})` : ""))
+    .join("");
 }
 
 /**
@@ -195,22 +203,35 @@ export function composeParagraph(input: {
     answers.forEach((answer, i) => {
       if (i > 0) pushText(parts, separatorBefore(i, texts, semicolon));
       pushText(parts, answer.text);
-      if (answer.note) {
-        pushText(parts, " (");
-        parts.push({ kind: "note", note: answer.note });
-        pushText(parts, ")");
-      }
+      if (answer.note) parts.push({ kind: "note", note: answer.note, answer: answer.text });
     });
     pushText(parts, after);
-    segments.push({ kind: "sentence", question: question.key, text: partsText(parts), parts });
+    segments.push({ kind: "sentence", question: question.key, text: partsText(parts, false), parts });
   }
   return segments;
 }
 
-/** The paragraph as plain text: the sentences joined by single spaces, gaps left out. */
+/**
+ * The paragraph as plain text: the sentences joined by single spaces, gaps
+ * and notes left out. What every copy and export uses, and exactly the words
+ * on screen.
+ */
 export function paragraphText(segments: readonly ParagraphSegment[]): string {
   return segments
     .filter((segment) => segment.kind === "sentence")
     .map((segment) => segment.text)
+    .join(" ");
+}
+
+/**
+ * The paragraph as plain text with its sources: as `paragraphText`, each note
+ * in parentheses after its answer, in `noteText`'s form —
+ * `… public tide data (predictions for 412 harbours. Source: Tidewise, 2026-03-02).`
+ * For anything that must carry its sources in plain text.
+ */
+export function paragraphTextWithNotes(segments: readonly ParagraphSegment[]): string {
+  return segments
+    .filter((segment) => segment.kind === "sentence")
+    .map((segment) => partsText(segment.parts, true))
     .join(" ");
 }

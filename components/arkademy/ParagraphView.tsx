@@ -20,13 +20,16 @@ const GAP =
   "rounded-md border border-dashed border-muted-foreground/45 px-1.5 text-[0.875em] text-muted-foreground box-decoration-clone";
 
 /**
- * A canvas read back as one paragraph: sentences as inline text, each note in
- * smaller muted type inside its parentheses with the source as a link, and
- * each question without answers as an inline dashed pill — "left open on
- * purpose: …" plain, "open: …" on a muted fill.
+ * A canvas read back as one paragraph: sentences as inline text, a small
+ * marker after each answer that has a note (`SourcedNote`: the note opens in a
+ * card on click; no note words in the running text), and each question
+ * without answers as an inline dashed pill — "left open on purpose: …" plain,
+ * "open: …" on a muted fill. Its text, gaps and no-script fallbacks aside, is
+ * exactly `paragraphText`.
  *
- * No hooks and no "use client": the cover renders it on the server; a client
- * screen (the tour, your own canvas) renders it with handlers.
+ * No hooks and no "use client": the cover renders it on the server (each
+ * marker is a client island); a client screen (the tour, your own canvas)
+ * renders it with handlers. It sets no width: the caller's `className` does.
  */
 export function ParagraphView({ segments, onSelectQuestion, className }: ParagraphViewProps) {
   return (
@@ -40,9 +43,7 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
                 part.kind === "text" ? (
                   <Fragment key={j}>{part.text}</Fragment>
                 ) : (
-                  <span key={j} className="text-[0.875em] text-muted-foreground">
-                    <SourcedNote note={part.note} />
-                  </span>
+                  <SourcedNote key={j} note={part.note} answer={part.answer} />
                 ),
               )}
             </span>

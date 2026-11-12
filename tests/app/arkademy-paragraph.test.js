@@ -31,6 +31,7 @@ const {
   noteText,
   composeParagraph,
   paragraphText,
+  paragraphTextWithNotes,
   clampThrough,
   displayAnswers,
   exampleCanvas,
@@ -137,11 +138,11 @@ check(
 );
 same("join: three, an 'And' inside", joinAnswers(["a", "Rock And Roll", "c"]), "a; Rock And Roll; and c");
 same("join: three, an '&' inside", joinAnswers(["a", "Crumb & Co", "c"]), "a; Crumb & Co; and c");
-check("semicolons: a note triggers them", joinsWithSemicolons([{ text: "a", note: NOTE }, { text: "c" }]));
+// A note adds no words to the sentence on screen (it is a marker), so it plays no part in the join.
+check("semicolons: a note does not trigger them", !joinsWithSemicolons([{ text: "a", note: NOTE }, { text: "c" }]));
 check(
-  "semicolons: a note's own commas and 'and' are not looked at",
-  !joinsWithSemicolons([{ text: "a" }, { text: "c" }]) &&
-    joinsWithSemicolons([{ text: "a", note: { ...NOTE, text: "plain" } }, { text: "c" }]),
+  "semicolons: nor does a note whose own text holds a comma and 'and'",
+  !joinsWithSemicolons([{ text: "a", note: { ...NOTE, text: "flour, butter and eggs" } }, { text: "c" }]),
 );
 
 // --- notes -------------------------------------------------------------------
@@ -254,26 +255,35 @@ check("noteText: no semicolon, the list's own separator", !noteText(NOTE).includ
     subject: "X",
   });
   const kp = segments[7];
+  same("notes: the sentence's text leaves notes out, and they do not change the join", kp.text, "Its partners are two millers and a co-op.");
   same(
-    "notes: text puts each note in parentheses after its answer, joined with semicolons",
-    kp.text,
-    "Its partners are two millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01), and a co-op (listed as a partner. Source: Example Mill, partners page, read on 2026-10-01).",
-  );
-  same(
-    "notes: parts cut the sentence at each note",
+    "notes: parts put each note right after its answer, with the answer it belongs to",
     kp.parts,
     [
-      { kind: "text", text: "Its partners are two millers (" },
-      { kind: "note", note: NOTE },
-      { kind: "text", text: "), and a co-op (" },
-      { kind: "note", note: UNDATED },
-      { kind: "text", text: ")." },
+      { kind: "text", text: "Its partners are two millers" },
+      { kind: "note", note: NOTE, answer: "two millers" },
+      { kind: "text", text: " and a co-op" },
+      { kind: "note", note: UNDATED, answer: "a co-op" },
+      { kind: "text", text: "." },
     ],
   );
-  const rebuilt = kp.parts.map((part) => (part.kind === "text" ? part.text : noteText(part.note))).join("");
-  same("notes: the parts concatenate to the text", rebuilt, kp.text);
+  const words = kp.parts.map((part) => (part.kind === "text" ? part.text : "")).join("");
+  same("notes: the text parts concatenate to the text", words, kp.text);
+  same(
+    "notes: paragraphTextWithNotes puts each note in parentheses after its answer",
+    paragraphTextWithNotes([kp]),
+    "Its partners are two millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01) and a co-op (listed as a partner. Source: Example Mill, partners page, read on 2026-10-01).",
+  );
+  const withNotes = kp.parts.map((part) => (part.kind === "text" ? part.text : ` (${noteText(part.note)})`)).join("");
+  same("notes: the parts, notes in parentheses, concatenate to the with-notes text", withNotes, paragraphTextWithNotes([kp]));
   const one = composeParagraph({ questions, state: state({ kp: [{ text: "millers", note: NOTE }] }), subject: "X" });
-  same("notes: a single noted answer", one[7].text, "Its partners are millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01).");
+  same("notes: a single noted answer", one[7].text, "Its partners are millers.");
+  same(
+    "notes: a single noted answer, with notes",
+    paragraphTextWithNotes(one),
+    "Its partners are millers (about 40 tonnes a year. Source: Example Mill, annual report, 2026-02-01).",
+  );
+  same("notes: paragraphText leaves them out", paragraphText(one), "Its partners are millers.");
 }
 
 // --- paragraphText --------------------------------------------------------------
@@ -311,7 +321,13 @@ check("noteText: no semicolon, the list's own separator", !noteText(NOTE).includ
   same(
     "example: Tidewise's paragraph",
     paragraphText(tidePara),
-    "Tidewise is for people who fish from the shore. It offers tide times that work without signal. It reaches them through anglers swapping tips on the pier and app store search. It keeps them with a help page inside the app. It relies on public tide data (predictions for 412 harbours, refreshed every season. Source: Tidewise, product page, 2026-03-02). It spends its days on updating the tables every season. Its partners are harbour offices that share local data. The main cost is developer fees for the app stores.",
+    "Tidewise is for people who fish from the shore. It offers tide times that work without signal. It reaches them through anglers swapping tips on the pier and app store search. It keeps them with a help page inside the app. It relies on public tide data. It spends its days on updating the tables every season. Its partners are harbour offices that share local data. The main cost is developer fees for the app stores.",
+  );
+  check(
+    "example: Tidewise's paragraph with notes carries its source",
+    paragraphTextWithNotes(tidePara).includes(
+      "It relies on public tide data (predictions for 412 harbours, refreshed every season. Source: Tidewise, product page, 2026-03-02).",
+    ),
   );
   same("example: Tidewise's open question is a gap", tidePara[4].text, "left open on purpose: where the money comes from");
   const crumbPara = composeParagraph({ questions, state: crumb.questions, subject: crumb.company.name });
@@ -422,7 +438,7 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { requireTsx } = require("./load-arkademy-tsx");
 const { ParagraphView } = requireTsx("components/arkademy/ParagraphView.tsx");
-const { SourcedNote } = requireTsx("components/arkademy/SourcedNote.tsx");
+const { SourcedNote, NoteContent } = requireTsx("components/arkademy/SourcedNote.tsx");
 const { CanvasGrid } = requireTsx("components/arkademy/CanvasGrid.tsx");
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#x27": "'", "#39": "'", nbsp: "\u00a0" };
@@ -444,16 +460,38 @@ const render = (component, props) => renderToStaticMarkup(React.createElement(co
 // Gaps are pills on screen and absent from paragraphText (rule 6): each is one
 // element carrying data-kind="gap", with no element inside it.
 const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
+// A note's no-script fallback: shown only without JavaScript, so not part of the on-screen text.
+const NOSCRIPT = /<noscript>[\s\S]*?<\/noscript>/g;
+/** Each note marker's accessible name, in order. */
+const markers = (html) =>
+  [...html.matchAll(/<button[^>]*data-note-marker=""[^>]*>/g)].map((m) =>
+    (/aria-label="([^"]*)"/.exec(m[0]) ?? [null, ""])[1].replace(/&#x27;/g, "'").replace(/&amp;/g, "&"),
+  );
+const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/g)].map((m) => textOf(m[1]));
 
 {
+  // The on-screen text is paragraphText: markers add no text (their name is an
+  // aria-label, their icon aria-hidden), the gaps and the no-script fallbacks
+  // are excluded as stated above.
   for (const id of tool.examples) {
     const example = exampleCanvas(index, id);
     const segments = composeParagraph({ questions, state: example.questions, subject: example.company.name });
     const html = render(ParagraphView, { segments });
-    same(`render: ${id}'s paragraph reads as paragraphText`, textOf(html, [GAP_ELEMENT]), paragraphText(segments));
+    same(`render: ${id}'s paragraph reads as paragraphText`, textOf(html, [GAP_ELEMENT, NOSCRIPT]), paragraphText(segments));
+    const notes = segments.flatMap((segment) => (segment.kind === "sentence" ? segment.parts.filter((part) => part.kind === "note") : []));
+    same(`render: ${id}'s markers, one per note, named for their answer`, markers(html), notes.map((part) => `Source note for ${part.answer}`));
+    same(`render: ${id}'s no-script fallbacks hold each note in parentheses`, noscripts(html), notes.map((part) => `(${noteText(part.note)})`));
   }
   for (const note of [NOTE, UNDATED]) {
-    same(`render: SourcedNote reads as noteText (${note.source.dateKind})`, textOf(render(SourcedNote, { note })), noteText(note));
+    same(`render: NoteContent reads as noteText (${note.source.dateKind})`, textOf(render(NoteContent, { note })), noteText(note));
+    const html = render(SourcedNote, { note, answer: "two millers" });
+    same(`render: SourcedNote adds no on-screen text (${note.source.dateKind})`, textOf(html, [NOSCRIPT]), "");
+    same(`render: SourcedNote's marker is named for its answer (${note.source.dateKind})`, markers(html), ["Source note for two millers"]);
+    same(`render: SourcedNote's no-script fallback (${note.source.dateKind})`, noscripts(html), [`(${noteText(note)})`]);
+    check(
+      `render: the source opens in a new tab, nofollow (${note.source.dateKind})`,
+      html.includes(`href="${note.source.url}"`) && html.includes('target="_blank"') && html.includes('rel="noopener noreferrer nofollow"'),
+    );
   }
 }
 
@@ -502,7 +540,8 @@ const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
     const next = html.indexOf("data-question=", html.indexOf(`data-question="${key}"`) + 1);
     return html.slice(at, next === -1 ? undefined : html.lastIndexOf("<", next));
   };
-  const items = (html) => [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1]));
+  // A list item's on-screen text (a note's no-script fallback excluded).
+  const items = (html) => [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1], [NOSCRIPT]));
 
   const messy = state({ seg: ["...", "  ", "fast."], vp: ["..."], rev: ["!"] }, ["rev"]);
   const html = grid(messy);
@@ -512,6 +551,14 @@ const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
   check("grid: and it lists nothing", items(block(html, "vp")).length === 0);
   check("grid: an open block whose only answer cleans to nothing is left open", textOf(block(html, "rev")).endsWith("Left open on purpose."), textOf(block(html, "rev")));
 
+  const withNote = state({ kp: [{ text: "two millers.", note: NOTE }, { text: "a co-op" }] });
+  same("grid: the full density puts a marker after a noted answer", markers(grid(withNote)), ["Source note for two millers"]);
+  same("grid: the list item's text is the answer alone", items(block(grid(withNote), "kp")), ["two millers", "a co-op"]);
+  same(
+    "grid: the mini density shows no note",
+    markers(render(CanvasGrid, { questions, state: withNote, density: "mini", idPrefix: "g", label: "X" })),
+    [],
+  );
   const noted = grid(state({ kp: [{ text: "...", note: NOTE }] }));
   check("grid: a noted answer that cleans to nothing leaves no note behind", !noted.includes(NOTE.source.url));
 

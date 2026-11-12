@@ -31,7 +31,10 @@ export interface CanvasGridProps {
   questions: readonly Pick<BmcQuestion, "key" | "block">[];
   /** Nine, canonical order, matched by key (a key given twice takes its last entry). Answers are shown through `displayAnswers`. */
   state: readonly CanvasQuestionState[];
-  /** `full` (tour, your canvas): every answer and its note. `mini` (cover cards): three, then "+N more". */
+  /**
+   * `full` (tour, your canvas): every answer, each note as a marker after its
+   * answer (`SourcedNote`). `mini` (cover cards): three, then "+N more"; no notes.
+   */
   density: "full" | "mini";
   /** Unique on the page: block headings get the ids `${idPrefix}-${key}`. */
   idPrefix: string;
@@ -131,11 +134,7 @@ export function CanvasGrid({
                     {listed.map((answer, j) => (
                       <li key={j}>
                         {answer.text}
-                        {!mini && answer.note && (
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            <SourcedNote note={answer.note} />
-                          </span>
-                        )}
+                        {!mini && answer.note && <SourcedNote note={answer.note} answer={answer.text} />}
                       </li>
                     ))}
                   </ul>
