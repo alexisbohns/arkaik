@@ -310,19 +310,24 @@ function possessive(name: string): string {
 }
 
 /**
- * What the live region says when a step starts — once per step, never per
- * answer: "Step 3 of 9, Channels. How do they find out…? Tidewise's answers:
- * app stores and word of mouth."
+ * What the live region says for a step: "Step 3 of 9, Channels. How do they
+ * find out…? Tidewise's answers: app stores and word of mouth." With
+ * `answers: false` (the tour playing by itself) only the step and its
+ * question, which a reader hears in about the time the step lasts; the
+ * answers are given when the reader paused or moved there themselves.
  */
 export function stepAnnouncement(input: {
   step: number;
   question: Pick<BmcQuestion, "block" | "prompt">;
   company: Pick<Company, "name">;
   state: CanvasQuestionState;
+  /** Default true. */
+  answers?: boolean;
 }): string {
   const { step, question, company, state } = input;
-  const answers = displayAnswers(state).map((answer) => answer.text);
   const head = `Step ${step} of ${STEP_COUNT}, ${question.block}. ${question.prompt}`;
+  if (input.answers === false) return head;
+  const answers = displayAnswers(state).map((answer) => answer.text);
   if (answers.length > 0) {
     const noun = answers.length === 1 ? "answer" : "answers";
     return `${head} ${possessive(company.name)} ${noun}: ${joinAnswers(answers)}.`;

@@ -312,6 +312,11 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
     "Step 5 of 9, Revenue streams. Where does the money come from? Tidewise has not answered this one.",
   );
   same(
+    "announce: while playing, the step and its question only",
+    stepAnnouncement({ step: 3, question: questions[2], company, state: tide.questions[2], answers: false }),
+    "Step 3 of 9, Channels. How do they find out about it, and how do they get it?",
+  );
+  same(
     "announce: the end",
     tourEndAnnouncement(company),
     "End of the tour: Tidewise's nine answers, read back as one paragraph.",
@@ -354,11 +359,9 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   );
   check("screen, no step: the paragraph is still empty", arrival.includes("The paragraph starts with the first question"));
   check("screen, no step: the block is being answered", arrival.includes('aria-label="Customer segments, being answered"'));
-  same(
-    "screen, no step: the live region holds step 1",
-    live(arrival),
-    "Step 1 of 9, Customer segments. Who is this for? Tidewise's answer: people who fish from the shore.",
-  );
+  // Empty on the server, filled after hydration: a live region announces changes, so step 1
+  // is spoken once on arrival instead of never.
+  same("screen, no step: the live region starts empty", live(arrival), "");
   check("screen: the player handles its own keys", arrival.includes('aria-keyshortcuts="ArrowLeft ArrowRight Home End Space K"'));
   check("screen: a step link is a real address", arrival.includes('href="/arkademy/business-model-canvas/tour/tidewise?step=5"'));
   check("screen: a step left open is named so", arrival.includes('aria-label="Step 5: Revenue streams, left open on purpose"'));

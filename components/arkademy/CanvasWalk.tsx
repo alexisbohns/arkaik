@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { composeParagraph, displayAnswers, type CanvasQuestionState } from "@/lib/arkademy/paragraph";
 import type { BmcQuestion, BmcQuestionKey, Company } from "@/lib/arkademy/schema";
 import { stepAnnouncement, tourEndAnnouncement, tourHref, tourTimelines } from "@/lib/arkademy/tour";
+import { useHydrated } from "@/lib/hooks/useHydrated";
 import { useTourPlayer } from "@/lib/hooks/useTourPlayer";
 import { cn } from "@/lib/utils";
 
@@ -103,9 +104,21 @@ function TourWalk({ company, questions, state, initialStep, next, examplesHref, 
     status: displayAnswers(state[i]).length > 0 ? "answered" : state[i].open ? "open" : "empty",
     reached: i + 1 < step,
   }));
-  const announcement = ended
-    ? tourEndAnnouncement(company)
-    : stepAnnouncement({ step, question, company, state: questionState });
+  // Empty until the page is live, so step 1 is announced once on arrival. While the tour
+  // plays by itself only the step and its question; the answers too when paused or
+  // when the reader moved to the step.
+  const hydrated = useHydrated();
+  const announcement = !hydrated
+    ? ""
+    : ended
+      ? tourEndAnnouncement(company)
+      : stepAnnouncement({
+          step,
+          question,
+          company,
+          state: questionState,
+          answers: !playing || player.manualStep === step,
+        });
 
   function pauseOnNote(event: MouseEvent<HTMLElement>) {
     if (event.target instanceof Element && event.target.closest("[data-note-marker]")) player.pause();

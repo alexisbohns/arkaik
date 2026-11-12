@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import {
   createTourReducer,
@@ -23,6 +23,11 @@ export interface TourPlayer {
   state: TourState;
   view: StepView;
   reducedMotion: boolean;
+  /**
+   * The step the reader moved to themselves (Back, Next, a step link, a key),
+   * or null: the live region gives that step's answers even while playing.
+   */
+  manualStep: number | null;
   /** Play or pause, as the play button does. */
   toggle: () => void;
   /** Stop playing, if playing: opening a note does this, so the step does not move on under it. */
@@ -110,7 +115,11 @@ export function useTourPlayer({
     window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
   }, [state.step]);
 
-  function navigate(action: TourAction) {
+  // The step the reader moved to themselves; autoplay moving on leaves it behind.
+  const [manualStep, setManualStep] = useState<number | null>(null);
+
+  function navigate(action: TourAction, target: number) {
+    if (target >= 1 && target <= timelines.length) setManualStep(target);
     const card = cardRef.current;
     if (card) {
       const top = card.getBoundingClientRect().top;
@@ -123,9 +132,9 @@ export function useTourPlayer({
 
   const toggle = () => dispatch(state.playing ? { type: "pause", ms: spentMs() } : { type: "play" });
   const pause = () => dispatch({ type: "pause", ms: spentMs() });
-  const back = () => navigate({ type: "back" });
-  const next = () => navigate({ type: "next" });
-  const goto = (step: number) => navigate({ type: "goto", step });
+  const back = () => navigate({ type: "back" }, state.step - 1);
+  const next = () => navigate({ type: "next" }, state.step + 1);
+  const goto = (step: number) => navigate({ type: "goto", step }, step);
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -167,5 +176,5 @@ export function useTourPlayer({
     event.preventDefault();
   }
 
-  return { state, view, reducedMotion, toggle, pause, back, next, goto, onKeyDown };
+  return { state, view, reducedMotion, manualStep, toggle, pause, back, next, goto, onKeyDown };
 }
