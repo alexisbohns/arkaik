@@ -1,6 +1,6 @@
 import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
-import type { WallLens, WallScreen } from "@/lib/utils/screen-wall";
+import type { WallLens, WallScreen, WallTouch } from "@/lib/utils/screen-wall";
 
 /**
  * The `data` of the Screens map's React Flow nodes (`ScreensCanvas` builds
@@ -14,6 +14,13 @@ import type { WallLens, WallScreen } from "@/lib/utils/screen-wall";
 
 /** A loaded shot's measured width / height, reported for the slot's current shot: `value` is its fingerprint (aspect-cache `shotKey`), never the shot itself. */
 export type AspectReport = (viewId: string, platform: PlatformId, value: string, ratio: number) => void;
+
+/** The selected frame (part 4): the frame, the view it shows, and the strip it sits in. */
+export interface WallSelection {
+  frameId: string;
+  viewId: string;
+  stripId: string;
+}
 
 export type WallFrameData = {
   frameId: string;
@@ -33,10 +40,14 @@ export type WallFrameData = {
   status?: StatusId;
   onActivate: (frameId: string, viewId: string, stripId: string) => void;
   onAspect: AspectReport;
-  /** Gaps only, and this frame shows no gap under the lens: drawn at 15% and greyscale, still clickable. */
+  /** Gaps only, and this frame shows no gap under the lens and is not the selected frame: drawn at 15% and greyscale, still clickable. */
   dimmed: boolean;
   /** Gaps only, side by side, and this frame is a gap: its rows that are not gaps, drawn at 35%. Empty otherwise. */
   dimmedRows: readonly PlatformId[];
+  /** This frame is the selection: the ring and `aria-current`; the touch chips hang off it. */
+  selected: boolean;
+  /** An arrow key on the focused frame; the controller picks the neighbour and moves focus there. */
+  onMove: (frameId: string, dir: "left" | "right" | "up" | "down") => void;
 };
 
 export type WallHeaderData = {
@@ -75,3 +86,12 @@ export type WallJumpData = {
   /** Gaps only: a jump tile is never a gap, so it fades with everything that is not one. */
   dimmed: boolean;
 };
+
+/**
+ * A touch chip under the selected frame (part 4): an endpoint or data model the
+ * view touches, or "+N more" (which opens the view's own panel). Rendered
+ * aria-hidden with tabIndex -1: the inspector's Touches list is its accessible twin.
+ */
+export type WallChipData =
+  | { kind: "touch"; frameId: string; touch: WallTouch; onOpen: (nodeId: string) => void }
+  | { kind: "more"; frameId: string; viewId: string; count: number; onOpen: (nodeId: string) => void };

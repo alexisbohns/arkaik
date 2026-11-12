@@ -68,7 +68,7 @@ change, the change is in § Verified facts and the open questions, not here.
   screens with no shot, with a count. With a count of 0 on the lens nothing fades
   (a whole wall at 15% reads as broken): the switch stays on, shows 0, and a
   status above the bar says "No gaps on <lens>" ("No gaps on any platform"
-  side by side).
+  side by side). The selected frame (part 4) never fades, gap or not.
 - **R9 Flow headers** show how many screens are live on the lens and how many
   are stale or missing a shot, on a counts line directly after the
   flow's title (never at the header's far end, which is off screen on arrival
@@ -773,9 +773,13 @@ node carries `width` and `height` from the layout (so the Minimap and
 focus lives on the element inside. `ScreensCanvas` passes no `onConnect` or
 `onEdgeClick`, `spotlight` off, `minimapColor: "status"`, and `data.status` on
 each frame = the lens status (side by side: the highest-ranked status across
-rows, `getRollupDisplayStatus` order). Touch edges (part 4) use React Flow's
-built-in `default` edge between a hidden bottom handle on the frame and a
-hidden left handle on each chip.
+rows, `getRollupDisplayStatus` order). Touch edges (part 4) are a tidy tree:
+React Flow's built-in `smoothstep` edge (`pathOptions: { offset: 0,
+borderRadius: 6 }`, one muted stroke, `--muted-foreground`) from a hidden
+handle on the frame's bottom edge, 16px in from its left corner
+(`TOUCH_TRUNK_X`), to a hidden left handle on each chip. The chip column sits
+12px (`TOUCH_STUB`) right of that trunk, so every edge runs straight down the
+shared trunk and turns right into its chip on one small rounded corner.
 
 ### Interaction
 
@@ -790,6 +794,9 @@ hidden left handle on each chip.
   viewport's horizontal centre would fall outside that strip's extent in the
   new layout, the camera pans along it — same zoom, same vertical position —
   to put the strip's start at the left edge, 32px in (`keepStripViewport`).
+  With a frame selected (part 4) a lens change instead frames the selection
+  again on the new layout, from the lens handler (bar or I/W/A), so the frame,
+  its chips and the inspector describing it stay together on screen.
   A product-scope change moves nothing unless that strip left the wall; then
   the opening camera runs again.
 - **Part 2.** Click or Enter/Space on a frame → `openNode({ nodeId: viewId })`
@@ -801,13 +808,27 @@ hidden left handle on each chip.
   within [0.6, 1]), shows the inspector and the chips. Clicking the selected
   frame again, or Enter on it, opens the panel. The inspector's "Open panel"
   does the same. A chip → `openNode({ nodeId })`. Pane click or Escape clears
-  the selection. Escape is `useShortcut("close", …, { ...GUARDED_HOTKEY,
-  enabled: selection !== null && entries.length === 0 })`: while any panel is
-  open, Escape stays the panel stack's (`PanelStack.tsx:169-183`).
+  the selection; so does its frame leaving the wall (a product-scope change, the
+  view deleted) — cleared, not hidden, so going back never re-selects it.
+  Escape is the `close` row, `{ ...GUARDED_HOTKEY, enabled: selection !== null
+  && entries.length === 0, conflictBehavior: "allow" }`: while any panel is
+  open, Escape stays the panel stack's (`PanelStack.tsx:169-183`). The two are
+  exclusive, so the map's registration allows the overlap, and it is made once
+  the wall's cell is attached, after the panel stack's, so TanStack never
+  warns.
 - The panel stack and the wall stay independent: opening a panel narrows the
   canvas, and `WallCamera` waits for the size to settle (120ms, as
-  `CameraFocus`). A cold load with `?node=` naming a view or flow on the wall
+  `CameraFocus`). Whenever the canvas's settled width changes while a frame is
+  selected (a panel opening or closing, a window resize) the selection is
+  framed again for the new size with the same rule; while a panel is open
+  that rule frames the frame alone, centred in the canvas the panel leaves,
+  its chips still drawn below it. A cold load with `?node=` naming a view or flow on the wall
   frames it (part 4; a view is also selected).
+- The inspector (part 4) is not rendered while any panel is open: the panel
+  already says everything it would, and the narrowed canvas would otherwise
+  turn it into a bottom sheet over the frame and its chips (what a cold load
+  with `?node=` showed). The selection ring and the chips stay; closing the
+  last panel brings the inspector back for the selected frame.
 - The inspector (part 4) is a `<section aria-label="<view> on the wall">`
   absolutely positioned in the canvas cell, top-right, 320px wide, outside
   React Flow (so the wheel scrolls it, not the canvas). Contents: title, the
@@ -817,7 +838,11 @@ hidden left handle on each chip.
   stale reason plus "and N more", the proof line: "Live from a deploy · 3 Nov ·
   <detail>", "Live, set by hand · 3 Nov", or "No record of how this went live"),
   a "Touches" list of the same endpoints and models as the chips (buttons; the
-  keyboard path to them), and "Open panel".
+  keyboard path to them), and "Open panel". "Also in …" selects the view's
+  frame in that strip and rings its header; its camera also frames the
+  header's title area (its left end, up to `HEADER_MIN_W`) with the frame and
+  chips when the joined rect still fits at the selection's minimum zoom (0.6),
+  and leaves it out otherwise (a frame far along a long strip).
 - Chips: up to `CHIP_MAX` (8), then one "+N more" chip that opens the view's
   panel. They are canvas nodes (they move with the camera), `zIndex` 1000 over
   the next strip, on a card background, and `aria-hidden` with `tabIndex={-1}`:
@@ -836,7 +861,8 @@ hidden left handle on each chip.
   count badge. On with a count of 0, it fades nothing and a `role="status"` pill
   above the bar, in the top pills' style, reads "No gaps on <lens>".
 - A visually hidden `aria-live="polite"` line announces changes ("Showing iOS.
-  4 gaps.").
+  4 gaps."); with a frame selected (part 4) it adds "Selected <view title>.
+  Details in the inspector."
 - I/W/A (part 3) drive the lens through `usePlatformHotkeys`, mapping `"all"`
   to `"side"`; the three filter rows' descriptions gain "Screens".
 
@@ -960,6 +986,13 @@ scope does not have, and nothing is written back until the viewer chooses.
   a window listener; documented by a new registry row `wall-move` ("Move between
   screens (Screens map)", keys ← ↑ → ↓, scope `map`, no `hotkeys`). Escape and
   I/W/A as above.
+- **The inspector** (part 4) is a named region (`role="region"`, id
+  `SCREEN_INSPECTOR_ID`, `aria-label` "<view> on the wall"). While it shows,
+  the selected frame carries `aria-current`, `aria-controls` and
+  `aria-describedby` pointing at it; Tab from the selected frame moves into its
+  first control (it comes after the whole canvas in the page), and Shift+Tab
+  from that control returns to the frame. With a panel open there is no
+  inspector, and the frame points at nothing.
 - **Colour is never alone:** every state has a word or glyph; stale is an amber
   ring plus a "Stale" badge with a clock glyph; no-shot is a dashed amber border
   plus its words.
@@ -974,13 +1007,19 @@ scope does not have, and nothing is written back until the viewer chooses.
 - **Narrow:** the canvas wrapper is an `@container`. Below 60rem of container
   width the Minimap is hidden; below 40rem the Controls are hidden too and the
   inspector becomes a bottom sheet above the bar (max 50% of the cell height,
-  scrolling vertically). Below 33rem — where the labelled bar (about 481px)
-  stops fitting on one line — the bar spans the width with 12px gutters, its
-  lens options show icons only (each keeps its accessible name and a `title`)
-  and the gaps switch keeps its icon and count and drops its word; nothing
-  wraps or overlaps down to a 280px canvas. Every one of these follows the
-  canvas's own width (a panel narrows it), never the window's, so the bar
-  overrides the `SegmentedControl`'s viewport `md` collapse from outside. Touch: tap selects, pinch zooms (React Flow).
+  scrolling vertically). The selection camera follows the same
+  breakpoint (`INSPECTOR_SHEET_BELOW`, one constant): above it the rect is
+  framed in the canvas less the inspector card's 336 screen px; below it no
+  width is reserved, and the
+  sheet's maximum height is kept clear above the bar so the frame sits above
+  the sheet. With a panel open there is no inspector, so neither. Below 33rem —
+  where the labelled bar (about 481px) stops fitting on one line — the bar
+  spans the width with 12px gutters, its lens options show icons only (each
+  keeps its accessible name and a `title`) and the gaps switch keeps its icon
+  and count and drops its word; nothing wraps or overlaps down to a 280px
+  canvas. Every one of these follows the canvas's own width (a panel narrows
+  it), never the window's, so the bar overrides the `SegmentedControl`'s
+  viewport `md` collapse from outside. Touch: tap selects, pinch zooms (React Flow).
   Below 768px the panel stack shows one column, as everywhere.
 
 ## Performance

@@ -405,6 +405,24 @@ async function main() {
     "every row has keys and a description",
   );
 
+  // --- the Screens map's arrow keys ---
+  // Documentation only: the focused frame's own onKeyDown moves between
+  // screens, so the row registers nothing and `useShortcut` refuses it.
+  const mapRows = (projectGroups.find((group) => group.id === "map") ?? { shortcuts: [] }).shortcuts;
+  const wallMove = mapRows.find((s) => s.id === "wall-move");
+  assert(Boolean(wallMove), "the Maps group documents moving between screens (wall-move)");
+  assert(wallMove?.scope === "map", "wall-move is scoped to maps");
+  assert(wallMove !== undefined && wallMove.hotkeys === undefined, "wall-move registers no hotkeys");
+  assert(wallMove?.keys.join(" ") === "← ↑ → ↓", "wall-move shows the four arrows");
+  assert(!docsIds.includes("wall-move"), "wall-move stays out of the docs sheet");
+  threw = false;
+  try {
+    getShortcut("wall-move");
+  } catch {
+    threw = true;
+  }
+  assert(threw, "getShortcut refuses wall-move (nothing to register)");
+
   // --- rendering ---
   assert(formatShortcutKey(MOD_KEY_TOKEN, "⌘") === "⌘", "Mod renders as ⌘ on Apple keyboards");
   assert(formatShortcutKey(MOD_KEY_TOKEN, "Ctrl") === "Ctrl", "…and as Ctrl elsewhere");

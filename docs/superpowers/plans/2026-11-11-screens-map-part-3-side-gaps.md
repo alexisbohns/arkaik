@@ -341,7 +341,7 @@ const canvas = () =>
     isGapCell: W.isGapCell, isGapFrame: W.isGapFrame, lensPlatforms: W.lensPlatforms, NO_ROWS,
   });
 const frame = () =>
-  compile("components/graph/nodes/WallFrameNode.tsx", ["sentence", "sideSpokenWord", "sideAriaLabel", "sideStateLine"], {
+  compile("components/graph/nodes/WallFrameNode.tsx", ["sentence", "frameSubject", "sideSpokenWord", "sideAriaLabel", "sideStateLine"], {
     cellWord: W.cellWord, PLATFORM_LABELS,
   });
 const controller = () => compile("components/maps/ScreensMap.tsx", ["screensAnnouncement"], { platformLabel });
@@ -425,15 +425,23 @@ check("a header stays lit only when its strip holds a kept view", () => {
 });
 
 console.log("\nWallFrameNode — side by side");
-const frameData = (viewId, armContext = null) => ({ screen: wall.screens.get(viewId), platforms: wall.platforms, armContext });
+// The frame's strip, as ScreensCanvas fills stripTitle: the first strip that shows the view.
+const stripTitleOf = (viewId) => wall.strips.find((strip) => strip.viewIds.includes(viewId)).title;
+const frameData = (viewId, armContext = null) => ({
+  screen: wall.screens.get(viewId),
+  stripTitle: stripTitleOf(viewId),
+  platforms: wall.platforms,
+  armContext,
+});
 check("side aria label", () => {
   const { sideAriaLabel } = frame();
   const title = wall.screens.get("V-soul-detail").title;
-  equal(sideAriaLabel(frameData("V-soul-detail")), `${title}. Web: live. iOS: stale. Android: live.`, "V-soul-detail");
+  // T10: the strip title follows the view's title, as in the single-platform label.
+  equal(sideAriaLabel(frameData("V-soul-detail")), `${title}, ${stripTitleOf("V-soul-detail")}. Web: live. iOS: stale. Android: live.`, "V-soul-detail");
   const intro = wall.screens.get("V-onboarding-intro").title;
   equal(
     sideAriaLabel(frameData("V-onboarding-intro", "in Yes of Has a streak?")),
-    `${intro}, in Yes of Has a streak? Web: not on this platform. iOS: development. Android: not on this platform.`,
+    `${intro}, ${stripTitleOf("V-onboarding-intro")}, in Yes of Has a streak? Web: not on this platform. iOS: development. Android: not on this platform.`,
     "V-onboarding-intro",
   );
 });
@@ -1542,7 +1550,10 @@ const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].s
 
 // --- Page helpers ---
 async function importBundle(page, file) {
-  await page.goto(`${BASE}/projects`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+  // The full load and a beat for hydration: a file chosen before React is
+  // listening is lost, and the import never navigates.
+  await page.goto(`${BASE}/projects`, { timeout: 180_000 });
+  await page.waitForTimeout(1500);
   await page.locator('input[type="file"][accept="application/json,.json"]').setInputFiles(file);
   await page.waitForURL(/\/project\/[^/?#]+/, { timeout: 180_000 });
   return decodeURIComponent(/\/project\/([^/?#]+)/.exec(page.url())[1]);
@@ -1862,7 +1873,192 @@ If the only failures are `no console errors` with lines that are not about the m
 
 - [ ] **Step 5: Look at the screenshots**
 
-In `$SCRATCH/shots-part3/`: `side-fit-light.png` (the whole wall side by side: three rows per frame), `side-gaps-light.png` and `side-gaps-dark.png` (Manage souls readable: Souls list faded with three green shots; Soul detail lit with an amber-ringed iOS mini and the word "Stale", its web and Android rows at 35%; Soul create and Soul edit lit with dashed amber "No shot" minis), `side-gaps-900-light.png`, `side-gaps-390-light.png` (the bar within the window, the lens collapsed to icons below `md`), `selfmap-light.png` (the gaps switch alone). Check by eye: words are legible in both themes, the amber ring and dashed borders read without colour (word + glyph), nothing is clipped in the bar.
+In `$SCRATCH/shots-part3/`: `side-fit-light.png` (the whole wall side by side: three rows per frame), `side-gaps-light.png` and `side-gaps-dark.png` (Manage souls readable: Souls list faded with three green shots; Soul detail lit with an amber-ringed iOS mini and the word "Stale", its web and Android rows at 35%; Soul create and Soul edit lit with dashed amber "No shot" minis), `side-gaps-900-light.png`, `side-gaps-390-light.png` (the bar within the window, the lens collapsed to icons below a 33rem canvas), `selfmap-light.png` (the gaps switch alone). Check by eye: words are legible in both themes, the amber ring and dashed borders read without colour (word + glyph), nothing is clipped in the bar.
+
+### Review round 2: gaps only with no gaps, and the bar by the canvas's width (headless, not CI)
+
+Two fixes after review landed on this branch: with gaps only on and no gap on the lens nothing fades and a status pill reads "No gaps on <lens>" (U1); the bar answers to the canvas's `@container` width, labelled from 33rem and icons only below it (U2). `$SCRATCH/check-round2-bar.js` checks both, with and without a panel, at canvas widths of about 1100, 620, 300 and 280px. It imports `make-bundles.js`'s `pebbles-shots.json` (every slot has a shot: Web has no gap, iOS has one).
+
+```js
+#!/usr/bin/env node
+/**
+ * Screens map, review round 2 — the bar (part 3 layer): U1 gaps only with no
+ * gaps, and U2 the bar at canvas widths of about 280, 300, 620 and 1100px,
+ * with and without a panel open.
+ *
+ *   node check-round2-bar.js <baseUrl> <pebbles-shots.json> <outDir>
+ *
+ * pebbles-shots.json is make-bundles.js's: every slot has a shot, so Web has
+ * no gap and iOS has one. Prints `ok N - …` per check, stops at the first
+ * `not ok`, and ends with "PASS screens-round2-bar: N checks".
+ */
+const path = require("path");
+const { chromium } = require("playwright");
+
+const [baseUrl = "http://localhost:4391", bundlePath, outDir = process.cwd()] = process.argv.slice(2);
+if (!bundlePath) {
+  console.error("usage: node check-round2-bar.js <baseUrl> <pebbles-shots.json> <outDir>");
+  process.exit(2);
+}
+let count = 0;
+function ok(condition, message) {
+  count += 1;
+  if (!condition) throw new Error(`not ok ${count} - ${message}`);
+  console.log(`ok ${count} - ${message}`);
+}
+const COMPACT_BELOW = 33 * 16; // the bar's @max-[33rem]
+
+(async () => {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("pageerror", (e) => errors.push(e.message));
+  try {
+    await page.goto(`${baseUrl}/projects`, { timeout: 180000 });
+    await page.setInputFiles('input[type="file"][accept*="json"]', bundlePath);
+    await page.waitForURL(/\/project\/[^/?]+/, { timeout: 180000 });
+    const projectId = new URL(page.url()).pathname.split("/")[2];
+    const screens = async (query = "") => {
+      await page.goto(`${baseUrl}/project/${projectId}/maps/screens${query}`, { timeout: 180000 });
+      await page.locator(".react-flow__node-wallHeader").first().waitFor({ timeout: 180000 });
+      await page.waitForTimeout(900);
+    };
+    const toolbar = page.getByRole("toolbar", { name: "Screens display" });
+    const gaps = toolbar.getByRole("button", { name: /^Gaps only/ });
+    const noGaps = page.locator("[data-no-gaps]");
+    const dimmedFrames = () => page.locator('.react-flow__node-wallFrame [data-dimmed="true"]').count();
+
+    // --- U1: gaps only on a lens with no gap ---
+    await screens();
+    await toolbar.getByRole("button", { name: "Web", exact: true }).click();
+    await page.waitForTimeout(500);
+    if ((await gaps.getAttribute("aria-pressed")) !== "true") await gaps.click();
+    await page.waitForTimeout(700);
+    ok((await gaps.getAttribute("aria-pressed")) === "true", "U1: the gaps switch is on");
+    ok((await gaps.locator("[data-gap-count]").innerText()).trim() === "0", "U1: …and shows 0 on Web");
+    ok((await dimmedFrames()) === 0, "U1: with no gap on the lens nothing fades");
+    ok((await page.locator('.react-flow__node [data-dimmed="true"]').count()) === 0, "U1: …no header, marker or jump tile either");
+    ok(await noGaps.isVisible(), "U1: a status says why");
+    ok((await noGaps.innerText()).trim() === "No gaps on Web" && (await noGaps.getAttribute("role")) === "status", `U1: …"No gaps on Web", as a status (${await noGaps.innerText()})`);
+    const pill = await noGaps.boundingBox();
+    const barBox = await toolbar.boundingBox();
+    ok(pill.y + pill.height <= barBox.y + 1 && Math.abs(pill.x + pill.width / 2 - (barBox.x + barBox.width / 2)) < 2, "U1: …just above the bar, centred on it");
+    await page.screenshot({ path: path.join(outDir, "r2-u1-no-gaps-web-1440-light.png") });
+    await toolbar.getByRole("button", { name: "iOS", exact: true }).click();
+    await page.waitForTimeout(700);
+    ok((await gaps.locator("[data-gap-count]").innerText()).trim() === "1" && (await noGaps.count()) === 0 && (await dimmedFrames()) > 0,
+      "U1: on iOS (1 gap) the status goes and the wall fades again");
+    await gaps.click();
+    await toolbar.getByRole("button", { name: "Web", exact: true }).click();
+    await page.waitForTimeout(500);
+    ok((await noGaps.count()) === 0, "U1: with the switch off there is no status");
+
+    // --- U2: the bar by the canvas's own width ---
+    const measure = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector('[role="toolbar"][aria-label="Screens display"]');
+        const cell = bar.closest(".\\@container").getBoundingClientRect();
+        const box = (el) => el.getBoundingClientRect().toJSON();
+        const group = bar.querySelector('[role="group"]');
+        const lens = group ? [...group.querySelectorAll(":scope > button")] : [];
+        const gapsButton = [...bar.querySelectorAll("button")].find((b) => /^Gaps only/.test(b.getAttribute("aria-label") ?? ""));
+        const word = [...gapsButton.querySelectorAll("span")].find((s) => s.textContent === "Gaps only");
+        return {
+          cell: { left: cell.left, right: cell.right, width: cell.width },
+          bar: { ...box(bar), scrollWidth: bar.scrollWidth, clientWidth: bar.clientWidth },
+          group: group ? box(group) : null,
+          gaps: box(gapsButton),
+          gapsTitle: gapsButton.title,
+          wordShown: getComputedStyle(word).display !== "none",
+          countShown: getComputedStyle(gapsButton.querySelector("[data-gap-count]")).display !== "none",
+          lens: lens.map((b) => {
+            const span = b.querySelector("span");
+            return {
+              name: b.getAttribute("aria-label"),
+              title: b.title,
+              height: b.getBoundingClientRect().height,
+              labelShown: Boolean(span) && getComputedStyle(span).display !== "none",
+              labelHeight: span ? span.getBoundingClientRect().height : 0,
+              iconShown: Boolean(b.querySelector("svg")),
+            };
+          }),
+        };
+      });
+    const overlap = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+    async function checkBar(label) {
+      const m = await measure();
+      const compact = m.cell.width < COMPACT_BELOW;
+      const where = `${label}: canvas ${Math.round(m.cell.width)}px`;
+      ok(m.bar.scrollWidth <= m.bar.clientWidth + 1 && m.bar.left >= m.cell.left + 11 && m.bar.right <= m.cell.right - 11,
+        `${where}: the bar fits inside the canvas with its gutters (${Math.round(m.bar.width)}px)`);
+      ok(m.gaps.height <= 34 && m.lens.every((b) => b.height <= 30 && (!b.labelShown || b.labelHeight <= 20)),
+        `${where}: nothing wraps (${JSON.stringify(m.lens.map((b) => [b.name, Math.round(b.height), Math.round(b.labelHeight)]))})`);
+      ok(!m.group || !overlap(m.group, m.gaps), `${where}: the lens and the gaps switch do not overlap`);
+      ok(m.lens.length === 4 && m.lens.every((b) => b.iconShown && b.title === b.name && b.name),
+        `${where}: every lens option keeps its icon, its accessible name and a title`);
+      if (compact) {
+        ok(m.lens.every((b) => !b.labelShown), `${where}: below 33rem the lens shows icons only`);
+        ok(!m.wordShown && m.countShown && m.gapsTitle === "Gaps only", `${where}: …and the gaps switch keeps its icon and count, drops its word`);
+      } else {
+        ok(m.lens.every((b) => b.labelShown), `${where}: every lens label shows`);
+        ok(m.wordShown && m.countShown, `${where}: …and the gaps switch says "Gaps only" with its count`);
+      }
+      return m.cell.width;
+    }
+    /** Resizes the window until the canvas is about `target` px wide (the panel stack keeps its own widths). */
+    async function canvasAbout(target, height) {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const { cell } = await measure();
+        const viewport = page.viewportSize();
+        const next = Math.round(viewport.width + (target - cell.width));
+        if (Math.abs(cell.width - target) <= 8) return;
+        await page.setViewportSize({ width: next, height });
+        await page.waitForTimeout(600);
+      }
+    }
+    const seen = [];
+    for (const target of [1100, 620, 300, 280]) {
+      await page.setViewportSize({ width: target + 280, height: 900 });
+      await screens();
+      await canvasAbout(target, 900);
+      const width = await checkBar(`no panel, ~${target}`);
+      seen.push(Math.round(width));
+      await page.screenshot({ path: path.join(outDir, `r2-u2-bar-${target}-no-panel.png`) });
+    }
+    for (const target of [1100, 620, 300]) {
+      await page.setViewportSize({ width: target + 900, height: 900 });
+      await screens("?node=V-souls-list");
+      await page.locator('section[aria-labelledby$="-heading"]').first().waitFor({ timeout: 30000 });
+      await page.waitForTimeout(700);
+      await canvasAbout(target, 900);
+      const width = await checkBar(`panel open, ~${target}`);
+      seen.push(Math.round(width));
+      await page.screenshot({ path: path.join(outDir, `r2-u2-bar-${target}-panel.png`) });
+    }
+    console.log(`canvas widths checked: ${seen.join(", ")}`);
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+  } catch (error) {
+    await page.screenshot({ path: path.join(outDir, "r2-bar-failure.png") }).catch(() => {});
+    console.error(error.message);
+    if (errors.length) console.error(`console errors:\n  ${errors.join("\n  ")}`);
+    await browser.close();
+    process.exit(1);
+  }
+  await browser.close();
+  console.log(`PASS screens-round2-bar: ${count} checks, 0 console errors`);
+})();
+```
+
+Run, from `$SCRATCH` with the worktree's dev server up: `node check-round2-bar.js http://localhost:4343 "$SCRATCH/pebbles-shots.json" "$SCRATCH"`
+Expected last line, exit 0:
+
+```
+PASS screens-round2-bar: 52 checks, 0 console errors
+```
+
+Screenshots: `r2-u1-no-gaps-web-1440-light.png`, `r2-u2-bar-<1100|620|300|280>-no-panel.png`, `r2-u2-bar-<1100|620|300>-panel.png`.
 
 ---
 

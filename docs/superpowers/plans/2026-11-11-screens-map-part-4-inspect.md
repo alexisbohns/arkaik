@@ -2007,7 +2007,7 @@ Create `$SCRATCH/check-part4.js`:
  *
  * Run from a scratch directory where `npm i playwright` and
  * `npx playwright install chromium` were run, against this worktree's
- * `PORT=4343 npm run dev`. Prints one `ok N - …` line per check and stops at
+ * `PORT=4371 npm run dev` (any free port). Prints one `ok N - …` line per check and stops at
  * the first `not ok`. Screenshots go to <outDir>.
  */
 
@@ -2073,8 +2073,9 @@ async function run(page, consoleErrors) {
   // --- cold load with ?node= on a view: selected, framed, panel open ---
   await page.goto(`${baseUrl}/project/${projectId}/maps/screens?node=${EDITOR}`, { timeout: 120000 });
   const editorInspector = page.locator('section[aria-label="Quick Pebble Editor on the wall"]');
-  await editorInspector.waitFor({ timeout: 120000 });
-  ok(true, "a cold load with ?node= selects the view and shows its inspector");
+  // T13: with the ?node= panel open the inspector is not rendered; the selection, its ring and its chips are.
+  await page.locator(`[data-wall-frame^="${EDITOR}@"][aria-current="true"]`).waitFor({ timeout: 120000 });
+  ok(true, "a cold load with ?node= selects the view");
   ok(
     nodeParam() === EDITOR && (await page.locator('section[aria-labelledby$="-heading"]').count()) >= 1,
     "…and its node panel is open",
@@ -2083,6 +2084,15 @@ async function run(page, consoleErrors) {
   const frame = page.locator(`[data-wall-frame="${frameId}"]`);
   ok((await frame.getAttribute("aria-current")) === "true", `the selected frame ${frameId} carries aria-current`);
   await settle();
+  ok((await page.locator('section[aria-label$=" on the wall"]').count()) === 0, "T13: …with the panel open, no inspector is rendered");
+  ok((await page.locator(`[data-testid^="rf__node-chip:${frameId}:"]`).count()) === 9, "T13: …while the selection's chips stay");
+  const coldPane = await page.locator(".react-flow").first().boundingBox();
+  const coldFrame = await frame.boundingBox();
+  ok(
+    coldFrame.x >= coldPane.x - 1 && coldFrame.x + coldFrame.width <= coldPane.x + coldPane.width + 1 &&
+      coldFrame.y >= coldPane.y - 1 && coldFrame.y + coldFrame.height <= coldPane.y + coldPane.height + 1,
+    `T13: …and the frame is wholly in the canvas the panel leaves (${JSON.stringify({ coldFrame, coldPane })})`,
+  );
   await shot("01-cold-load-1440-light.png");
 
   // --- Escape with a panel open closes the panel only ---
@@ -2129,33 +2139,62 @@ async function run(page, consoleErrors) {
     chipPrefix,
   );
   ok(JSON.stringify(chipKeys.slice(0, 8)) === JSON.stringify(touchIds.slice(0, 8)), "the chips list the inspector's first 8 touches, in order");
+  // T12: a tidy tree — one trunk from the frame's bottom edge 16px in from its left
+  // corner, straight down, and a short stub right into each chip (12px at zoom 1).
   const geometry = await page.evaluate(
     ({ frame: id, keys }) => {
       const frameRect = document.querySelector(`[data-testid="rf__node-${id}"]`).getBoundingClientRect();
-      return keys.map((key) => {
-        const edge = document.querySelector(`[data-testid="rf__edge-touch:${id}:${key}"] path.react-flow__edge-path`);
-        const chip = document.querySelector(`[data-testid="rf__node-chip:${id}:${key}"]`).getBoundingClientRect();
-        if (!edge) return { key, missing: true };
-        const ctm = edge.getScreenCTM();
-        const at = (length) => {
-          const point = edge.getPointAtLength(length);
-          return new DOMPoint(point.x, point.y).matrixTransform(ctm);
-        };
-        const start = at(0);
-        const end = at(edge.getTotalLength());
-        return {
-          key,
-          fromFrame: Math.hypot(start.x - (frameRect.left + frameRect.width / 2), start.y - frameRect.bottom),
-          toChip: Math.hypot(end.x - chip.left, end.y - (chip.top + chip.height / 2)),
-        };
-      });
+      const zoom = Number(/scale\(([\d.]+)\)/.exec(document.querySelector(".react-flow__viewport").style.transform)[1]);
+      const trunkX = frameRect.left + 16 * zoom;
+      return {
+        zoom,
+        edges: keys.map((key) => {
+          const edge = document.querySelector(`[data-testid="rf__edge-touch:${id}:${key}"] path.react-flow__edge-path`);
+          const chip = document.querySelector(`[data-testid="rf__node-chip:${id}:${key}"]`).getBoundingClientRect();
+          if (!edge) return { key, missing: true };
+          const ctm = edge.getScreenCTM();
+          const total = edge.getTotalLength();
+          const at = (length) => {
+            const point = edge.getPointAtLength(length);
+            return new DOMPoint(point.x, point.y).matrixTransform(ctm);
+          };
+          const start = at(0);
+          const end = at(total);
+          const chipMid = chip.top + chip.height / 2;
+          // Every point lies on the trunk or on the chip's stub, give or take the 6px corner.
+          let offTree = 0;
+          for (let i = 0; i <= 40; i += 1) {
+            const p = at((total * i) / 40);
+            const off = Math.min(Math.abs(p.x - trunkX), Math.abs(p.y - chipMid));
+            if (off > 6 * zoom + 1 || p.x < trunkX - 1 || p.x > chip.left + 1) offTree += 1;
+          }
+          return {
+            key,
+            fromTrunk: Math.hypot(start.x - trunkX, start.y - frameRect.bottom),
+            toChip: Math.hypot(end.x - chip.left, end.y - chipMid),
+            stub: (chip.left - trunkX) / zoom,
+            offTree,
+            stroke: getComputedStyle(edge).stroke,
+          };
+        }),
+      };
     },
     { frame: frameId, keys: chipKeys },
   );
+  const edges = geometry.edges;
   ok(
-    geometry.every((edge) => !edge.missing && edge.fromFrame <= 12 && edge.toChip <= 12),
-    `every chip has a touch edge from the frame's bottom to the chip's left (${JSON.stringify(geometry.filter((e) => e.missing || e.fromFrame > 12 || e.toChip > 12))})`,
+    edges.every((edge) => !edge.missing && edge.fromTrunk <= 4 && edge.toChip <= 4),
+    `every chip has a touch edge from the trunk on the frame's bottom edge, 16px in, to the chip's left (${JSON.stringify(edges.filter((e) => e.missing || e.fromTrunk > 4 || e.toChip > 4))})`,
   );
+  ok(
+    edges.every((edge) => edge.offTree === 0),
+    `T12: every edge runs down the shared trunk and turns right into its chip (${JSON.stringify(edges.filter((e) => e.offTree > 0))})`,
+  );
+  ok(
+    edges.every((edge) => Math.abs(edge.stub - 12) <= 0.5),
+    `T12: the trunk sits 12px clear of the chip column (${JSON.stringify(edges.map((e) => Math.round(e.stub * 10) / 10))})`,
+  );
+  ok(new Set(edges.map((edge) => edge.stroke)).size === 1, `T12: one stroke colour for every edge (${edges[0].stroke})`);
   ok(
     await chips.evaluateAll((nodes) =>
       nodes.every((node) => {
@@ -2183,8 +2222,17 @@ async function run(page, consoleErrors) {
   await frame.click();
   await waitForNode(EDITOR);
   ok(true, "a second click on the selected frame opens its panel");
+  await settle();
+  ok(
+    (await editorInspector.count()) === 0 &&
+      (await frame.getAttribute("aria-current")) === "true" &&
+      (await page.locator(`[data-testid^="rf__node-chip:${frameId}:"]`).count()) === 9,
+    "T13: while the panel is open the inspector is gone, the ring and the chips stay",
+  );
   await page.keyboard.press("Escape");
   await waitForNoNode();
+  await editorInspector.waitFor({ timeout: 5000 });
+  ok(true, "T13: closing the panel brings the inspector back for the selected frame");
 
   await editorInspector.getByRole("button", { name: "Open panel" }).click();
   await waitForNode(EDITOR);
@@ -2269,9 +2317,50 @@ async function run(page, consoleErrors) {
   await settle();
   await shot("04-selected-1440-dark.png");
 
+  // --- T11: gaps only never fades the selected frame, even with focus in the inspector ---
+  await page.emulateMedia({ colorScheme: "light" });
+  const gapsSwitch = page.getByRole("button", { name: /^Gaps only/ });
+  await gapsSwitch.click();
+  await settle();
+  await editorInspector.locator("button[data-touch]").first().focus();
+  await settle();
+  const dim = await page.evaluate((id) => {
+    const wrap = document.querySelector(`[data-wall-frame="${id}"]`).parentElement;
+    return {
+      selectedDimmed: wrap.getAttribute("data-dimmed"),
+      opacity: getComputedStyle(wrap).opacity,
+      filter: getComputedStyle(wrap).filter,
+      othersDimmed: document.querySelectorAll('[data-dimmed="true"] [data-wall-frame]').length,
+      focusInInspector: Boolean(document.activeElement?.closest('section[aria-label$=" on the wall"]')),
+    };
+  }, frameId);
+  ok(
+    dim.focusInInspector && dim.othersDimmed > 0 && dim.selectedDimmed === "false" && dim.opacity === "1" && dim.filter === "none",
+    `T11: under gaps only the selected (non-gap) frame stays lit while focus is in the inspector (${JSON.stringify(dim)})`,
+  );
+  await shot("08-gaps-selected-inspector-focus-1440-light.png");
+  await gapsSwitch.click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await settle();
+
   // --- 390px: a bottom sheet above the bar ---
   await page.setViewportSize({ width: 390, height: 844 });
   await settle();
+  // T14: select again at this width — the camera keeps the frame above the sheet, not beside a card.
+  await page.keyboard.press("Escape");
+  await editorInspector.waitFor({ state: "detached", timeout: 5000 });
+  await frame.focus();
+  await page.keyboard.press("Enter");
+  await editorInspector.waitFor({ timeout: 5000 });
+  await settle();
+  const narrowFrame = await frame.boundingBox();
+  const narrowSheet = await editorInspector.boundingBox();
+  const narrowPane = await page.locator(".react-flow").first().boundingBox();
+  ok(
+    narrowFrame.x >= narrowPane.x - 1 && narrowFrame.x + narrowFrame.width <= narrowPane.x + narrowPane.width + 1 &&
+      narrowFrame.y >= narrowPane.y - 1 && narrowFrame.y + narrowFrame.height <= narrowSheet.y + 1,
+    `T14: at 390px a selection frames the frame wholly above the sheet (${JSON.stringify({ narrowFrame, narrowSheet, narrowPane })})`,
+  );
   const sheet = await editorInspector.boundingBox();
   const bar = await page.getByRole("toolbar", { name: "Screens display" }).boundingBox();
   const narrowCell = await surface.boundingBox();
@@ -2291,6 +2380,7 @@ async function run(page, consoleErrors) {
   await waitForNode(EDITOR);
   ok(true, "at 390px Open panel still opens the panel");
   await settle();
+  ok((await editorInspector.count()) === 0, "T13: at 390px, with the panel open, no inspector sheet is rendered");
   await shot("07-panel-390-light.png");
   await page.keyboard.press("Escape");
   await waitForNoNode();
@@ -2334,8 +2424,10 @@ Run, from `$SCRATCH`: `node check-part4.js http://localhost:4343 "$SCRATCH/scree
 Expected on success: 40 lines `ok 1 - …` to `ok 40 - …`, the last being `ok 40 - no console errors`, then exactly:
 
 ```
-PASS screens-part-4: 40 checks, 0 console errors
+PASS screens-part-4: 51 checks, 0 console errors
 ```
+
+(51 since the review fixes — T11 gaps only, T12 the touch tree, T13 no inspector while a panel is open, T14 the narrow camera; the script above is the version last run, on `feat/screens-inspect`.)
 
 and exit 0. On failure it prints `not ok N - <check>` with what it saw, any console errors, saves `99-failure.png`, and exits 1.
 
@@ -2344,6 +2436,344 @@ It covers, in order: import; cold load `?node=` (selected, framed, panel open, `
 - [ ] **Step 5: Look at the screenshots, then stop the server**
 
 Open in `$SCRATCH`: `01-cold-load-1440-light.png` (panel open beside the wall, selected frame ringed, chips under it, card top-right), `02-selected-1440-light.png`, `03-deploy-proof-1440-light.png`, `04-selected-1440-dark.png`, `05-sheet-390-dark.png`, `06-sheet-390-light.png`, `07-panel-390-light.png`. Check by eye: the card never covers the selected frame at 1440; the chips draw over the next strip on a card background and their edges are visible in both themes; the stale word is amber and the live word green, each with its word; no text overflows the card. Stop the dev server.
+
+### Review round 2: renders, the selection's camera, Escape and the inspector's reach (headless, not CI)
+
+Fixes after the second review, on this branch: a selection re-renders only the frames it changes (U3); a pick whose frame leaves the wall is cleared (U4); a lens change frames the selection again (U5); a settled canvas width change (a panel opening or closing, a window resize) frames it again, the frame alone and centred while a panel is open (U6); the map's Escape is registered after the panel stack's with `conflictBehavior: "allow"` (U7); the selection is announced, the frame points at the inspector region and Tab / Shift+Tab move between them (U8). `$SCRATCH/check-round2-inspect.js` checks them on `prepare-bundle.js`'s bundle. Frame renders are counted from the test, never from product code: `render-counter.js` is injected with `addInitScript` as a minimal React DevTools global hook.
+
+Create `$SCRATCH/render-counter.js`:
+
+```js
+/**
+ * Injected before the page's scripts (addInitScript): a minimal React DevTools
+ * global hook. React calls onCommitFiberRoot on every commit in development;
+ * this walks the committed tree and counts, per frame id, the commits in which
+ * a WallFrameNodeComponent fiber did work. Nothing in the product changes.
+ *
+ * A fiber rendered in this commit iff it is a fresh work-in-progress copy (not
+ * the very object committed last time: an untouched subtree is reused by
+ * pointer and keeps stale flags) and carries PerformedWork (flag 1) — the
+ * rule React DevTools' own didFiberRender applies to function components.
+ */
+module.exports = function installRenderCounter() {
+  const counts = new Map();
+  const previousByRoot = new WeakMap();
+  let renderers = 0;
+  const walk = (fiber, visit) => {
+    const stack = [fiber];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node) continue;
+      visit(node);
+      if (node.sibling) stack.push(node.sibling);
+      if (node.child) stack.push(node.child);
+    }
+  };
+  window.__wallRenders = {
+    counts,
+    reset() { counts.clear(); },
+    snapshot() { return Object.fromEntries(counts); },
+  };
+  const hook = {
+    supportsFiber: true,
+    isDisabled: false,
+    renderers: new Map(),
+    inject(renderer) { renderers += 1; hook.renderers.set(renderers, renderer); return renderers; },
+    onScheduleFiberRoot() {},
+    onCommitFiberRoot(_id, root) {
+      const previous = previousByRoot.get(root) ?? new Set();
+      const seen = new Set();
+      walk(root.current, (fiber) => {
+        if (typeof fiber.type !== "function" || fiber.type.name !== "WallFrameNodeComponent") return;
+        seen.add(fiber);
+        if (previous.has(fiber)) return;
+        if ((fiber.flags & 1) !== 1) return;
+        const id = fiber.memoizedProps?.data?.frameId ?? fiber.memoizedProps?.id ?? "?";
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      });
+      previousByRoot.set(root, seen);
+      window.__wallRenders.fibers = seen.size;
+    },
+    onCommitFiberUnmount() {},
+    onPostCommitFiberRoot() {},
+    checkDCE() {},
+  };
+  Object.defineProperty(window, "__REACT_DEVTOOLS_GLOBAL_HOOK__", { value: hook, configurable: true, writable: true });
+};
+```
+
+Create `$SCRATCH/check-round2-inspect.js`:
+
+```js
+#!/usr/bin/env node
+/**
+ * Screens map, review round 2 — selection and inspector (part 4 layer):
+ *   U3 selecting re-renders only the frames it changes (React DevTools hook,
+ *      counted from the test; plus DOM mutations on the other frames' roots),
+ *   U4 a selection whose frame leaves the wall does not come back,
+ *   U5 a lens change keeps the selected frame framed (bar and I/W/A),
+ *   U6 a panel opening or closing, or a window resize, frames the selection
+ *      again for the settled size,
+ *   U7 no "already registered" warning from the hotkey library,
+ *   U8 the selection is announced, the frame points at the inspector region,
+ *      and Tab / Shift+Tab move between the frame and the inspector.
+ *
+ *   node check-round2-inspect.js <baseUrl> <bundle.json> <outDir>
+ *
+ * <bundle.json> is prepare-bundle.js's (V-quick-pebble-editor: 14 touches).
+ * Prints `ok N - …`, stops at the first `not ok`, and ends with
+ * "PASS screens-round2-inspect: N checks".
+ */
+const path = require("path");
+const { chromium } = require("playwright");
+const installRenderCounter = require("./render-counter");
+
+const [baseUrl = "http://localhost:4391", bundlePath, outDir = process.cwd()] = process.argv.slice(2);
+if (!bundlePath) {
+  console.error("usage: node check-round2-inspect.js <baseUrl> <bundle.json> <outDir>");
+  process.exit(2);
+}
+let count = 0;
+function ok(condition, message) {
+  count += 1;
+  if (!condition) throw new Error(`not ok ${count} - ${message}`);
+  console.log(`ok ${count} - ${message}`);
+}
+const EDITOR = "V-quick-pebble-editor";
+const DETAIL = "V-pebble-detail";
+
+(async () => {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
+  await context.addInitScript(installRenderCounter);
+  const page = await context.newPage();
+  const errors = [];
+  const warnings = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text());
+    if (/already registered/.test(m.text())) warnings.push(m.text());
+  });
+  page.on("pageerror", (e) => errors.push(e.message));
+  const settle = (ms = 1000) => page.waitForTimeout(ms);
+  const shot = (name) => page.screenshot({ path: path.join(outDir, name) });
+  try {
+    await page.goto(`${baseUrl}/projects`, { timeout: 180000 });
+    await page.setInputFiles('input[type="file"][accept*="json"]', bundlePath);
+    await page.waitForURL(/\/project\/[^/?]+/, { timeout: 180000 });
+    const projectId = new URL(page.url()).pathname.split("/")[2];
+    const screens = async (query = "") => {
+      await page.goto(`${baseUrl}/project/${projectId}/maps/screens${query}`, { timeout: 180000 });
+      await page.locator("[data-wall-frame]").first().waitFor({ timeout: 180000 });
+      await settle(1500);
+    };
+    const waitForNode = (id) =>
+      page.waitForFunction((expected) => new URL(location.href).searchParams.get("node") === expected, id, { timeout: 15000 });
+    const waitForNoNode = () => page.waitForFunction(() => !new URL(location.href).searchParams.has("node"), null, { timeout: 15000 });
+    const inspector = page.locator('section[aria-label$=" on the wall"]');
+    const selected = page.locator('[data-wall-frame][aria-current="true"]');
+    const frameOf = (viewId) => page.locator(`[data-wall-frame^="${viewId}@"]`).first();
+    const geometry = () =>
+      page.evaluate(() => {
+        const pane = document.querySelector(".react-flow").getBoundingClientRect().toJSON();
+        const frame = document.querySelector('[data-wall-frame][aria-current="true"]')?.getBoundingClientRect().toJSON() ?? null;
+        const card = document.querySelector('section[aria-label$=" on the wall"]')?.getBoundingClientRect().toJSON() ?? null;
+        const bar = document.querySelector('[role="toolbar"][aria-label="Screens display"]').getBoundingClientRect().toJSON();
+        return { pane, frame, card, bar };
+      });
+    const inside = (r, pane) => r.left >= pane.left - 1 && r.right <= pane.right + 1 && r.top >= pane.top - 1 && r.bottom <= pane.bottom + 1;
+    const clear = (a, b) => !(a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1);
+    const framedOk = (g) => Boolean(g.frame) && inside(g.frame, g.pane) && (!g.card || clear(g.frame, g.card)) && clear(g.frame, g.bar);
+
+    // --- U3: renders and DOM mutations on selection ---
+    await screens();
+    const watch = () =>
+      page.evaluate(() => {
+        window.__frameMutations = new Map();
+        window.__frameObserver?.disconnect();
+        const observer = new MutationObserver((records) => {
+          for (const record of records) {
+            const root = record.target.closest?.("[data-frame-root]") ?? record.target.parentElement?.closest("[data-frame-root]");
+            const id = root?.getAttribute("data-frame-root");
+            if (id) window.__frameMutations.set(id, (window.__frameMutations.get(id) ?? 0) + 1);
+          }
+        });
+        const before = [];
+        for (const frame of document.querySelectorAll("[data-wall-frame]")) {
+          const root = frame.parentElement;
+          root.setAttribute("data-frame-root", frame.getAttribute("data-wall-frame"));
+          observer.observe(root, { attributes: true, childList: true, characterData: true, subtree: true });
+          before.push(frame.getAttribute("data-wall-frame"));
+        }
+        window.__frameObserver = observer;
+        window.__wallRenders.reset();
+        return before;
+      });
+    const report = () =>
+      page.evaluate(() => ({
+        renders: window.__wallRenders.snapshot(),
+        mutations: Object.fromEntries(window.__frameMutations),
+        mounted: [...document.querySelectorAll("[data-wall-frame]")].map((f) => f.getAttribute("data-wall-frame")),
+      }));
+    const u3Step = async (label, action, changed) => {
+      const before = await watch();
+      await action();
+      await settle(1300);
+      const { renders, mutations, mounted } = await report();
+      // Frames mounted before and after: only the ones the selection changed may render or mutate.
+      const stayed = before.filter((id) => mounted.includes(id));
+      const others = stayed.filter((id) => !changed.includes(id));
+      const renderedOthers = others.filter((id) => renders[id]);
+      const mutatedOthers = others.filter((id) => mutations[id]);
+      console.log(`  U3 ${label}: ${Object.keys(renders).length} frame renders (${stayed.length} frames mounted throughout), ` +
+        `renders ${JSON.stringify(renders)}`);
+      ok(renderedOthers.length === 0, `U3: ${label} re-renders none of the other ${others.length} mounted frames (${renderedOthers.join(", ")})`);
+      ok(mutatedOthers.length === 0, `U3: …and leaves their elements untouched (${mutatedOthers.join(", ")})`);
+      ok(changed.every((id) => !stayed.includes(id) || renders[id]), `U3: …while the frame(s) it changes do render (${changed.join(", ")})`);
+    };
+    const editorId = await frameOf(EDITOR).getAttribute("data-wall-frame");
+    const detailId = await frameOf(DETAIL).getAttribute("data-wall-frame");
+    await u3Step("selecting one frame", () => frameOf(EDITOR).click(), [editorId]);
+    await u3Step("selecting another", () => frameOf(DETAIL).click(), [editorId, detailId]);
+    await u3Step("clearing with Escape", () => page.keyboard.press("Escape"), [detailId]);
+
+    // --- U8: announcement, region wiring, Tab and Shift+Tab ---
+    // By keyboard: the last camera framed Pebble Detail, which can leave the
+    // editor's frame under the sidebar's edge for a pointer.
+    await frameOf(EDITOR).focus();
+    await page.keyboard.press("Enter");
+    await inspector.waitFor({ timeout: 5000 });
+    await settle();
+    const live = (await page.locator('[role="toolbar"] [aria-live="polite"]').innerText()).trim();
+    ok(/Selected Quick Pebble Editor\. Details in the inspector\.$/.test(live), `U8: the bar's live line announces the selection ("${live}")`);
+    const wiring = await page.evaluate(() => {
+      const frame = document.querySelector('[data-wall-frame][aria-current="true"]');
+      const region = document.getElementById(frame.getAttribute("aria-controls"));
+      return {
+        controls: frame.getAttribute("aria-controls"),
+        describedby: frame.getAttribute("aria-describedby"),
+        regionTag: region?.tagName,
+        regionRole: region?.getAttribute("role"),
+        regionName: region?.getAttribute("aria-label"),
+        others: document.querySelectorAll("[data-wall-frame][aria-controls]").length,
+      };
+    });
+    ok(Boolean(wiring.controls) && wiring.describedby === wiring.controls && wiring.regionRole === "region" && wiring.regionName === "Quick Pebble Editor on the wall",
+      `U8: the selected frame controls and is described by the named inspector region (${JSON.stringify(wiring)})`);
+    ok(wiring.others === 1, "U8: …and no other frame points at it");
+    await selected.focus();
+    await page.keyboard.press("Tab");
+    const afterTab = await page.evaluate(() => {
+      const region = document.querySelector('section[aria-label$=" on the wall"]');
+      const first = region.querySelector('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
+      return { inRegion: region.contains(document.activeElement), isFirst: document.activeElement === first, text: document.activeElement?.textContent?.trim() };
+    });
+    ok(afterTab.inRegion && afterTab.isFirst, `U8: Tab from the selected frame moves to the inspector's first control (${afterTab.text})`);
+    await page.keyboard.press("Shift+Tab");
+    ok((await page.evaluate(() => document.activeElement?.getAttribute("data-wall-frame"))) === editorId, "U8: Shift+Tab from that control returns to the frame");
+    await page.keyboard.press("Enter");
+    await waitForNode(EDITOR);
+    await settle();
+    ok((await page.locator("[data-wall-frame][aria-controls]").count()) === 0, "U8: with a panel open (no inspector) the frame points at nothing");
+
+    // --- U6: the panel the second activation opened ---
+    let g = await geometry();
+    ok(framedOk(g), `U6: with the panel open the selected frame is wholly in the narrowed canvas (${JSON.stringify(g)})`);
+    const dx = Math.abs(g.frame.left + g.frame.width / 2 - (g.pane.left + g.pane.width / 2));
+    ok(dx < 40, `U6: …centred across it (off by ${Math.round(dx)})`);
+    await shot("r2-u6-panel-open-1440-light.png");
+    await page.keyboard.press("Escape");
+    await waitForNoNode();
+    await inspector.waitFor({ timeout: 5000 });
+    await settle(1200);
+    g = await geometry();
+    ok(framedOk(g) && g.card, `U6: closing the panel frames it again beside the inspector card (${JSON.stringify(g)})`);
+
+    // --- U6: a window resize ---
+    await page.setViewportSize({ width: 1180, height: 820 });
+    await settle(1300);
+    g = await geometry();
+    ok(framedOk(g), `U6: a window resize frames the selection for the new size (${JSON.stringify(g)})`);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await settle(1300);
+
+    // --- U5: a lens change, by the bar and by hotkey ---
+    const toolbar = page.getByRole("toolbar", { name: "Screens display" });
+    await toolbar.getByRole("button", { name: "Side by side", exact: true }).click();
+    await settle(1300);
+    g = await geometry();
+    ok((await selected.getAttribute("data-wall-frame")) === editorId && framedOk(g),
+      `U5: Side by side (bar) keeps the selected frame framed beside the inspector (${JSON.stringify(g)})`);
+    await shot("r2-u5-side-selected-1440-light.png");
+    await page.locator("body").press("w").catch(() => {});
+    await selected.focus();
+    await page.keyboard.press("i");
+    await settle(1300);
+    g = await geometry();
+    const lensNow = await toolbar.locator('[role="group"] button[aria-pressed="true"]').getAttribute("aria-label");
+    ok(lensNow === "iOS" && framedOk(g), `U5: I (hotkey) to iOS keeps it framed (${lensNow}; ${JSON.stringify(g)})`);
+    await page.keyboard.press("w");
+    await settle(1300);
+    g = await geometry();
+    ok(framedOk(g), `U5: W back to Web keeps it framed (${JSON.stringify(g)})`);
+
+    // --- U6: a cold load with ?node=, then closing the panel, at 1440 and 900 ---
+    for (const width of [1440, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${baseUrl}/project/${projectId}/maps/screens?node=${EDITOR}`, { timeout: 180000 });
+      await selected.waitFor({ timeout: 180000 });
+      await settle(1500);
+      g = await geometry();
+      ok(framedOk(g), `U6 ${width}: a cold load frames the selected frame in the canvas the panel leaves (${JSON.stringify(g)})`);
+      await page.keyboard.press("Escape");
+      await waitForNoNode();
+      await inspector.waitFor({ timeout: 5000 });
+      await settle(1300);
+      g = await geometry();
+      ok(framedOk(g) && Boolean(g.card), `U6 ${width}: closing the panel frames it clear of the inspector (${g.card && g.card.width > 330 ? "sheet" : "card"}; ${JSON.stringify(g)})`);
+      await shot(`r2-u6-cold-load-closed-${width}-light.png`);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // --- U4: a selection whose frame leaves the wall does not come back ---
+    await screens();
+    await frameOf(EDITOR).click();
+    await inspector.waitFor({ timeout: 5000 });
+    await settle();
+    const switcher = async (from, to) => {
+      await page.getByRole("combobox").filter({ hasText: from }).first().click();
+      await page.getByRole("option", { name: to }).first().click();
+      await page.locator(".react-flow__node-wallHeader").first().waitFor({ timeout: 30000 });
+      await settle(1300);
+    };
+    await switcher("All products", "Admin");
+    ok((await selected.count()) === 0 && (await inspector.count()) === 0, "U4: scoped to Admin, the Pebbles frame is gone and so is the selection");
+    await switcher("Admin", "All products");
+    ok((await selected.count()) === 0 && (await inspector.count()) === 0,
+      "U4: back under All products the old frame is not selected again, no inspector");
+    ok((await page.locator('[data-testid^="rf__node-chip:"]').count()) === 0, "U4: …and no chips");
+
+    ok(warnings.length === 0, `U7: no "already registered" warning from the hotkey library (${warnings.length})`);
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(" | ")}` : ""}`);
+  } catch (error) {
+    await page.screenshot({ path: path.join(outDir, "r2-inspect-failure.png") }).catch(() => {});
+    console.error(error.message);
+    if (errors.length) console.error(`console errors:\n  ${errors.join("\n  ")}`);
+    await browser.close();
+    process.exit(1);
+  }
+  await browser.close();
+  console.log(`PASS screens-round2-inspect: ${count} checks, 0 console errors`);
+})();
+```
+
+Run, from `$SCRATCH` with the worktree's dev server up: `node check-round2-inspect.js http://localhost:4343 "$SCRATCH/screens-p4-bundle.json" "$SCRATCH"`
+Expected last line, exit 0:
+
+```
+PASS screens-round2-inspect: 31 checks, 0 console errors
+```
+
+Before U3, selecting the first Pebbles frame, selecting another and clearing each rendered all 61 frames of the wall (5 or 6 on screen); after it, 1, 2 (plus one newly scrolled into view) and 1. The part 2 script's "…and centres the frame in the narrowed canvas" passes unedited since U6 (off by 0, 36).
 
 ---
 
@@ -2365,7 +2795,7 @@ npm run generate && git status --porcelain   # prints nothing
 npm run build
 ```
 
-- Task 9's script prints `PASS screens-part-4: 40 checks, 0 console errors`, and the screenshots were looked at.
+- Task 9's script prints `PASS screens-part-4: 51 checks, 0 console errors`, and the screenshots were looked at.
 - The PR is opened with the `gh-stack` skill on top of part 3. Title:
 
 ```

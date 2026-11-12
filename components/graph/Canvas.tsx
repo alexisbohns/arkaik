@@ -15,6 +15,7 @@ export type { CanvasFocus } from "./CameraFocus";
 import { FlowNode } from "./nodes/FlowNode";
 import { ViewNode } from "./nodes/ViewNode";
 import { ApiEndpointNode, DataModelNode } from "./nodes/SystemLayerNode";
+import { WallChipNode } from "./nodes/WallChipNode";
 import { WallFrameNode } from "./nodes/WallFrameNode";
 import { WallHeaderNode } from "./nodes/WallHeaderNode";
 import { WallJumpNode } from "./nodes/WallJumpNode";
@@ -34,6 +35,7 @@ const nodeTypes = {
   wallHeader: WallHeaderNode,
   wallMarker: WallMarkerNode,
   wallJump: WallJumpNode,
+  wallChip: WallChipNode,
 };
 
 const edgeTypes = {

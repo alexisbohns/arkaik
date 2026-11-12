@@ -53,6 +53,7 @@
 /tests/app/.test-build-quality/
 /tests/app/.test-build-screenshot-staleness/
 /tests/app/.test-build-screen-wall/
+/tests/app/.test-build-screen-inspector/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests
 # (tests/cli/load-bootstrap-lib.js) — a separate dir from the one above,
