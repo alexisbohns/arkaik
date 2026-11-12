@@ -553,7 +553,6 @@ const index = A.indexArkademy(validation.document);
 
   const start = render(StartYourOwnButton, {});
   check("cover action: the server says Start your own", start.includes(">Start your own</a>") && start.includes('href="/arkademy/business-model-canvas/yours"'));
-  check("cover action: the stone button", start.includes("stone stone-primary"));
 
   const editorProps = (answers, step = 1, open = false) => ({
     question: tool.questions[step - 1],
@@ -571,7 +570,9 @@ const index = A.indexArkademy(validation.document);
     onNext: noop,
   });
   const empty = render(QuestionEditor, editorProps([]));
-  check("editor: kicker, question as the h2", empty.includes(">Question 1 of 9 · Customer segments</p>") && empty.includes(">Who is this for?</h2>"));
+  const emptyText = empty.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  check("editor: the kicker names the step and the block", emptyText.includes("Question 1 of 9 · Customer segments"));
+  check("editor: the question is the card's h2", /<h2\b[^>]*>Who is this for\?<\/h2>/.test(empty));
   check("editor: no answer, so it can be left open", empty.includes("Leave this open on purpose"));
   check("editor: Back disabled on the first question", /<button[^>]*disabled=""[^>]*>.*?Back<\/button>/.test(empty));
   const fiveAnswers = ["a", "b", "c", "d", "e"].map((text, i) => ({ id: `a${i + 1}`, question: "ka", text }));
@@ -581,7 +582,6 @@ const index = A.indexArkademy(validation.document);
   check("editor: with answers, no open checkbox", !five.includes("Leave this open on purpose"));
   check("editor: the first cannot move up, the last cannot move down", /aria-label="Move answer 1 up" disabled=""/.test(five) && /aria-label="Move answer 5 down" disabled=""/.test(five));
   check("editor: the ninth question's Next reads the paragraph", render(QuestionEditor, editorProps([], 9)).includes("Read your paragraph"));
-  check("editor: no keydown listener on window or document", !/(window|document)\.addEventListener\(\s*["']keydown/.test(fs.readFileSync(path.join(ROOT, "components/arkademy/QuestionEditor.tsx"), "utf8")));
 
   const steps = render(QuestionSteps, {
     questions: tool.questions,

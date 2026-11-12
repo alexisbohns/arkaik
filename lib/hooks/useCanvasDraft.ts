@@ -190,6 +190,9 @@ export function dismissUnreadableDraft() {
   emit();
 }
 
+/** The store itself, for tests in Node (a fake `window`, fake timers): what `useCanvasDraft` subscribes to. */
+export const canvasDraftStore = { subscribe, getSnapshot };
+
 export function useCanvasDraft(): CanvasDraftView {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

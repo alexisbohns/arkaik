@@ -235,6 +235,12 @@ jobs:
       - name: Arkademy canvas tests (inspirations, draft reducer, storage, exports)
         run: npm run test:arkademy-canvas
 
+      # Your own canvas's store (lib/hooks/useCanvasDraft.ts) with a fake
+      # window, an in-memory Storage and fake timers: load, the write throttle,
+      # page hide, another tab, blocked or full storage, newer and unreadable drafts.
+      - name: Arkademy canvas store tests (load, throttle, other tabs, storage failures)
+        run: npm run test:arkademy-draft-store
+
       - name: Map projection + validation tests
         run: npm run test:maps
 
