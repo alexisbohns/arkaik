@@ -152,6 +152,10 @@ const index = A.indexArkademy(validation.document);
     "Brine & Sons for salt",
   );
 
+  const { examplesPhrase } = A;
+  same("examplesPhrase: one", examplesPhrase([{ name: "Anthropic" }]), "the Anthropic example");
+  same("examplesPhrase: two", examplesPhrase([{ name: "Notion" }, { name: "Figma" }]), "the Notion and Figma examples");
+  same("examplesPhrase: more", examplesPhrase([{ name: "Notion" }, { name: "Figma" }, { name: "C" }, { name: "D" }]), "the Notion, Figma and 2 more examples");
   same("companiesLine: one", companiesLine([{ name: "Crumb & Co" }]), "Crumb & Co");
   same("companiesLine: two", companiesLine([{ name: "A" }, { name: "B" }]), "A and B");
   same("companiesLine: three", companiesLine([{ name: "A" }, { name: "B" }, { name: "C" }]), "A, B and C");
@@ -718,7 +722,7 @@ const index = A.indexArkademy(validation.document);
   const list = render(InspirationList, { items: many, full: false, onAdd: noop });
   same("inspirations: six first", (list.match(/<li>/g) ?? []).length, 6);
   check("inspirations: then Show all", list.includes("Show all 9"));
-  check("inspirations: each names its companies", list.includes('aria-label="Add “label 0”, used by Crumb &amp; Co"'));
+  check("inspirations: each names its example, not a fact about the company", list.includes('aria-label="Add “label 0”, in the Crumb &amp; Co example"') && !list.includes("used by"));
   const fullList = render(InspirationList, { items: many.slice(0, 2), full: true, onAdd: noop });
   same("inspirations: disabled at five answers", (fullList.match(/<button[^>]*disabled=""/g) ?? []).length, 2);
 

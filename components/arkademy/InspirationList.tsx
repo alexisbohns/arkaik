@@ -4,7 +4,7 @@ import { useState, type MouseEvent } from "react";
 import { LightbulbIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { companiesLine, INSPIRATIONS_SHOWN, type Inspiration } from "@/lib/arkademy/inspirations";
+import { examplesPhrase, INSPIRATIONS_SHOWN, type Inspiration } from "@/lib/arkademy/inspirations";
 import { cn } from "@/lib/utils";
 
 interface InspirationListProps {
@@ -45,20 +45,20 @@ export function InspirationList({ items, full, onAdd, id, className }: Inspirati
       ) : (
         <ul className="mt-3 flex flex-col gap-1.5">
           {shown.map((item) => {
-            const users = companiesLine(item.companies);
+            const where = examplesPhrase(item.companies);
             return (
               <li key={item.entity}>
                 <button
                   type="button"
                   disabled={full}
                   onClick={(event) => onAdd(item, event)}
-                  aria-label={`Add “${item.label}”, used by ${users}`}
+                  aria-label={`Add “${item.label}”, in ${where}`}
                   className="flex w-full cursor-pointer items-start gap-2 rounded-lg border bg-background px-3 py-2 text-left transition-colors outline-none hover:border-foreground/25 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <PlusIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 break-words">
                     <span className="block text-sm leading-snug">{item.label}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{users}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">In {where}</span>
                   </span>
                 </button>
               </li>

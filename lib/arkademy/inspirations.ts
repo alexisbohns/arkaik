@@ -118,3 +118,12 @@ export function companiesLine(companies: readonly { name: string }[]): string {
   if (names.length <= 3) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 }
+
+/**
+ * Where an inspiration comes from, as the page may say it: "the Anthropic
+ * example", "the Notion and Figma examples". An example may be a simulation,
+ * so the page never states "used by Anthropic" as a fact about the company.
+ */
+export function examplesPhrase(companies: readonly { name: string }[]): string {
+  return `the ${companiesLine(companies)} ${companies.length === 1 ? "example" : "examples"}`;
+}
