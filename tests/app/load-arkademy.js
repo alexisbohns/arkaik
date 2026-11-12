@@ -31,7 +31,9 @@ function arkademyModules() {
 
 /**
  * Transpiles the folder and returns every module's exports merged into one
- * object. A name exported by two modules is an error, not a silent overwrite.
+ * object. A name exported by two modules with two values is an error, not a
+ * silent overwrite; a re-export of the same value (schema.ts re-exports
+ * constants.ts) is one name.
  */
 function loadArkademy() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -64,7 +66,11 @@ function loadArkademy() {
   for (const name of modules) {
     const exported = require(path.join(BUILD_DIR, `${name}.js`));
     for (const key of Object.keys(exported)) {
-      if (key in merged) throw new Error(`"${key}" is exported by both lib/arkademy/${owner[key]}.ts and ${name}.ts`);
+      // A module may re-export a sibling's name (schema.ts re-exports constants.ts); that is the same value, not a clash.
+      if (key in merged && merged[key] !== exported[key]) {
+        throw new Error(`"${key}" is exported by both lib/arkademy/${owner[key]}.ts and ${name}.ts`);
+      }
+      if (key in merged) continue;
       merged[key] = exported[key];
       owner[key] = name;
     }
