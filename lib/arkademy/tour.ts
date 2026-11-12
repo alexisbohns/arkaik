@@ -277,6 +277,29 @@ export function stepFromSearch(search: string): number | null {
   return values.length === 1 ? parseStepParam(values[0]) : null;
 }
 
+/**
+ * The query string the address should carry while `step` is shown, or null
+ * when it already says so. The step is written once the tour has moved (so a
+ * reload or a shared link lands on the step being watched); an arrival on
+ * step 1 keeps a clean address. A `step` the parser refuses — repeated, out
+ * of range, not a number — is removed rather than left beside step 1. Other
+ * parameters are kept. The result is `""` or starts with `?`.
+ */
+export function searchForStep(search: string, step: number): string | null {
+  const params = new URLSearchParams(search);
+  const values = params.getAll("step");
+  const shown = stepFromSearch(search);
+  if (shown === step) return null;
+  if (step === 1 && shown === null) {
+    if (values.length === 0) return null;
+    params.delete("step");
+  } else {
+    params.set("step", String(step));
+  }
+  const query = params.toString();
+  return query === "" ? "" : `?${query}`;
+}
+
 /** An example's tour, optionally at a step: the address every step link and `replaceState` use. */
 export function tourHref(companyId: string, step?: number): string {
   return step === undefined ? bmcTourPath(companyId) : `${bmcTourPath(companyId)}?step=${step}`;

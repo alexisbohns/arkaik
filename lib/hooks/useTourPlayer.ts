@@ -7,7 +7,7 @@ import {
   keyKeepsFocus,
   initialTourState,
   nextBoundary,
-  parseStepParam,
+  searchForStep,
   stepFromSearch,
   resolveTourState,
   stepView,
@@ -103,13 +103,11 @@ export function useTourPlayer({
 
   // `?step=N` follows the step, autoplay included, so a reload or a shared
   // link lands on the step being watched. An arrival without a step keeps its
-  // clean address until the step first changes.
+  // clean address until the step first changes; an invalid `step` is removed.
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const shown = parseStepParam(url.searchParams.get("step") ?? undefined);
-    if (shown === state.step || (shown === null && state.step === 1)) return;
-    url.searchParams.set("step", String(state.step));
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    const search = searchForStep(window.location.search, state.step);
+    if (search === null) return;
+    window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
   }, [state.step]);
 
   function navigate(action: TourAction) {

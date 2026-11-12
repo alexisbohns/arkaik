@@ -39,6 +39,7 @@ const {
   keyKeepsFocus,
   elapsedAfterPause,
   stepFromSearch,
+  searchForStep,
 } = loadArkademy();
 
 let failures = 0;
@@ -272,6 +273,17 @@ same("search: none", stepFromSearch(""), null);
 same("search: two steps read as none", stepFromSearch("?step=3&step=5"), null);
 for (const bad of ["0", "10", "-1", "3.5", "abc", ""]) same(`search: step=${bad} reads as none`, stepFromSearch(`?step=${bad}`), null);
 same("restore: a watched step comes back complete and paused", initialTourState(timelines, stepFromSearch("?step=3")), at(3, T(3), false));
+// The address the player writes for its step: null when it already says so.
+same("address: arrival with no step stays clean", searchForStep("", 1), null);
+same("address: the step it shows needs no write", searchForStep("?step=4", 4), null);
+same("address: a new step is written", searchForStep("", 2), "?step=2");
+same("address: other parameters are kept", searchForStep("?ref=x&step=2", 3), "?ref=x&step=3");
+same("address: back to step 1 after moving names it", searchForStep("?step=2", 1), "?step=1");
+for (const bad of ["?step=3&step=5", "?step=0", "?step=10", "?step=-1", "?step=3.5", "?step=abc"]) {
+  same(`address: ${bad} on step 1 drops the step`, searchForStep(bad, 1), "");
+}
+same("address: an invalid step among others drops only it", searchForStep("?ref=x&step=abc", 1), "?ref=x");
+same("address: two steps on a later step become one", searchForStep("?step=3&step=5", 4), "?step=4");
 same("href: no step", tourHref("tidewise"), "/arkademy/business-model-canvas/tour/tidewise");
 same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/tour/tidewise?step=4");
 
