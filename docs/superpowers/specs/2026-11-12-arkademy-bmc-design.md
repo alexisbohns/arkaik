@@ -431,7 +431,7 @@ reported spend on it is a note on that company's use.
 - **Notes** (`Use.note`): `text` is 1–200 characters (`NOTE_MAX_LENGTH`),
   single line, trimmed, with no parentheses and no trailing punctuation
   (it is set inside parentheses); `source.name` is 1–80 characters, single
-  line; `source.url` parses as a URL with the `https:` protocol and is at most
+  line, with no parentheses (it is set inside the note's parentheses too); `source.url` parses as a URL with the `https:` protocol and is at most
   500 characters; `source.dateKind` is required and is one of the two values;
   `source.date` matches `YYYY-MM-DD`, is a real calendar date
   and is not in the future at upload time (a warning, not an error, since the
@@ -480,7 +480,8 @@ Warnings (printed, the upload proceeds):
   a sourced note.
 - A note's `source.date` is in the future.
 - Two entities of one kind share a label, compared case-insensitively.
-- A wording starts with a capitalised opener (`The`, `A`, `An`, `We`, `It`,
+- A use's wording (`Use.text` only; labels are sentence-case chips and are
+  exempt) starts with a capitalised opener (`The`, `A`, `An`, `We`, `It`,
   `Our`, `Nothing`, `Free`), contains a first-person pronoun (`we`, `our`,
   `us`, `I`, `my`) as a word, or starts with `and`, `or` or `but`. These come
   from the prototype's validator; a wording can only be judged by reading the
@@ -857,7 +858,9 @@ The rule:
 1. **Clean.** `cleanAnswer` trims and removes trailing full stops and
    whitespace: `text.trim().replace(/[.\s]+$/, "")`.
 2. **Join.** One item reads as itself. With two or more, the separator is
-   `"; "` if any item contains a comma, else `", "`; all but the last are
+   `"; "` if any item contains a comma, contains ` and ` as a word, or carries
+   a note (the real library showed that such lists cannot be read back into
+   their items when joined by commas), else `", "`; all but the last are
    joined with the separator, then `" and "` (comma case) or `"; and "`
    (semicolon case) precedes the last. So `a and b`, `a, b and c`,
    `a; and b`, `a; b; and c`.
@@ -877,8 +880,8 @@ The rule:
    `note.source.date` when `dateKind` is `"published"` and
    `"read on " + note.source.date` when it is `"accessed"`
    (so `compute and infrastructure (about $5.6B in the second quarter of 2026;
-   Example Source, 2026-08-14)`). The join rule (2) chooses its separator from
-   the cleaned answers alone, never from note text. A sentence segment's
+   Example Source, 2026-08-14)`). The join rule (2) looks at the cleaned
+   answers and at whether any has a note, never at the note's own text. A sentence segment's
    `parts` hold the same sentence cut at each note: `text` parts for the
    words, including the parentheses, and one `note` part where each note's
    content goes, so a page renders the note's text followed by the source's
@@ -1112,7 +1115,12 @@ export function availableInspirations(list: readonly Inspiration[], answers: rea
   text, compared case-insensitively.
 - The card shows the first six, then "Show all N". Each is a button: the label,
   and under it "Notion, Figma and 2 more". One click dispatches
-  `addInspiration` with the label as text; focus returns to the add field and
+  `addInspiration` with `answerFromLabel(label)` as text (a label is a
+  sentence-case chip, an answer sits mid-sentence: the first letter is
+  lower-cased unless the first word has a capital after its first letter or is
+  all capitals, so "A product map that stays true" becomes "a product map that
+  stays true" while "GitHub" and "AWS" stay as they are; exported from
+  `lib/arkademy/inspirations.ts`); focus returns to the add field and
   the live region says "Added: {label}". At five answers the buttons are
   disabled.
 - Hidden when the catalog for that question is empty.
