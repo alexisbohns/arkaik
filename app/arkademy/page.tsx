@@ -1,0 +1,78 @@
+import type { Metadata } from "next";
+import { cache, Suspense } from "react";
+
+import { ARKADEMY_COLUMN, ARKADEMY_TITLE } from "@/components/arkademy/ArkademyChrome";
+import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
+import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
+import { ToolCard } from "@/components/arkademy/ToolCard";
+import { ARKADEMY_HEAD_START_MS, settledWithin } from "@/lib/arkademy/head-start";
+import { ARKADEMY_INTRO, arkademyShellMetadata } from "@/lib/arkademy/metadata";
+import { arkademyToolCards } from "@/lib/arkademy/tools";
+import { getArkademy, type ArkademyLookup } from "@/lib/services/arkademy";
+import { cn } from "@/lib/utils";
+
+/**
+ * `/arkademy` — the shell: the Arkademy's name, one line on what it is, and a
+ * card per tool. The cards are the only part that reads the library. Given
+ * the library in time (ARKADEMY_HEAD_START_MS) they are rendered in place;
+ * otherwise they sit behind a Suspense boundary: the chrome, the h1 and the
+ * intro are sent at once, the cards (or the message) when the read ends —
+ * within ARKADEMY_READ_TIMEOUT_MS whatever the database does.
+ * force-dynamic: the library is a runtime fact; the build never reads it.
+ */
+export const dynamic = "force-dynamic";
+
+/** One library read per request: generateMetadata and the page share it. */
+const lookupArkademy = cache(getArkademy);
+
+/** Indexed only with a library to show: an outage's message is not the page. */
+export async function generateMetadata(): Promise<Metadata> {
+  const lookup = await lookupArkademy();
+  return arkademyShellMetadata(lookup.status === "ready");
+}
+
+export default async function ArkademyShellPage() {
+  // A head start: a library that answers in time is rendered in place, with no
+  // boundary, so a reader or crawler without JavaScript gets the cards.
+  const early = await settledWithin(lookupArkademy(), ARKADEMY_HEAD_START_MS);
+  return (
+    <div className={cn(ARKADEMY_COLUMN, "pt-10 pb-24 sm:pt-14")}>
+      <h1 className={ARKADEMY_TITLE}>Arkademy</h1>
+      <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">{ARKADEMY_INTRO}</p>
+      <section aria-labelledby="arkademy-tools" className="mt-12">
+        <h2 id="arkademy-tools" className="font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+          Tools
+        </h2>
+        <div className="mt-4">
+          {early ? (
+            <ToolListFor lookup={early.value} />
+          ) : (
+            <Suspense fallback={<LibraryPlaceholder />}>
+              <ToolList />
+            </Suspense>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** The part of the shell that waits for the library, when it is slow. */
+async function ToolList() {
+  return <ToolListFor lookup={await lookupArkademy()} />;
+}
+
+/** The cards, or why there are none. */
+function ToolListFor({ lookup }: { lookup: ArkademyLookup }) {
+  return lookup.status === "ready" ? (
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {arkademyToolCards(lookup.document).map((card) => (
+        <li key={card.id}>
+          <ToolCard href={card.href} title={card.title} tagline={card.tagline} exampleCount={card.exampleCount} />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <ArkademyMessage status={lookup.status} />
+  );
+}

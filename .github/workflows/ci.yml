@@ -217,6 +217,12 @@ jobs:
       - name: Arkademy library tests (schema, referential rules, index, upload check)
         run: npm run test:arkademy-schema
 
+      # The Arkademy cover's pure side (lib/arkademy/): the paragraph rule,
+      # an example's canvas, the prompt's display form, the tool paths, each
+      # page's metadata, and the sitemap's two Arkademy URLs.
+      - name: Arkademy cover tests (paragraph rule, examples, prompt, metadata, sitemap)
+        run: npm run test:arkademy-paragraph
+
       - name: Map projection + validation tests
         run: npm run test:maps
 

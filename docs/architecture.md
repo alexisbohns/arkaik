@@ -62,6 +62,12 @@ app/
   p/
     [id]/
       page.tsx          # Publik snapshot preview (server-rendered)
+  arkademy/
+    layout.tsx          # The Arkademy's chrome (components/arkademy/ArkademyChrome.tsx); Node runtime
+    page.tsx            # /arkademy — the shell: one card per tool in the library
+    not-found.tsx       # notFound() under /arkademy, inside the chrome
+    business-model-canvas/
+      page.tsx          # The cover: pitch, gallery of examples (paragraph + mini canvas), baseline prompt
   api/
     arkademy/           # GET the Arkademy library: public, cached; POST revalidate/ expires the cache (spec/services.md § Arkademy)
     graph/              # Hosted projects: CRUD + the validated `mutations` write path
@@ -170,6 +176,19 @@ lib/landing/
   pyramid/                  # Value-elements pyramid: tier groups, element cards/rows, toolbar
   journal/                  # describe-event.ts — one event's human sentence, shared by changelog/history
   values/                   # ValueBadge, ValuePicker (Bain value elements)
+  arkademy/                 # The Arkademy's pages (/arkademy): server-rendered from the library (lib/services/arkademy.ts)
+    ArkademyChrome.tsx      # Header (arkaik mark, "Arkademy", theme toggle) + main; the page column and title classes
+    ArkademyBreadcrumb.tsx  # The trail above pages deeper than the shell
+    ArkademyMessage.tsx     # What a page shows when the library is unconfigured, empty, invalid or unreadable
+    ToolCard.tsx            # One tool on the shell
+    ExampleCard.tsx         # One example on the cover: name, Simulation badge, paragraph, mini canvas, note
+    ParagraphView.tsx       # A canvas as one paragraph (lib/arkademy/paragraph.ts): sentences, note markers, gap pills
+    CanvasGrid.tsx          # The nine blocks, full or mini, laid out by container queries
+    CanvasLink.tsx          # Links one example's sentences and blocks on hover and focus (CSS :has(), lib/arkademy/canvas-link.ts)
+    SourcedNote.tsx         # A use's note behind a marker: a card with its text, the source as a link, the date (client)
+    LibraryPlaceholder.tsx  # The quiet Suspense fallback while a page reads the library
+    PromptBlock.tsx         # The baseline prompt with its copy button
+    CopyButton.tsx          # Every Arkademy copy action (useCopyId)
   publik/                   # PublishDialog, ImportSnapshotButton
   sync/                     # Synk provider, per-project control, restore dialog, onboarding banner
   settings/                 # Product manager, repo links, token manager

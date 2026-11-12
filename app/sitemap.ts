@@ -15,5 +15,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/docs/data-layer`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
     { url: `${base}/docs/conventions`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.5 },
     { url: `${base}/docs/vision`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.5 },
+    // The Arkademy: the shell and the cover only. Tours and your own canvas are
+    // noindex pages (lib/arkademy/metadata.ts) and stay out of the sitemap.
+    { url: `${base}/arkademy`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
+    { url: `${base}/arkademy/business-model-canvas`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.7 },
   ];
 }

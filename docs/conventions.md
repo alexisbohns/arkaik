@@ -20,6 +20,7 @@ components/
   query/                # QueryProvider: hands the one QueryClient to React, wires the local bus + focus listener
   generate/             # Prompt builder form/output components for /generate
   publik/ sync/ auth/   # Share, Synk backup, sign-in surfaces
+  arkademy/             # The Arkademy's pages: chrome, cards, paragraph, canvas grid, prompt
   settings/             # Product manager, repo links, token manager
   layout/               # Shell UI: project sidebar, switcher, command palette, minimap, badges
   panels/               # The push-panel stack, its panel content, and forms
@@ -35,6 +36,7 @@ lib/
     query-client.ts     # The one QueryClient per browser (fresh per call on the server)
   hooks/                # React hooks for state management
     useProjectPanels.tsx # Panel-stack provider + the `?node=` contract
+  arkademy/             # The Arkademy library: schema, validation, paragraph rule, metadata — pure, imports only zod and its siblings (never `@/`)
   services/             # Server-only: hosted graph store, publik, synk, auth, GitHub App
   sync/                 # Client sync engine (Synk SyncManager)
   prompts/              # Prompt assembly blocks/types for the AI prompt builder

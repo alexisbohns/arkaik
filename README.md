@@ -53,6 +53,7 @@ app/
     settings/                 # Project settings, products, linked repos
   settings/tokens/            # Account-level `ark_` API token management
   p/[id]/                     # Publik snapshot preview
+  arkademy/                   # The Arkademy: thinking tools by example (/arkademy, the Business Model Canvas cover)
   generate/                   # Prompt builder for LLM-assisted bundle generation
   api/                        # graph (hosted projects), tokens, publik, synk, auth,
                               #   github/webhook (acceptance promotion from PRs)
@@ -68,11 +69,13 @@ components/
   layout/                     # ProjectSidebar, ProjectSwitcher, CommandPalette, StatusBadge, etc.
   panels/                     # PanelStack, NodeDetailPanel, NewNodeForm, PlaylistEditor, etc.
   publik/ sync/ settings/     # Share dialog, Synk status, product/repo/token managers
+  arkademy/                   # The Arkademy's chrome, example cards, paragraph, canvas grid, prompt block
   ui/                         # shadcn/ui primitives (button, card, dialog, etc.)
 lib/
   config/                     # Label/order arrays for the ids in @arkaik/schema (see docs/conventions.md)
   data/                       # DataProvider interface + local (Dexie), remote, seed and routing providers,
                               #   and the query cache the hooks observe (project-queries.ts)
+  arkademy/                   # The Arkademy library's schema, validation, paragraph rule and metadata (pure)
   hooks/                      # useNodes, useEdges, useProject, useJournal, etc.
   services/                   # Server-side: hosted graph store, publik, synk, github app
   utils/                      # export, layout, cycle detection, platform-status rollups
