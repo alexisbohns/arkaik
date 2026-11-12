@@ -121,4 +121,4 @@ next-env.d.ts
 # `npm run arkademy -- publish` (docs/arkademy.md)
 /arkademy-content/
 # transient CJS build of lib/arkademy/ emitted by scripts/arkademy/upload.js
-/scripts/arkademy/.build/
+/scripts/arkademy/.build-*/

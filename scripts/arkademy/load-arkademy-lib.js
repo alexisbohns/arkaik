@@ -2,19 +2,24 @@
  * Loads lib/arkademy/*.ts into a running Node process for the upload script —
  * the scripts/generate/load-schema-package.js technique, kept as its own copy
  * so the script has no dependency on tests/. Every module in the folder is
- * transpiled to CommonJS into scripts/arkademy/.build/ (gitignored), inside
- * the repo so `require("zod")` resolves against the workspace's node_modules.
+ * transpiled to CommonJS into a directory of this process's own,
+ * scripts/arkademy/.build-<pid>-<random>/ (gitignored), inside the repo so
+ * `require("zod")` resolves against the workspace's node_modules. Two runs at
+ * once (two terminals, or the API suite beside a publish) each build and
+ * remove only their own directory, never each other's.
  *
  * lib/arkademy/ modules import only each other by relative path and zod, so
  * there is no alias table here; an `@/` import is refused by name.
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const ts = require("typescript");
 
 const SRC_DIR = path.join(__dirname, "..", "..", "lib", "arkademy");
-const BUILD_DIR = path.join(__dirname, ".build");
+/** This process's build directory; nothing else writes to or removes it. */
+const BUILD_DIR = path.join(__dirname, `.build-${process.pid}-${crypto.randomBytes(4).toString("hex")}`);
 
 function loadArkademyLib() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -49,6 +54,7 @@ function loadArkademyLib() {
   };
 }
 
+/** Removes this process's build directory, and only it. */
 function cleanup() {
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 }

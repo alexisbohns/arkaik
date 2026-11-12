@@ -679,12 +679,42 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
   }
   check("upload: no command prints the usage and exits 2", run().status === 2);
   check("upload: an option a command does not take exits 2", run("check", "--yes").status === 2);
-  check("upload: the script cleans up its build directory", !fs.existsSync(path.join(ROOT, "scripts", "arkademy", ".build")));
+  check("upload: the script cleans up its build directory", leftoverBuildDirs().length === 0, JSON.stringify(leftoverBuildDirs()));
 }
 
-cleanup();
-if (failures > 0) {
-  console.log(`\n${failures} arkademy-schema test(s) failed`);
-  process.exit(1);
+// --- Two runs at once ---------------------------------------------------------
+// Each run builds lib/arkademy/ into a directory of its own and removes only
+// that one, so concurrent runs never delete each other's modules.
+async function concurrentRuns() {
+  const { spawn } = require("child_process");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  const env = { ...process.env };
+  delete env.DATABASE_URL;
+  const once = () =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [UPLOAD, "check", FIXTURE], { env });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.on("close", (status) => resolve({ status, stderr }));
+    });
+  const runs = await Promise.all(Array.from({ length: 6 }, once));
+  check(
+    "upload: six checks at once all succeed",
+    runs.every((run) => run.status === 0),
+    JSON.stringify(runs.filter((run) => run.status !== 0)).slice(0, 400),
+  );
+  check("upload: and leave no build directory behind", leftoverBuildDirs().length === 0, JSON.stringify(leftoverBuildDirs()));
 }
-console.log("\nAll arkademy-schema tests passed.");
+
+function leftoverBuildDirs() {
+  return fs.readdirSync(path.join(ROOT, "scripts", "arkademy")).filter((name) => name.startsWith(".build"));
+}
+
+concurrentRuns().then(() => {
+  cleanup();
+  if (failures > 0) {
+    console.log(`\n${failures} arkademy-schema test(s) failed`);
+    process.exit(1);
+  }
+  console.log("\nAll arkademy-schema tests passed.");
+});

@@ -653,7 +653,8 @@ if it is not, the `unstable_cache` layer alone still protects the database.
 run by hand by the owner. It loads `lib/arkademy/*.ts` through
 `scripts/arkademy/load-arkademy-lib.js`, a copy of the
 `scripts/generate/load-schema-package.js` technique that transpiles the folder
-into `scripts/arkademy/.build/` (gitignored) so `require("zod")` resolves from
+into a per-process `scripts/arkademy/.build-<pid>-<random>/` (gitignored; each
+run removes only its own, so two runs at once never break each other) so `require("zod")` resolves from
 the workspace. The npm script is `"arkademy": "node scripts/arkademy/upload.js"`.
 
 ```
@@ -1284,7 +1285,7 @@ This branch; this spec is its first commit. Nothing visible.
 - **Changes:** `package.json` (`zod` dependency; scripts `arkademy`,
   `test:arkademy-schema`, `test:arkademy-api`); `.github/workflows/ci.yml`
   (build job: `test:arkademy-schema`; services job: `test:arkademy-api`);
-  `.gitignore` (`/arkademy-content/`, `/scripts/arkademy/.build/`,
+  `.gitignore` (`/arkademy-content/`, `/scripts/arkademy/.build-*/`,
   `/tests/app/.test-build-arkademy/`, `/tests/services/.test-build-arkademy/`);
   `docs/architecture.md` (the route), `docs/spec/services.md` (an Arkademy
   section beside Publik: the route's contract and the table).
