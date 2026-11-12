@@ -442,6 +442,42 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
   );
 }
 
+// --- The upload script's check, spawned with no database ---------------------
+{
+  const { spawnSync } = require("child_process");
+  const os = require("os");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  const env = { ...process.env };
+  delete env.DATABASE_URL;
+  delete env.ARKADEMY_CONTENT;
+  const run = (...args) => spawnSync(process.execPath, [UPLOAD, ...args], { encoding: "utf8", env });
+
+  const ok = run("check", FIXTURE);
+  check("upload check: the fixture exits 0", ok.status === 0, ok.stderr || ok.stdout);
+  check("upload check: it prints the fixture's warning", /entities\[\d+\]/.test(ok.stdout), ok.stdout);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arkademy-check-"));
+  try {
+    const brokenFile = path.join(dir, "broken.json");
+    const broken = fixture();
+    broken.uses[0].entity = "nothing-here";
+    fs.writeFileSync(brokenFile, JSON.stringify(broken));
+    const bad = run("check", brokenFile);
+    check("upload check: a broken copy exits 1", bad.status === 1, `${bad.status} ${bad.stderr}`);
+    check("upload check: it names the path", bad.stderr.includes("uses[0].entity"), bad.stderr);
+
+    const notJson = path.join(dir, "not-json.json");
+    fs.writeFileSync(notJson, "{ nope");
+    check("upload check: a file that is not JSON exits 1", run("check", notJson).status === 1);
+    check("upload check: a missing file exits 1", run("check", path.join(dir, "missing.json")).status === 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  check("upload: no command prints the usage and exits 2", run().status === 2);
+  check("upload: an option a command does not take exits 2", run("check", "--yes").status === 2);
+  check("upload: the script cleans up its build directory", !fs.existsSync(path.join(ROOT, "scripts", "arkademy", ".build")));
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-schema test(s) failed`);
