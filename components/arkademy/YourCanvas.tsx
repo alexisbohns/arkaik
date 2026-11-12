@@ -88,7 +88,7 @@ const CURRENT_SENTENCE: Record<BmcQuestionKey, string> = {
 };
 /** How that underline looks; decoration colour and thickness are not inherited, so they go on the sentence itself. */
 const UNDERLINE_STYLE =
-  "[&_[data-kind=sentence]]:decoration-muted-foreground/60 [&_[data-kind=sentence]]:decoration-2 [&_[data-kind=sentence]]:underline-offset-[5px]";
+  "[&_[data-kind=sentence]]:decoration-muted-foreground [&_[data-kind=sentence]]:decoration-2 [&_[data-kind=sentence]]:underline-offset-[5px]";
 
 /** A character no answer holds, standing in for the answer still to come. */
 const BLANK = "";
@@ -452,7 +452,7 @@ function SentencePreview({
   return (
     <p className="text-[15px] leading-7 text-muted-foreground">
       {before}
-      <span className="inline-block w-16 translate-y-[3px] border-b-2 border-dashed border-muted-foreground/50">
+      <span className="inline-block w-16 translate-y-[3px] border-b-2 border-dashed border-muted-foreground">
         <span className="sr-only">your answer</span>
       </span>
       {after}

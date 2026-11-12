@@ -317,7 +317,7 @@ export function QuestionEditor({
         <div
           className={cn(
             "flex items-start gap-3 rounded-lg border p-3",
-            open ? "border-dashed border-muted-foreground/45" : "border-transparent bg-muted/50",
+            open ? "border-dashed border-muted-foreground" : "border-transparent bg-muted/50",
           )}
         >
           <Checkbox

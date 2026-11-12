@@ -1,3 +1,5 @@
+import { CircleDashedIcon } from "lucide-react";
+
 import type { QuestionStatus } from "@/lib/arkademy/canvas";
 import type { BmcQuestion } from "@/lib/arkademy/schema";
 import { cn } from "@/lib/utils";
@@ -41,14 +43,21 @@ export function QuestionSteps({ questions, statuses, current, onSelect }: Questi
                 title={question.block}
                 data-status={status}
                 className={cn(
-                  "flex size-9 cursor-pointer items-center justify-center rounded-full border font-mono text-xs tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  "relative flex size-9 cursor-pointer items-center justify-center rounded-full border font-mono text-xs tabular-nums outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                   status === "answered" && "border-transparent bg-primary text-primary-foreground hover:bg-primary/85",
-                  status === "open" && "border-dashed border-muted-foreground/60 text-muted-foreground hover:text-foreground",
+                  status === "open" && "border-dashed border-muted-foreground text-muted-foreground hover:text-foreground",
                   status === "empty" && "bg-background text-muted-foreground hover:border-foreground/40 hover:text-foreground",
                   isCurrent && "ring-2 ring-ring ring-offset-2 ring-offset-background",
                 )}
               >
                 {step}
+                {status === "open" && (
+                  // A second cue besides the dashed border: the paragraph's own "left open on purpose" icon.
+                  <CircleDashedIcon
+                    aria-hidden="true"
+                    className="absolute -top-1 -right-1 size-3.5 rounded-full bg-background text-muted-foreground"
+                  />
+                )}
               </button>
             </li>
           );
