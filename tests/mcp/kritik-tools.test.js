@@ -14,7 +14,7 @@
  * Run via `npm run test:mcp` (builds `arkaik` for dist/io.js, then `arkaik-mcp`).
  */
 
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
@@ -23,6 +23,8 @@ const readline = require("readline");
 
 const ROOT = path.join(__dirname, "..", "..");
 const SERVER = path.join(ROOT, "packages", "mcp", "dist", "index.js");
+// The CLI, for the kritik_plan parity check — test:mcp builds it first (arkaik/io lives in it).
+const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 
 if (!existsSync(SERVER)) {
   console.error("arkaik-mcp is not built. Run: npm run build -w arkaik-mcp (test:mcp does this).");
@@ -162,6 +164,7 @@ async function run() {
       "kritik_trend",
       "kritik_burndown",
       "kritik_scope",
+      "kritik_plan",
     ]) {
       check(`catalog includes ${name}`, names.includes(name));
     }
@@ -524,6 +527,209 @@ async function run() {
       JSON.stringify(notes),
     );
 
+    // --- kritik_plan --------------------------------------------------------------
+    //
+    // The same plan file `arkaik kritik plan` writes, from the same shared
+    // function: compared field for field with the CLI's, run in this very repo,
+    // except the plan id (the CLI's comes after the file this tool wrote),
+    // createdAt and commit.
+
+    const planDef = (listed.result?.tools ?? []).find((tool) => tool.name === "kritik_plan");
+    check(
+      "kritik_plan takes runs, dry_run and status, and nothing else",
+      JSON.stringify(Object.keys(planDef?.inputSchema?.properties ?? {}).sort()) === JSON.stringify(["dry_run", "runs", "status"]) &&
+        planDef.inputSchema.additionalProperties === false,
+      JSON.stringify(planDef?.inputSchema),
+    );
+
+    const journalBeforePlan = session.journal().length;
+    const dryPlan = await session.call("kritik_plan", { runs: ["SEC:web"], dry_run: true });
+    check(
+      "kritik_plan dry_run=true returns the plan and writes nothing",
+      !dryPlan.isError && dryPlan.json.written === false && dryPlan.json.plan.parts.length === 1 && !existsSync(dryPlan.json.path),
+      dryPlan.text.slice(0, 300),
+    );
+
+    const made = await session.call("kritik_plan", { runs: ["SEC:web", "sec:web"] });
+    const madePlan = made.json.plan;
+    check(
+      "kritik_plan writes docs/quality/plans/<planId>.json and returns it",
+      !made.isError &&
+        made.json.written === true &&
+        made.json.path.endsWith(path.join("docs", "quality", "plans", `${madePlan.planId}.json`)) &&
+        JSON.stringify(session.readJson("docs", "quality", "plans", `${madePlan.planId}.json`)) === JSON.stringify(madePlan),
+      made.text.slice(0, 300),
+    );
+    check(
+      "a duplicate run collapses into one part, with a warning",
+      madePlan?.parts.length === 1 && madePlan.parts[0].cells.length === 6 && made.json.warnings.length === 1,
+      JSON.stringify(made.json.warnings),
+    );
+    check("kritik_plan appends nothing to the journal", session.journal().length === journalBeforePlan);
+
+    const cliPlan = spawnSync(process.execPath, [CLI, "kritik", "plan", "--run", "SEC:web", "--run", "sec:web", "--dry-run", "--json"], {
+      cwd: session.dir,
+      encoding: "utf8",
+    });
+    const normalize = (plan) => JSON.stringify({ ...plan, createdAt: null, commit: null }).split(plan.planId).join("<planId>");
+    let cliJson = null;
+    try {
+      cliJson = JSON.parse(cliPlan.stdout);
+    } catch {
+      // reported by the check below
+    }
+    check(
+      "kritik_plan writes the same plan as the CLI, but for planId, createdAt and commit",
+      cliPlan.status === 0 && cliJson !== null && cliJson.planId !== madePlan.planId && normalize(cliJson) === normalize(madePlan),
+      cliPlan.stderr || cliPlan.stdout.slice(0, 300),
+    );
+
+    const partId = madePlan.parts[0].auditId;
+    const notStarted = await session.call("kritik_plan", { status: madePlan.planId });
+    check(
+      "kritik_plan status reads each part's progress from its audit directory",
+      !notStarted.isError &&
+        notStarted.json.plan_id === madePlan.planId &&
+        notStarted.json.recorded === false &&
+        notStarted.json.parts[0].auditId === partId &&
+        notStarted.json.parts[0].progress === "not started",
+      notStarted.text.slice(0, 300),
+    );
+    const intoPart = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "middleware.ts:14", audit_id: partId });
+    check("kritik_score with the part's audit_id lands in the part", !intoPart.isError && intoPart.json.audit_id === partId, intoPart.text.slice(0, 300));
+    const inProgress = await session.call("kritik_plan", { status: madePlan.planId });
+    check(
+      "and the part reads in progress, 1 of 6",
+      inProgress.json.parts?.[0]?.progress === "in progress" && inProgress.json.parts[0].scored === 1 && inProgress.json.parts[0].missing.length === 5,
+      inProgress.text.slice(0, 300),
+    );
+
+    // Sibling parts sort alphabetically, not in plan order, and never share a
+    // cell: scoring the earlier-sorting part second carries no ordering note.
+    const pair = await session.call("kritik_plan", { runs: ["SEC:web", "SEC:supabase"] });
+    const [pairWeb, pairSupabase] = (pair.json.plan?.parts ?? []).map((part) => part.auditId);
+    const pairWebScore = await session.call("kritik_score", { criterion_id: "SEC-01", surface: "web", level: 2, evidence: "middleware.ts:14", audit_id: pairWeb });
+    const pairSupabaseScore = await session.call("kritik_score", { criterion_id: "SEC-02", surface: "supabase", level: 2, evidence: "migrations/003.sql:8", audit_id: pairSupabase });
+    check(
+      "kritik_score into the alphabetically earlier sibling part, scored second, carries no ordering note",
+      !pair.isError && !pairWebScore.isError && !pairSupabaseScore.isError && pairSupabase < pairWeb && pairSupabaseScore.json.notes === undefined,
+      pairSupabaseScore.text.slice(0, 400),
+    );
+
+    // A part that no longer sorts last is refused, and nothing is written.
+    const auditFile = (id, name) => path.join(session.dir, "docs", "quality", "audits", id, name);
+    const earlierBlocked = await session.call("kritik_score", { criterion_id: "SEC-04", surface: "web", level: 2, evidence: "app/x.ts:1", audit_id: partId });
+    check(
+      "kritik_score into an earlier plan's part is refused once a later plan's part directory sorts after it",
+      earlierBlocked.isError &&
+        earlierBlocked.json.message.includes(`"${pairSupabase}"`) &&
+        earlierBlocked.json.message.includes("lose the merge") &&
+        session.readJson("docs", "quality", "audits", partId, "scores.json").assessments.length === 1,
+      earlierBlocked.text.slice(0, 400),
+    );
+    const scopedAfterPart = `${pairWeb}-scoped`;
+    mkdirSync(path.join(session.dir, "docs", "quality", "audits", scopedAfterPart), { recursive: true });
+    const journalBeforeRefusal = session.journal().length;
+    const siblingBlocked = await session.call("kritik_score", { criterion_id: "SEC-03", surface: "supabase", level: 2, evidence: "x.sql:1", audit_id: pairSupabase });
+    check(
+      "a scoped directory named after a sibling part blocks the earlier part's kritik_score, naming it, and writes nothing",
+      siblingBlocked.isError &&
+        siblingBlocked.json.message.includes(`"${scopedAfterPart}"`) &&
+        siblingBlocked.json.message.includes("new plan for the parts not yet scored") &&
+        session.readJson("docs", "quality", "audits", pairSupabase, "scores.json").assessments.length === 1,
+      siblingBlocked.text.slice(0, 400),
+    );
+    const findingBlocked = await session.call("kritik_open_finding", {
+      criterion_id: "SEC-02",
+      surface: "supabase",
+      title: "RLS off",
+      evidence: "migrations/003.sql:8",
+      impact: 3,
+      likelihood: 3,
+      cost: "S",
+      audit_id: pairSupabase,
+    });
+    check(
+      "and kritik_open_finding into it is refused, with no finding file and no journal event",
+      findingBlocked.isError &&
+        findingBlocked.json.message.includes(`"${scopedAfterPart}"`) &&
+        !existsSync(auditFile(pairSupabase, "findings.json")) &&
+        session.journal().length === journalBeforeRefusal,
+      findingBlocked.text.slice(0, 400),
+    );
+
+    // A plan file is never overwritten. Only a race reaches an existing path (the
+    // id is chosen after every plan file); a directory named like the next plan
+    // file stands in for it, since listPlanIds skips it.
+    const nextPlan = await session.call("kritik_plan", { runs: ["SEC:web"], dry_run: true });
+    mkdirSync(nextPlan.json.path, { recursive: true });
+    const taken = await session.call("kritik_plan", { runs: ["SEC:web"] });
+    check(
+      "kritik_plan refuses when the plan file's path already exists",
+      taken.isError && taken.json.message.includes(`${nextPlan.json.plan.planId}.json already exists`),
+      taken.text.slice(0, 300),
+    );
+    rmSync(nextPlan.json.path, { recursive: true, force: true });
+
+    const noRuns = await session.call("kritik_plan", { runs: [] });
+    check("kritik_plan without runs is an actionable tool error", noRuns.isError && /runs/.test(noRuns.json.message), noRuns.text);
+    const badSurfacePlan = await session.call("kritik_plan", { runs: ["SEC:android"] });
+    check(
+      "kritik_plan refuses a surface the profile does not declare, listing the profile's",
+      badSurfacePlan.isError && badSurfacePlan.json.message.includes("android") && badSurfacePlan.json.message.includes("supabase"),
+      badSurfacePlan.text,
+    );
+    const noSuchPlan = await session.call("kritik_plan", { status: "2026-11-zplan-1199" });
+    check("kritik_plan status on a missing plan names the path it read", noSuchPlan.isError && noSuchPlan.json.message.includes("no plan at"), noSuchPlan.text);
+    // Every plan cell scored plus one stray: scored, but not finished.
+    {
+      const partScoresPath = path.join(session.dir, "docs", "quality", "audits", partId, "scores.json");
+      const before = readFileSync(partScoresPath, "utf8");
+      const file = JSON.parse(before);
+      const cell = (criterion_id) => ({ criterion_id, surface: "web", level: 2, evidence: "x.ts:1", audit_id: partId, ts: "2026-11-01T00:00:00.000Z" });
+      writeFileSync(partScoresPath, JSON.stringify({ ...file, assessments: [...madePlan.parts[0].cells.map((c) => cell(c.criterion_id)), cell("PRV-01")] }));
+      const strayStatus = await session.call("kritik_plan", { status: madePlan.planId });
+      const strayPart = strayStatus.json.parts?.[0];
+      check(
+        "kritik_plan status: a fully scored part with a stray score reads 'scored, 1 outside the plan', not ready to record",
+        !strayStatus.isError &&
+          strayPart.progress === "scored" &&
+          strayPart.stray.length === 1 &&
+          strayPart.summary === "scored, 1 outside the plan" &&
+          strayStatus.json.ready_to_record === false,
+        strayStatus.text.slice(0, 400),
+      );
+      writeFileSync(partScoresPath, JSON.stringify({ ...file, assessments: madePlan.parts[0].cells.map((c) => cell(c.criterion_id)) }));
+      const cleanStatus = await session.call("kritik_plan", { status: madePlan.planId });
+      check(
+        "kritik_plan status: once clean, the summary is the progress and the plan is ready to record",
+        cleanStatus.json.parts?.[0]?.summary === "scored" && cleanStatus.json.ready_to_record === true,
+        cleanStatus.text.slice(0, 400),
+      );
+      writeFileSync(partScoresPath, before);
+    }
+
+    const notAPlanId = await session.call("kritik_plan", { status: "../../../etc/passwd" });
+    check(
+      "kritik_plan status refuses an id that is not a plan id, before reading anything",
+      notAPlanId.isError && notAPlanId.json.message.includes("is not a plan id") && !notAPlanId.json.message.includes("no plan at"),
+      notAPlanId.text,
+    );
+    const misnamedId = `${madePlan.planId.slice(0, -2)}88`;
+    writeFileSync(
+      path.join(session.dir, "docs", "quality", "plans", `${misnamedId}.json`),
+      readFileSync(path.join(session.dir, "docs", "quality", "plans", `${madePlan.planId}.json`), "utf8"),
+    );
+    const misnamed = await session.call("kritik_plan", { status: misnamedId });
+    check(
+      "kritik_plan status refuses a plan file whose planId is not the id it is named for",
+      misnamed.isError && misnamed.json.message.includes(`"${madePlan.planId}"`),
+      misnamed.text,
+    );
+    rmSync(path.join(session.dir, "docs", "quality", "plans", `${misnamedId}.json`));
+    const both = await session.call("kritik_plan", { runs: ["SEC:web"], status: madePlan.planId });
+    check("kritik_plan refuses runs and status together", both.isError && /status/.test(both.json.message), both.text);
+
     // --- the whole journal -----------------------------------------------------
 
     const kinds = new Set(session.journal().map((event) => event.type));
@@ -852,6 +1058,14 @@ async function run() {
     const signalsRefused = await hosted.call("kritik_signals", { criterion_id: "SEC-01" });
     check("kritik_signals refuses in hosted mode", signalsRefused.isError, signalsRefused.text.slice(0, 200));
     check("kritik_signals' refusal says why: live with the code", /live with the code/.test(signalsRefused.text), signalsRefused.text.slice(0, 300));
+
+    const planRefused = await hosted.call("kritik_plan", { runs: ["SEC:web"] });
+    check(
+      "kritik_plan refuses in hosted mode, saying a part needs a checkout",
+      planRefused.isError && /checkout/.test(planRefused.text) && /hosted project/.test(planRefused.text),
+      planRefused.text.slice(0, 300),
+    );
+
 
     const tripSignalRefused = await hosted.call("kritik_trip_signal", { criterion_id: "SEC-01", surface: "web", signal: "x" });
     check("kritik_trip_signal refuses in hosted mode", tripSignalRefused.isError, tripSignalRefused.text.slice(0, 200));

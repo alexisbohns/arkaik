@@ -75,7 +75,7 @@ Two richer paths exist when they are available, and both write **the same files*
 
 | Available | Use |
 |---|---|
-| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `issue`, `criterion add` |
+| the `arkaik` CLI (`npx arkaik kritik --help`) | the verbs `profile`, `score`, `finding open\|resolve\|accept`, `matrix`, `signals`, `regressions`, `trend`, `scope`, `plan`, `issue`, `criterion add` |
 | `arkaik-mcp` tools in this session | `kritik_score`, `kritik_open_finding`, `kritik_matrix`, `kritik_signals`, `kritik_regressions`, `kritik_trend`, `kritik_burndown`, `kritik_scope`, `kritik_issue`, … |
 
 Each verb takes its own `--help` (`arkaik kritik score --help`). What they add
@@ -861,9 +861,68 @@ You will not always audit everything, and you should not pretend otherwise.
 - **A partial audit** is legitimate and common: one surface, one domain, or the
   criteria touched by a release. Score only what you actually checked. **A cell
   you did not look at gets no row** — leaving it out reads as "not assessed",
-  while inventing a level reads as fact and is worse than silence.
+  while inventing a level reads as fact and is worse than silence. To run one on
+  purpose and record it as one reading, plan it (see "A planned partial audit"
+  below).
 
 Either way, say which you did when you report back.
+
+### A planned partial audit
+
+When you pick the corner before you start (Security on web, agents on iOS), plan
+it first. The plan names the run, counts its cells, and gives every part an audit
+id of its own that sorts after every audit already on disk, so its fresh scores
+win the merge.
+
+```
+arkaik kritik plan --run SEC:web --run AGT:ios
+```
+
+Each `--run` is one **part**: a domain code, then a surface id spelled exactly as
+the profile spells it (`web`, never `Web`). The command prints each part's cells
+and checklist steps against the whole product's applicable cells, writes
+`docs/quality/plans/<planId>.json`, and prints a prompt to paste. `--dry-run`
+looks without writing; `--json` prints the plan file itself. Over MCP in a repo
+session it is `kritik_plan` with `runs: ["SEC:web", "AGT:ios"]`. Every plan
+counts cells only for now: there is no token estimate yet, and `--budget` is
+refused.
+
+Then run it one of two ways:
+
+- **One session per part**, in parallel if you like. Give each session its part's
+  own prompt (`parts[].prompt` in the plan file). Parts never share an audit id,
+  so two sessions cannot collide on a score or a finding id.
+- **One session for every part.** Paste the combined prompt the command printed.
+  It runs the parts in order and records at the end.
+
+If you were handed one of those prompts, you are the auditor. Run steps 2 to 5 of
+*Running an audit* on the cells it lists, and nothing else: the plan already
+pinned the commit and named the audit. Four rules on top:
+
+- **Always pass the part's id.** Every `score` and every `finding open` carries
+  `--audit <partId>`, the id the prompt names (`kritik_score` and
+  `kritik_open_finding` take it as `audit_id`). Without it, `score` writes into
+  the newest audit on disk, which with two parts in flight may be the other part.
+- **Score exactly the listed cells.** A score outside the plan's cells blocks the
+  record until it is removed: the merge reads every audit directory, so a stray
+  score would enter the matrix anyway. To remove one, delete its row from
+  `docs/quality/audits/<partId>/scores.json`.
+- **Never record a part.** Not `arkaik kritik matrix <partId> --record`, and not
+  `kritik_matrix` with a part's `audit_id` and `record: true`. A part is half a
+  reading. The plan is recorded once, after every part is scored, with the
+  command it prints: `arkaik kritik matrix <planId> --record --plan`.
+- **End with the usage readout** the prompt asks for (model, tokens in and out,
+  duration, number of agents). It is what a future estimate is calibrated from.
+
+`arkaik kritik plan --status <planId>` (over MCP, `kritik_plan` with `status`)
+reads each part's audit directory and says whether it is not started, in progress
+or scored, which cells are still missing, and any score outside the plan (a part
+reads `scored, 1 outside the plan` until that row is deleted). It writes nothing. Run it before recording. Status and the record read only the
+current checkout: a part scored in another git worktree left its scores there, so
+copy them over first.
+
+A plan runs in the repository. A hosted session cannot take a part: hosted
+scoring is scoped re-audits only, and a part's prompt says so.
 
 ## Reporting back
 

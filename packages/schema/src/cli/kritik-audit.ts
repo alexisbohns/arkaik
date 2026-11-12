@@ -28,6 +28,7 @@ import {
   type QualityProfile,
   type QualitySection,
 } from "../quality";
+import { planIdOfPartId } from "../quality-plan";
 import { scopedAuditId } from "../quality-scope";
 import { QUALITY_DIR, auditDir, auditsDir, loadProfile, readJson, writeJson } from "./kritik-paths";
 
@@ -370,9 +371,14 @@ export function declaredScopeSince(auditId: string, recorded: readonly string[])
  * cell the later audit also holds keeps the later audit's score — a same-month
  * re-audit named `2026-09-2` loses to `2026-09-scoped` that way, silently.
  * A warning, not a refusal: correcting an old audit's score is legitimate.
+ *
+ * A plan's own parts never count against each other: they sort alphabetically,
+ * not in plan order, and never share a cell, so a sibling part that sorts later
+ * cannot outvote anything this one scores.
  */
 export function auditOrderNote(root: string, auditId: string): string | undefined {
-  const later = listAuditIds(root).filter((id) => id > auditId);
+  const plan = planIdOfPartId(auditId);
+  const later = listAuditIds(root).filter((id) => id > auditId && (plan === null || planIdOfPartId(id) !== plan));
   if (later.length === 0) return undefined;
   return (
     `"${auditId}" sorts before ${later.map((id) => `"${id}"`).join(", ")} — audits merge latest-wins in id order, ` +

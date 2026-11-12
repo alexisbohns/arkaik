@@ -57,9 +57,13 @@ import {
   findingOpenedInput,
   findingResolvedInput,
   isOpenFinding,
+  isPlanId,
+  isPlanPartId,
   domainCodeOf,
   mintFindingId,
   orderEvents,
+  outsortedBy,
+  planIdOfPartId,
   priorityOf,
   recordedAuditIds,
   renderIssue,
@@ -106,6 +110,8 @@ import {
   scopedAuditTarget,
 } from "@arkaik/schema/src/cli/kritik-audit";
 import { loadProfile } from "@arkaik/schema/src/cli/kritik-paths";
+import { createPlan, loadPlan, planPath, planStatus, savePlan } from "@arkaik/schema/src/cli/kritik-plan";
+import { existsSync } from "node:fs";
 import { loadKritikLibrary, readFullJournalEvents, resolveJournal } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store } from "./store";
@@ -357,6 +363,24 @@ function auditForWrite(root: string, requested: unknown): string {
   if (typeof requested === "string" && requested !== "") return requested;
   const existing = listAuditIds(root);
   return existing.length > 0 ? existing[existing.length - 1] : currentAuditId();
+}
+
+/**
+ * Throws when `auditId` is a plan part that no longer sorts last: a scoped
+ * re-audit or a later plan's part now sorts after it on disk, so on any cell
+ * both hold, a score written here would lose the latest-wins merge. Sibling
+ * parts never count (they share no cell). For a plan part this replaces the
+ * generic ordering note, which only warns.
+ */
+function refuseOutsortedPart(root: string, auditId: string): void {
+  const later = outsortedBy(auditId, listAuditIds(root));
+  if (later.length === 0) return;
+  throw new ToolError(
+    `"${auditId}" is a part of plan ${planIdOfPartId(auditId)}, and ${later.map((id) => `"${id}"`).join(", ")} ` +
+      `now sort${later.length === 1 ? "s" : ""} after it — audits merge latest-wins in id order, so on any cell ` +
+      `${later.length === 1 ? "both hold" : "they share with it"}, this part's scores would lose the merge. Nothing written. ` +
+      `Make a new plan for the parts not yet scored: kritik_plan names parts that sort last again.`,
+  );
 }
 
 export function buildKritikCatalog(ctx: KritikContext): {
@@ -1090,6 +1114,93 @@ export function buildKritikCatalog(ctx: KritikContext): {
 
   tool(
     {
+      name: "kritik_plan",
+      description:
+        "Plan a partial audit before running it: one part per DOMAIN:SURFACE in runs (e.g. SEC:web), each with its own audit id that sorts after every audit on disk, the exact cells it scores, its checklist step count, and a prompt to paste into an agent session — plus one combined prompt for a session that runs every part in order. Writes docs/quality/plans/<planId>.json (dry_run=true writes nothing) and returns the plan, the path and any warnings; the same plan file `arkaik kritik plan` writes. Counts only: no token estimate yet. With status=<planId> it instead reads each part's progress from its audit directory (not started, in progress, scored; cells still missing; scores outside the plan, which block the record — delete such a row from docs/quality/audits/<partId>/scores.json) and writes nothing; each part's summary reads like the CLI's status row ('scored, 1 outside the plan'), and ready_to_record says whether the plan can be recorded. Score every cell with kritik_score and audit_id=<the part's audit id>; never record a part on its own — the plan is recorded once, after every part is scored, with `arkaik kritik matrix <planId> --record --plan`. Repo sessions only: a part is scored against a checkout.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          runs: {
+            type: "array",
+            items: { type: "string" },
+            description: "One DOMAIN:SURFACE per part, e.g. [\"SEC:web\", \"AGT:ios\"]. The order is kept. Required unless status is given.",
+          },
+          dry_run: { type: "boolean", description: "Build and return the plan, write nothing. Default: false." },
+          status: { type: "string", description: "A plan id: return each part's progress instead of making a plan. Read-only." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const root = repoRootOf(
+        ctx,
+        "A plan's parts are audits under docs/quality/audits/, scored against a checkout.",
+      );
+      // A status id becomes a path: refuse anything but a plan id before reading anything.
+      if (args.status !== undefined) {
+        const planId = requireString(args, "status");
+        if (!isPlanId(planId)) {
+          throw new ToolError(`"${planId}" is not a plan id — a plan id reads YYYY-MM-zplan-DDNN, as kritik_plan returns it.`);
+        }
+      }
+      const graph = await load();
+      const recorded = recordedAuditIds(graph.journal);
+
+      if (args.status !== undefined) {
+        const planId = requireString(args, "status");
+        if (args.runs !== undefined) {
+          throw new ToolError("status reads a plan that exists — pass runs or status, not both.");
+        }
+        try {
+          const plan = loadPlan(root, planId);
+          const isRecorded = recorded.includes(plan.planId);
+          const statuses = planStatus(root, plan);
+          return {
+            plan_id: plan.planId,
+            recorded: isRecorded,
+            // `summary` is the CLI's status row: a fully scored part holding a
+            // score outside the plan reads "scored, 1 outside the plan", since
+            // the record refuses it until that row is deleted from its scores.json.
+            parts: statuses.map((status) => ({
+              ...status,
+              summary: status.stray.length === 0 ? status.progress : `${status.progress}, ${status.stray.length} outside the plan`,
+            })),
+            ready_to_record:
+              !isRecorded &&
+              statuses.every((status) => status.progress === "deferred" || (status.progress === "scored" && status.stray.length === 0)),
+          };
+        } catch (error) {
+          throw new ToolError((error as Error).message);
+        }
+      }
+
+      const runs = args.runs;
+      if (!Array.isArray(runs) || runs.length === 0 || runs.some((run) => typeof run !== "string")) {
+        throw new ToolError("`runs` is required: one DOMAIN:SURFACE string per part, e.g. [\"SEC:web\"].");
+      }
+      const library = libraryOf(root);
+      let created: ReturnType<typeof createPlan>;
+      try {
+        created = createPlan(root, library, runs as string[], { recorded });
+      } catch (error) {
+        throw new ToolError((error as Error).message);
+      }
+      const path = planPath(root, created.plan.planId);
+      const written = args.dry_run !== true;
+      // The id was chosen after every plan file on disk, so a file here means
+      // another session wrote this id in between. Never overwrite it.
+      if (written && existsSync(path)) {
+        throw new ToolError(
+          `${path} already exists — a plan file is written once, and another plan took ${created.plan.planId} meanwhile. Call kritik_plan again for the next id.`,
+        );
+      }
+      if (written) savePlan(path, created.plan);
+      return { plan: created.plan, path, written, warnings: created.warnings };
+    },
+  );
+
+  tool(
+    {
       name: "kritik_issue",
       description:
         "The criterion's GitHub issue skeleton, filled as far as what is known allows. Placeholders that cannot be filled are left standing — a skeleton is a form to finish, and an empty '### Risk' reads as 'no risk'. Pass finding_id for the P0/P1 path: the risk numbers, evidence and narrative come from the finding.",
@@ -1295,13 +1406,17 @@ export function buildKritikCatalog(ctx: KritikContext): {
       } else {
         auditId = auditForWrite(root, args.audit_id);
       }
+      // A plan part that no longer sorts last is refused, not warned about:
+      // the part's whole point is that its scores win the merge.
+      refuseOutsortedPart(root, auditId);
       // Said out loud rather than refused — each has a legitimate use.
       const notes: string[] = [];
       if (scopedFrom === undefined) {
         if (recordedAuditIds(graph.journal).includes(auditId)) {
           notes.push(`${auditId} is already recorded — a re-score here rewrites that reading. For a re-audit after fixes, pass scope=true.`);
         }
-        const order = auditOrderNote(root, auditId);
+        // For a plan part, refuseOutsortedPart above stands in for this note.
+        const order = isPlanPartId(auditId) ? undefined : auditOrderNote(root, auditId);
         if (order !== undefined) notes.push(order);
       }
       const file = loadScoresOrEmpty(root, auditId);
@@ -1389,6 +1504,7 @@ export function buildKritikCatalog(ctx: KritikContext): {
       }
 
       const auditId = auditForWrite(root, args.audit_id);
+      refuseOutsortedPart(root, auditId);
       const file = loadFindings(root, auditId);
       const taken = new Set(file.findings.map((candidate) => candidate.id));
       const requestedId = typeof args.finding_id === "string" && args.finding_id !== "" ? args.finding_id : undefined;
