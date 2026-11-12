@@ -53,6 +53,7 @@ const {
   bmcYoursMetadata,
   ARKADEMY_HEAD_START_MS,
   settledWithin,
+  canvasLinkCss,
 } = loadArkademy();
 
 let failures = 0;
@@ -463,6 +464,7 @@ const { ParagraphView } = requireTsx("components/arkademy/ParagraphView.tsx");
 const { SourcedNote, NoteContent } = requireTsx("components/arkademy/SourcedNote.tsx");
 const { CanvasGrid } = requireTsx("components/arkademy/CanvasGrid.tsx");
 const { ExampleCard } = requireTsx("components/arkademy/ExampleCard.tsx");
+const { CanvasLink } = requireTsx("components/arkademy/CanvasLink.tsx");
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#x27": "'", "#39": "'", nbsp: "\u00a0" };
 /**
@@ -665,6 +667,40 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   check("ids: a block heading joins the prefix and the key with --", ids.includes("example-acme--cost"), JSON.stringify(ids.slice(0, 4)));
   const labelled = [...page.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]);
   check("ids: every aria-labelledby names an id on the page", labelled.every((id) => ids.includes(id)));
+}
+
+// --- the paragraph and the canvas, linked ---------------------------------------------------
+{
+  const css = canvasLinkCss();
+  for (const key of BMC_QUESTION_KEYS) {
+    const k = `[data-question="${key}"]`;
+    check(`link css: ${key}: hovering either side highlights both`, css.includes(`:has(:is([data-kind],[data-block])${k}:hover)`));
+    check(`link css: ${key}: focus inside either side does too`, css.includes(`:has(:is([data-kind],[data-block])${k}:focus-within)`));
+    check(`link css: ${key}: the sentence is tinted`, css.includes(`[data-kind="sentence"]${k}`));
+    check(`link css: ${key}: the gap pill and the block (never the current one) are outlined`, css.includes(`:is([data-kind="gap"],[data-block]:not([data-current]))${k}`));
+  }
+  check("link css: hover only where the pointer can hover", /@media \(hover: hover\)\s*\{[^]*:hover\)/.test(css));
+  check("link css: no rule for a key outside the canvas", !css.includes('[data-question="other"]'));
+  const motion = css.indexOf("@media (prefers-reduced-motion: no-preference)");
+  check("link css: a transition only without reduced motion", motion !== -1 && css.indexOf("transition") > motion);
+  check("link css: built from the keys it is given", canvasLinkCss(["seg"]).includes('[data-question="seg"]') && !canvasLinkCss(["seg"]).includes('[data-question="vp"]'));
+
+  const crumb = exampleCanvas(index, "crumb-and-co");
+  const tide = exampleCanvas(index, "tidewise");
+  const page = [crumb, tide].map((ex) => render(ExampleCard, { company: ex.company, questions, state: ex.questions })).join("");
+  const wrappers = [...page.matchAll(/<div data-canvas-link=""/g)].length;
+  same("link: one wrapper per card", wrappers, 2);
+  // Each wrapper holds its own card's paragraph and grid, and no other card's.
+  const parts = page.split('<div data-canvas-link=""').slice(1);
+  for (const [i, ex] of [crumb, tide].entries()) {
+    check(`link: ${ex.company.id}'s wrapper holds its paragraph`, parts[i].includes(`${ex.company.name.replace("&", "&amp;")} is for`));
+    check(`link: ${ex.company.id}'s wrapper holds its grid's nine blocks`, [...parts[i].matchAll(/data-block=""/g)].length === 9);
+  }
+  check("link: blocks carry their question key", /data-block="" data-question="seg"|data-question="seg"[^>]*data-block=""/.test(page));
+  const tideGrid = render(CanvasGrid, { questions, state: tide.questions, density: "full", idPrefix: "t", label: "T", current: "vp" });
+  check("link: the current block is marked, so the hover outline leaves its ring alone", /<div[^>]*data-question="vp"[^>]*data-current=""/.test(tideGrid));
+  const linked = render(CanvasLink, { children: "x" });
+  check("link: the wrapper carries the generated stylesheet", linked.includes(css.slice(0, 40)), linked.slice(0, 200));
 }
 
 // --- the sitemap ------------------------------------------------------------------------

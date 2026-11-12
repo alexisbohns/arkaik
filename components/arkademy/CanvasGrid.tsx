@@ -108,7 +108,9 @@ export function CanvasGrid({
               role="group"
               aria-labelledby={isPending ? undefined : headingId}
               aria-label={isPending ? `${question.block}, being answered` : undefined}
+              data-block=""
               data-question={question.key}
+              data-current={question.key === current ? "" : undefined}
               data-faint={faint ? "" : undefined}
               data-pending={isPending ? "" : undefined}
               className={cn(

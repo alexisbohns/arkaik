@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { CanvasGrid } from "@/components/arkademy/CanvasGrid";
+import { CanvasLink } from "@/components/arkademy/CanvasLink";
 import { ParagraphView } from "@/components/arkademy/ParagraphView";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -40,15 +41,18 @@ export function ExampleCard({ company, questions, state, actions }: ExampleCardP
         </div>
         {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
       </div>
-      <ParagraphView segments={segments} />
-      <CanvasGrid
-        questions={questions}
-        state={state}
-        density="mini"
-        headingLevel={4}
-        idPrefix={headingId}
-        label={`${company.name}'s canvas`}
-      />
+      {/* One link per card: its sentences and its blocks highlight each other, never another card's. */}
+      <CanvasLink className="contents">
+        <ParagraphView segments={segments} />
+        <CanvasGrid
+          questions={questions}
+          state={state}
+          density="mini"
+          headingLevel={4}
+          idPrefix={headingId}
+          label={`${company.name}'s canvas`}
+        />
+      </CanvasLink>
       {company.note && <p className="text-xs leading-relaxed text-muted-foreground">{company.note}</p>}
     </Card>
   );
