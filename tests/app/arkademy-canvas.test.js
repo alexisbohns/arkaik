@@ -268,6 +268,107 @@ const index = A.indexArkademy(validation.document);
   ]);
 }
 
+// --- browser storage -----------------------------------------------------------------
+{
+  const { readStoredDraft, serializeDraft, repairDraft, emptyDraft, draftReducer } = A;
+  const { DRAFT_STORAGE_KEY, DRAFT_UNREADABLE_KEY, DRAFT_FORMAT, DRAFT_UPGRADES } = A;
+  same("key", [DRAFT_STORAGE_KEY, DRAFT_UNREADABLE_KEY], ["arkaik:arkademy:bmc", "arkaik:arkademy:bmc:unreadable"]);
+  same("format", DRAFT_FORMAT, 1);
+  same("no upgrades at version 1", Object.keys(DRAFT_UPGRADES), []);
+
+  same("null: none", readStoredDraft(null), { status: "none" });
+  same("blank: none", readStoredDraft("  "), { status: "none" });
+
+  const draft = {
+    name: "Tidy",
+    answers: [
+      { id: "a1", question: "seg", text: "people who fish" },
+      { id: "a2", question: "ch", text: "app stores", inspiration: { entity: "app-stores", documentVersion: 3 } },
+    ],
+    open: ["rev"],
+    updatedAt: "2026-11-12T10:00:00.000Z",
+  };
+  const stored = JSON.stringify({ v: 1, draft });
+  same("a valid v1", readStoredDraft(stored), { status: "ok", draft });
+  same("serialize: the envelope", serializeDraft(draft), stored);
+  same("serialize round trip", readStoredDraft(serializeDraft(draft)), { status: "ok", draft });
+  same(
+    "serialize: answers trimmed, blank ones left out",
+    JSON.parse(
+      serializeDraft({
+        ...draft,
+        answers: [
+          { id: "a1", question: "seg", text: " people " },
+          { id: "a3", question: "vp", text: "   " },
+        ],
+      }),
+    ).draft.answers,
+    [{ id: "a1", question: "seg", text: "people" }],
+  );
+
+  same("broken JSON: unreadable", readStoredDraft("{not json"), { status: "unreadable", raw: "{not json" });
+  same("an array: unreadable", readStoredDraft("[1,2]").status, "unreadable");
+  same("no v: unreadable", readStoredDraft(JSON.stringify({ draft })).status, "unreadable");
+  same("a wrong shape: unreadable", readStoredDraft(JSON.stringify({ v: 1, draft: { name: "x" } })).status, "unreadable");
+  same("a draft that is a string: unreadable", readStoredDraft(JSON.stringify({ v: 1, draft: "x" })).status, "unreadable");
+  same("v: 0 is unreadable", readStoredDraft(JSON.stringify({ v: 0, draft })).status, "unreadable");
+
+  const newer = readStoredDraft(JSON.stringify({ v: 2, draft }));
+  same("v: 2 is newer", [newer.status, newer.v], ["newer", 2]);
+  same("newer: shown as best this build can", newer.draft, draft);
+  same(
+    "newer with a shape this build cannot read: an empty canvas",
+    readStoredDraft(JSON.stringify({ v: 3, draft: [] })).draft,
+    emptyDraft(),
+  );
+
+  const repaired = readStoredDraft(
+    JSON.stringify({
+      v: 1,
+      draft: {
+        name: "N".repeat(70),
+        answers: [
+          { id: "a1", question: "nope", text: "unknown key" },
+          { id: "a2", question: "seg", text: 42 },
+          { id: "a3", question: "seg", text: "y".repeat(200) },
+          ...["1", "2", "3", "4", "5", "6"].map((n) => ({ id: `k${n}`, question: "ka", text: `task ${n}` })),
+          { id: "a3", question: "vp", text: "repeated id" },
+          { question: "vp", text: "no id" },
+          { id: "a9", question: "kp", text: "   " },
+          { id: "a10", question: "ch", text: "bad inspiration", inspiration: { entity: "Not A Slug", documentVersion: 1 } },
+        ],
+        open: ["rev", "rev", "seg", "nope", 4],
+        updatedAt: 12,
+      },
+    }),
+  );
+  same("repair: still ok", repaired.status, "ok");
+  const r = repaired.draft;
+  same("repair: name cut to 60", r.name.length, 60);
+  same("repair: unknown key and non-string text dropped", r.answers.some((a) => a.text === "unknown key"), false);
+  same("repair: a 200-character text cut to 140", r.answers.find((a) => a.id === "a3").text.length, 140);
+  same("repair: six answers keep the first five", r.answers.filter((a) => a.question === "ka").map((a) => a.text), [
+    "task 1",
+    "task 2",
+    "task 3",
+    "task 4",
+    "task 5",
+  ]);
+  same("repair: a repeated or missing id gets a new one", r.answers.filter((a) => a.question === "vp").map((a) => a.id), ["a11", "a12"]);
+  same("repair: blank text dropped", r.answers.some((a) => a.question === "kp"), false);
+  same("repair: a bad inspiration dropped, the answer kept", r.answers.find((a) => a.id === "a10"), {
+    id: "a10",
+    question: "ch",
+    text: "bad inspiration",
+  });
+  same("repair: open deduplicated, keys with answers and unknown keys dropped", r.open, ["rev"]);
+  same("repair: updatedAt not a string", r.updatedAt, "");
+  same("repairDraft: not an object", repairDraft(null), null);
+
+  // A repaired draft keeps working with the reducer.
+  same("repaired ids keep counting", draftReducer(r, { type: "add", question: "kr", text: "boats" }).answers.at(-1).id, "a13");
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-canvas test(s) failed`);
