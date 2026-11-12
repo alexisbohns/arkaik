@@ -92,9 +92,15 @@ const UNDATED = {
 same("clean: trims", cleanAnswer("  bread  "), "bread");
 same("clean: drops a trailing full stop", cleanAnswer("bread."), "bread");
 same("clean: drops dots and spaces mixed", cleanAnswer("bread . . "), "bread");
-same("clean: keeps other punctuation", cleanAnswer("bread!"), "bread!");
+same("clean: drops a trailing exclamation mark", cleanAnswer("fast!"), "fast");
+same("clean: drops a trailing question mark and a run of marks", cleanAnswer("really?!.. "), "really");
+same("clean: drops a trailing ellipsis character", cleanAnswer("and more…"), "and more");
+same("clean: drops a trailing semicolon, colon or comma", [cleanAnswer("a;"), cleanAnswer("b :"), cleanAnswer("c, ")], ["a", "b", "c"]);
+same("clean: keeps punctuation inside", cleanAnswer("hey! you, there"), "hey! you, there");
+same("clean: keeps a closing bracket, a percent sign and quotes", [cleanAnswer("maps (beta)"), cleanAnswer("50%"), cleanAnswer('"quoted"')], ["maps (beta)", "50%", '"quoted"']);
 same("clean: keeps an inner full stop", cleanAnswer("v2.0 maps"), "v2.0 maps");
 same("clean: only dots becomes empty", cleanAnswer("..."), "");
+same("clean: only marks becomes empty", cleanAnswer(" ?! … "), "");
 
 // --- joinAnswers and the semicolon triggers ------------------------------------
 same("join: none", joinAnswers([]), "");

@@ -39,9 +39,14 @@ export const SUBJECT_PRONOUN = "It";
 /** The subject when the name is empty. */
 export const DEFAULT_SUBJECT = "This product";
 
-/** Trims and drops trailing full stops and whitespace; other punctuation stays. */
+/**
+ * Trims, then drops any run of whitespace and `. ! ? … ; : ,` at the end: the
+ * sentence supplies its own punctuation, so "fast!" reads "… for fast." and
+ * never "… for fast!.". Punctuation inside the answer, and a closing bracket
+ * or quote at its end, stay.
+ */
 export function cleanAnswer(text: string): string {
-  return text.trim().replace(/[.\s]+$/, "");
+  return text.trim().replace(/[\s.!?…;:,]+$/u, "");
 }
 
 /** The separator placed before item `i` (1 ≤ i < count) of a joined list. */
