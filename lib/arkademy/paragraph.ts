@@ -49,10 +49,16 @@ export function cleanAnswer(text: string): string {
   return text.trim().replace(/[\s.!?…;:,]+$/u, "");
 }
 
-/** The separator placed before item `i` (1 ≤ i < count) of a joined list. */
-function separatorBefore(i: number, count: number, semicolon: boolean): string {
-  if (i < count - 1) return semicolon ? "; " : ", ";
-  return semicolon ? "; and " : " and ";
+/**
+ * The separator placed before item `i` (1 ≤ i < texts.length) of a joined
+ * list. In the semicolon case, two items take "; and " only when one holds a
+ * comma ("a, b; and c"); otherwise ", and " reads better ("flour and butter,
+ * and wages") and still keeps the two apart.
+ */
+function separatorBefore(i: number, texts: readonly string[], semicolon: boolean): string {
+  if (i < texts.length - 1) return semicolon ? "; " : ", ";
+  if (!semicolon) return " and ";
+  return texts.length === 2 && !texts.some((text) => text.includes(",")) ? ", and " : "; and ";
 }
 
 /** " and " as a word: an item holding it cannot be told apart from the list's own last "and". */
@@ -70,14 +76,15 @@ export function joinsWithSemicolons(answers: readonly { text: string; note?: Use
 
 /**
  * `a`, `a and b`, `a, b and c`; in the semicolon case (`joinsWithSemicolons`)
- * `a; and b`, `a; b; and c`. The texts are taken as given (clean them first).
+ * `a, and b` (two items, no comma in either), `a, b; and c` (two items, a
+ * comma in one), `a; b; and c`. The texts are taken as given (clean them first).
  * Pass `semicolon` when the answers carry notes, which plain texts cannot show.
  */
 export function joinAnswers(
   texts: readonly string[],
   semicolon: boolean = joinsWithSemicolons(texts.map((text) => ({ text }))),
 ): string {
-  return texts.map((text, i) => (i === 0 ? text : separatorBefore(i, texts.length, semicolon) + text)).join("");
+  return texts.map((text, i) => (i === 0 ? text : separatorBefore(i, texts, semicolon) + text)).join("");
 }
 
 /** A note's date as the pages print it: the source's own date, or "read on …" for an undated page. */
@@ -145,10 +152,11 @@ export function composeParagraph(input: {
     }
 
     const semicolon = joinsWithSemicolons(answers);
+    const texts = answers.map((answer) => answer.text);
     const parts: ParagraphPart[] = [];
     pushText(parts, before);
     answers.forEach((answer, i) => {
-      if (i > 0) pushText(parts, separatorBefore(i, answers.length, semicolon));
+      if (i > 0) pushText(parts, separatorBefore(i, texts, semicolon));
       pushText(parts, answer.text);
       if (answer.note) {
         pushText(parts, " (");

@@ -113,11 +113,13 @@ same("join: one item with a comma reads as itself", joinAnswers(["a, still"]), "
 same("join: two, a comma inside", joinAnswers(["a, still", "b"]), "a, still; and b");
 same("join: three, a comma inside", joinAnswers(["a", "b, still", "c"]), "a; b, still; and c");
 same("join: five, a comma inside", joinAnswers(["a", "b", "c", "d", "e, f"]), "a; b; c; d; and e, f");
-same("join: two, an 'and' inside", joinAnswers(["flour and butter", "wages"]), "flour and butter; and wages");
+same("join: two, an 'and' inside and no comma: a comma before the last 'and'", joinAnswers(["flour and butter", "wages"]), "flour and butter, and wages");
+same("join: two, a comma in the second", joinAnswers(["a", "b, still"]), "a; and b, still");
 same("join: three, an 'and' inside", joinAnswers(["a", "rock and roll", "c"]), "a; rock and roll; and c");
 same("join: 'and' inside a word is not 'and'", joinAnswers(["sandwiches", "brandy", "candles"]), "sandwiches, brandy and candles");
 same("join: a hyphenated 'and' is not 'and'", joinAnswers(["black-and-white prints", "posters"]), "black-and-white prints and posters");
-same("join: an explicit semicolon flag wins", joinAnswers(["a", "b"], true), "a; and b");
+same("join: an explicit semicolon flag wins", joinAnswers(["a", "b", "c"], true), "a; b; and c");
+same("join: an explicit semicolon flag on two items without a comma", joinAnswers(["a", "b"], true), "a, and b");
 same("join: an explicit comma flag wins", joinAnswers(["a, b", "c"], false), "a, b and c");
 check("semicolons: a plain list joins with commas", !joinsWithSemicolons([{ text: "a" }, { text: "b" }]));
 check("semicolons: a comma triggers them", joinsWithSemicolons([{ text: "a, b" }, { text: "c" }]));
@@ -234,7 +236,7 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   same(
     "notes: text puts each note in parentheses after its answer, joined with semicolons",
     kp.text,
-    "Its partners are two millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01); and a co-op (listed as a partner; Example Mill, partners page, read on 2026-10-01).",
+    "Its partners are two millers (about 40 tonnes a year; Example Mill, annual report, 2026-02-01), and a co-op (listed as a partner; Example Mill, partners page, read on 2026-10-01).",
   );
   same(
     "notes: parts cut the sentence at each note",
@@ -242,7 +244,7 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
     [
       { kind: "text", text: "Its partners are two millers (" },
       { kind: "note", note: NOTE },
-      { kind: "text", text: "); and a co-op (" },
+      { kind: "text", text: "), and a co-op (" },
       { kind: "note", note: UNDATED },
       { kind: "text", text: ")." },
     ],
@@ -293,9 +295,9 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
   same("example: Tidewise's open question is a gap", tidePara[4].text, "left open on purpose: where the money comes from");
   const crumbPara = composeParagraph({ questions, state: crumb.questions, subject: crumb.company.name });
   same(
-    "example: Crumb & Co's costs join with a semicolon ('flour and butter')",
+    "example: Crumb & Co's two costs, one holding 'and', take a comma before the last 'and'",
     crumbPara[8].text,
-    "The main costs are flour and butter; and night-shift wages.",
+    "The main costs are flour and butter, and night-shift wages.",
   );
   same(
     "example: Crumb & Co's five activities join with commas",
