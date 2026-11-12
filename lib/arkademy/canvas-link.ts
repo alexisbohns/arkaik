@@ -1,4 +1,4 @@
-import { BMC_QUESTION_KEYS } from "./schema";
+import { BMC_QUESTION_KEYS } from "./constants";
 
 /**
  * The paragraph and the canvas, linked (spec § "The paragraph and the canvas,

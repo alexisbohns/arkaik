@@ -1,4 +1,4 @@
-import { LIST_TOKEN, SUBJECT_TOKEN } from "./schema";
+import { LIST_TOKEN, SUBJECT_TOKEN } from "./constants";
 import type { BmcQuestion, BmcQuestionKey, UseNote } from "./schema";
 
 /**

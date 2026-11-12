@@ -1,6 +1,6 @@
 import type { ArkademyIndex } from "./index-document";
 import type { CanvasQuestionState } from "./paragraph";
-import { BMC_QUESTION_KEYS } from "./schema";
+import { BMC_QUESTION_KEYS } from "./constants";
 import type { Company } from "./schema";
 
 /** One example as the pages draw it: the company and its nine questions. */

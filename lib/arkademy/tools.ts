@@ -1,4 +1,4 @@
-import { BMC_TOOL_ID } from "./schema";
+import { BMC_TOOL_ID } from "./constants";
 import type { ArkademyDocument, ToolId } from "./schema";
 
 /** The Arkademy's own pages. Every tool has a folder of its own under it. */

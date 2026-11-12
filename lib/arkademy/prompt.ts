@@ -1,4 +1,4 @@
-import { PROMPT_TOKEN } from "./schema";
+import { PROMPT_TOKEN } from "./constants";
 
 /** What the cover shows, and the copy button copies, where the paragraph goes. */
 export const PROMPT_PLACEHOLDER = "[your paragraph]";

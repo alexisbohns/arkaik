@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { BMC_TOOL_ID } from "./schema";
+import { BMC_TOOL_ID } from "./constants";
 import type { BmcTool, Company } from "./schema";
 import { ARKADEMY_PATH, ARKADEMY_TOOL_PATHS, BMC_YOURS_PATH, bmcTourPath } from "./tools";
 
