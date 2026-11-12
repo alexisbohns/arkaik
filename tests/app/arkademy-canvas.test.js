@@ -301,6 +301,32 @@ const index = A.indexArkademy(validation.document);
   ]);
 }
 
+// --- control characters (the ones part 1's schema refuses in text) ----------------------
+{
+  const { stripTextControls, draftReducer, emptyDraft, textCharacterProblem, repairDraft } = A;
+  let leaks = [];
+  for (let code = 0; code <= 0xffff; code++) {
+    const char = String.fromCharCode(code);
+    const stripped = stripTextControls(`a${char}b`).replace(/[\r\n\t]/g, " ");
+    if (textCharacterProblem(stripped) !== null) leaks.push(code.toString(16));
+  }
+  same("every code point the schema refuses is stripped (lone surrogates included)", leaks.slice(0, 5), []);
+  same("ordinary text is untouched", stripTextControls("Café crème — 24/7, 😀 & co"), "Café crème — 24/7, 😀 & co");
+  same("rename: a right-to-left override is stripped", draftReducer(emptyDraft(), { type: "rename", name: "\u202EAcme\u202C" }).name, "Acme");
+  same(
+    "add: a zero-width space and an isolate are stripped",
+    draftReducer(emptyDraft(), { type: "add", question: "seg", text: "\u200Bbakers\u2066 at dawn" }).answers[0].text,
+    "bakers at dawn",
+  );
+  const withAnswer = draftReducer(emptyDraft(), { type: "add", question: "seg", text: "bakers" });
+  same("edit: stripped too", draftReducer(withAnswer, { type: "edit", id: "a1", text: "bak\u200Fers" }).answers[0].text, "bakers");
+  same(
+    "a stored draft is stripped when read",
+    repairDraft({ name: "\u202Ex", answers: [{ id: "a1", question: "seg", text: "y\u0007" }], open: [] }),
+    { name: "x", answers: [{ id: "a1", question: "seg", text: "y" }], open: [], updatedAt: "" },
+  );
+}
+
 // --- browser storage -----------------------------------------------------------------
 {
   const { readStoredDraft, serializeDraft, repairDraft, emptyDraft, draftReducer } = A;

@@ -1,4 +1,4 @@
-import { cutText, emptyDraft, fitAnswer, NAME_MAX_LENGTH, nextAnswerId, oneLine } from "./canvas";
+import { emptyDraft, fitAnswer, fitName, nextAnswerId } from "./canvas";
 import type { CanvasDraft, DraftAnswer } from "./canvas";
 import { BMC_QUESTION_KEYS, MAX_ANSWERS_PER_QUESTION } from "./schema";
 import type { BmcQuestionKey } from "./schema";
@@ -86,7 +86,7 @@ export function repairDraft(value: unknown): CanvasDraft | null {
     ),
   );
   return {
-    name: typeof value.name === "string" ? cutText(oneLine(value.name), NAME_MAX_LENGTH) : "",
+    name: typeof value.name === "string" ? fitName(value.name) : "",
     answers: kept,
     open: BMC_QUESTION_KEYS.filter((key) => openKeys.has(key)),
     updatedAt: typeof value.updatedAt === "string" && value.updatedAt.length <= 40 ? value.updatedAt : "",

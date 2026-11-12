@@ -64,9 +64,31 @@ export function cutText(text: string, max: number): string {
   return text.slice(0, code >= 0xd800 && code <= 0xdbff ? max - 1 : max);
 }
 
-/** A typed or pasted answer as the draft keeps it: one line, at most ANSWER_MAX_LENGTH. */
+/**
+ * The characters part 1's schema refuses in any text (`textCharacterProblem`
+ * in schema.ts): C0 controls but tab and line feed, DEL and C1, the line and
+ * paragraph separators, zero-width characters and bidirectional controls.
+ * A visitor's name or answer would otherwise carry, say, a right-to-left
+ * override that flips the rest of the paragraph. The suite checks this list
+ * against the schema's own, code point by code point.
+ */
+const TEXT_CONTROLS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200D\u2060-\u2064\uFEFF\u180E\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const LONE_HIGH_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g;
+const LONE_LOW_SURROGATE = /(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** Text without the control characters the schema refuses, and without lone surrogates. */
+export function stripTextControls(text: string): string {
+  return text.replace(TEXT_CONTROLS, "").replace(LONE_HIGH_SURROGATE, "").replace(LONE_LOW_SURROGATE, "$1");
+}
+
+/** A typed or pasted answer as the draft keeps it: one line, no control characters, at most ANSWER_MAX_LENGTH. */
 export function fitAnswer(text: string): string {
-  return cutText(oneLine(text), ANSWER_MAX_LENGTH);
+  return cutText(stripTextControls(oneLine(text)), ANSWER_MAX_LENGTH);
+}
+
+/** The product's name as the draft keeps it: one line, no control characters, at most NAME_MAX_LENGTH. */
+export function fitName(name: string): string {
+  return cutText(stripTextControls(oneLine(name)), NAME_MAX_LENGTH);
 }
 
 /** The answers of one question, in display order (blank ones included). */
@@ -123,7 +145,7 @@ function canAdd(draft: CanvasDraft, question: BmcQuestionKey, text: string): boo
 export function draftReducer(draft: CanvasDraft, action: DraftAction): CanvasDraft {
   switch (action.type) {
     case "rename": {
-      const name = cutText(oneLine(action.name), NAME_MAX_LENGTH);
+      const name = fitName(action.name);
       return name === draft.name ? draft : { ...draft, name };
     }
     case "add": {
