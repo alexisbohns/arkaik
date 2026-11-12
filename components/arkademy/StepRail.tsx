@@ -37,7 +37,7 @@ const STATUS_WORDS: Record<StepStatus, string> = {
  * The nine steps as numbered links in one row: "Step 3: Channels, answered",
  * the current one marked `aria-current="step"`. A plain click is intercepted
  * and handed to `onSelect`; a modified click (new tab, new window) follows the
- * link. A question left open on purpose has a dashed outline throughout.
+ * link. A question left open on purpose is round with a dashed outline throughout.
  *
  * No hooks: the tour renders it, and your own canvas (part 4) can.
  */
@@ -65,7 +65,9 @@ export function StepRail({ steps, current, hrefFor, onSelect, label = "Tour step
                 title={item.block}
                 className={cn(
                   "flex size-7 items-center justify-center rounded-md border font-mono text-xs tabular-nums transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  item.status === "open" && "border-dashed border-muted-foreground/60",
+                  // Left open on purpose: a dashed border at full muted-foreground (4.52:1 light,
+                  // 7.77:1 dark) and a round shape, so the status has two cues.
+                  item.status === "open" && "rounded-full border-dashed border-muted-foreground",
                   isCurrent
                     ? "border-foreground bg-foreground text-background"
                     : item.reached

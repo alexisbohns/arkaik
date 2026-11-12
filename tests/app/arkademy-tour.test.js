@@ -415,6 +415,11 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
       }),
     );
   check("rail: named Tour steps by default", rail({}).includes('aria-label="Tour steps"'));
+  const linkFor = (html, n) => (new RegExp(`<a[^>]*aria-label="Step ${n}:[^"]*"[^>]*>`).exec(html) ?? [""])[0];
+  // Left open on purpose: a dashed border in the full muted-foreground (4.52:1 light, 7.77:1 dark;
+  // it was 2.25:1 at 60%) and a second cue, the round shape.
+  check("rail: an open step's border is the full muted-foreground", /border-muted-foreground(?![\/\w-])/.test(linkFor(rail({}), 5)), linkFor(rail({}), 5));
+  check("rail: an open step is round, the others square", /rounded-full/.test(linkFor(rail({}), 5)) && !/rounded-full/.test(linkFor(rail({}), 4)));
   check("rail: a label names it otherwise", rail({ label: "Your canvas, question by question" }).includes('aria-label="Your canvas, question by question"'));
 }
 
