@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, type MouseEvent } from "react";
+import { useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 
 import { CanvasGrid } from "@/components/arkademy/CanvasGrid";
 import { CanvasLink } from "@/components/arkademy/CanvasLink";
@@ -30,6 +30,8 @@ export interface TourWalkProps {
   next: { name: string; href: string } | null;
   /** The cover's gallery. */
   examplesHref: string;
+  /** Shown first in the end card: part 4's "Start your own" (a server page may pass a client component). */
+  endActions?: ReactNode;
 }
 
 /** Part 4 widens this union with `{ mode: "edit"; … }`. */
@@ -76,7 +78,7 @@ export function CanvasWalk(props: CanvasWalkProps) {
   return <TourWalk {...props} />;
 }
 
-function TourWalk({ company, questions, state, initialStep, next, examplesHref }: TourWalkProps) {
+function TourWalk({ company, questions, state, initialStep, next, examplesHref, endActions }: TourWalkProps) {
   const timelines = useMemo(() => tourTimelines(questions, state), [questions, state]);
   const cardRef = useRef<HTMLDivElement>(null);
   const player = useTourPlayer({ timelines, initialStep, cardRef });
@@ -142,7 +144,7 @@ function TourWalk({ company, questions, state, initialStep, next, examplesHref }
           sentenceShown={view.sentenceShown}
           headingId="tour-question"
         />
-        {atEnd && <TourEndCard company={company} next={next} examplesHref={examplesHref} />}
+        {atEnd && <TourEndCard company={company} next={next} examplesHref={examplesHref} actions={endActions} />}
         <p aria-live="polite" className="sr-only">
           {announcement}
         </p>

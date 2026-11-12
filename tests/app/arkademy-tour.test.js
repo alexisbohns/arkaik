@@ -325,6 +325,20 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   check("screen, step 9: the end card", last.includes("End of the tour") && last.includes("Next example: Inkwell"));
   check("screen, step 9: play starts over", last.includes('aria-label="Replay the tour"'));
   check("screen, step 9: back to the gallery", last.includes('href="/arkademy/business-model-canvas#examples"'));
+  const withAction = renderToStaticMarkup(
+    React.createElement(CanvasWalk, {
+      mode: "tour",
+      company: tide.company,
+      questions,
+      state: tide.questions,
+      initialStep: 9,
+      next: null,
+      examplesHref: "/arkademy/business-model-canvas#examples",
+      endActions: React.createElement("a", { href: "/part-4" }, "Start your own"),
+    }),
+  );
+  check("screen, step 9: the page's end actions come first in the end card", /End of the tour[\s\S]*Start your own[\s\S]*All examples/.test(withAction));
+  check("screen, step 9: no next example with a single example", !withAction.includes("Next example"));
 }
 
 // --- source checks: no window keydown, replaceState only, the cover links each tour -----
