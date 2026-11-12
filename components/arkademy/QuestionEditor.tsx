@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type FocusEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 
@@ -139,6 +139,26 @@ export function QuestionEditor({
     focusById(next ? answerFieldId(next.id) : ADD_ANSWER_ID);
   }
 
+  /**
+   * A field emptied, or left with only punctuation ("..."), is no answer: its
+   * row goes when the field loses focus. If the focus was moving into that
+   * same row (Tab onto its own buttons), it would fall to the page with the
+   * row, so it goes to the next answer, or the add field, instead.
+   */
+  function leave(event: FocusEvent<HTMLTextAreaElement>, id: string, position: number) {
+    if (hasWords(event.target.value)) return;
+    const row = event.currentTarget.closest("li");
+    const target = event.relatedTarget;
+    const intoRow = row !== null && target instanceof Node && row.contains(target);
+    if (!intoRow) {
+      onRemove(id);
+      return;
+    }
+    const next = answers[position + 1];
+    flushSync(() => onRemove(id));
+    focusById(next ? answerFieldId(next.id) : ADD_ANSWER_ID);
+  }
+
   function move(id: string, offset: -1 | 1, from: "button" | "field") {
     flushSync(() => onMove(id, offset));
     const button = document.getElementById(moveButtonId(id, offset));
@@ -204,10 +224,7 @@ export function QuestionEditor({
                   aria-invalid={repeats !== undefined || undefined}
                   aria-describedby={repeats !== undefined ? `${answerFieldId(answer.id)}-repeats` : undefined}
                   onChange={(event) => onEdit(answer.id, event.target.value)}
-                  onBlur={(event) => {
-                    // A field emptied, or left with only punctuation ("..."), is no answer.
-                    if (!hasWords(event.target.value)) onRemove(answer.id);
-                  }}
+                  onBlur={(event) => leave(event, answer.id, i)}
                   onKeyDown={(event) => onAnswerKeyDown(event, answer.id)}
                   className={cn(FIELD, "min-w-60 flex-1")}
                 />
