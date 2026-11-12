@@ -682,6 +682,42 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
   check("upload: the script cleans up its build directory", leftoverBuildDirs().length === 0, JSON.stringify(leftoverBuildDirs()));
 }
 
+// --- The upload script's helpers, required in-process ---------------------------
+// Requiring upload.js builds nothing: lib/arkademy/ is loaded on first use.
+const upload = require(path.join(ROOT, "scripts", "arkademy", "upload.js"));
+{
+  const { describeError } = upload;
+  check("describeError is exported", typeof describeError === "function");
+  if (typeof describeError === "function") {
+    check("an error's message", describeError(new Error("password authentication failed")) === "password authentication failed");
+    const refused = Object.assign(new AggregateError([
+      Object.assign(new Error("connect ECONNREFUSED ::1:5999"), { code: "ECONNREFUSED" }),
+      Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5999"), { code: "ECONNREFUSED" }),
+    ], ""), { code: "ECONNREFUSED" });
+    check(
+      "an aggregate error with no message: its errors' messages, joined",
+      describeError(refused) === "connect ECONNREFUSED ::1:5999; connect ECONNREFUSED 127.0.0.1:5999",
+      describeError(refused),
+    );
+    check("an error with only a code", describeError(Object.assign(new Error(""), { code: "ETIMEDOUT" })) === "ETIMEDOUT");
+    check("an empty aggregate falls back to its code", describeError(Object.assign(new AggregateError([], ""), { code: "ENETUNREACH" })) === "ENETUNREACH");
+    check("nothing at all still says something", describeError(new Error("")).length > 0 && describeError(undefined).length > 0);
+  }
+}
+{
+  const { spawnSync } = require("child_process");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  // Port 1 on this machine: nothing listens, so the driver is refused at once.
+  const env = { ...process.env, DATABASE_URL: "postgres://nobody@localhost:1/nothing" };
+  delete env.PGHOST;
+  const result = spawnSync(process.execPath, [UPLOAD, "status"], { encoding: "utf8", env });
+  check(
+    "upload: an unreachable database names the reason",
+    result.status === 1 && /could not connect to localhost: \S/.test(result.stderr) && /ECONNREFUSED/.test(result.stderr),
+    `${result.status} ${result.stderr}`,
+  );
+}
+
 // --- Two runs at once ---------------------------------------------------------
 // Each run builds lib/arkademy/ into a directory of its own and removes only
 // that one, so concurrent runs never delete each other's modules.

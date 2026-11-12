@@ -284,13 +284,28 @@ function databaseTarget() {
   }
 }
 
+/**
+ * A failure's reason, never empty: its message; or, for an AggregateError
+ * with none (Node's when every address of `localhost` refuses), its errors'
+ * messages joined; or its code (`ECONNREFUSED`).
+ */
+function describeError(err) {
+  if (err && typeof err.message === "string" && err.message.trim() !== "") return err.message;
+  if (err && Array.isArray(err.errors) && err.errors.length > 0) {
+    const messages = [...new Set(err.errors.map((inner) => describeError(inner)))];
+    return messages.join("; ");
+  }
+  if (err && typeof err.code === "string" && err.code !== "") return err.code;
+  return "unknown error (no message or code)";
+}
+
 async function withClient(target, fn) {
   const { Client } = require("pg");
   const client = new Client({ connectionString: target.connectionString });
   try {
     await client.connect();
   } catch (err) {
-    throw new ScriptExit(`could not connect to ${target.host}: ${err.message}`);
+    throw new ScriptExit(`could not connect to ${target.host}: ${describeError(err)}`);
   }
   try {
     return await fn(client);
@@ -396,7 +411,7 @@ async function main(argv) {
   }
 }
 
-module.exports = { publishDocument, rollbackDocument, listVersions, parseArgs, main };
+module.exports = { publishDocument, rollbackDocument, listVersions, parseArgs, describeError, main };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(
