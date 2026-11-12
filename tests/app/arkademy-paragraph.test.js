@@ -32,6 +32,21 @@ const {
   composeParagraph,
   paragraphText,
   exampleCanvas,
+  PROMPT_PLACEHOLDER,
+  promptForDisplay,
+  promptLines,
+  ARKADEMY_PATH,
+  ARKADEMY_TOOL_PATHS,
+  BMC_YOURS_PATH,
+  bmcTourPath,
+  arkademyToolCards,
+  ARKADEMY_SITE_URL,
+  ARKADEMY_INTRO,
+  BMC_FALLBACK_TITLE,
+  arkademyShellMetadata,
+  bmcCoverMetadata,
+  bmcTourMetadata,
+  bmcYoursMetadata,
 } = loadArkademy();
 
 let failures = 0;
@@ -269,6 +284,102 @@ same("noteText: accessed", noteText(UNDATED), "listed as a partner; Example Mill
     crumbPara[6].text,
     "It spends its days on baking through the night, planning the delivery round, sourcing flour from nearby mills, packing each order by hand and taking orders by text message.",
   );
+}
+
+// --- the baseline prompt ----------------------------------------------------------
+same("prompt: the placeholder", PROMPT_PLACEHOLDER, "[your paragraph]");
+same("prompt: the token is shown as the placeholder", promptForDisplay(`Read ${PROMPT_TOKEN} now`), "Read [your paragraph] now");
+same("prompt: a prompt without the token is unchanged", promptForDisplay("No token here"), "No token here");
+same(
+  "prompt: the fixture's lines",
+  promptLines(tool.prompt.text),
+  [
+    "You are helping me think about a product.",
+    "Here is its business model in one paragraph:",
+    "",
+    "[your paragraph]",
+    "",
+    "Ask me the one question that would change it most.",
+  ],
+);
+same("prompt: CRLF lines", promptLines("a\r\nb"), ["a", "b"]);
+
+// --- paths and the shell's cards ----------------------------------------------------
+same("paths: the shell", ARKADEMY_PATH, "/arkademy");
+same("paths: the cover", ARKADEMY_TOOL_PATHS["business-model-canvas"], "/arkademy/business-model-canvas");
+same("paths: your own canvas", BMC_YOURS_PATH, "/arkademy/business-model-canvas/yours");
+same("paths: a tour", bmcTourPath("crumb-and-co"), "/arkademy/business-model-canvas/tour/crumb-and-co");
+same(
+  "cards: one per tool with a path",
+  arkademyToolCards(document),
+  [
+    {
+      id: "business-model-canvas",
+      href: "/arkademy/business-model-canvas",
+      title: "Business Model Canvas",
+      tagline: tool.tagline,
+      exampleCount: 3,
+    },
+  ],
+);
+same(
+  "cards: a tool without a path gets none",
+  arkademyToolCards({ ...document, tools: [{ ...tool, id: "porter-five-forces" }] }),
+  [],
+);
+
+// --- metadata -------------------------------------------------------------------
+{
+  same("site: the origin", ARKADEMY_SITE_URL, "https://arkaik.app");
+  const shell = arkademyShellMetadata();
+  same("shell: title", shell.title, "Arkademy | arkaik");
+  same("shell: description", shell.description, ARKADEMY_INTRO);
+  same("shell: canonical", shell.alternates.canonical, "https://arkaik.app/arkademy");
+  same("shell: Open Graph URL is the canonical", shell.openGraph.url, "https://arkaik.app/arkademy");
+  same("shell: Open Graph type and site", [shell.openGraph.type, shell.openGraph.siteName], ["website", "arkaik"]);
+  same("shell: twitter card", shell.twitter.card, "summary");
+  check("shell: indexed (no robots override)", !("robots" in shell));
+
+  const cover = bmcCoverMetadata(tool);
+  same("cover: title", cover.title, "Business Model Canvas | arkaik Arkademy");
+  same("cover: description is the tagline", cover.description, tool.tagline);
+  same("cover: canonical", cover.alternates.canonical, "https://arkaik.app/arkademy/business-model-canvas");
+  same("cover: Open Graph URL", cover.openGraph.url, "https://arkaik.app/arkademy/business-model-canvas");
+  check("cover: indexed (no robots override)", !("robots" in cover));
+  const coverless = bmcCoverMetadata(null);
+  same("cover without a document: fixed title", coverless.title, `${BMC_FALLBACK_TITLE} | arkaik Arkademy`);
+  check("cover without a document: a fixed description", typeof coverless.description === "string" && coverless.description.length > 0);
+  same("cover without a document: same canonical", coverless.alternates.canonical, cover.alternates.canonical);
+
+  const company = document.companies.find((c) => c.id === "tidewise");
+  const tour = bmcTourMetadata("tidewise", { tool, company });
+  same("tour: title", tour.title, "Tidewise: Business Model Canvas tour | arkaik Arkademy");
+  same("tour: description is the one-liner", tour.description, company.oneLiner);
+  same("tour: canonical, without a step", tour.alternates.canonical, "https://arkaik.app/arkademy/business-model-canvas/tour/tidewise");
+  same("tour: never indexed", tour.robots, { index: false, follow: false });
+  const tourless = bmcTourMetadata("tidewise", null);
+  same("tour without a document: fixed title", tourless.title, "Business Model Canvas tour | arkaik Arkademy");
+  same("tour without a document: still not indexed", tourless.robots, { index: false, follow: false });
+  same(
+    "tour: an id is encoded into the canonical",
+    bmcTourMetadata("a b", null).alternates.canonical,
+    "https://arkaik.app/arkademy/business-model-canvas/tour/a%20b",
+  );
+
+  const yours = bmcYoursMetadata(tool);
+  same("yours: title", yours.title, "Your Business Model Canvas | arkaik Arkademy");
+  same("yours: canonical", yours.alternates.canonical, "https://arkaik.app/arkademy/business-model-canvas/yours");
+  same("yours: never indexed", yours.robots, { index: false, follow: false });
+  same("yours without a document: fixed title", bmcYoursMetadata(null).title, "Your Business Model Canvas | arkaik Arkademy");
+}
+
+// --- the sitemap's source -----------------------------------------------------------
+{
+  const sitemap = fs.readFileSync(path.join(ROOT, "app", "sitemap.ts"), "utf8");
+  check("sitemap: names the shell", sitemap.includes("`${base}/arkademy`"));
+  check("sitemap: names the cover", sitemap.includes("`${base}/arkademy/business-model-canvas`"));
+  check("sitemap: names no tour", !sitemap.includes("/tour/"));
+  check("sitemap: names no canvas of your own", !sitemap.includes("/yours"));
 }
 
 cleanup();
