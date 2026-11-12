@@ -426,6 +426,8 @@ jobs:
         run: npm run test:graph
       - name: Pollen feed integration tests (opt-in, cursor paging, 410 reset)
         run: npm run test:pollen-feed
+      - name: Arkademy read route + upload integration tests (publish, 304, rollback)
+        run: npm run test:arkademy-api
       - name: GitHub webhook integration tests (signature, replay guard, promotion)
         run: npm run test:github
       - name: Lab-Note webhook integration tests (journal append, dedupe, refusals)
