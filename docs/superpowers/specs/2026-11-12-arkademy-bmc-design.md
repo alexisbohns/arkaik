@@ -420,11 +420,22 @@ reported spend on it is a note on that company's use.
   inspiration to your own canvas copies the entity and its label only.
 - Your own canvas has no notes in this MVP; `CanvasQuestionState` carries them
   only for examples.
-- Where an example's answer is shown with room (the tour's answer list, the
-  cover's canvas block when expanded), the note sits under the answer in
-  smaller text, followed by the source's name as a link and its date. In the
-  paragraph it follows the answer in parentheses, § "The paragraph". Links to
-  sources open in a new tab with `rel="noopener noreferrer nofollow"`.
+- On screen a note is behind a click (revised 2026-11-12 at the owner's
+  request: notes inside the paragraph hurt its reading). Wherever an
+  example's answer is shown — in the paragraph, in the canvas grid's full
+  density, in the tour's answer list — a small, quiet marker follows the
+  answer (`SourcedNote`: a button with an info icon, named "Source note for
+  <answer>"). Activating it opens a small card holding the note's text, then
+  "Source: " and the source's name as a link, then the date ("read on
+  <date>" for an accessed date). It opens on click, Enter, Space or touch,
+  closes on Escape or an outside click, and returns focus to the marker. The
+  running paragraph holds no note words and no parentheses; the mini canvas
+  shows no marker. Without JavaScript, a `<noscript>` after the marker holds
+  the note in parentheses, so a no-script reader and a crawler reach the
+  source. In plain text a note reads `fact. Source: <name>, <date>`
+  (`noteText`), in parentheses after its answer (`paragraphTextWithNotes`),
+  § "The paragraph". Links to sources open in a new tab with
+  `rel="noopener noreferrer nofollow"`.
 
 ### Field constraints
 
@@ -784,7 +795,24 @@ app/api/arkademy/route.ts                                the read route         
 
 Every page is a server component with `dynamic = "force-dynamic"` that calls
 `getArkademy` through `cache()`: the build never touches the database, and the
-data cache makes each request cheap. The tool's folder is static, not a
+data cache makes each request cheap.
+
+What reads the library sits behind a Suspense boundary with a quiet
+placeholder (`LibraryPlaceholder`), so a slow or hung database never holds
+back the chrome and the page's `h1` (added 2026-11-12, after review: against
+a database that never answered, `/arkademy` sent no byte in 40 seconds). On
+the shell, the tool cards; on the cover, the breadcrumb, the hero and the
+body, whose fallback is the breadcrumb and the `h1` with
+`BMC_FALLBACK_TITLE`. React streams a boundary's content into a hidden
+element that a script moves into place, so without JavaScript only the
+placeholder shows; each page therefore first gives the library a head start
+(`ARKADEMY_HEAD_START_MS`, 300 ms, `settledWithin`) and, answered in time,
+renders in place with no boundary. Only a slow read (a cache refill waking
+the database, an outage) streams. `generateMetadata` still awaits the read:
+Next 16.2 streams metadata into the body for browsers and Googlebot and
+blocks only for HTML-limited bots, which receive the page when the read
+ends (bounded by `ARKADEMY_READ_TIMEOUT_MS`). A page that calls
+`notFound()` must do it before any boundary. The tool's folder is static, not a
 `[tool]` segment; a second tool adds its own folder. `lib/arkademy/tools.ts`
 maps tool ids to their paths for the shell's cards
 (`ARKADEMY_TOOL_PATHS: Record<ToolId, string>`).
@@ -865,8 +893,8 @@ Built by pure helpers in `lib/arkademy/metadata.ts` (types only from
 
 | Page | `title` | `description` | `robots` | `alternates.canonical` |
 |---|---|---|---|---|
-| Shell | `Arkademy \| arkaik` | fixed UI copy | inherited (index) | `https://arkaik.app/arkademy` |
-| Cover | `{tool.title} \| arkaik Arkademy` | `tool.tagline` | inherited (index) | `https://arkaik.app/arkademy/business-model-canvas` |
+| Shell | `Arkademy \| arkaik` | fixed UI copy | inherited (index); `noindex` without a library | `https://arkaik.app/arkademy` |
+| Cover | `{tool.title} \| arkaik Arkademy` | `tool.tagline` | inherited (index); `noindex` without a library | `https://arkaik.app/arkademy/business-model-canvas` |
 | Tour | `{company.name}: {tool.title} tour \| arkaik Arkademy` | `company.oneLiner` | `{ index: false, follow: false }` | the tour URL without `step` |
 | Yours | `Your {tool.title} \| arkaik Arkademy` | fixed UI copy | `{ index: false, follow: false }` | the page URL |
 
@@ -874,7 +902,10 @@ Shell and cover also set `openGraph` (`title`, `description`, `url` = the
 canonical, `type: "website"`, `siteName: "arkaik"`) and `twitter`
 (`card: "summary"`), overriding the root's home-page values (F2). There is no
 share image in this release; the root has none either. When the document is
-missing, the cover falls back to fixed copy. Your own canvas is not indexed:
+missing, the cover falls back to fixed copy. Whenever the lookup is not
+`ready` (empty, invalid, error, unconfigured), the shell and the cover are
+`{ index: false, follow: false }`, so a crawl during an outage never indexes
+the message (`arkademyShellMetadata(libraryReady)`, `bmcCoverMetadata(null)`). Your own canvas is not indexed:
 its server HTML holds nothing but the questions.
 
 `app/sitemap.ts` gains `/arkademy` (monthly, 0.6) and
@@ -893,10 +924,10 @@ export interface CanvasQuestionState {
   answers: { text: string; entity?: string; note?: UseNote }[];  // in display order
   open: boolean;                                   // ignored when answers is non-empty
 }
-/** A sentence in pieces, so a page can render a note's source as a link. */
+/** A sentence in pieces, so a page knows where each note's marker goes. */
 export type ParagraphPart =
   | { kind: "text"; text: string }
-  | { kind: "note"; note: UseNote };
+  | { kind: "note"; note: UseNote; answer: string };   // adds nothing to the sentence's text
 export type ParagraphSegment =
   | { kind: "sentence"; question: BmcQuestionKey; text: string; parts: ParagraphPart[] }
   | { kind: "gap"; question: BmcQuestionKey; open: boolean; text: string };
@@ -904,57 +935,85 @@ export type ParagraphSegment =
 export const SUBJECT_PRONOUN = "It";
 export const DEFAULT_SUBJECT = "This product";
 export function cleanAnswer(text: string): string;
+export function displayAnswers(question: CanvasQuestionState | undefined): CanvasAnswer[];
+export function clampThrough(through: number | undefined, count: number): number;
 export function joinAnswers(texts: readonly string[]): string;
 export function composeParagraph(input: {
   questions: readonly BmcQuestion[];          // the document's nine, canonical order
   state: readonly CanvasQuestionState[];      // nine, canonical order
   subject: string;                            // company name, or the visitor's product name
-  through?: number;                           // 1–9, default 9: questions after it are omitted
+  through?: number;                           // 0–9, default 9: questions after it are omitted (clampThrough)
 }): ParagraphSegment[];
 export function noteText(note: UseNote): string;
 export function paragraphText(segments: readonly ParagraphSegment[]): string;
+export function paragraphTextWithNotes(segments: readonly ParagraphSegment[]): string;
 ```
 
 The rule:
 
-1. **Clean.** `cleanAnswer` trims and removes trailing full stops and
-   whitespace: `text.trim().replace(/[.\s]+$/, "")`.
-2. **Join.** One item reads as itself. With two or more, the separator is
-   `"; "` if any item contains a comma, contains ` and ` as a word, or carries
-   a note (the real library showed that such lists cannot be read back into
-   their items when joined by commas), else `", "`; all but the last are
-   joined with the separator, then `" and "` (comma case) or `"; and "`
-   (semicolon case) precedes the last. So `a and b`, `a, b and c`,
-   `a; and b`, `a; b; and c`.
+1. **Clean.** `cleanAnswer` trims and removes any run of whitespace and
+   `. ! ? … ; : ,` at the end, the sentence supplying its own punctuation:
+   `text.trim().replace(/[\s.!?…;:,]+$/u, "")`. So a visitor's `fast!` reads
+   "… for fast.". Punctuation inside an answer, and a closing bracket or quote
+   at its end, stay. An answer that cleans to nothing is no answer; a
+   question's answers as shown are `displayAnswers(question)` (cleaned,
+   empties dropped with their note, entity and note kept), which the
+   paragraph and the canvas grid both use.
+2. **Join.** One item reads as itself. With two or more, the list is in the
+   semicolon form if any item contains a comma, `and` as a word in any case,
+   or a standalone `&` (the real library showed that such lists cannot be read
+   back into their items when joined by commas; "brand", "Sandbox",
+   "black-and-white" and "R&D" do not count), else in the comma form. Notes
+   play no part: on screen a note adds no words to the sentence. Comma form:
+   `a and b`, `a, b and c`. Semicolon form with three or more items: `"; "`
+   between them and `"; and "` before the last, `a; b; and c`. Semicolon form
+   with exactly two: `"; and "` if either item contains a comma (`a, b; and
+   c`), otherwise `", and "` (`flour and butter, and wages`).
 3. **Subject.** `subject` is trimmed; if empty it becomes `DEFAULT_SUBJECT`.
    The first sentence whose template contains `{S}` uses the subject; every
    later one uses `SUBJECT_PRONOUN`. A template without `{S}` does not consume
    the subject.
-4. **Each question, in canonical order, up to `through`:**
+4. **Each question, in canonical order, up to `through`** (`clampThrough`:
+   omitted, non-finite or past the last question means all; below 1 means
+   none, as the tour's first step shows before its sentence arrives; a
+   fraction rounds down; the canvas grid uses the same clamp). `state` is
+   matched by key: a missing key reads as unanswered and not open, a key
+   given twice takes its last entry.
    - with answers: the template is `sentencePlural` when there are two answers
      or more and it exists, else `sentence`; `{S}` and `{L}` are replaced
-     (the joined, cleaned answers); the segment is a `sentence`.
+     literally (a `$` in a name is never read as a replacement pattern) by the
+     subject and the joined, cleaned answers; the segment is a `sentence`.
    - without answers: a `gap` segment whose text is
      `"left open on purpose: " + gap` when `open`, else `"open: " + gap`.
-5. **Notes.** An answer with a note reads as the cleaned answer, a space, then
-   the note in parentheses. `noteText(note)` is the plain form of what goes
-   inside them: `note.text + "; " + note.source.name + ", " + date`, where `date` is
-   `note.source.date` when `dateKind` is `"published"` and
-   `"read on " + note.source.date` when it is `"accessed"`
-   (so `compute and infrastructure (about $5.6B in the second quarter of 2026;
-   Example Source, 2026-08-14)`). The join rule (2) looks at the cleaned
-   answers and at whether any has a note, never at the note's own text. A sentence segment's
-   `parts` hold the same sentence cut at each note: `text` parts for the
-   words, including the parentheses, and one `note` part where each note's
-   content goes, so a page renders the note's text followed by the source's
-   name as a link and its date. Concatenating the parts, with each `note` part
-   rendered by `noteText`, gives the segment's `text` exactly. A sentence with
-   no note has a single `text` part.
+5. **Notes.** A note adds nothing to the sentence: the segment's `text` holds
+   the answers alone. Its `parts` cut the sentence after each noted answer:
+   `text` parts for the words and a `note` part (`{ note, answer }`, the
+   cleaned answer it belongs to) where the page puts the note's marker (§
+   "Notes on a use"). Concatenating the `text` parts gives the segment's
+   `text` exactly; a sentence with no note has a single `text` part.
+   `noteText(note)` is a note's plain form, `note.text + ". Source: " +
+   note.source.name + ", " + date`, where `date` is `note.source.date` when
+   `dateKind` is `"published"` and `"read on " + note.source.date` when it is
+   `"accessed"` — a full stop and "Source:", never a semicolon, which is the
+   list's own separator (a note's text never ends in punctuation, so the full
+   stop is never doubled). The marker's card has the same text content.
 6. **Text.** `paragraphText` joins the `sentence` segments with single spaces
-   and leaves the gaps out. It is what every copy and export uses.
+   and leaves out the gaps and the notes: exactly the words on screen, and
+   what every copy and export uses. `paragraphTextWithNotes` is the same with
+   each note in parentheses after its answer, rendered by `noteText` (so
+   `compute and infrastructure (about $5.6B in the second quarter of 2026.
+   Source: Example Source, 2026-08-14)`), for anything that must carry its
+   sources in plain text; it equals the parts concatenated with each `note`
+   part rendered as `" (" + noteText(note) + ")"`.
 
-On screen, sentences are inline text and gaps are inline dashed pills (buttons
-that go to that question in your own canvas; plain text elsewhere). With the
+On screen, sentences are inline text and gaps are inline pills (buttons that
+go to that question in your own canvas; plain text elsewhere). "left open on
+purpose: …" has a dashed border, no fill and a dashed-circle icon; "open: …"
+is a solid muted chip with no dashed border, so the two differ by shape and
+icon, not only by fill. Both set their text at the foreground's 65%, which
+passes 4.5:1 on the card and on the muted fill in both themes. A pill is an
+inline block capped at the line's width: it moves to the next line whole and
+wraps inside only when longer than a line. With the
 prototype's words in the document — `"{S} is for {L}."`,
 `"On money: {L}."`, `"The main cost is {L}."` with plural
 `"The main costs are {L}."` — this reproduces the prototype's paragraph
@@ -970,9 +1029,14 @@ answers taken from its uses in `order`, each carrying its entity id and its note
 `CanvasQuestionState[]` and the document's block titles, with two densities:
 
 - **`full`** (tour, your canvas): every answer; each block an element labelled
-  by its `h3`, answers as a list; empty blocks say "Left open on purpose." or
-  "Not answered yet."; in the tour, blocks after the current step are drawn
-  faint with only their title.
+  by its `h3`, answers as a list (`displayAnswers`, each note as a marker
+  after its answer); empty blocks say "Left open on purpose." or "Not
+  answered yet."; in the tour, blocks after `through` (`clampThrough`) are
+  drawn faint with only their title — except the current block, which never
+  is. A `pending` block (the tour's block being answered, not filled yet) is
+  drawn at full strength with its ring when it is also current, its heading
+  shown and its body empty (no answers, no "Not answered yet.", no
+  open-on-purpose border), and is named "<block>, being answered".
 - **`mini`** (cover cards): smaller type; at most three answers per block, then
   "+N more".
 
@@ -982,8 +1046,36 @@ the canonical canvas arrangement —
 `"kp kp ka ka vp vp cr cr seg seg" / "kp kp kr kr vp vp ch ch seg seg" / "cost cost cost cost cost rev rev rev rev rev"`
 — from the prototype; from 32rem, two columns in question order; below, one
 column. Nothing scrolls sideways (the global `overscroll-behavior` on
-horizontal scrollers traps the wheel). The current question's block carries a
-`ring`.
+horizontal scrollers traps the wheel); a long one-word block title or
+company name breaks anywhere. The current question's block carries a `ring`.
+Block heading ids are `<idPrefix>--<key>`: two hyphens, which no slug holds,
+so they never collide with a card heading `example-<companyId>`.
+
+### The paragraph and the canvas, linked
+
+Added 2026-11-12 at the owner's request, from the prototype. Within one
+example — a cover card, the tour's screen, your own canvas — hovering a
+sentence highlights its question's block on the canvas, and hovering a block
+highlights its sentence; a gap counts as its question's sentence, so hovering
+an unanswered block highlights its gap pill. Keyboard focus inside a sentence
+or a block (a gap button, a note marker, a block button) does the same. The
+link never crosses examples: each one is wrapped in its own `CanvasLink`
+(`components/arkademy/CanvasLink.tsx`), and the paragraph and the canvas
+must both sit inside it.
+
+No client JavaScript: sentences and gap pills carry `data-kind` and
+`data-question`, blocks `data-block` and `data-question`, and `CanvasLink`
+adds one stylesheet of CSS `:has()` rules, generated from
+`BMC_QUESTION_KEYS` in one place (`canvasLinkCss()` in
+`lib/arkademy/canvas-link.ts`): for each key, when an element of that key
+inside the wrapper is hovered or holds focus, its sentence gets a quiet tint
+(the muted token behind foreground text) and its block and gap pill a 1px
+outline in the muted-foreground token (at least 4.5:1 against the card in
+both themes). Neither changes layout. The current block (the tour's ring, 2px
+in the ring token) never takes the outline, so the two never fight. Hover
+rules apply only where the pointer can hover (`@media (hover: hover)`), so
+touch gets nothing extra; with reduced motion nothing transitions and the
+highlight still shows.
 
 ## The tour
 
