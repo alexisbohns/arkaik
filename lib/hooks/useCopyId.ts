@@ -19,8 +19,12 @@ const COPIED_RESET_MS = 1500;
  * pointer is still on the chip; the toast reaches the one whose eye has already
  * moved on, and it *names the id*, so "did I copy the right one?" is answerable
  * after the fact.
+ *
+ * `what` names the copied text in the toast when the text itself is too long
+ * to print there — the Arkademy's prompt, a paragraph. It defaults to the text,
+ * which is what an id chip wants.
  */
-export function useCopyId(id: string): { copied: boolean; copy: () => void } {
+export function useCopyId(id: string, what: string = id): { copied: boolean; copy: () => void } {
   const [copied, setCopied] = useState(false);
   // A second click inside the window restarts the countdown rather than letting
   // the first one's timer clear the mark early; and a chip unmounted mid-window
@@ -39,7 +43,7 @@ export function useCopyId(id: string): { copied: boolean; copy: () => void } {
         return;
       }
       setCopied(true);
-      toast.success(`Copied ${id}`);
+      toast.success(`Copied ${what}`);
       window.clearTimeout(resetRef.current);
       resetRef.current = window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
     })();
