@@ -118,7 +118,9 @@ export function CanvasGrid({
                 mini ? "gap-1.5 p-2.5" : "gap-2 p-3",
                 AREA[question.key],
                 open && "border-dashed border-muted-foreground/45",
-                faint && "opacity-40",
+                // Muted, not faded: a faded block took its title to 2.7:1 and its number to
+                // 1.67:1; the muted text colour reads 4.52:1 (light) and 7.77:1 (dark).
+                faint && "text-muted-foreground",
                 question.key === current && "ring-2 ring-ring",
               )}
             >

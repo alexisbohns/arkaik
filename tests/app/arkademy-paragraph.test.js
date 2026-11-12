@@ -570,6 +570,10 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   check("current: the current block is never faint", !/data-faint/.test(blockTag(current, "cr")), blockTag(current, "cr"));
   check("current: it keeps its ring", /ring-2/.test(blockTag(current, "cr")));
   check("current: the blocks around it past through stay faint", /data-faint/.test(blockTag(current, "ch")) && /data-faint/.test(blockTag(current, "rev")));
+  // A faint block's title stays readable: its text is muted (4.52:1 light, 7.77:1 dark), the
+  // block is never faded as a whole (opacity took the title to 2.7:1 and its number to 1.67:1).
+  check("faint: the block is not faded as a whole", !/opacity-/.test(blockTag(current, "ch")), blockTag(current, "ch"));
+  check("faint: its title is drawn in the muted text colour", /text-muted-foreground/.test(blockTag(current, "ch")));
 
   const vpTitle = questions.find((q) => q.key === "vp").block;
   const pending = grid({ through: 1, current: "vp", pending: "vp" });
