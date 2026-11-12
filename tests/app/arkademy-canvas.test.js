@@ -358,6 +358,22 @@ const index = A.indexArkademy(validation.document);
   check("not another key", !isPlainEnter(key({ key: "a", keyCode: 65 })));
 }
 
+// --- what the live region says after each action ----------------------------------------------
+{
+  const { canvasAnnouncement } = A;
+  same("added", canvasAnnouncement({ kind: "added", text: "bakers", count: 2 }), "Added: bakers. 2 of 5 answers.");
+  same("added, the fifth", canvasAnnouncement({ kind: "added", text: "millers", count: 5 }), "Added: millers. That is five answers, the most a question takes.");
+  same("refused as a duplicate", canvasAnnouncement({ kind: "duplicate", text: "Bakers!" }), "Not added: Bakers! is already an answer.");
+  same("refused, only punctuation", canvasAnnouncement({ kind: "empty" }), "Not added: an answer needs words, not only punctuation.");
+  same("refused at five", canvasAnnouncement({ kind: "full" }), "Not added: five answers is the most a question takes.");
+  same("moved", canvasAnnouncement({ kind: "moved", text: "bakers", position: 1, count: 3 }), "Moved bakers to position 1 of 3.");
+  same("removed", canvasAnnouncement({ kind: "removed", text: "bakers" }), "Removed: bakers.");
+  same("removed, an empty field", canvasAnnouncement({ kind: "removed", text: "  " }), "Removed the empty answer.");
+  same("left open", canvasAnnouncement({ kind: "open", block: "Revenue streams" }), "Revenue streams left open on purpose.");
+  same("undone", canvasAnnouncement({ kind: "unopen", block: "Revenue streams" }), "Revenue streams is no longer left open.");
+  same("started over", canvasAnnouncement({ kind: "reset" }), "Your canvas is empty again.");
+}
+
 // --- control characters (the ones part 1's schema refuses in text) ----------------------
 {
   const { stripTextControls, draftReducer, emptyDraft, textCharacterProblem, repairDraft } = A;

@@ -284,6 +284,44 @@ export function isPlainEnter(event: { key: string; shiftKey: boolean; keyCode: n
   return event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
 }
 
+/** What happened, for the live region: the result of each of the visitor's own actions. */
+export type CanvasEvent =
+  | { kind: "added"; text: string; count: number } // count: the question's answers after it
+  | { kind: "duplicate"; text: string }
+  | { kind: "empty" }
+  | { kind: "full" }
+  | { kind: "moved"; text: string; position: number; count: number }
+  | { kind: "removed"; text: string }
+  | { kind: "open"; block: string }
+  | { kind: "unopen"; block: string }
+  | { kind: "reset" };
+
+/** The sentence a screen reader hears after an action (spec § "Editing": every result is announced). */
+export function canvasAnnouncement(event: CanvasEvent): string {
+  switch (event.kind) {
+    case "added":
+      return event.count >= MAX_ANSWERS_PER_QUESTION
+        ? `Added: ${event.text}. That is five answers, the most a question takes.`
+        : `Added: ${event.text}. ${event.count} of ${MAX_ANSWERS_PER_QUESTION} answers.`;
+    case "duplicate":
+      return `Not added: ${event.text} is already an answer.`;
+    case "empty":
+      return "Not added: an answer needs words, not only punctuation.";
+    case "full":
+      return "Not added: five answers is the most a question takes.";
+    case "moved":
+      return `Moved ${event.text} to position ${event.position} of ${event.count}.`;
+    case "removed":
+      return event.text.trim() === "" ? "Removed the empty answer." : `Removed: ${event.text.trim()}.`;
+    case "open":
+      return `${event.block} left open on purpose.`;
+    case "unopen":
+      return `${event.block} is no longer left open.`;
+    case "reset":
+      return "Your canvas is empty again.";
+  }
+}
+
 /** Your own canvas, optionally at a step. */
 export function yoursHref(step?: number): string {
   return step === undefined ? BMC_YOURS_PATH : `${BMC_YOURS_PATH}?step=${step}`;

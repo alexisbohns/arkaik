@@ -26,6 +26,8 @@ import {
   draftState,
   hasAnswerText,
   hasWords,
+  canvasAnnouncement,
+  type CanvasEvent,
   NAME_MAX_LENGTH,
   questionStatus,
   yoursHref,
@@ -127,7 +129,8 @@ function CanvasEditor({
 }) {
   const [step, setStep] = useState(initialStep ?? startStep);
   const [inspirationsShown, setInspirationsShown] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
+  // The live region's text, and a counter so the same sentence twice is still read twice.
+  const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
 
   const questions = tool.questions;
   const question = questions[step - 1];
@@ -174,12 +177,42 @@ function CanvasEditor({
     else goTo(step + 1, fromKeyboard ? "add" : "heading");
   }
 
+  function announce(event: CanvasEvent) {
+    setAnnouncement((previous) => ({ text: canvasAnnouncement(event), count: previous.count + 1 }));
+  }
+
   function addAnswer(text: string): AddResult {
-    if (full) return "full";
-    if (!hasWords(text)) return "empty";
-    if (hasAnswerText(draft, question.key, text)) return "duplicate";
-    dispatchDraft({ type: "add", question: question.key, text });
-    return "added";
+    const result: AddResult = full
+      ? "full"
+      : !hasWords(text)
+        ? "empty"
+        : hasAnswerText(draft, question.key, text)
+          ? "duplicate"
+          : "added";
+    if (result === "added") dispatchDraft({ type: "add", question: question.key, text });
+    if (result === "added") announce({ kind: "added", text: text.trim(), count: answers.length + 1 });
+    else if (result === "duplicate") announce({ kind: "duplicate", text: text.trim() });
+    else announce({ kind: result });
+    return result;
+  }
+
+  function removeAnswer(id: string) {
+    const answer = answers.find((entry) => entry.id === id);
+    dispatchDraft({ type: "remove", id });
+    if (answer) announce({ kind: "removed", text: answer.text });
+  }
+
+  function moveAnswer(id: string, offset: -1 | 1) {
+    const from = answers.findIndex((entry) => entry.id === id);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= answers.length) return;
+    dispatchDraft({ type: "move", id, offset });
+    announce({ kind: "moved", text: answers[from].text.trim(), position: to + 1, count: answers.length });
+  }
+
+  function setOpen(value: boolean) {
+    dispatchDraft({ type: "setOpen", question: question.key, open: value });
+    announce({ kind: value ? "open" : "unopen", block: question.block });
   }
 
   function addInspiration(item: Inspiration, event: MouseEvent<HTMLButtonElement>) {
@@ -192,7 +225,7 @@ function CanvasEditor({
         documentVersion,
       }),
     );
-    setAnnouncement(`Added: ${item.label}`);
+    announce({ kind: "added", text: item.answer, count: answers.length + 1 });
     // From the keyboard, back to the add field to reword or go on; from a
     // pointer, the heading, without scrolling (a touch keyboard would hide the list).
     const field = document.getElementById(ADD_ANSWER_ID);
@@ -213,7 +246,7 @@ function CanvasEditor({
       setStep(1);
     });
     window.history.replaceState(null, "", yoursHref(1));
-    setAnnouncement("Your canvas is empty again.");
+    announce({ kind: "reset" });
     toast.success("Started over.");
   }
 
@@ -268,9 +301,9 @@ function CanvasEditor({
               preview={<SentencePreview questions={questions} state={state} subject={draft.name} question={question} />}
               onAdd={addAnswer}
               onEdit={(id, text) => dispatchDraft({ type: "edit", id, text })}
-              onRemove={(id) => dispatchDraft({ type: "remove", id })}
-              onMove={(id, offset) => dispatchDraft({ type: "move", id, offset })}
-              onSetOpen={(value) => dispatchDraft({ type: "setOpen", question: question.key, open: value })}
+              onRemove={removeAnswer}
+              onMove={moveAnswer}
+              onSetOpen={setOpen}
               onBack={() => goTo(step - 1, "heading")}
               onNext={next}
             />
@@ -356,7 +389,8 @@ function CanvasEditor({
       </CanvasLink>
 
       <p className="sr-only" aria-live="polite">
-        {announcement}
+        {announcement.text}
+        {announcement.count % 2 === 1 ? "\u00a0" : ""}
       </p>
     </div>
   );
