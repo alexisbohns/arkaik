@@ -1,6 +1,6 @@
 # Arkademy — Part 4: your own canvas — Implementation Plan and Record
 
-> **Status: built.** This plan was executed on `feat/arkademy-your-canvas`, stacked on part 3's real tip `8c33cab1`. It is now the part's record: § "As built" lists every change against the plan that part 3's real code or the real library required, the tasks show the code as committed (final state, after `adf4f62e`), and § "Part done when" holds the real results. Steps keep the checkbox syntax so the part can be replayed.
+> **Status: built.** This plan was executed on `feat/arkademy-your-canvas`, stacked on part 3's real tip `8c33cab1`. It is now the part's record: § "As built" lists every change against the plan that part 3's real code or the real library required, the tasks show the code as committed (final state, after `adf4f62e`), and § "Part done when" holds the real results. Steps keep the checkbox syntax so the part can be replayed. After review, eighteen more commits apply the review's fixes (§ "Review fixes"); where the task code below differs from the branch, the branch and that section win.
 
 **Goal:** `/arkademy/business-model-canvas/yours[?step=1..9]`, where a visitor answers the Business Model Canvas's nine questions for their own product, one question at a time, and watches the paragraph and the canvas build as they type. A question can be left open on purpose. Inspirations from the library sit beside the question. The draft is saved in this browser only, under `arkaik:arkademy:bmc`. There are three exports: copy the paragraph, copy as Markdown, download JSON. Start over asks first. The cover gains its "Start your own" / "Continue your canvas" action, and this part's PR carries the single Lab Note for the whole Arkademy.
 
@@ -74,6 +74,115 @@ Commit `adf4f62e` adds `inspirationAnswer(label, wordings)`. The catalog compute
 
 
 ---
+
+## Review fixes
+
+The review found nothing blocking and fifteen things to fix. Each is one commit on `feat/arkademy-your-canvas` after `4304f651`, written test first wherever a Node test reaches it. Three more commits fix what the browser run of those fixes found. Read oldest first:
+
+```
+0de2a26a test(arkademy): the canvas store in Node, and sturdier checks in place of source text      Y13
+0d08a890 fix(arkademy): a name or an answer drops the control characters the schema refuses          Y10
+45e8a612 fix(arkademy): an answer of only punctuation is no answer                                    Y2
+25d1b50a fix(arkademy): a duplicate is caught by its words, not its punctuation or case               Y3
+e5d00858 fix(arkademy): the Enter that confirms an input-method word adds nothing                     Y6
+8b1f525f fix(arkademy): Shift+Enter does nothing in an answer; Escape clears the add field            Y11
+a823fd40 fix(arkademy): emptying an answer and pressing Tab keeps the focus on the page               Y5
+b11c2f56 fix(arkademy): every result of the visitor's own actions is announced                        Y4
+d1293316 fix(arkademy): the Markdown export escapes a name or an answer that reads as structure       Y8
+4de4b75d fix(arkademy): an inspiration names its example, not a fact about the company                Y12
+e86bdb58 feat(arkademy): inspirations list the shared answers first, the rest behind one step         Y15
+ebe60649 fix(arkademy): a storage that refused a write is tried again on the next change              Y14
+21c5aa7a fix(arkademy): text set aside from an unreadable draft stays offered until discarded         Y1
+7b438979 fix(arkademy): two tabs typing at once no longer lose each other's keystrokes                Y9
+c1bc8d78 fix(arkademy): "left open on purpose" and the current sentence pass 3:1 in both themes       Y7
+c57fb222 fix(arkademy): a confirmed action runs once its dialog has closed, so the focus lands        (found running Y1)
+e0ce5c5a fix(arkademy): removing a field of only punctuation is announced as an empty answer          (found running Y2/Y4)
+f259ff2a fix(arkademy): the inspirations column is never taller than the question card                (found running Y15)
+```
+
+**Choices made where the review left one open**
+- **Y1, kept text.** Every unreadable value is kept. `arkaik:arkademy:bmc:unreadable` holds a JSON list, oldest first (`readKeptAside`, `keepAside`). A bare value written by the first build reads as one kept value. The page reads the list on every load and offers one download per value ("Download the old text", or "Download text 1", "Download text 2"). Discard asks first, in `ConfirmDialog` (Cancel, then a red "Discard"), then removes the key and focuses the name field. `StartOverDialog` became the general `ConfirmDialog`.
+- **Y3, an edit into a duplicate.** The visitor's words are kept: the field is marked `aria-invalid`, says "Same as answer N." until it is reworded, and leaving it changes nothing (`duplicateAnswers`). Adding a duplicate stays refused; answers are compared cleaned (`cleanAnswer`) and case-folded.
+- **Y9, two tabs.** When another tab writes, two kinds of field stay as this tab has them:
+  - each field this tab has changed since its last save;
+  - the field with the focus (`setDraftFieldInFocus`).
+
+  A field is the name, or one question (its answers and its left-open flag). Every other field comes from the other tab (`mergeOtherTab`, pure and tested). The pending save stays scheduled and wins for those fields. An answer from the other tab whose id a kept answer holds gets a new id, so the field under the caret is never remounted. Two tabs typing in the same question at the same moment still end on the last writer for that question.
+- **Y10, control characters.** `schema.ts` keeps its list unexported, so `canvas.ts` holds its own `stripTextControls`, and the suite checks every BMP code point against the schema's `textCharacterProblem`, so the two cannot drift. No part 1 file is edited.
+- **Y14, retrying.** A failed write, or a probe that failed at load, is retried on the next change, and success clears the notice. Storage that could not even be read at load is never written, because it may hold a draft this page has not seen.
+- **Y15, inspirations.**
+  - Only entities two examples or more use are listed at once, most shared first (`splitInspirations`).
+  - "From one example (N)" reveals the rest, grouped under "In the … example" in the tool's example order.
+  - A question with nothing shared says "No two examples share an answer here yet." above the disclosure.
+  - From 768 px the column is never taller than the question card: it scrolls inside the card's height and stays in view (sticky) past a taller card.
+  - On a phone, "Stuck? N inspirations" sits inside the card, above Back and Next.
+  - `INSPIRATIONS_SHOWN` is gone. `YourCanvas`'s `tool` prop carries `examples`.
+
+**The other fixes, as built**
+- **Y2:** `hasWords` decides what is an answer. "..." and "!" are refused on add, removed on blur after an edit, never stored, never count against "Leave this open", and are dropped from a stored draft.
+- **Y4:** `canvasAnnouncement` words every result:
+  - added, with "n of 5" or the fifth;
+  - refused as a duplicate, as punctuation only, or at five;
+  - moved to position n of m;
+  - removed, or "the empty answer";
+  - left open and undone;
+  - Start over.
+
+  A counter appends an invisible no-break space on alternate messages, so a repeat is still read.
+- **Y5:** an emptied row removed on blur, while the focus was moving into that same row, sends the focus to the next answer or the add field.
+- **Y6:** `isPlainEnter` refuses keyCode 229 (WebKit fires `compositionend` before the confirming Enter's keydown). It applies in the answer fields, the add field and the name field.
+- **Y7:** measured ratios are below.
+- **Y8:** `markdownText` escapes backslashes and backticks anywhere, and a line-opening `#`, `-`, `+`, `*`, `>` or `1.`/`1)`, in the title, the paragraph and each answer. **A deliberate departure from "answers as typed".**
+- **Y11:** Shift+Enter does nothing in an answer or the add field. Escape clears the add field when it has text.
+- **Y12:** "in the Anthropic example", or "in the Notion and Figma examples" (`examplesPhrase`), in the accessible name and the visible line.
+- **Y13:** a new suite, `test:arkademy-draft-store` (44 checks, its own CI step), drives the store with a fake `window`, an in-memory `Storage` and fake timers:
+  - load, the throttle, page hide and leaving;
+  - another tab, and two tabs typing;
+  - blocked, read-only and full storage, and the retry;
+  - newer and unreadable drafts, and the kept list and its discard.
+
+  The store exports `canvasDraftStore` for it. The brittle checks are replaced:
+  - the stone class-string check is dropped;
+  - the editor's kicker is checked on its text and its question on the `h2` element;
+  - the keydown source scan is dropped (`tests/app/keyboard-shortcuts.test.js` walks every component).
+
+**Edits to files owned by parts 1 to 3**
+- `tests/app/arkademy-tour.test.js` (part 3), commit `0de2a26a`:
+  - line 355: the cover check compares positions, `cover.indexOf("<StartYourOwnButton") < cover.lastIndexOf("Play a tour")`;
+  - line 358: the tour check is `tourPage.includes("endActions={<StartYourOwnButton")`.
+
+  No other part 1–3 file changed in these commits. `docs/architecture.md` (shared) has its `StartOverDialog` line renamed to `ConfirmDialog` in `21c5aa7a`.
+
+**Contrast, measured** in Chromium against what is behind each line (light / dark):
+
+| Line | Before (review) | After |
+|---|---|---|
+| Open step: dashed border | 2.25 / — | 4.51 / 7.76 |
+| Open step: dashed-circle icon (new second cue) | — | 4.51 / 7.76 |
+| "Leave this open" panel: dashed border | 1.79 / 2.41 | 4.83 / 6.91 |
+| Current sentence: underline | 2.32 / — | 4.83 / 6.91 |
+| Preview's blank: dashes | 1.94 / — | 4.59 / 6.35 |
+
+**The real library** (scratch database only), shared at once + from one example, per question:
+
+| Question | Shared | From one example |
+|---|---|---|
+| Customer segments | 4 | 26 in 11 groups |
+| Value propositions | 1 ("work handed to an AI agent as to a teammate") | 38 in 11 groups |
+| Channels | 6, led by "free self-serve sign-up" (4) | 15 in 9 groups |
+| Customer relationships | 4, led by the account manager and self-serve (4 each) | 13 in 8 groups |
+| Revenue streams | 3, led by "per-seat subscription" (4) | 8 in 5 groups |
+| Key resources | 2 | 25 in 11 groups |
+| Key activities | 4 | 17 in 9 groups |
+| Key partners | 5 (AI vendors, model providers, the app stores, CRMs, GitHub) | 15 in 7 groups |
+| Cost structure | 3, led by "engineering time and team" (5) | 5 in 4 groups |
+
+The shared lists read as patterns, and value propositions now opens with one shared answer and an honest "From one example (38)". The column for value propositions measures 494 px at 1440 (the card's height) instead of about 2,900 px.
+
+**Not done now (as agreed)**
+- A live paragraph in the right column.
+- "Continue your canvas" on a cover with no library.
+- Safari's download: `downloadTextFile` revokes the object URL right after `click()`, as `downloadJson` does. The reviewer reports Safari may cancel a download whose URL is revoked that early. It is **unverified here**: no Safari run was possible. A deferred revoke (`setTimeout(…, 0)` or on the next frame) is the usual remedy.
 
 ## Readings and deviations
 
@@ -4241,6 +4350,37 @@ git status --porcelain
 Expected: `server stopped`; both `lsof` print nothing; `git status --porcelain` prints nothing.
 
 ## Part done when
+
+**After the review fixes** (`f259ff2a`, Node 26.7.0 | Node 20.19.5):
+
+```
+actionlint: clean
+✖ 3 problems (0 errors, 3 warnings)
+tsc: clean
+arkademy-canvas: All arkademy-canvas tests passed. | node20: same                (221 PASS)
+arkademy-draft-store: All arkademy-draft-store tests passed. | node20: same      (44 PASS)
+arkademy-tour: All arkademy-tour tests passed. | node20: same                    (138 PASS)
+arkademy-paragraph, arkademy-schema, keyboard-shortcuts, docs-visibility, landing: all passed | node20: same
+arkademy-api: All arkademy-api integration tests passed. | node20: same          (scratch Postgres)
+✓ Compiled successfully in 6.5s     # ƒ /arkademy/business-model-canvas/yours
+generate: ok, git status --short prints nothing
+```
+
+**The browser run** (dev server; part 1's fixture, the larger fictional document, and in the scratch database the real library):
+- Every Y by a concrete sequence, the live region read after each action. Highlights:
+  - "Not added: bakers. is already an answer."
+  - "Moved harbour masters to position 2 of 5."
+  - "Removed the empty answer."
+  - "Revenue streams left open on purpose."
+- Two tabs typing 12 characters each at once: both tabs keep all 12 and converge.
+- Y6 by dispatching an Enter with keyCode 229.
+- Y14 by making `Storage.setItem` throw, then restoring it.
+- Y1 with two unreadable values and the discard.
+- The original keyboard run, the tour's end card, the cover and the hover link pass unchanged.
+- At 400, 900 and 1440 px, light and dark: no sideways scroll and one `h1`.
+- Zero console errors or warnings, and no hydration warning.
+
+What follows is the first build's record.
 
 Real results on `feat/arkademy-your-canvas` at `adf4f62e`, on top of parts 1–3 (Node 26.7.0 and Node 20.19.5):
 
