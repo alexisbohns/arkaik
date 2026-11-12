@@ -419,8 +419,30 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
     );
   same("card: two of five arrived, two listed", (card(2, false).match(/<li/g) ?? []).length, 2);
   check("card: and counted", card(2, false).includes("2 of 5"));
-  same("card: all arrived, all listed", (card(5, true).match(/<li/g) ?? []).length, 5);
+  same("card: all arrived, all listed", (card(5, true).split("On the canvas")[0].match(/<li/g) ?? []).length, 5);
   check("card: no count once all are there", !/\d of 5/.test(card(5, true)));
+  // The chain answers → sentence → block, whole inside the card at every width.
+  const cardText = (html) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  check("card: before the sentence, no block yet", !card(5, false).includes("On the canvas"));
+  check(
+    "card: with the sentence, the block with its number, title and answers",
+    /On the canvas 7 Key activities .*baking through the night/.test(cardText(card(5, true))),
+    cardText(card(5, true)),
+  );
+  const tideOpen = renderToStaticMarkup(
+    React.createElement(QuestionCard, {
+      question: questions[4],
+      number: 5,
+      total: 9,
+      company: tide.company,
+      state: tide.questions[4],
+      visibleAnswers: 0,
+      sentence: undefined,
+      sentenceShown: true,
+      headingId: "q",
+    }),
+  );
+  check("card: a block left open is dashed and says so", /On the canvas/.test(tideOpen) && /border-dashed[^>]*>[\s\S]*Revenue streams[\s\S]*Left open on purpose\./.test(tideOpen.slice(tideOpen.indexOf("On the canvas"))));
   check("card: nothing kept hidden", !/aria-hidden="true"/.test(card(2, false).replace(/<svg[^>]*>/g, "")));
 
   const { StepRail } = requireTsx("components/arkademy/StepRail.tsx");

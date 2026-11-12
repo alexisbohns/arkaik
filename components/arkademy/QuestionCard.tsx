@@ -20,6 +20,52 @@ export const ARKADEMY_KICKER = "font-mono text-[11px] tracking-[0.14em] text-mut
 const ARRIVAL =
   "motion-safe:transition-[opacity,translate] motion-safe:duration-500 motion-safe:ease-out motion-safe:starting:translate-y-1 motion-safe:starting:opacity-0";
 
+/**
+ * The current block as the canvas draws it, at the size of the card: its
+ * number and title, its answers (no notes: they are markers in the list
+ * above), dashed with "Left open on purpose." when left open. It fills with
+ * the sentence, so answers, sentence and block are on screen together at any
+ * width, however long the example — the canvas below may be off screen.
+ */
+function BlockPreview({
+  number,
+  block,
+  answers,
+  open,
+  className,
+}: {
+  number: number;
+  block: string;
+  answers: readonly string[];
+  open: boolean;
+  className?: string;
+}) {
+  const leftOpen = answers.length === 0 && open;
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-2 rounded-lg border bg-background p-3",
+        leftOpen && "border-dashed border-muted-foreground/45",
+        className,
+      )}
+    >
+      <p className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold wrap-anywhere">
+        <span className="font-mono text-[10px] font-normal text-muted-foreground tabular-nums">{number}</span>
+        {block}
+      </p>
+      {answers.length > 0 ? (
+        <ul className="flex list-disc flex-col gap-1.5 pl-4 text-sm leading-snug break-words marker:text-muted-foreground">
+          {answers.map((answer, i) => (
+            <li key={i}>{answer}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">{leftOpen ? "Left open on purpose." : "Not answered yet."}</p>
+      )}
+    </div>
+  );
+}
+
 interface QuestionCardProps {
   question: BmcQuestion;
   /** 1–9. */
@@ -44,7 +90,8 @@ interface QuestionCardProps {
  * One question of an example, read-only (the tour): "Question 3 of 9 ·
  * Channels", the question as the card's `h2`, its hint, the example's answers
  * arriving one by one — a noted answer followed by its note's marker
- * (`SourcedNote`) — and, last, the sentence the paragraph gains from them. A question left open on purpose
+ * (`SourcedNote`) — and, last, the sentence the paragraph gains from them
+ * and the block they fill on the canvas. A question left open on purpose
  * says so instead of listing answers. Your own canvas (part 4) edits in a card
  * of its own.
  *
@@ -132,6 +179,19 @@ export function QuestionCard({
         <div key={`${question.key}-sentence`} className={cn("border-t pt-4", ARRIVAL)}>
           <p className={ARKADEMY_KICKER}>In the paragraph</p>
           <ParagraphView segments={[plainSentence]} className="mt-2" />
+        </div>
+      )}
+
+      {sentenceShown && (
+        <div key={`${question.key}-block`} className={cn("border-t pt-4", ARRIVAL)}>
+          <p className={ARKADEMY_KICKER}>On the canvas</p>
+          <BlockPreview
+            number={number}
+            block={question.block}
+            answers={answers.map((answer) => answer.text)}
+            open={state.open}
+            className="mt-2"
+          />
         </div>
       )}
     </Card>
