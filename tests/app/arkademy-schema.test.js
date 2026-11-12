@@ -401,6 +401,47 @@ check("a pronoun must be a whole word", wordingWarnings("business users").length
   check("a fractional format is refused", upgradeArkademyDocument(doc, 1.5).ok === false);
 }
 
+// --- The index -----------------------------------------------------------------
+{
+  const { indexArkademy } = ark;
+  const document = fixture();
+  const index = indexArkademy(document);
+  check("index: the document and its tool", index.document === document && index.tool === document.tools[0]);
+  check("index: a company by id", index.company("tidewise")?.name === "Tidewise");
+  check("index: an unknown company", index.company("nobody") === undefined);
+  check("index: an entity by id", index.entity("word-of-mouth")?.kind === "channel");
+  check("index: an unknown entity", index.entity("nothing-here") === undefined);
+  check(
+    "index: uses come back sorted by order, not file order",
+    JSON.stringify(index.uses("tidewise", "ch").map((use) => use.text)) ===
+      JSON.stringify(["anglers swapping tips on the pier", "app store search"]),
+    JSON.stringify(index.uses("tidewise", "ch").map((use) => use.text)),
+  );
+  check(
+    "index: all five answers of a full question",
+    JSON.stringify(index.uses("crumb-and-co", "ka").map((use) => use.order)) === JSON.stringify([0, 1, 2, 3, 4]),
+  );
+  const copy = index.uses("tidewise", "ch");
+  copy.pop();
+  check("index: uses returns a fresh array each call", index.uses("tidewise", "ch").length === 2);
+  check("index: an unanswered question has no uses", index.uses("tidewise", "rev").length === 0);
+  check("index: an open question", index.isOpen("tidewise", "rev") === true);
+  check("index: an answered question is not open", index.isOpen("crumb-and-co", "rev") === false);
+  check(
+    "index: an entity every example uses",
+    JSON.stringify(index.usersOf("word-of-mouth")) === JSON.stringify(["crumb-and-co", "tidewise", "inkwell"]),
+  );
+  check("index: an entity two examples share", JSON.stringify(index.usersOf("app-stores")) === JSON.stringify(["tidewise", "inkwell"]));
+  check("index: the other shared entity", JSON.stringify(index.usersOf("subscriptions")) === JSON.stringify(["crumb-and-co", "inkwell"]));
+  check("index: an unused entity has no users", index.usersOf("pop-up-stalls").length === 0);
+  const reordered = fixture();
+  reordered.tools[0].examples = ["inkwell", "tidewise", "crumb-and-co"];
+  check(
+    "index: users follow the tool's example order",
+    JSON.stringify(indexArkademy(reordered).usersOf("word-of-mouth")) === JSON.stringify(["inkwell", "tidewise", "crumb-and-co"]),
+  );
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-schema test(s) failed`);
