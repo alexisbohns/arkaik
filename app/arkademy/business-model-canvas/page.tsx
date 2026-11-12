@@ -9,11 +9,12 @@ import { ExampleCard } from "@/components/arkademy/ExampleCard";
 import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { PromptBlock } from "@/components/arkademy/PromptBlock";
 import { exampleCanvas, type ExampleCanvas } from "@/lib/arkademy/examples";
+import { ARKADEMY_HEAD_START_MS, settledWithin } from "@/lib/arkademy/head-start";
 import { indexArkademy } from "@/lib/arkademy/index-document";
 import { BMC_FALLBACK_TITLE, bmcCoverMetadata } from "@/lib/arkademy/metadata";
 import type { ArkademyDocument } from "@/lib/arkademy/schema";
 import { ARKADEMY_PATH } from "@/lib/arkademy/tools";
-import { getArkademy } from "@/lib/services/arkademy";
+import { getArkademy, type ArkademyLookup } from "@/lib/services/arkademy";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,10 +26,12 @@ import { cn } from "@/lib/utils";
  * Everything but the chrome reads the library, so the page body sits behind
  * one Suspense boundary whose fallback is the page as it is known without the
  * library: the breadcrumb and the h1 with the tool's fallback title, then a
- * quiet placeholder. The chrome and that fallback are sent at once; the cover
- * (or the message) replaces them when the read ends, within
- * ARKADEMY_READ_TIMEOUT_MS whatever the database does. There is one h1 in
- * every state.
+ * quiet placeholder. The page first gives the library a head start
+ * (ARKADEMY_HEAD_START_MS): answered in time, the cover is rendered in place
+ * with no boundary, whole in the HTML. Otherwise the chrome and that fallback
+ * are sent at once, and the cover (or the message) replaces them when the
+ * read ends, within ARKADEMY_READ_TIMEOUT_MS whatever the database does.
+ * There is one h1 in every state.
  *
  * The hero's two actions arrive with the pages they lead to: "Play a tour"
  * with part 3, "Start your own" with part 4.
@@ -43,12 +46,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return bmcCoverMetadata(lookup.status === "ready" ? lookup.document.tools[0] : null);
 }
 
-export default function BusinessModelCanvasCoverPage() {
+export default async function BusinessModelCanvasCoverPage() {
+  // A head start: a library that answers in time is rendered in place, with no
+  // boundary, so a reader or crawler without JavaScript gets the whole cover.
+  const early = await settledWithin(lookupArkademy(), ARKADEMY_HEAD_START_MS);
   return (
     <div className={cn(ARKADEMY_COLUMN, "pt-6 pb-24")}>
-      <Suspense fallback={<CoverHead title={BMC_FALLBACK_TITLE} after={<LibraryPlaceholder className="mt-10" />} />}>
-        <Cover />
-      </Suspense>
+      {early ? (
+        <CoverFor lookup={early.value} />
+      ) : (
+        <Suspense fallback={<CoverHead title={BMC_FALLBACK_TITLE} after={<LibraryPlaceholder className="mt-10" />} />}>
+          <Cover />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -67,9 +77,13 @@ function CoverHead({ title, tagline, after }: { title: string; tagline?: string;
   );
 }
 
-/** The part of the cover that waits for the library. */
+/** The part of the cover that waits for the library, when it is slow. */
 async function Cover() {
-  const lookup = await lookupArkademy();
+  return <CoverFor lookup={await lookupArkademy()} />;
+}
+
+/** The cover for a lookup: the library's, or the message for why there is none. */
+function CoverFor({ lookup }: { lookup: ArkademyLookup }) {
   if (lookup.status !== "ready") {
     return (
       <CoverHead

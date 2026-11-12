@@ -51,6 +51,8 @@ const {
   bmcCoverMetadata,
   bmcTourMetadata,
   bmcYoursMetadata,
+  ARKADEMY_HEAD_START_MS,
+  settledWithin,
 } = loadArkademy();
 
 let failures = 0;
@@ -436,6 +438,20 @@ same(
   same("yours without a document: fixed title", bmcYoursMetadata(null).title, "Your Business Model Canvas | arkaik Arkademy");
 }
 
+// --- the pages' head start on the library -------------------------------------------------
+// Awaited at the end of the file: these checks wait on real timers.
+const headStart = (async () => {
+  check("head start: a fraction of a second", ARKADEMY_HEAD_START_MS > 0 && ARKADEMY_HEAD_START_MS <= 500, String(ARKADEMY_HEAD_START_MS));
+  same("head start: a value that arrives in time", await settledWithin(Promise.resolve("ready"), 50), { value: "ready" });
+  const slow = new Promise((resolve) => setTimeout(() => resolve("late"), 200));
+  const started = Date.now();
+  const missed = await settledWithin(slow, 30);
+  const waited = Date.now() - started;
+  same("head start: a value that is late is not waited for", missed, undefined);
+  check("head start: gives up at the deadline", waited >= 25 && waited < 150, `${waited} ms`);
+  same("head start: a late value of undefined is still told apart", await settledWithin(Promise.resolve(undefined), 50), { value: undefined });
+})();
+
 // --- the components, rendered on the server -----------------------------------------
 // Through tests/app/load-arkademy-tsx.js (a require hook: .tsx transpiled in
 // memory, "@/" resolved to the repo root). renderToStaticMarkup is what a
@@ -670,9 +686,12 @@ const noscripts = (html) => [...html.matchAll(/<noscript>([\s\S]*?)<\/noscript>/
   check("sitemap: no URL is the canvas of your own", !urls.includes(`${ARKADEMY_SITE_URL}${BMC_YOURS_PATH}`));
 }
 
-cleanup();
-if (failures > 0) {
-  console.log(`\n${failures} arkademy-paragraph test(s) failed`);
-  process.exit(1);
-}
-console.log("\nAll arkademy-paragraph tests passed.");
+(async () => {
+  await headStart;
+  cleanup();
+  if (failures > 0) {
+    console.log(`\n${failures} arkademy-paragraph test(s) failed`);
+    process.exit(1);
+  }
+  console.log("\nAll arkademy-paragraph tests passed.");
+})();
