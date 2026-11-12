@@ -52,18 +52,26 @@ function arkademyPageMetadata(page: {
   };
 }
 
-/** `/arkademy`: indexable, fixed copy. */
-export function arkademyShellMetadata(): Metadata {
+/**
+ * `/arkademy`: fixed copy, indexable when the library is ready. Without it
+ * (`libraryReady` false or omitted) the page shows a message instead of its
+ * cards, and an outage must not be indexed as the page: `noindex`.
+ */
+export function arkademyShellMetadata(libraryReady?: boolean): Metadata {
   return arkademyPageMetadata({
     title: "Arkademy | arkaik",
     socialTitle: "Arkademy",
     description: ARKADEMY_INTRO,
     path: ARKADEMY_PATH,
-    indexed: true,
+    indexed: libraryReady === true,
   });
 }
 
-/** `/arkademy/business-model-canvas`: indexable; fixed copy when no document can be read. */
+/**
+ * `/arkademy/business-model-canvas`: indexable with the library's tool; with
+ * `null` (no library: empty, invalid, unreachable, unconfigured), fixed copy
+ * and `noindex`, so a crawl during an outage never indexes the error message.
+ */
 export function bmcCoverMetadata(tool: BmcTool | null): Metadata {
   const title = tool?.title ?? BMC_FALLBACK_TITLE;
   return arkademyPageMetadata({
@@ -71,7 +79,7 @@ export function bmcCoverMetadata(tool: BmcTool | null): Metadata {
     socialTitle: title,
     description: tool?.tagline ?? BMC_FALLBACK_DESCRIPTION,
     path: ARKADEMY_TOOL_PATHS[BMC_TOOL_ID],
-    indexed: true,
+    indexed: tool !== null,
   });
 }
 

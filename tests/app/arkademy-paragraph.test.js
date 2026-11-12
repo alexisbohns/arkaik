@@ -388,7 +388,7 @@ same(
 // --- metadata -------------------------------------------------------------------
 {
   same("site: the origin", ARKADEMY_SITE_URL, "https://arkaik.app");
-  const shell = arkademyShellMetadata();
+  const shell = arkademyShellMetadata(true);
   same("shell: title", shell.title, "Arkademy | arkaik");
   same("shell: description", shell.description, ARKADEMY_INTRO);
   same("shell: canonical", shell.alternates.canonical, "https://arkaik.app/arkademy");
@@ -396,6 +396,10 @@ same(
   same("shell: Open Graph type and site", [shell.openGraph.type, shell.openGraph.siteName], ["website", "arkaik"]);
   same("shell: twitter card", shell.twitter.card, "summary");
   check("shell: indexed (no robots override)", !("robots" in shell));
+  const shellDown = arkademyShellMetadata(false);
+  same("shell without a library: not indexed", shellDown.robots, { index: false, follow: false });
+  same("shell without a library: the same canonical", shellDown.alternates.canonical, "https://arkaik.app/arkademy");
+  same("shell: a call without the flag is not indexed either", arkademyShellMetadata().robots, { index: false, follow: false });
 
   const cover = bmcCoverMetadata(tool);
   same("cover: title", cover.title, "Business Model Canvas | arkaik Arkademy");
@@ -407,6 +411,7 @@ same(
   same("cover without a document: fixed title", coverless.title, `${BMC_FALLBACK_TITLE} | arkaik Arkademy`);
   check("cover without a document: a fixed description", typeof coverless.description === "string" && coverless.description.length > 0);
   same("cover without a document: same canonical", coverless.alternates.canonical, cover.alternates.canonical);
+  same("cover without a document: not indexed", coverless.robots, { index: false, follow: false });
 
   const company = document.companies.find((c) => c.id === "tidewise");
   const tour = bmcTourMetadata("tidewise", { tool, company });

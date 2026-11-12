@@ -1,3 +1,6 @@
+import type { Metadata } from "next";
+import { cache } from "react";
+
 import { ARKADEMY_COLUMN, ARKADEMY_TITLE } from "@/components/arkademy/ArkademyChrome";
 import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
 import { ToolCard } from "@/components/arkademy/ToolCard";
@@ -13,10 +16,17 @@ import { cn } from "@/lib/utils";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata = arkademyShellMetadata();
+/** One library read per request: generateMetadata and the page share it. */
+const lookupArkademy = cache(getArkademy);
+
+/** Indexed only with a library to show: an outage's message is not the page. */
+export async function generateMetadata(): Promise<Metadata> {
+  const lookup = await lookupArkademy();
+  return arkademyShellMetadata(lookup.status === "ready");
+}
 
 export default async function ArkademyShellPage() {
-  const lookup = await getArkademy();
+  const lookup = await lookupArkademy();
   return (
     <div className={cn(ARKADEMY_COLUMN, "pt-10 pb-24 sm:pt-14")}>
       <h1 className={ARKADEMY_TITLE}>Arkademy</h1>
