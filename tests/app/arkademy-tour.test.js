@@ -164,6 +164,18 @@ same("initial: an out-of-range step reads as none", initialTourState(timelines, 
 const arrived = initialTourState(timelines, null);
 same("resolve: autoplay plays from the first phase", resolveTourState(arrived, timelines, false), at(1, 0, true));
 same("resolve: under reduced motion, step 1 complete and paused", resolveTourState(arrived, timelines, true), at(1, T(1), false));
+// A tour opened in a background tab waits: the autoplay stays pending while the page is
+// hidden, and plays from the first phase once it is seen.
+same("resolve: hidden at arrival, paused and still waiting to autoplay", resolveTourState(arrived, timelines, false, true), {
+  step: 1,
+  playing: false,
+  elapsed: 0,
+  ended: false,
+  autoplay: true,
+});
+same("resolve: seen at last, it plays", resolveTourState(resolveTourState(arrived, timelines, false, true), timelines, false, false), at(1, 0, true));
+same("resolve: reduced motion wins over hidden", resolveTourState(arrived, timelines, true, true), at(1, T(1), false));
+same("reducer: a tick while hidden and waiting does nothing", createTourReducer(timelines, false, true)(arrived, { type: "tick", ms: 1200 }).playing, false);
 same("resolve: a settled state is returned as it is", resolveTourState(at(3, 900, false), timelines, true), at(3, 900, false));
 
 same("tick: moves elapsed while playing", reduce(at(2, 0, true), { type: "tick", ms: 1200 }), at(2, 1200, true));

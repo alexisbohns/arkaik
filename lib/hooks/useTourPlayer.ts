@@ -16,6 +16,7 @@ import {
   type TourAction,
   type TourState,
 } from "@/lib/arkademy/tour";
+import { useDocumentHidden } from "@/lib/hooks/useDocumentHidden";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
 
 export interface TourPlayer {
@@ -56,7 +57,12 @@ export function useTourPlayer({
   cardRef: RefObject<HTMLElement | null>;
 }): TourPlayer {
   const reducedMotion = usePrefersReducedMotion();
-  const reducer = useMemo(() => createTourReducer(timelines, reducedMotion), [timelines, reducedMotion]);
+  // A tour opened in a background tab waits to be seen before it autoplays.
+  const hidden = useDocumentHidden();
+  const reducer = useMemo(
+    () => createTourReducer(timelines, reducedMotion, hidden),
+    [timelines, reducedMotion, hidden],
+  );
   // The address the browser shows wins over the server's: Back to a tour replays the
   // server render it was first opened with, but the address holds the step being
   // watched (replaceState kept it current), which comes back complete and paused.
@@ -64,7 +70,7 @@ export function useTourPlayer({
   const [stored, dispatch] = useReducer(reducer, null, () =>
     initialTourState(timelines, typeof window === "undefined" ? initialStep : stepFromSearch(window.location.search)),
   );
-  const state = resolveTourState(stored, timelines, reducedMotion);
+  const state = resolveTourState(stored, timelines, reducedMotion, hidden);
   const timeline = timelines[state.step - 1];
   const view = reducedMotion ? stepView(timeline, timeline.total) : stepView(timeline, state.elapsed);
 

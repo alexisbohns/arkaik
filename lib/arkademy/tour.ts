@@ -160,7 +160,9 @@ export function initialTourState(timelines: readonly StepTimeline[], step: numbe
 
 /**
  * Settles a pending autoplay: playing from the first phase, or — under
- * reduced motion — the step complete and paused. Every other state is
+ * reduced motion — the step complete and paused. While the page is `hidden`
+ * (a tour opened in a background tab) it stays pending and paused, and plays
+ * once the page is seen. Every other state is
  * returned as it is. The screen renders the resolved state and the reducer
  * acts on it, so the decision needs no effect.
  */
@@ -168,11 +170,13 @@ export function resolveTourState(
   state: TourState,
   timelines: readonly StepTimeline[],
   reducedMotion: boolean,
+  hidden = false,
 ): TourState {
   if (!state.autoplay) return state;
-  return reducedMotion
-    ? { ...state, playing: false, elapsed: timelines[state.step - 1].total, autoplay: false }
-    : { ...state, playing: true, autoplay: false };
+  if (reducedMotion) return { ...state, playing: false, elapsed: timelines[state.step - 1].total, autoplay: false };
+  // Opened in a background tab: wait, still pending, until the page is seen.
+  if (hidden) return { ...state, playing: false };
+  return { ...state, playing: true, autoplay: false };
 }
 
 /**
@@ -192,6 +196,7 @@ export function resolveTourState(
 export function createTourReducer(
   timelines: readonly StepTimeline[],
   reducedMotion = false,
+  hidden = false,
 ): (state: TourState, action: TourAction) => TourState {
   const steps = timelines.length;
   const total = (step: number) => timelines[step - 1].total;
@@ -203,7 +208,7 @@ export function createTourReducer(
   });
 
   return (current, action) => {
-    const state = resolveTourState(current, timelines, reducedMotion);
+    const state = resolveTourState(current, timelines, reducedMotion, hidden);
     switch (action.type) {
       case "tick": {
         if (!state.playing) return state;
