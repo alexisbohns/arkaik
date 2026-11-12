@@ -102,7 +102,8 @@ async function publishDocument(client, document, { note = null } = {}) {
     }
     const version = current ? current.version + 1 : 1;
     // Two concurrent publishes both compute this version; the second insert
-    // fails on the primary key and its caller exits 1. Nothing is lost.
+    // fails on the primary key (23505) and the command line exits 1 with a
+    // plain message (withClient). Nothing is lost.
     await client.query(
       `insert into arkademy_documents (version, format_version, document, sha256, size_bytes, note)
        values ($1, $2, $3::jsonb, $4, $5, $6)`,
@@ -198,6 +199,8 @@ const OPTIONS = {
   rollback: ["to", "yes"],
 };
 const TAKES_FILE = new Set(["check", "publish"]);
+/** The largest `version` the table's `int` column holds. */
+const MAX_VERSION = 2147483647;
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -218,11 +221,18 @@ function parseArgs(argv) {
       args.yes = true;
       continue;
     }
-    const value = inline !== undefined ? inline : rest[++index];
-    if (value === undefined) throw new ScriptExit(`--${flag} needs a value`, 2);
+    // A value given as the next argument never starts with "--": in
+    // `--note --yes` the owner forgot the note; `--note=--x` says it on purpose.
+    const value = inline !== undefined ? inline : rest[index + 1];
+    if (value === undefined || (inline === undefined && value.startsWith("--"))) {
+      throw new ScriptExit(`--${flag} needs a value (write --${flag}=… for one that starts with --)\n${USAGE}`, 2);
+    }
+    if (inline === undefined) index += 1;
     if (flag === "note") args.note = value;
     if (flag === "to") {
-      if (!/^[1-9][0-9]*$/.test(value)) throw new ScriptExit(`--to takes a version number, not "${value}"`, 2);
+      if (!/^[1-9][0-9]*$/.test(value) || Number(value) > MAX_VERSION) {
+        throw new ScriptExit(`--to takes a version number from 1 to ${MAX_VERSION}, not "${value}"`, 2);
+      }
       args.to = Number(value);
     }
   }
@@ -242,11 +252,28 @@ function readDocumentFile(file, maxBytes) {
       `no file at ${file}\nPass a path, set ARKADEMY_CONTENT, or keep the library at arkademy-content/arkademy.json.`,
     );
   }
-  const size = fs.statSync(file).size;
-  if (size > maxBytes * MAX_FILE_FACTOR) {
-    throw new ScriptExit(`${file} is ${size} bytes; the document may hold at most ${maxBytes} bytes of JSON`);
+  const stat = fs.statSync(file);
+  if (stat.isDirectory()) throw new ScriptExit(`${file} is a directory, not a file; name the JSON file inside it`);
+  if (!stat.isFile()) throw new ScriptExit(`${file} is not a regular file`);
+  if (stat.size > maxBytes * MAX_FILE_FACTOR) {
+    throw new ScriptExit(`${file} is ${stat.size} bytes; the document may hold at most ${maxBytes} bytes of JSON`);
   }
-  const text = fs.readFileSync(file, "utf8");
+  let bytes;
+  try {
+    bytes = fs.readFileSync(file);
+  } catch (err) {
+    const reason = err && err.code === "EACCES" ? "permission denied" : describeError(err);
+    throw new ScriptExit(`${file} cannot be read: ${reason}${err && err.code ? ` (${err.code})` : ""}`);
+  }
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    throw new ScriptExit(`${file} starts with a UTF-8 byte-order mark; save it as UTF-8 without one`);
+  }
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new ScriptExit(`${file} is not UTF-8 text; save it as UTF-8`);
+  }
   try {
     return { text, input: JSON.parse(text) };
   } catch (err) {
@@ -312,6 +339,17 @@ async function withClient(target, fn) {
   } catch (err) {
     if (err && err.code === "42P01") {
       throw new ScriptExit(`${err.message}: run npm run db:migrate against ${target.host} first`);
+    }
+    if (err && err.code === "23505") {
+      // Two writes computed the same next version; the other one committed.
+      const taken = /\(version\)=\((\d+)\)/.exec(err.detail || "");
+      throw new ScriptExit(
+        `another publish or rollback wrote ${taken ? `v${taken[1]}` : "the next version"} at the same moment; ` +
+          "this run wrote nothing. Run status, then try again if it is still needed",
+      );
+    }
+    if (err && typeof err.severity === "string" && typeof err.code === "string") {
+      throw new ScriptExit(`Postgres refused: ${describeError(err)} (${err.code})`);
     }
     throw err;
   } finally {

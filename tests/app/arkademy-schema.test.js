@@ -718,6 +718,119 @@ const upload = require(path.join(ROOT, "scripts", "arkademy", "upload.js"));
   );
 }
 
+// --- parseArgs ------------------------------------------------------------------
+{
+  const { parseArgs } = upload;
+  const parse = (...argv) => {
+    try {
+      return { args: parseArgs(argv) };
+    } catch (err) {
+      return { code: err.code, message: err.message };
+    }
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const usage = (name, result, pattern) =>
+    check(name, result.code === 2 && (pattern === undefined || pattern.test(result.message)), JSON.stringify(result));
+
+  check("parseArgs: check with a file", same(parse("check", "a.json").args, { command: "check", file: "a.json", note: null, yes: false }), JSON.stringify(parse("check", "a.json")));
+  check("parseArgs: check with no file", parse("check").args?.file === null);
+  check(
+    "parseArgs: publish with a note and --yes",
+    same(parse("publish", "a.json", "--note", "first cut", "--yes").args, { command: "publish", file: "a.json", note: "first cut", yes: true }),
+    JSON.stringify(parse("publish", "a.json", "--note", "first cut", "--yes")),
+  );
+  check("parseArgs: --note=value", parse("publish", "--note=first cut").args?.note === "first cut");
+  check("parseArgs: --note=--yes is a note, not the flag", parse("publish", "--note=--yes").args?.note === "--yes" && parse("publish", "--note=--yes").args?.yes === false);
+  check("parseArgs: an empty --note= is an empty note", parse("publish", "--note=").args?.note === "");
+  usage("parseArgs: --note --yes does not take --yes as the note", parse("publish", "--note", "--yes"), /--note needs a value/);
+  usage("parseArgs: --note at the end needs a value", parse("publish", "--note"), /--note needs a value/);
+  check("parseArgs: rollback --to 3", parse("rollback", "--to", "3").args?.to === 3);
+  check("parseArgs: rollback --to=3 --yes", parse("rollback", "--to=3", "--yes").args?.to === 3 && parse("rollback", "--to=3", "--yes").args?.yes === true);
+  check("parseArgs: rollback with no --to", parse("rollback").args?.to === undefined);
+  check("parseArgs: the largest version Postgres can hold", parse("rollback", "--to", "2147483647").args?.to === 2147483647);
+  usage("parseArgs: --to past what Postgres can hold", parse("rollback", "--to", "99999999999"), /--to/);
+  usage("parseArgs: --to one past int4", parse("rollback", "--to", "2147483648"), /--to/);
+  usage("parseArgs: --to 0", parse("rollback", "--to", "0"), /--to/);
+  usage("parseArgs: --to -1", parse("rollback", "--to", "-1"), /--to/);
+  usage("parseArgs: --to 1.5", parse("rollback", "--to", "1.5"), /--to/);
+  usage("parseArgs: --to --yes does not take --yes as the version", parse("rollback", "--to", "--yes"), /--to needs a value/);
+  usage("parseArgs: no command", parse());
+  usage("parseArgs: --help", parse("--help"));
+  usage("parseArgs: an unknown command", parse("push"), /unknown command/);
+  usage("parseArgs: two files", parse("check", "a.json", "b.json"), /unexpected argument/);
+  usage("parseArgs: status takes no file", parse("status", "a.json"), /unexpected argument/);
+  usage("parseArgs: status takes no --yes", parse("status", "--yes"), /takes no --yes/);
+  usage("parseArgs: check takes no --note", parse("check", "--note", "x"), /takes no --note/);
+  usage("parseArgs: publish takes no --to", parse("publish", "--to", "2"), /takes no --to/);
+}
+
+// --- Files the script cannot read as a document ----------------------------------
+{
+  const { spawnSync } = require("child_process");
+  const os = require("os");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  const env = { ...process.env };
+  delete env.DATABASE_URL;
+  const run = (...args) => spawnSync(process.execPath, [UPLOAD, ...args], { encoding: "utf8", env });
+  const noStack = (result) => !/\n\s+at /.test(result.stderr);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arkademy-files-"));
+  try {
+    const bom = path.join(dir, "bom.json");
+    fs.writeFileSync(bom, `\ufeff${JSON.stringify(fixture())}`);
+    const withBom = run("check", bom);
+    check(
+      "upload: a byte-order mark gets its own message",
+      withBom.status === 1 && /byte-order mark/.test(withBom.stderr) && !/is not JSON/.test(withBom.stderr) && noStack(withBom),
+      `${withBom.status} ${withBom.stderr}`,
+    );
+    const folder = path.join(dir, "folder.json");
+    fs.mkdirSync(folder);
+    const isDir = run("check", folder);
+    check(
+      "upload: a directory gets its own message",
+      isDir.status === 1 && /is a directory/.test(isDir.stderr) && !/is not JSON/.test(isDir.stderr) && noStack(isDir),
+      `${isDir.status} ${isDir.stderr}`,
+    );
+    const locked = path.join(dir, "locked.json");
+    fs.writeFileSync(locked, JSON.stringify(fixture()));
+    fs.chmodSync(locked, 0o000);
+    let readable = true;
+    try {
+      fs.readFileSync(locked);
+    } catch {
+      readable = false;
+    }
+    if (readable) {
+      console.log("SKIP: upload: an unreadable file (this user reads any file)");
+    } else {
+      const unreadable = run("check", locked);
+      check(
+        "upload: an unreadable file gets its own message",
+        unreadable.status === 1 && /cannot be read/.test(unreadable.stderr) && /EACCES/.test(unreadable.stderr) && !/is not JSON/.test(unreadable.stderr) && noStack(unreadable),
+        `${unreadable.status} ${unreadable.stderr}`,
+      );
+    }
+    fs.chmodSync(locked, 0o600);
+    const latin1 = path.join(dir, "latin1.json");
+    fs.writeFileSync(latin1, Buffer.concat([Buffer.from('{"a": "cr'), Buffer.from([0xe8]), Buffer.from('me"}')]));
+    const badUtf8 = run("check", latin1);
+    check("upload: a file that is not UTF-8 says so", badUtf8.status === 1 && /not UTF-8/.test(badUtf8.stderr) && noStack(badUtf8), `${badUtf8.status} ${badUtf8.stderr}`);
+    const notJson = path.join(dir, "not-json.json");
+    fs.writeFileSync(notJson, "{ nope");
+    const plain = run("check", notJson);
+    check("upload: a file that is not JSON still says so", plain.status === 1 && /is not JSON/.test(plain.stderr) && noStack(plain), `${plain.status} ${plain.stderr}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const bigTo = spawnSync(process.execPath, [UPLOAD, "rollback", "--to", "99999999999"], {
+    encoding: "utf8",
+    env: { ...env, DATABASE_URL: "postgres://nobody@localhost:1/nothing" },
+  });
+  check("upload: --to 99999999999 is a usage mistake, not a stack trace", bigTo.status === 2 && noStack(bigTo), `${bigTo.status} ${bigTo.stderr}`);
+  const noteYes = run("publish", FIXTURE, "--note", "--yes");
+  check("upload: publish --note --yes is a usage mistake", noteYes.status === 2 && /--note needs a value/.test(noteYes.stderr), `${noteYes.status} ${noteYes.stderr}`);
+}
+
 // --- Two runs at once ---------------------------------------------------------
 // Each run builds lib/arkademy/ into a directory of its own and removes only
 // that one, so concurrent runs never delete each other's modules.

@@ -262,6 +262,68 @@ async function main() {
         else process.env.NODE_ENV = savedEnv;
       }
     }
+    // --- Six publishes at once ------------------------------------------------
+    // Each spawned run builds into its own directory; the runs that lose the
+    // race on the version exit 1 with a plain message, never a stack trace.
+    {
+      await client.query("truncate arkademy_documents");
+      const os = require("os");
+      const { spawn } = require("child_process");
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arkademy-race-"));
+      try {
+        const file = path.join(dir, "race.json");
+        fs.writeFileSync(file, JSON.stringify(fixture()));
+        const env = { ...process.env, DATABASE_URL: connectionString };
+        delete env.PGHOST;
+        delete env.ARKADEMY_SITE_URL;
+        delete env.ARKADEMY_REVALIDATE_SECRET;
+        const once = () =>
+          new Promise((resolve) => {
+            const child = spawn(process.execPath, [path.join(ROOT, "scripts", "arkademy", "upload.js"), "publish", file], { env });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.on("data", (chunk) => (stdout += chunk));
+            child.stderr.on("data", (chunk) => (stderr += chunk));
+            child.on("close", (status) => resolve({ status, stdout, stderr }));
+          });
+        // Hold the table so all six queue behind the lock, then let them go at
+        // once: each reads an empty table and inserts v1, and five collide.
+        const gate = new Client({ connectionString });
+        await gate.connect();
+        await gate.query("begin");
+        await gate.query("lock table arkademy_documents in access exclusive mode");
+        const pending = Array.from({ length: 6 }, once);
+        const deadline = Date.now() + 60_000;
+        let waiting = 0;
+        while (Date.now() < deadline) {
+          waiting = (
+            await client.query(
+              "select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+            )
+          ).rows[0].n;
+          if (waiting >= 6) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        check("race: all six runs queued behind the lock", waiting >= 6, `waiting ${waiting}`);
+        await gate.query("commit");
+        await gate.end();
+        const runs = await Promise.all(pending);
+        const published = runs.filter((run) => run.status === 0 && /published v1\b/.test(run.stdout));
+        const clean = (run) =>
+          !/\n\s+at /.test(run.stderr) &&
+          ((run.status === 0 && /published v1\b|unchanged \(v1\)/.test(run.stdout)) ||
+            (run.status === 1 && /another publish or rollback wrote v1 at the same moment/.test(run.stderr)));
+        check("race: exactly one run publishes v1", published.length === 1, JSON.stringify(runs.map((run) => [run.status, run.stdout.split("\n").filter(Boolean).pop()])));
+        check("race: every run ends cleanly", runs.every(clean), JSON.stringify(runs.filter((run) => !clean(run))).slice(0, 600));
+        check("race: one row", (await rowCount()) === 1);
+        const own = path.basename(require("../../scripts/arkademy/load-arkademy-lib").BUILD_DIR);
+        const left = fs.readdirSync(path.join(ROOT, "scripts", "arkademy")).filter((name) => name.startsWith(".build") && name !== own);
+        check("race: no run leaves its build directory behind", left.length === 0, JSON.stringify(left));
+        console.log(`  (race outcomes: ${runs.map((run) => (run.status === 0 ? run.stdout.split("\n").filter(Boolean).pop() : `exit ${run.status}`)).join(" | ")})`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
   } finally {
     console.error = realError;
     await client.query("truncate arkademy_documents").catch(() => {});
