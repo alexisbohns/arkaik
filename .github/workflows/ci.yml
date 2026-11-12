@@ -223,6 +223,12 @@ jobs:
       - name: Arkademy cover tests (paragraph rule, examples, prompt, metadata, sitemap)
         run: npm run test:arkademy-paragraph
 
+      # The Arkademy tour (lib/arkademy/tour.ts and its screen): the step
+      # timeline, the player's reducer, ?step=, the live region's words, and
+      # the screen's server-rendered arrival states.
+      - name: Arkademy tour tests (timeline, reducer, step links, announcements, screen)
+        run: npm run test:arkademy-tour
+
       - name: Map projection + validation tests
         run: npm run test:maps
 

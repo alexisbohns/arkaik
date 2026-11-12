@@ -40,6 +40,7 @@
     "test:arkademy-schema": "node tests/app/arkademy-schema.test.js",
     "test:arkademy-api": "node tests/services/arkademy-api.test.js",
     "test:arkademy-paragraph": "node tests/app/arkademy-paragraph.test.js",
+    "test:arkademy-tour": "node tests/app/arkademy-tour.test.js",
     "test:maps": "node tests/schema/maps.test.js",
     "test:products": "node tests/schema/products.test.js",
     "test:edge-semantics": "node tests/schema/edge-semantics.test.js",
