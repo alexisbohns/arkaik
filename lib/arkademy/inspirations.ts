@@ -14,6 +14,8 @@ import type { BmcQuestionKey } from "./schema";
 export interface Inspiration {
   entity: string;
   label: string;
+  /** The label as an answer: `inspirationAnswer` of the label and the companies' own wordings. */
+  answer: string;
   companies: { id: string; name: string }[]; // in tool.examples order
 }
 
@@ -23,6 +25,12 @@ export const INSPIRATIONS_SHOWN = 6;
 /** Per question: the entities of its kind that some example uses, most shared first, then label, then id. */
 export function inspirationCatalog(index: ArkademyIndex): Record<BmcQuestionKey, Inspiration[]> {
   const catalog = {} as Record<BmcQuestionKey, Inspiration[]>;
+  const wordings = new Map<string, string[]>();
+  for (const use of index.document.uses) {
+    const list = wordings.get(use.entity);
+    if (list) list.push(use.text);
+    else wordings.set(use.entity, [use.text]);
+  }
   for (const key of BMC_QUESTION_KEYS) {
     const kind = BMC_QUESTION_KIND[key];
     const list: Inspiration[] = [];
@@ -32,7 +40,9 @@ export function inspirationCatalog(index: ArkademyIndex): Record<BmcQuestionKey,
         const company = index.company(id);
         return company ? [{ id: company.id, name: company.name }] : [];
       });
-      if (companies.length > 0) list.push({ entity: entity.id, label: entity.label, companies });
+      if (companies.length === 0) continue;
+      const answer = inspirationAnswer(entity.label, wordings.get(entity.id) ?? []);
+      list.push({ entity: entity.id, label: entity.label, answer, companies });
     }
     list.sort(
       (a, b) =>
@@ -59,6 +69,27 @@ export function answerFromLabel(label: string): string {
   return text.charAt(0).toLocaleLowerCase("en") + text.slice(1);
 }
 
+/** A word stripped of the punctuation around it, for comparing words across texts. */
+function bareWord(word: string): string {
+  return word.replace(/^[^0-9A-Za-z\u00C0-\uFFFF]+|[^0-9A-Za-z\u00C0-\uFFFF]+$/g, "");
+}
+
+/**
+ * The answer an inspiration becomes. `answerFromLabel` lowers a first letter
+ * it cannot tell from a name's ("Broadcom and Google", "Apple App Store"), so
+ * the companies' own wordings of the entity decide: they sit mid-sentence,
+ * where a capital is a name's. When one of them holds the label's first word
+ * with the same capital, the label is kept as it is.
+ */
+export function inspirationAnswer(label: string, wordings: readonly string[]): string {
+  const answer = answerFromLabel(label);
+  const text = label.trim();
+  if (answer === text) return answer;
+  const first = bareWord(text.split(/\s/, 1)[0] ?? "");
+  const named = first !== "" && wordings.some((wording) => wording.split(/\s+/).some((word) => bareWord(word) === first));
+  return named ? text : answer;
+}
+
 /**
  * The inspirations a question still offers: drops the entities already added
  * to it and any whose label matches an answer's text, case-insensitively.
@@ -67,11 +98,14 @@ export function availableInspirations(
   list: readonly Inspiration[],
   answers: readonly { text: string; inspiration?: { entity: string } }[],
 ): Inspiration[] {
+  // A label typed as an answer (any case) is on the canvas already.
   const chosen = new Set(answers.flatMap((answer) => (answer.inspiration ? [answer.inspiration.entity] : [])));
   const texts = new Set(answers.map((answer) => answer.text.trim().toLocaleLowerCase("en")));
   return list.filter(
     (inspiration) =>
-      !chosen.has(inspiration.entity) && !texts.has(inspiration.label.trim().toLocaleLowerCase("en")),
+      !chosen.has(inspiration.entity) &&
+      !texts.has(inspiration.label.trim().toLocaleLowerCase("en")) &&
+      !texts.has(inspiration.answer.trim().toLocaleLowerCase("en")),
   );
 }
 

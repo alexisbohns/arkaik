@@ -186,7 +186,7 @@ function CanvasEditor({
         type: "addInspiration",
         question: question.key,
         entity: item.entity,
-        label: item.label,
+        text: item.answer,
         documentVersion,
       }),
     );

@@ -40,7 +40,7 @@ const index = A.indexArkademy(validation.document);
 
 // --- inspirations -------------------------------------------------------------------
 {
-  const { inspirationCatalog, availableInspirations, answerFromLabel, companiesLine, INSPIRATIONS_SHOWN } = A;
+  const { inspirationCatalog, availableInspirations, answerFromLabel, inspirationAnswer, companiesLine, INSPIRATIONS_SHOWN } = A;
   const catalog = inspirationCatalog(index);
   same("catalog: one list per question, canonical order", Object.keys(catalog), A.BMC_QUESTION_KEYS);
   same(
@@ -75,7 +75,7 @@ const index = A.indexArkademy(validation.document);
   check("catalog: only entities of the question's kind", catalog.seg.every((item) => item.entity !== "word-of-mouth"));
   check(
     "catalog: an inspiration carries no note",
-    Object.values(catalog).every((list) => list.every((item) => Object.keys(item).join() === "entity,label,companies")),
+    Object.values(catalog).every((list) => list.every((item) => Object.keys(item).join() === "entity,label,answer,companies")),
   );
 
   // Ties on label too sort by id; labels compare without case or accents.
@@ -113,6 +113,39 @@ const index = A.indexArkademy(validation.document);
   same("answerFromLabel: one capital letter alone is lowered", answerFromLabel("X"), "x");
   same("answerFromLabel: accents", answerFromLabel("École partners"), "école partners");
   same("answerFromLabel: trimmed", answerFromLabel("  Hosting "), "hosting");
+
+  // A name that is capitalised by its first letter alone (Broadcom, Apple) is
+  // told apart by the companies' own wordings of the entity, which sit
+  // mid-sentence: a capital there is a name's.
+  same(
+    "inspirationAnswer: a name the wordings capitalise keeps its capital",
+    inspirationAnswer("Broadcom and Google for TPU capacity", ["Broadcom and Google for TPU capacity"]),
+    "Broadcom and Google for TPU capacity",
+  );
+  same(
+    "inspirationAnswer: found anywhere in a wording, punctuation aside",
+    inspirationAnswer("Apple App Store and Google Play", ["the Apple and Google app stores"]),
+    "Apple App Store and Google Play",
+  );
+  same(
+    "inspirationAnswer: a common first word is lowered",
+    inspirationAnswer("Third-party AI model providers", ["third-party AI model providers", "AI providers"]),
+    "third-party AI model providers",
+  );
+  same("inspirationAnswer: no wording, the label rule alone", inspirationAnswer("Word of mouth", []), "word of mouth");
+  same("inspirationAnswer: an inner capital needs no wording", inspirationAnswer("GitHub", []), "GitHub");
+  check(
+    "catalog: each answer is its label's answer (the fixture holds no name)",
+    Object.values(catalog).every((list) => list.every((item) => item.answer === answerFromLabel(item.label))),
+  );
+  const named = JSON.parse(JSON.stringify(validation.document));
+  named.entities.push({ id: "brine-co", kind: "partner", label: "Brine & Sons for salt" });
+  named.uses.push({ tool: "business-model-canvas", company: "tidewise", question: "kp", entity: "brine-co", text: "Brine & Sons, who sell the salt", order: 1 });
+  same(
+    "catalog: a name keeps its capital in the answer",
+    inspirationCatalog(A.indexArkademy(named)).kp.find((item) => item.entity === "brine-co").answer,
+    "Brine & Sons for salt",
+  );
 
   same("companiesLine: one", companiesLine([{ name: "Crumb & Co" }]), "Crumb & Co");
   same("companiesLine: two", companiesLine([{ name: "A" }, { name: "B" }]), "A and B");
@@ -163,7 +196,7 @@ const index = A.indexArkademy(validation.document);
   check("a sixth is refused, same object", draftReducer(five, { type: "add", question: "ka", text: "f" }) === five);
   check(
     "a sixth inspiration is refused too",
-    draftReducer(five, { type: "addInspiration", question: "ka", entity: "order-taking", label: "Taking orders", documentVersion: 1 }) === five,
+    draftReducer(five, { type: "addInspiration", question: "ka", entity: "order-taking", text: "taking orders", documentVersion: 1 }) === five,
   );
 
   const opened = run([{ type: "setOpen", question: "rev", open: true }]);
@@ -177,15 +210,15 @@ const index = A.indexArkademy(validation.document);
 
   const inspired = run([
     { type: "setOpen", question: "ch", open: true },
-    { type: "addInspiration", question: "ch", entity: "word-of-mouth", label: "Word of mouth", documentVersion: 7 },
+    { type: "addInspiration", question: "ch", entity: "word-of-mouth", text: " word of mouth ", documentVersion: 7 },
   ]);
-  same("addInspiration: label made an answer, entity and version kept", inspired.answers, [
+  same("addInspiration: the inspiration's answer, trimmed, entity and version kept", inspired.answers, [
     { id: "a1", question: "ch", text: "word of mouth", inspiration: { entity: "word-of-mouth", documentVersion: 7 } },
   ]);
   same("addInspiration clears open", inspired.open, []);
   check(
     "addInspiration: the same entity twice is refused",
-    draftReducer(inspired, { type: "addInspiration", question: "ch", entity: "word-of-mouth", label: "Word of mouth", documentVersion: 7 }) === inspired,
+    draftReducer(inspired, { type: "addInspiration", question: "ch", entity: "word-of-mouth", text: "word of mouth", documentVersion: 7 }) === inspired,
   );
   const reworded = run([{ type: "edit", id: "a1", text: "neighbours telling neighbours" }], inspired);
   same("rewording keeps the inspiration", reworded.answers[0], {
@@ -237,7 +270,7 @@ const index = A.indexArkademy(validation.document);
   const full = run([
     { type: "rename", name: "Tidy" },
     { type: "add", question: "seg", text: "  people who fish  " },
-    { type: "addInspiration", question: "ch", entity: "app-stores", label: "App stores", documentVersion: 2 },
+    { type: "addInspiration", question: "ch", entity: "app-stores", text: "app stores", documentVersion: 2 },
     { type: "setOpen", question: "rev", open: true },
   ]);
   const state = draftState(full);

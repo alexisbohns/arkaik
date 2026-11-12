@@ -1,4 +1,3 @@
-import { answerFromLabel } from "./inspirations";
 import { displayAnswers } from "./paragraph";
 import type { CanvasAnswer, CanvasQuestionState } from "./paragraph";
 import { ANSWER_MAX_LENGTH, BMC_QUESTION_KEYS, MAX_ANSWERS_PER_QUESTION } from "./schema";
@@ -39,7 +38,7 @@ export interface CanvasDraft {
 export type DraftAction =
   | { type: "rename"; name: string }
   | { type: "add"; question: BmcQuestionKey; text: string }
-  | { type: "addInspiration"; question: BmcQuestionKey; entity: string; label: string; documentVersion: number }
+  | { type: "addInspiration"; question: BmcQuestionKey; entity: string; text: string; documentVersion: number } // text: the inspiration's `answer`
   | { type: "edit"; id: string; text: string } // a blank text is kept while its field has focus; the field removes it on blur
   | { type: "remove"; id: string }
   | { type: "move"; id: string; offset: -1 | 1 } // within its question
@@ -134,7 +133,7 @@ export function draftReducer(draft: CanvasDraft, action: DraftAction): CanvasDra
     }
     case "addInspiration": {
       const chosen = answersOf(draft, action.question).some((answer) => answer.inspiration?.entity === action.entity);
-      const text = fitAnswer(answerFromLabel(oneLine(action.label).trim())).trim();
+      const text = fitAnswer(oneLine(action.text).trim()).trim();
       if (chosen || !canAdd(draft, action.question, text)) return draft;
       return withAnswer(draft, {
         id: nextAnswerId(draft.answers),
