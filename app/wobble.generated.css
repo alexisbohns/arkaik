@@ -131,10 +131,12 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-palette { filter: url(#wob-palette); }
 .lucide-panel-left { filter: url(#wob-panel-left); }
 .lucide-party-popper { filter: url(#wob-party-popper); }
+.lucide-pause { filter: url(#wob-pause); }
 .lucide-pen-tool { filter: url(#wob-pen-tool); }
 .lucide-pencil { filter: url(#wob-pencil); }
 .lucide-pencil-ruler { filter: url(#wob-pencil-ruler); }
 .lucide-piggy-bank { filter: url(#wob-piggy-bank); }
+.lucide-play { filter: url(#wob-play); }
 .lucide-plug { filter: url(#wob-plug); }
 .lucide-plus { filter: url(#wob-plus); }
 .lucide-pyramid { filter: url(#wob-pyramid); }
