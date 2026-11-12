@@ -1,6 +1,7 @@
 /**
  * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions]
- *                 [--no-quality] [--allow-quality-loss] [--audit <id>]
+ *                 [--no-quality] [--allow-quality-loss] [--allow-metadata-loss]
+ *                 [--audit <id>]
  *                 [--root <dir>] [--api <base-url>] [path]`
  *
  * Land a locally-built bundle — history included — on the hosted project
@@ -227,6 +228,12 @@ Options:
                         flag, that refuses outright — it usually means
                         docs/quality/ was looked for in the wrong place, which
                         --root fixes, rather than an intended wipe.
+  --allow-metadata-loss Proceed even though the local bundle's project.metadata
+                        lacks settings the hosted project has (products, maps,
+                        ref_policy, pollen, ...). Without this flag, that
+                        refuses outright and names the keys — those settings
+                        are usually edited in the app and never reach the
+                        repo bundle, so a restore would silently delete them.
   --audit <id>          Fold ONE audit's snapshot rather than merging every
                         audit into current state. An id that is not on disk is
                         an error, not an empty section.
@@ -266,6 +273,8 @@ export interface RunRestoreOptions {
   root?: string;
   /** Proceed even when the restore would wipe a quality section the hosted project has. Default: false. */
   allowQualityLoss?: boolean;
+  /** Proceed even when the outbound `project.metadata` drops keys the hosted one has. Default: false. */
+  allowMetadataLoss?: boolean;
   /** Hosted API base URL, overriding $ARKAIK_URL and the link file's `remote`. */
   apiBase?: string;
   /** Base directory the link file / bundle path resolve against (default: process.cwd()). */
@@ -602,6 +611,43 @@ function describeQualityLoss(
   return lines.join("\n");
 }
 
+/** Top-level `project.metadata` keys the hosted project has and the outbound bundle does not. */
+export function droppedMetadataKeys(hostedProject: unknown, outboundProject: unknown): string[] {
+  const metadataOf = (project: unknown): Record<string, unknown> => {
+    if (typeof project !== "object" || project === null || Array.isArray(project)) return {};
+    const metadata = (project as { metadata?: unknown }).metadata;
+    return typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+  };
+  const outbound = metadataOf(outboundProject);
+  return Object.keys(metadataOf(hostedProject))
+    .filter((key) => !(key in outbound))
+    .sort();
+}
+
+/**
+ * Why a restore that would drop hosted `project.metadata` keys is refused (#423).
+ *
+ * `PUT .../bundle` replaces `project.metadata` wholesale, and that object is
+ * where the settings that only ever exist server-side live — products, custom
+ * maps, `ref_policy`, `pollen.plant` — written in the app, never in the repo
+ * bundle. A restore of that bundle deleted them without a word: the delta
+ * counts nodes, edges and events and reads `+0 -0`, and the first symptom was
+ * a federation feed answering 404 for six days. Only DROPPED keys refuse: a
+ * changed value is what restoring a backup is for, and a missing key is the
+ * shape every one of those losses had.
+ */
+function describeMetadataLoss(dropped: string[], bundlePath: string): string {
+  return [
+    `This restore would DELETE ${dropped.length} hosted project setting${dropped.length === 1 ? "" : "s"} ` +
+      `(project.metadata: ${dropped.join(", ")}) that ${bundlePath} does not carry. Nothing was sent.`,
+    `Those settings are usually edited in the app and never reach the repo bundle. Copy them into the local ` +
+      `bundle's project.metadata (GET .../export has them) so the restore keeps them, or re-run with ` +
+      `--allow-metadata-loss if they really are meant to go.`,
+  ].join("\n");
+}
+
 export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRestoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
@@ -610,6 +656,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   const allowDeletions = options.allowDeletions ?? false;
   const noQuality = options.noQuality ?? false;
   const allowQualityLoss = options.allowQualityLoss ?? false;
+  const allowMetadataLoss = options.allowMetadataLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
   const linkPath = join(cwd, LINK_FILE);
@@ -737,7 +784,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   if (typeof exported !== "object" || exported === null || Array.isArray(exported)) {
     return fatalResult(dryRun, "The export response was not a bundle. Refusing to restore without a backup. Nothing was sent.");
   }
-  const exportedBundle = exported as { nodes?: unknown; edges?: unknown; journal?: unknown; quality?: unknown };
+  const exportedBundle = exported as { project?: unknown; nodes?: unknown; edges?: unknown; journal?: unknown; quality?: unknown };
   if (!Array.isArray(exportedBundle.journal) || !Array.isArray(exportedBundle.nodes) || !Array.isArray(exportedBundle.edges)) {
     return fatalResult(
       dryRun,
@@ -794,6 +841,16 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   const hostedQuality = exportedBundle.quality;
   if (isQualitySection(hostedQuality) && !isQualitySection(outboundBundle.quality) && !allowQualityLoss) {
     return fatalResult(dryRun, describeQualityLoss(hostedQuality, qualityRoot, noQuality, qualityNotice), qualityFields);
+  }
+
+  // ── Metadata-loss guard (#423) ──────────────────────────────────────────
+  // Same shape as the guards around it, and the same blind spot without it:
+  // `project.metadata` is replaced wholesale and the printed delta never
+  // mentions it. Runs before the backup write so a refused run leaves nothing
+  // behind in `.backups/`. See `describeMetadataLoss`.
+  const droppedKeys = droppedMetadataKeys(exportedBundle.project, outboundBundle.project);
+  if (droppedKeys.length > 0 && !allowMetadataLoss) {
+    return fatalResult(dryRun, describeMetadataLoss(droppedKeys, bundlePath), qualityFields);
   }
 
   // ── Deletion guard ───────────────────────────────────────────────────────
@@ -936,7 +993,7 @@ export function reportRestore(result: RunRestoreResult): void {
       printDelta(result.delta);
       console.log(
         "Re-run without --dry-run to apply — that run takes the backup, and only that run checks the " +
-          "history, deletion and quality-loss guards (all three read the export, which a dry run never fetches).",
+          "history, deletion, quality-loss and metadata-loss guards (all four read the export, which a dry run never fetches).",
       );
     } else {
       console.log(`Restored. New version ${result.version}.`);
@@ -967,6 +1024,7 @@ export function runRestoreCli(argv: string[]): void {
   let allowDeletions = false;
   let noQuality = false;
   let allowQualityLoss = false;
+  let allowMetadataLoss = false;
   let audit: string | undefined;
   let root: string | undefined;
   let apiBase: string | undefined;
@@ -988,6 +1046,8 @@ export function runRestoreCli(argv: string[]): void {
       noQuality = true;
     } else if (arg === "--allow-quality-loss") {
       allowQualityLoss = true;
+    } else if (arg === "--allow-metadata-loss") {
+      allowMetadataLoss = true;
     } else if (arg === "--audit") {
       const value = argv[++i];
       if (value === undefined) fail(`Missing value for --audit\n\n${USAGE}`);
@@ -1016,7 +1076,18 @@ export function runRestoreCli(argv: string[]): void {
     fail(`--audit and --no-quality contradict each other: one names an audit to fold, the other removes the section\n\n${USAGE}`);
   }
 
-  runRestore({ path: positionals[0], dryRun, allowHistoryLoss, allowDeletions, noQuality, allowQualityLoss, audit, root, apiBase })
+  runRestore({
+    path: positionals[0],
+    dryRun,
+    allowHistoryLoss,
+    allowDeletions,
+    noQuality,
+    allowQualityLoss,
+    allowMetadataLoss,
+    audit,
+    root,
+    apiBase,
+  })
     .then((result) => reportRestore(result))
     .catch((e: unknown) => fail(`FATAL: ${(e as Error).message}`));
 }
