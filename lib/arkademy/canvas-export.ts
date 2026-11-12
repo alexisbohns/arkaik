@@ -39,6 +39,20 @@ export function canvasParagraphText(input: { tool: CanvasTool; name: string; sta
   return paragraphText(composeParagraph({ questions: input.tool.questions, state: input.state, subject: input.name }));
 }
 
+/**
+ * A visitor's text made safe inside the Markdown export: backslashes and
+ * backticks escaped anywhere, and a line-opening `#`, `-`, `+`, `*`, `>` or
+ * `1.` / `1)` escaped so it reads as words, not as a heading, a list, a quote
+ * or code. A deliberate departure from "answers as typed": the document's
+ * structure must stay the canvas's own.
+ */
+export function markdownText(text: string): string {
+  return text
+    .replace(/[\\`]/g, "\\$&")
+    .replace(/^(\s*)([#>+*-])/, "$1\\$2")
+    .replace(/^(\s*\d+)([.)])/, "$1\\$2");
+}
+
 function stateFor(state: readonly CanvasQuestionState[], question: BmcQuestion): CanvasQuestionState {
   return state.find((entry) => entry.key === question.key) ?? { key: question.key, answers: [], open: false };
 }
@@ -50,14 +64,14 @@ function stateFor(state: readonly CanvasQuestionState[], question: BmcQuestion):
  */
 export function canvasMarkdown(input: { tool: CanvasTool; name: string; state: readonly CanvasQuestionState[] }): string {
   const title = input.name.trim() || DEFAULT_SUBJECT;
-  const blocks = [`# ${title}: ${input.tool.title}`];
+  const blocks = [`# ${markdownText(title)}: ${input.tool.title}`];
   const paragraph = canvasParagraphText(input);
-  if (paragraph !== "") blocks.push(paragraph);
+  if (paragraph !== "") blocks.push(markdownText(paragraph));
   for (const question of input.tool.questions) {
     const entry = stateFor(input.state, question);
     const status = questionStatus(entry);
     blocks.push(`## ${question.block}`);
-    if (status === "answered") blocks.push(displayAnswers(entry).map((answer) => `- ${answer.text}`).join("\n"));
+    if (status === "answered") blocks.push(displayAnswers(entry).map((answer) => `- ${markdownText(answer.text)}`).join("\n"));
     else blocks.push(status === "open" ? "_Left open on purpose._" : "_Not answered yet._");
   }
   return `${blocks.join("\n\n")}\n`;

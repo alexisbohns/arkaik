@@ -608,6 +608,29 @@ const index = A.indexArkademy(validation.document);
   same("json text parses back", JSON.parse(text), exported);
 
   same("markdown and json: answers as shown, cleaned", [canvasMarkdown({ tool: toolPart, name: draft.name, state }).includes("- harbour noticeboards\n"), exported.questions[1].state], [true, "empty"]);
+  // A name or an answer that Markdown would read as structure is escaped, so
+  // the document's headings and lists stay the canvas's own.
+  const { markdownText } = A;
+  same("markdownText: a leading list marker", ["- Acme", "+ plus", "* star"].map(markdownText), ["\\- Acme", "\\+ plus", "\\* star"]);
+  same("markdownText: a heading, a quote, a numbered item", ["# Big", "> quoted", "1. first", "2) second"].map(markdownText), ["\\# Big", "\\> quoted", "1\\. first", "2\\) second"]);
+  same("markdownText: backticks and backslashes anywhere", markdownText("a `code` \\ path"), "a \\`code\\` \\\\ path");
+  same("markdownText: plain words untouched", markdownText("bakers - who open at 5 - and # fans"), "bakers - who open at 5 - and # fans");
+  const tricky = draftState({
+    name: "- Acme",
+    answers: [
+      { id: "a1", question: "seg", text: "# Big teams" },
+      { id: "a2", question: "seg", text: "`dev` people" },
+    ],
+    open: [],
+    updatedAt: "",
+  });
+  const trickyMarkdown = canvasMarkdown({ tool: toolPart, name: "- Acme", state: tricky });
+  same(
+    "markdown: an escaped name, paragraph and answers",
+    trickyMarkdown.split("\n").slice(0, 7),
+    ["# \\- Acme: Business Model Canvas", "", "\\- Acme is for # Big teams and \\`dev\\` people.", "", "## Customer segments", "", "- \\# Big teams"],
+  );
+  same("markdown: the second answer", trickyMarkdown.split("\n")[7], "- \\`dev\\` people");
   same("filename: a name", canvasFilename("Tidy Harbour"), "tidy-harbour-business-model-canvas.json");
   same("filename: accents", canvasFilename("Café Crème"), "cafe-creme-business-model-canvas.json");
   same("filename: punctuation only", canvasFilename("!!! ???"), "business-model-canvas.json");
