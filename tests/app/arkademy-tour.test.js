@@ -258,6 +258,86 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   );
 }
 
+// --- the screen, rendered on the server --------------------------------------------
+// Through tests/app/load-arkademy-tsx.js (a require hook: .tsx transpiled in
+// memory, "@/" resolved to the repo root), as the paragraph suite does. What
+// renderToStaticMarkup returns is the HTML a visitor gets before any script
+// runs: the arrival state of each kind of address.
+{
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  const { requireTsx } = require("./load-arkademy-tsx");
+  const { CanvasWalk } = requireTsx("components/arkademy/CanvasWalk.tsx");
+
+  const tide = exampleCanvas(index, "tidewise");
+  const walk = (initialStep) =>
+    renderToStaticMarkup(
+      React.createElement(CanvasWalk, {
+        mode: "tour",
+        company: tide.company,
+        questions,
+        state: tide.questions,
+        initialStep,
+        next: { name: "Inkwell", href: tourHref("inkwell") },
+        examplesHref: "/arkademy/business-model-canvas#examples",
+      }),
+    );
+  const live = (html) => (/<p aria-live="polite"[^>]*>([^<]*)<\/p>/.exec(html) ?? [null, ""])[1].replace(/&#x27;/g, "'");
+  const current = (html) => (/<a[^>]*aria-label="([^"]*)"[^>]*aria-current="step"/.exec(html) ?? [null, ""])[1];
+
+  const arrival = walk(null);
+  check("screen, no step: the play button offers to pause (autoplay)", arrival.includes('aria-label="Pause the tour"'));
+  same("screen, no step: step 1 is current", current(arrival), "Step 1: Customer segments, answered");
+  check(
+    "screen, no step: the answer has not arrived — kept in place, hidden",
+    /<li aria-hidden="true"[^>]*>people who fish from the shore/.test(arrival),
+  );
+  check("screen, no step: the paragraph is still empty", arrival.includes("The paragraph starts with the first question"));
+  check("screen, no step: the block is being answered", arrival.includes('aria-label="Customer segments, being answered"'));
+  same(
+    "screen, no step: the live region holds step 1",
+    live(arrival),
+    "Step 1 of 9, Customer segments. Who is this for? Tidewise's answer: people who fish from the shore.",
+  );
+  check("screen: the player handles its own keys", arrival.includes('aria-keyshortcuts="ArrowLeft ArrowRight Home End Space K"'));
+  check("screen: a step link is a real address", arrival.includes('href="/arkademy/business-model-canvas/tour/tidewise?step=5"'));
+  check("screen: a step left open is named so", arrival.includes('aria-label="Step 5: Revenue streams, left open on purpose"'));
+  check("screen: Back on step 1 stays focusable", /aria-disabled="true"[^>]*>[\s\S]{0,400}?Back/.test(arrival));
+  check("screen, no step: no end card", !arrival.includes("End of the tour"));
+
+  const open = walk(5);
+  check("screen, step 5: paused", open.includes('aria-label="Play the tour"'));
+  same("screen, step 5: step 5 is current", current(open), "Step 5: Revenue streams, left open on purpose");
+  check("screen, step 5: says it is left open on purpose", open.includes("Tidewise leaves this open on purpose."));
+  check("screen, step 5: nothing waits to arrive", !open.includes('aria-hidden="true" class="rounded-lg border border-dashed'));
+  check("screen, step 5: the paragraph ends on the gap", /data-kind="gap"[^>]*>[\s\S]*?left open on purpose: where the money comes from/.test(open));
+  check("screen, step 5: the block says so too", open.includes("Left open on purpose."));
+
+  const noted = walk(6);
+  check("screen, step 6: the note is a marker after its answer", noted.includes('aria-label="Source note for public tide data"'));
+  same(
+    "screen, step 6: one marker in the card, one in the paragraph — the card's sentence has none",
+    noted.split('aria-label="Source note for public tide data"').length - 1,
+    2,
+  );
+
+  const last = walk(9);
+  check("screen, step 9: the end card", last.includes("End of the tour") && last.includes("Next example: Inkwell"));
+  check("screen, step 9: play starts over", last.includes('aria-label="Replay the tour"'));
+  check("screen, step 9: back to the gallery", last.includes('href="/arkademy/business-model-canvas#examples"'));
+}
+
+// --- source checks: no window keydown, replaceState only, the cover links each tour -----
+{
+  const hook = fs.readFileSync(path.join(ROOT, "lib", "hooks", "useTourPlayer.ts"), "utf8");
+  check("hook: no keydown listener on window or document", !/addEventListener\(\s*["']keydown["']/.test(hook));
+  check("hook: the URL is rewritten with replaceState, never pushState", hook.includes("history.replaceState(") && !hook.includes("history.pushState("));
+  const cover = fs.readFileSync(path.join(ROOT, "app", "arkademy", "business-model-canvas", "page.tsx"), "utf8");
+  check("cover: each example links to its tour", cover.includes("tourHref(example.company.id)"));
+  check("cover: the hero's Play a tour goes to the examples", cover.includes('href="#examples"'));
+  check("cover: no link to your own canvas yet (part 4)", !cover.includes("BMC_YOURS_PATH"));
+}
+
 cleanup();
 if (failures > 0) {
   console.log(`\n${failures} arkademy-tour test(s) failed`);

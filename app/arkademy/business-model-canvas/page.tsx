@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { CirclePlayIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cache, Suspense } from "react";
 
@@ -8,12 +10,14 @@ import { ArkademyMessage } from "@/components/arkademy/ArkademyMessage";
 import { ExampleCard } from "@/components/arkademy/ExampleCard";
 import { LibraryPlaceholder } from "@/components/arkademy/LibraryPlaceholder";
 import { PromptBlock } from "@/components/arkademy/PromptBlock";
+import { Button } from "@/components/ui/button";
 import { exampleCanvas, type ExampleCanvas } from "@/lib/arkademy/examples";
 import { ARKADEMY_HEAD_START_MS, settledWithin } from "@/lib/arkademy/head-start";
 import { indexArkademy } from "@/lib/arkademy/index-document";
 import { BMC_FALLBACK_TITLE, bmcCoverMetadata } from "@/lib/arkademy/metadata";
 import type { ArkademyDocument } from "@/lib/arkademy/schema";
 import { ARKADEMY_PATH } from "@/lib/arkademy/tools";
+import { tourHref } from "@/lib/arkademy/tour";
 import { getArkademy, type ArkademyLookup } from "@/lib/services/arkademy";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +37,8 @@ import { cn } from "@/lib/utils";
  * read ends, within ARKADEMY_READ_TIMEOUT_MS whatever the database does.
  * There is one h1 in every state.
  *
- * The hero's two actions arrive with the pages they lead to: "Play a tour"
- * with part 3, "Start your own" with part 4.
+ * The hero's "Play a tour" leads to the gallery, where each example plays its
+ * own tour; "Start your own" arrives with part 4.
  */
 export const dynamic = "force-dynamic";
 
@@ -64,13 +68,24 @@ export default async function BusinessModelCanvasCoverPage() {
 }
 
 /** The breadcrumb and the hero: the same markup with or without the library. */
-function CoverHead({ title, tagline, after }: { title: string; tagline?: string; after?: ReactNode }) {
+function CoverHead({
+  title,
+  tagline,
+  actions,
+  after,
+}: {
+  title: string;
+  tagline?: string;
+  actions?: ReactNode;
+  after?: ReactNode;
+}) {
   return (
     <>
       <ArkademyBreadcrumb trail={[{ label: "Arkademy", href: ARKADEMY_PATH }, { label: title }]} />
       <header className="mt-8 max-w-3xl sm:mt-10">
         <h1 className={ARKADEMY_TITLE}>{title}</h1>
         {tagline && <p className="mt-4 text-lg leading-relaxed text-muted-foreground">{tagline}</p>}
+        {actions && <div className="mt-6 flex flex-wrap gap-2">{actions}</div>}
       </header>
       {after}
     </>
@@ -97,7 +112,21 @@ function CoverFor({ lookup }: { lookup: ArkademyLookup }) {
     );
   }
   const tool = lookup.document.tools[0];
-  return <CoverHead title={tool.title} tagline={tool.tagline} after={<CoverBody document={lookup.document} />} />;
+  return (
+    <CoverHead
+      title={tool.title}
+      tagline={tool.tagline}
+      actions={
+        <Button asChild variant="outline">
+          <a href="#examples">
+            <CirclePlayIcon aria-hidden="true" />
+            Play a tour
+          </a>
+        </Button>
+      }
+      after={<CoverBody document={lookup.document} />}
+    />
+  );
 }
 
 function CoverBody({ document }: { document: ArkademyDocument }) {
@@ -131,7 +160,19 @@ function CoverBody({ document }: { document: ArkademyDocument }) {
         <ul className="mt-8 flex flex-col gap-6">
           {examples.map((example) => (
             <li key={example.company.id}>
-              <ExampleCard company={example.company} questions={tool.questions} state={example.questions} />
+              <ExampleCard
+                company={example.company}
+                questions={tool.questions}
+                state={example.questions}
+                actions={
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={tourHref(example.company.id)}>
+                      <CirclePlayIcon aria-hidden="true" />
+                      Play the tour<span className="sr-only">: {example.company.name}</span>
+                    </Link>
+                  </Button>
+                }
+              />
             </li>
           ))}
         </ul>
