@@ -481,6 +481,7 @@ Warnings (printed, the upload proceeds):
 - An example covers neither by uses nor by `open` some question. The pages
   cope (the paragraph shows "open: …"), but a tour reads better complete.
 - An entity has no use. It never appears as an inspiration.
+- A company is not in the tool's `examples`. No page shows it.
 - A wording (`Use.text` or `Entity.label`) contains a digit followed by `%`, a
   currency sign or code (`$`, `€`, `£`, `USD`, `EUR`), or the words
   `reported`, `reportedly` or `according to`: such a fact probably belongs in

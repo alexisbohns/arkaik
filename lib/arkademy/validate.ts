@@ -357,6 +357,13 @@ export function validateArkademyDocument(input: unknown, options: { now?: Date }
     });
   });
 
+  const examples = new Set(document.tools.flatMap((tool) => tool.examples));
+  document.companies.forEach((company, index) => {
+    if (!examples.has(company.id)) {
+      warn(`companies[${index}]`, `"${company.id}" is not one of the tool's examples, so no page shows it`);
+    }
+  });
+
   const labels = new Map<string, number>();
   document.entities.forEach((entity, index) => {
     if (!usedEntities.has(entity.id)) {

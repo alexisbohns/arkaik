@@ -530,6 +530,20 @@ expectWarning(
   "tools[0].examples[1]",
 );
 expectWarning(
+  "a company the tool does not list among its examples",
+  (doc) => doc.companies.push({ id: "spare", name: "Spare", oneLiner: "Not an example", simulation: false }),
+  "companies[3]",
+);
+expectWarning(
+  "a company dropped from the examples, with its uses and open questions",
+  (doc) => {
+    doc.tools[0].examples = doc.tools[0].examples.filter((id) => id !== "inkwell");
+    doc.uses = doc.uses.filter((use) => use.company !== "inkwell");
+    doc.open = doc.open.filter((open) => open.company !== "inkwell");
+  },
+  `companies[${doc0.companies.findIndex((company) => company.id === "inkwell")}]`,
+);
+expectWarning(
   "two entities of one kind sharing a label, whatever the case",
   (doc) => (doc.entities[unused].label = "Word of Mouth"),
   `entities[${unused}].label`,
