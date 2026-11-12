@@ -4,6 +4,7 @@ import { memo } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { WallMarkerData } from "./wall-node-data";
+import { wallDimClass } from "./WallFrameNode";
 
 /**
  * The thin things between frames, all `aria-hidden` (a frame that starts an
@@ -15,9 +16,7 @@ import type { WallMarkerData } from "./wall-node-data";
  * - `empty` — a flow whose playlist lists nothing: one ghost the width of a
  *   frame, so the strip is not a bare header.
  */
-function WallMarkerNodeComponent({ data }: NodeProps<Node<WallMarkerData, "wallMarker">>) {
-  const { variant, label, arm, empty } = data;
-
+function markerBody({ variant, label, arm, empty }: WallMarkerData) {
   if (variant === "empty") {
     return (
       <div
@@ -51,6 +50,15 @@ function WallMarkerNodeComponent({ data }: NodeProps<Node<WallMarkerData, "wallM
       >
         {arm} · {label}
       </span>
+    </div>
+  );
+}
+
+/** Gaps only fades every marker (none is ever a gap): the dim wrapper is the node's one outer element. */
+function WallMarkerNodeComponent({ data }: NodeProps<Node<WallMarkerData, "wallMarker">>) {
+  return (
+    <div className={wallDimClass(data.dimmed)} data-dimmed={data.dimmed ? "true" : "false"}>
+      {markerBody(data)}
     </div>
   );
 }

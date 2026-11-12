@@ -65,7 +65,10 @@ change, the change is in § Verified facts and the open questions, not here.
   yet (showing its status); not on this platform. Whether "live from a deploy"
   differs from "live set by hand" is answered in F6; it is shown.
 - **R8 Gaps only.** A switch that fades everything except stale shots and live
-  screens with no shot, with a count.
+  screens with no shot, with a count. With a count of 0 on the lens nothing fades
+  (a whole wall at 15% reads as broken): the switch stays on, shows 0, and a
+  status above the bar says "No gaps on <lens>" ("No gaps on any platform"
+  side by side).
 - **R9 Flow headers** show how many screens are live on the lens and how many
   are stale or missing a shot, on a counts line directly after the
   flow's title (never at the header's far end, which is off screen on arrival
@@ -830,7 +833,8 @@ hidden left handle on each chip.
   one option per platform in `wall.platforms` with `PLATFORM_ICONS`, plus "Side
   by side" (part 3). Hidden when the scope has fewer than two platforms.
 - Gaps (part 3): a toggle `Button` with `aria-pressed`, label "Gaps only" and a
-  count badge.
+  count badge. On with a count of 0, it fades nothing and a `role="status"` pill
+  above the bar, in the top pills' style, reads "No gaps on <lens>".
 - A visually hidden `aria-live="polite"` line announces changes ("Showing iOS.
   4 gaps.").
 - I/W/A (part 3) drive the lens through `usePlatformHotkeys`, mapping `"all"`
@@ -942,7 +946,8 @@ scope does not have, and nothing is written back until the viewer chooses.
 
 - **Frames** are `role="button"`, `tabIndex={0}`, with an `aria-label` such as
   "Check-in sheet, Daily check-in. iOS: live, shot current, 3 Nov." or, side by
-  side, "Check-in sheet. Web: stale. iOS: live. Android: not on this platform."
+  side, "Check-in sheet, Daily check-in. Web: stale. iOS: live. Android: not on
+  this platform." Both open with the view's title and its strip's, in that order.
   Jump tiles: "Go to Streaks, 4 screens". Headers are `h2` (the page's `h1` is
   `PageShell`'s), with a button for the flow's panel. Markers are
   `aria-hidden`; the arm label is in the next frame's description when it
@@ -967,10 +972,15 @@ scope does not have, and nothing is written back until the viewer chooses.
   `dark:amber-400` as quality styles already use; screenshots are never
   recoloured.
 - **Narrow:** the canvas wrapper is an `@container`. Below 60rem of container
-  width the Minimap is hidden; below 40rem the Controls are hidden too, the bar
-  spans the width with 12px gutters, the `SegmentedControl` collapses to icons,
-  and the inspector becomes a bottom sheet above the bar (max 50% of the cell
-  height, scrolling vertically). Touch: tap selects, pinch zooms (React Flow).
+  width the Minimap is hidden; below 40rem the Controls are hidden too and the
+  inspector becomes a bottom sheet above the bar (max 50% of the cell height,
+  scrolling vertically). Below 33rem — where the labelled bar (about 481px)
+  stops fitting on one line — the bar spans the width with 12px gutters, its
+  lens options show icons only (each keeps its accessible name and a `title`)
+  and the gaps switch keeps its icon and count and drops its word; nothing
+  wraps or overlaps down to a 280px canvas. Every one of these follows the
+  canvas's own width (a panel narrows it), never the window's, so the bar
+  overrides the `SegmentedControl`'s viewport `md` collapse from outside. Touch: tap selects, pinch zooms (React Flow).
   Below 768px the panel stack shows one column, as everywhere.
 
 ## Performance

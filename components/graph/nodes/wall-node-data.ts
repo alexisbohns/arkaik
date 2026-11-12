@@ -33,6 +33,10 @@ export type WallFrameData = {
   status?: StatusId;
   onActivate: (frameId: string, viewId: string, stripId: string) => void;
   onAspect: AspectReport;
+  /** Gaps only, and this frame shows no gap under the lens: drawn at 15% and greyscale, still clickable. */
+  dimmed: boolean;
+  /** Gaps only, side by side, and this frame is a gap: its rows that are not gaps, drawn at 35%. Empty otherwise. */
+  dimmedRows: readonly PlatformId[];
 };
 
 export type WallHeaderData = {
@@ -46,6 +50,8 @@ export type WallHeaderData = {
   /** A change rings the header for 2s (a jump tile landed here); 0 = never rung. */
   ringVersion: number;
   onOpenFlow: ((flowId: string) => void) | null;
+  /** Gaps only, and no view in the strip is a gap under the lens: the header softens to 40%. */
+  dimmed: boolean;
 };
 
 export type WallMarkerData = {
@@ -57,6 +63,8 @@ export type WallMarkerData = {
   arm: string;
   /** An arm with no items, or the empty-flow ghost. */
   empty: boolean;
+  /** Gaps only: a marker is never a gap, so it fades with everything that is not one. */
+  dimmed: boolean;
 };
 
 export type WallJumpData = {
@@ -64,4 +72,6 @@ export type WallJumpData = {
   title: string;
   screenCount: number;
   onJump: (flowId: string) => void;
+  /** Gaps only: a jump tile is never a gap, so it fades with everything that is not one. */
+  dimmed: boolean;
 };

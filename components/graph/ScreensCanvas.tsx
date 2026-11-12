@@ -15,7 +15,16 @@ import type { PlatformId } from "@/lib/config/platforms";
 import type { StatusId } from "@/lib/config/statuses";
 import { getRollupDisplayStatus, type PlatformStatusCounts } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
-import { stripCountsLine, type Wall, type WallItem, type WallLens, type WallScreen } from "@/lib/utils/screen-wall";
+import {
+  isGapCell,
+  isGapFrame,
+  lensPlatforms,
+  stripCountsLine,
+  type Wall,
+  type WallItem,
+  type WallLens,
+  type WallScreen,
+} from "@/lib/utils/screen-wall";
 import type { WallBox, WallLayout } from "@/lib/utils/screen-wall-layout";
 
 export interface ScreensCanvasProps {
@@ -33,12 +42,36 @@ export interface ScreensCanvasProps {
   onOpenNode: (nodeId: string) => void;
   onJump: (flowId: string) => void;
   onAspect: AspectReport;
+  /** Gaps only: everything but stale shots and live screens with no shot fades. */
+  gapsOnly: boolean;
 }
 
 /** Every wall node is inert to React Flow: focus and activation live on the element inside. */
 const INERT = { draggable: false, connectable: false, selectable: false, focusable: false } as const;
 
 const NO_EDGES: Edge[] = [];
+
+const NO_ROWS: readonly PlatformId[] = [];
+
+/** Gaps only: the views whose frames stay lit — live on a lens platform with a stale shot or none. */
+function keptViews(wall: Wall, lens: WallLens): ReadonlySet<string> {
+  const kept = new Set<string>();
+  for (const viewId of wall.screens.keys()) {
+    if (isGapFrame(wall, viewId, lens)) kept.add(viewId);
+  }
+  return kept;
+}
+
+/** Inside a lit side-by-side frame, the rows that are not gaps themselves (drawn at 35%). */
+function fadedRows(wall: Wall, viewId: string, lens: WallLens): readonly PlatformId[] {
+  if (lens !== "side") return NO_ROWS;
+  const screen = wall.screens.get(viewId);
+  if (!screen) return NO_ROWS;
+  return lensPlatforms(wall, lens).filter((platform) => {
+    const cell = screen.cells[platform];
+    return cell === undefined || !isGapCell(cell);
+  });
+}
 
 /**
  * The frame's Minimap fill: the lens platform's status; side by side, the
@@ -85,6 +118,7 @@ export function ScreensCanvas({
   onOpenNode,
   onJump,
   onAspect,
+  gapsOnly,
 }: ScreensCanvasProps) {
   const itemsById = useMemo(() => {
     const byId = new Map<string, { item: WallItem; previous: WallItem | undefined; armOf: WallItem | undefined }>();
@@ -99,6 +133,8 @@ export function ScreensCanvas({
   }, [wall]);
 
   const stripsById = useMemo(() => new Map(wall.strips.map((strip) => [strip.id, strip])), [wall]);
+
+  const kept = useMemo(() => (gapsOnly ? keptViews(wall, lens) : null), [gapsOnly, lens, wall]);
 
   // Static per wall, lens and layout; the ring is merged below so a jump does
   // not rebuild every frame's data.
@@ -125,6 +161,7 @@ export function ScreensCanvas({
           note: strip.flowId === null && wall.empty === "no-flows" ? "no-flows" : null,
           ringVersion: 0,
           onOpenFlow: strip.flowId === null ? null : onOpenNode,
+          dimmed: kept !== null && !strip.viewIds.some((viewId) => kept.has(viewId)),
         };
         nodes.push({ ...place(box), type: "wallHeader", data });
         continue;
@@ -150,6 +187,8 @@ export function ScreensCanvas({
           status: frameStatus(screen, lens, wall.platforms),
           onActivate: onFrameActivate,
           onAspect,
+          dimmed: kept !== null && !kept.has(item.viewId),
+          dimmedRows: kept !== null && kept.has(item.viewId) ? fadedRows(wall, item.viewId, lens) : NO_ROWS,
         };
         nodes.push({ ...place(box), type: "wallFrame", data });
       } else if (item.kind === "jump") {
@@ -158,6 +197,7 @@ export function ScreensCanvas({
           title: item.title,
           screenCount: item.screenCount,
           onJump,
+          dimmed: kept !== null,
         };
         nodes.push({ ...place(box), type: "wallJump", data });
       } else if (item.kind === "arm") {
@@ -167,6 +207,7 @@ export function ScreensCanvas({
           label: item.label,
           arm: item.arm,
           empty: item.empty,
+          dimmed: kept !== null,
         };
         nodes.push({ ...place(box), type: "wallMarker", data });
       } else if (item.kind === "end") {
@@ -177,15 +218,23 @@ export function ScreensCanvas({
           label: arm?.label ?? "",
           arm: "",
           empty: false,
+          dimmed: kept !== null,
         };
         nodes.push({ ...place(box), type: "wallMarker", data });
       } else {
-        const data: WallMarkerData = { variant: "empty", branch: null, label: "", arm: "", empty: true };
+        const data: WallMarkerData = {
+          variant: "empty",
+          branch: null,
+          label: "",
+          arm: "",
+          empty: true,
+          dimmed: kept !== null,
+        };
         nodes.push({ ...place(box), type: "wallMarker", data });
       }
     }
     return nodes;
-  }, [itemsById, layout, lens, onAspect, onFrameActivate, onJump, onOpenNode, stripsById, wall]);
+  }, [itemsById, kept, layout, lens, onAspect, onFrameActivate, onJump, onOpenNode, stripsById, wall]);
 
   const nodes = useMemo(() => {
     if (!ring) return baseNodes;

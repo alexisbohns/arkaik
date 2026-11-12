@@ -1,11 +1,20 @@
 "use client";
 
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { memo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useStore } from "@xyflow/react";
-import { CircleDashedIcon, ClockIcon, FolderTreeIcon, ImageOffIcon, type LucideIcon } from "lucide-react";
+import {
+  BanIcon,
+  CircleDashedIcon,
+  ClockIcon,
+  FolderOpenIcon,
+  FolderTreeIcon,
+  ImageOffIcon,
+  type LucideIcon,
+} from "lucide-react";
 import type { PlatformId } from "@/lib/config/platforms";
-import type { PlatformCell, WallShot as WallShotValue } from "@/lib/utils/screen-wall";
-import { LOD_ZOOM } from "@/lib/utils/screen-wall-layout";
+import type { StatusId } from "@/lib/config/statuses";
+import type { PlatformCell, ShotState, WallShot as WallShotValue } from "@/lib/utils/screen-wall";
+import { DEFAULT_ASPECT, LOD_ZOOM, clampAspect } from "@/lib/utils/screen-wall-layout";
 import { cn } from "@/lib/utils";
 import { hasShotFailed, reportShotFailure, shotKey, subscribeShotFailures } from "@/components/maps/screens/aspect-cache";
 import { PLATFORM_ICONS, PLATFORM_LABELS, STATUS_ICONS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
@@ -216,3 +225,157 @@ export function WallShot({ viewId, platform, cell, width, height, onAspect }: Wa
     </div>
   );
 }
+
+/** The mini ghost's hatch: `currentColor` stripes, drawn at 10% by the span that carries it. */
+const MINI_HATCH: CSSProperties = {
+  backgroundImage: "repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 6px)",
+};
+
+type MiniGhost = "absent" | "no-shot" | "not-live" | "path" | "error";
+
+function miniGhostOf(state: ShotState, shot: WallShotValue | null): MiniGhost {
+  if (state === "absent") return "absent";
+  if (shot !== null) return shot.form === "path" ? "path" : "error";
+  return state === "live-no-shot" ? "no-shot" : "not-live";
+}
+
+/** The ghost's glyph; a component, so the icon is chosen in JSX rather than created during render. */
+function MiniGhostGlyph({ ghost, status }: { ghost: MiniGhost; status: StatusId | null }) {
+  const className = "relative size-3.5";
+  switch (ghost) {
+    case "absent":
+      return <BanIcon aria-hidden className={className} />;
+    case "path":
+      return <FolderOpenIcon aria-hidden className={className} />;
+    case "error":
+      return <ImageOffIcon aria-hidden className={className} />;
+    case "no-shot":
+      return <CircleDashedIcon aria-hidden className={className} />;
+    case "not-live": {
+      if (status === null) return <CircleDashedIcon aria-hidden className={className} />;
+      const StatusIcon = STATUS_ICONS[status];
+      return <StatusIcon aria-hidden className={className} />;
+    }
+  }
+}
+
+function miniGhostClass(ghost: MiniGhost, status: StatusId | null): string {
+  switch (ghost) {
+    case "absent":
+      return "border-border/60 text-muted-foreground";
+    case "no-shot":
+      return "border-dashed border-amber-500 text-amber-700 dark:border-amber-400 dark:text-amber-400";
+    case "not-live":
+      return cn("border-dashed border-border", status === null ? "text-muted-foreground" : STATUS_STYLES[status].badge);
+    case "path":
+    case "error":
+      return "border-dashed border-border text-muted-foreground";
+  }
+}
+
+export interface WallMiniShotProps {
+  viewId: string;
+  platform: PlatformId;
+  /** The row's cell; undefined reads as absent. */
+  cell: PlatformCell | undefined;
+  /** The row height (`sideGeometry`'s `rowHeight`). */
+  height: number;
+  /** The mini column's width; no mini is drawn wider. */
+  maxWidth: number;
+  onAspect: AspectReport;
+}
+
+/**
+ * One platform's picture in a side-by-side frame (spec § Layout, § Images).
+ *
+ * Width = row height × the shot's own aspect once it has loaded (clamped, as
+ * `sideGeometry` does), the platform default before that and for ghosts. The
+ * column was sized by the layout from the same measured aspect (through the
+ * aspect cache), so a loaded mini fits it; `maxWidth` only guards the frame
+ * between the load and the relayout. The state word sits beside the mini, so a
+ * ghost here carries no text: only its border, hatch and glyph. Below
+ * `LOD_ZOOM` (`useWallDetail`) the image and the glyph drop, like a full shot.
+ *
+ * The measured ratio is keyed by the shot's fingerprint (aspect-cache
+ * `shotKey`) and compared during render, never reset in an effect, so a new
+ * shot starts clean; a load failure is remembered tab-wide in the aspect
+ * cache, like a full shot's, so a mini that scrolls back shows its ghost
+ * without requesting the image again.
+ */
+export const WallMiniShot = memo(function WallMiniShot({
+  viewId,
+  platform,
+  cell,
+  height,
+  maxWidth,
+  onAspect,
+}: WallMiniShotProps) {
+  const detailed = useWallDetail();
+  const [measured, setMeasured] = useState<{ key: string; ratio: number } | null>(null);
+
+  const state: ShotState = cell?.state ?? "absent";
+  const status = cell?.status ?? null;
+  const shot = state === "absent" ? null : (cell?.shot ?? null);
+  const key = shot === null ? null : shotKey(shot);
+  const failed = useSyncExternalStore(
+    subscribeShotFailures,
+    () => key !== null && hasShotFailed(viewId, platform, key),
+    () => false,
+  );
+  const ratio = key !== null && measured?.key === key ? measured.ratio : null;
+  const aspect = ratio === null ? DEFAULT_ASPECT[platform] : clampAspect(ratio);
+  const width = Math.max(1, Math.min(maxWidth, Math.round(height * aspect)));
+
+  if (shot !== null && shot.form !== "path" && !failed) {
+    return (
+      <div
+        className={cn(
+          "relative shrink-0 overflow-hidden rounded-sm bg-muted",
+          state === "live-stale" && "ring-2 ring-amber-500 dark:ring-amber-400",
+          state === "not-live" && "opacity-50",
+        )}
+        style={{ width, height }}
+        data-mini="shot"
+      >
+        {detailed && (
+          // eslint-disable-next-line @next/next/no-img-element -- an arbitrary data:/https: shot; next/image has nothing to optimise
+          <img
+            src={shot.value}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            referrerPolicy="no-referrer"
+            data-wall-shot=""
+            className="size-full object-cover object-top"
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (naturalWidth <= 0 || naturalHeight <= 0) return;
+              const next = naturalWidth / naturalHeight;
+              setMeasured({ key: shotKey(shot), ratio: next });
+              onAspect(viewId, platform, shotKey(shot), next);
+            }}
+            onError={() => reportShotFailure(viewId, platform, shotKey(shot))}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const ghost = miniGhostOf(state, shot);
+  return (
+    <div
+      className={cn(
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-sm border",
+        miniGhostClass(ghost, status),
+      )}
+      style={{ width, height }}
+      data-mini={ghost}
+    >
+      {ghost !== "absent" && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 opacity-10" style={MINI_HATCH} />
+      )}
+      {detailed && <MiniGhostGlyph ghost={ghost} status={status} />}
+    </div>
+  );
+});

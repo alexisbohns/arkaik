@@ -149,9 +149,9 @@ const GROUPS: readonly ShortcutGroup[] = [
     id: "toolbar",
     label: "Filter bars",
     shortcuts: [
-      { id: "filter-ios", description: "Filter to iOS — again for all platforms (Acceptances, Delivery)", keys: ["I"], hotkeys: ["I"], scope: "project" },
-      { id: "filter-web", description: "Filter to Web — again for all platforms (Acceptances, Delivery)", keys: ["W"], hotkeys: ["W"], scope: "project" },
-      { id: "filter-android", description: "Filter to Android — again for all platforms (Acceptances, Delivery)", keys: ["A"], hotkeys: ["A"], scope: "project" },
+      { id: "filter-ios", description: "Filter to iOS — again for all platforms (Acceptances, Delivery, Screens)", keys: ["I"], hotkeys: ["I"], scope: "project" },
+      { id: "filter-web", description: "Filter to Web — again for all platforms (Acceptances, Delivery, Screens)", keys: ["W"], hotkeys: ["W"], scope: "project" },
+      { id: "filter-android", description: "Filter to Android — again for all platforms (Acceptances, Delivery, Screens)", keys: ["A"], hotkeys: ["A"], scope: "project" },
       { id: "clear-filters", description: "Clear the filters (Acceptances, Findings, Delivery)", keys: ["C"], hotkeys: ["C"], scope: "project" },
       { id: "toggle-expand", description: "Expand or collapse (Acceptances, Decisions, Changelog)", keys: [ALT_KEY_TOKEN, "E"], hotkeys: ["Alt+E"], scope: "project" },
     ],
