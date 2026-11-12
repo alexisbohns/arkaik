@@ -373,6 +373,49 @@ same(
   same("yours without a document: fixed title", bmcYoursMetadata(null).title, "Your Business Model Canvas | arkaik Arkademy");
 }
 
+// --- the components, rendered on the server -----------------------------------------
+// Through tests/app/load-arkademy-tsx.js (a require hook: .tsx transpiled in
+// memory, "@/" resolved to the repo root). renderToStaticMarkup is what a
+// server page sends, minus hydration markers.
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
+const { requireTsx } = require("./load-arkademy-tsx");
+const { ParagraphView } = requireTsx("components/arkademy/ParagraphView.tsx");
+const { SourcedNote } = requireTsx("components/arkademy/SourcedNote.tsx");
+const { CanvasGrid } = requireTsx("components/arkademy/CanvasGrid.tsx");
+
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#x27": "'", "#39": "'", nbsp: "\u00a0" };
+/**
+ * The text a reader gets from markup: tags dropped, entities decoded,
+ * whitespace collapsed (as HTML renders it). `drop` removes whole elements
+ * first, by a regex over the markup.
+ */
+function textOf(html, drop = []) {
+  let rest = html;
+  for (const pattern of drop) rest = rest.replace(pattern, "");
+  return rest
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(amp|lt|gt|quot|#x27|#39|nbsp);/g, (_, name) => ENTITIES[name])
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
+// Gaps are pills on screen and absent from paragraphText (rule 6): each is one
+// element carrying data-kind="gap", with no element inside it.
+const GAP_ELEMENT = /<(span|button)[^>]*data-kind="gap"[^>]*>[^<]*<\/\1>/g;
+
+{
+  for (const id of tool.examples) {
+    const example = exampleCanvas(index, id);
+    const segments = composeParagraph({ questions, state: example.questions, subject: example.company.name });
+    const html = render(ParagraphView, { segments });
+    same(`render: ${id}'s paragraph reads as paragraphText`, textOf(html, [GAP_ELEMENT]), paragraphText(segments));
+  }
+  for (const note of [NOTE, UNDATED]) {
+    same(`render: SourcedNote reads as noteText (${note.source.dateKind})`, textOf(render(SourcedNote, { note })), noteText(note));
+  }
+}
+
 // --- the sitemap's source -----------------------------------------------------------
 {
   const sitemap = fs.readFileSync(path.join(ROOT, "app", "sitemap.ts"), "utf8");

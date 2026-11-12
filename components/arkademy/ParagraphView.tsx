@@ -35,7 +35,7 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
         <Fragment key={segment.question}>
           {i > 0 && " "}
           {segment.kind === "sentence" ? (
-            <span data-question={segment.question}>
+            <span data-question={segment.question} data-kind="sentence">
               {segment.parts.map((part, j) =>
                 part.kind === "text" ? (
                   <Fragment key={j}>{part.text}</Fragment>
@@ -50,6 +50,7 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
             <button
               type="button"
               data-question={segment.question}
+              data-kind="gap"
               onClick={() => onSelectQuestion(segment.question)}
               className={cn(
                 GAP,
@@ -60,7 +61,7 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
               {segment.text}
             </button>
           ) : (
-            <span data-question={segment.question} className={cn(GAP, !segment.open && "bg-muted")}>
+            <span data-question={segment.question} data-kind="gap" className={cn(GAP, !segment.open && "bg-muted")}>
               {segment.text}
             </span>
           )}
