@@ -182,9 +182,11 @@ lib/landing/
     ArkademyMessage.tsx     # What a page shows when the library is unconfigured, empty, invalid or unreadable
     ToolCard.tsx            # One tool on the shell
     ExampleCard.tsx         # One example on the cover: name, Simulation badge, paragraph, mini canvas, note
-    ParagraphView.tsx       # A canvas as one paragraph (lib/arkademy/paragraph.ts): sentences, sourced notes, gap pills
+    ParagraphView.tsx       # A canvas as one paragraph (lib/arkademy/paragraph.ts): sentences, note markers, gap pills
     CanvasGrid.tsx          # The nine blocks, full or mini, laid out by container queries
-    SourcedNote.tsx         # A use's note: its text, the source as a link, the date
+    CanvasLink.tsx          # Links one example's sentences and blocks on hover and focus (CSS :has(), lib/arkademy/canvas-link.ts)
+    SourcedNote.tsx         # A use's note behind a marker: a card with its text, the source as a link, the date (client)
+    LibraryPlaceholder.tsx  # The quiet Suspense fallback while a page reads the library
     PromptBlock.tsx         # The baseline prompt with its copy button
     CopyButton.tsx          # Every Arkademy copy action (useCopyId)
   publik/                   # PublishDialog, ImportSnapshotButton
