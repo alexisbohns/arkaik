@@ -262,6 +262,16 @@ export function parseStepParam(raw: string | string[] | undefined): number | nul
   return step <= STEP_COUNT ? step : null;
 }
 
+/**
+ * The step an address's query string names (`location.search`): exactly one
+ * `step` parameter that `parseStepParam` accepts, else null — none, two, or
+ * one it refuses all read as absent, as the server reads them.
+ */
+export function stepFromSearch(search: string): number | null {
+  const values = new URLSearchParams(search).getAll("step");
+  return values.length === 1 ? parseStepParam(values[0]) : null;
+}
+
 /** An example's tour, optionally at a step: the address every step link and `replaceState` use. */
 export function tourHref(companyId: string, step?: number): string {
   return step === undefined ? bmcTourPath(companyId) : `${bmcTourPath(companyId)}?step=${step}`;

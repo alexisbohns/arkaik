@@ -8,6 +8,7 @@ import {
   initialTourState,
   nextBoundary,
   parseStepParam,
+  stepFromSearch,
   resolveTourState,
   stepView,
   type StepTimeline,
@@ -56,7 +57,13 @@ export function useTourPlayer({
 }): TourPlayer {
   const reducedMotion = usePrefersReducedMotion();
   const reducer = useMemo(() => createTourReducer(timelines, reducedMotion), [timelines, reducedMotion]);
-  const [stored, dispatch] = useReducer(reducer, null, () => initialTourState(timelines, initialStep));
+  // The address the browser shows wins over the server's: Back to a tour replays the
+  // server render it was first opened with, but the address holds the step being
+  // watched (replaceState kept it current), which comes back complete and paused.
+  // On a hard load the two agree, so hydration matches.
+  const [stored, dispatch] = useReducer(reducer, null, () =>
+    initialTourState(timelines, typeof window === "undefined" ? initialStep : stepFromSearch(window.location.search)),
+  );
   const state = resolveTourState(stored, timelines, reducedMotion);
   const timeline = timelines[state.step - 1];
   const view = reducedMotion ? stepView(timeline, timeline.total) : stepView(timeline, state.elapsed);

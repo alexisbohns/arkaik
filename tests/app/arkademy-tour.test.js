@@ -38,6 +38,7 @@ const {
   TOUR_KEEP_FOCUS_ATTRIBUTE,
   keyKeepsFocus,
   elapsedAfterPause,
+  stepFromSearch,
 } = loadArkademy();
 
 let failures = 0;
@@ -251,6 +252,14 @@ same('step: " 3"', parseStepParam(" 3"), null);
 same('step: ""', parseStepParam(""), null);
 same("step: an array", parseStepParam(["3", "4"]), null);
 same("step: undefined", parseStepParam(undefined), null);
+// The step an address names: exactly one valid `step`, else none — the player starts from the
+// address the browser shows, so Back to a tour lands on the step that was being watched.
+same("search: one step", stepFromSearch("?step=3"), 3);
+same("search: among other parameters", stepFromSearch("?ref=x&step=7"), 7);
+same("search: none", stepFromSearch(""), null);
+same("search: two steps read as none", stepFromSearch("?step=3&step=5"), null);
+for (const bad of ["0", "10", "-1", "3.5", "abc", ""]) same(`search: step=${bad} reads as none`, stepFromSearch(`?step=${bad}`), null);
+same("restore: a watched step comes back complete and paused", initialTourState(timelines, stepFromSearch("?step=3")), at(3, T(3), false));
 same("href: no step", tourHref("tidewise"), "/arkademy/business-model-canvas/tour/tidewise");
 same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/tour/tidewise?step=4");
 
