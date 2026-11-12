@@ -315,7 +315,7 @@ function databaseTarget(connectionString = process.env.DATABASE_URL) {
   if (!connectionString) {
     throw new ScriptExit(
       "DATABASE_URL is not set. Pass it inline (DATABASE_URL=… npm run arkademy -- …) or with " +
-        "node --env-file=.env.production.local scripts/arkademy/upload.js …",
+        "node --env-file=.env.arkademy-prod scripts/arkademy/upload.js … (a file name Next never loads; see docs/arkademy.md)",
     );
   }
   const { Client } = require("pg");

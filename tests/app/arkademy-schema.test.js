@@ -858,6 +858,53 @@ const upload = require(path.join(ROOT, "scripts", "arkademy", "upload.js"));
   }
 }
 
+// --- Where the production connection string lives ------------------------------
+// Next loads .env.production.local for every local `next build`/`next start`,
+// so a production DATABASE_URL kept there would point a local production
+// server at production. The guide's file is one Next never loads.
+{
+  const { spawnSync } = require("child_process");
+  const os = require("os");
+  const UPLOAD = path.join(ROOT, "scripts", "arkademy", "upload.js");
+  const env = { ...process.env };
+  delete env.DATABASE_URL;
+  const unset = spawnSync(process.execPath, [UPLOAD, "status"], { encoding: "utf8", env });
+  check(
+    "upload: the hint names .env.arkademy-prod, never .env.production.local",
+    unset.status === 1 && unset.stderr.includes("--env-file=.env.arkademy-prod") && !unset.stderr.includes(".env.production.local"),
+    unset.stderr,
+  );
+  const guide = fs.readFileSync(path.join(ROOT, "docs", "arkademy.md"), "utf8");
+  check("the operator guide keeps the production URL in .env.arkademy-prod", guide.includes("--env-file=.env.arkademy-prod") && !guide.includes("--env-file=.env.production.local"));
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arkademy-env-"));
+  try {
+    fs.writeFileSync(path.join(dir, ".env.arkademy-prod"), "ARKADEMY_ENV_PROBE=loaded\n");
+    const probe = `
+      const { loadEnvConfig } = require(${JSON.stringify(require.resolve("@next/env", { paths: [ROOT] }))});
+      const seen = [];
+      for (const dev of [false, true]) {
+        const { loadedEnvFiles } = loadEnvConfig(${JSON.stringify(dir)}, dev, { info() {}, error() {} }, true);
+        seen.push(...loadedEnvFiles.map((file) => file.path));
+      }
+      process.stdout.write(JSON.stringify({ seen, probe: process.env.ARKADEMY_ENV_PROBE ?? null }));
+    `;
+    const out = spawnSync(process.execPath, ["-e", probe], { encoding: "utf8", env: { ...env, NODE_ENV: "production" } });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(out.stdout);
+    } catch {}
+    check("Next never loads .env.arkademy-prod (production or development)", parsed && parsed.seen.length === 0 && parsed.probe === null, out.stdout + out.stderr);
+    fs.writeFileSync(path.join(dir, ".env.production.local"), "ARKADEMY_ENV_PROBE=loaded\n");
+    const control = spawnSync(process.execPath, ["-e", probe], { encoding: "utf8", env: { ...env, NODE_ENV: "production" } });
+    check("…while it does load .env.production.local (the control)", /\.env\.production\.local/.test(control.stdout), control.stdout + control.stderr);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const ignored = spawnSync("git", ["check-ignore", "-q", ".env.arkademy-prod"], { cwd: ROOT });
+  check("git ignores .env.arkademy-prod", ignored.status === 0, String(ignored.status));
+}
+
 // --- Files the script cannot read as a document ----------------------------------
 {
   const { spawnSync } = require("child_process");

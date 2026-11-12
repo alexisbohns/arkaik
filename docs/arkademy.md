@@ -115,11 +115,18 @@ the app reads Postgres on every request, so the next reload shows the upload.
 The table is created by `migrate-prod` when the migration lands on `main`.
 Publish with the production connection string — the value behind Vercel's
 production `DATABASE_URL` and the `PROD_DATABASE_URL` Actions secret — kept in
-a `.env.production.local` file (gitignored by `.env*`):
+a `.env.arkademy-prod` file (gitignored by `.env*`):
 
 ```
-node --env-file=.env.production.local scripts/arkademy/upload.js publish --note "…" --yes
+node --env-file=.env.arkademy-prod scripts/arkademy/upload.js publish --note "…" --yes
 ```
+
+Not `.env.production.local`, nor any `.env`, `.env.local`,
+`.env.production` or `.env.development*`: Next loads those by itself
+(`@next/env`: `.env.<mode>.local`, `.env.local`, `.env.<mode>`, `.env`), so a
+local `next build` or `next start` in that checkout would run against the
+production database. Next never reads `.env.arkademy-prod`; only the
+`--env-file` above does.
 
 The app caches the validated library for five minutes
 (`ARKADEMY_CACHE_SECONDS`), so a publish or a rollback is live after the

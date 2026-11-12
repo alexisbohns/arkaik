@@ -671,8 +671,10 @@ under the repository root.
 `db/migrate.mjs` does, and exits with a clear message when it is unset. For
 production that is the production connection string (the value behind
 Vercel's production `DATABASE_URL` and the `PROD_DATABASE_URL` Actions
-secret). Pass it inline or with Node's `--env-file` pointing at a
-`.env.*.local` file, which `.gitignore` already covers (`.env*`). Before
+secret). Pass it inline or with Node's `--env-file` pointing at
+`.env.arkademy-prod`, which `.gitignore` already covers (`.env*`) and which
+Next never loads (a `.env.production.local` would point every local
+production build and start in that checkout at production). Before
 writing, the script prints the target host and database name (never the
 password) and, when the host is not this machine, refuses to write without
 `--yes`. Both are read from the `pg` Client the script then connects with
