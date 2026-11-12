@@ -382,6 +382,7 @@ const index = A.indexArkademy(validation.document);
   same("moved", canvasAnnouncement({ kind: "moved", text: "bakers", position: 1, count: 3 }), "Moved bakers to position 1 of 3.");
   same("removed", canvasAnnouncement({ kind: "removed", text: "bakers" }), "Removed: bakers.");
   same("removed, an empty field", canvasAnnouncement({ kind: "removed", text: "  " }), "Removed the empty answer.");
+  same("removed, a field of only punctuation", canvasAnnouncement({ kind: "removed", text: "!" }), "Removed the empty answer.");
   same("left open", canvasAnnouncement({ kind: "open", block: "Revenue streams" }), "Revenue streams left open on purpose.");
   same("undone", canvasAnnouncement({ kind: "unopen", block: "Revenue streams" }), "Revenue streams is no longer left open.");
   same("started over", canvasAnnouncement({ kind: "reset" }), "Your canvas is empty again.");

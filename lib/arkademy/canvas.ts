@@ -379,7 +379,7 @@ export function canvasAnnouncement(event: CanvasEvent): string {
     case "moved":
       return `Moved ${event.text} to position ${event.position} of ${event.count}.`;
     case "removed":
-      return event.text.trim() === "" ? "Removed the empty answer." : `Removed: ${event.text.trim()}.`;
+      return hasWords(event.text) ? `Removed: ${event.text.trim()}.` : "Removed the empty answer.";
     case "open":
       return `${event.block} left open on purpose.`;
     case "unopen":
