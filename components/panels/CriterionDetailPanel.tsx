@@ -1,14 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
-import { ExternalLinkIcon } from "lucide-react";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import {
+  BookOpenIcon,
+  ExternalLinkIcon,
+  GaugeIcon,
+  ListChecksIcon,
+  RadarIcon,
+  WrenchIcon,
+} from "lucide-react";
+import { MATURITY_LEVELS, type KritikLibrary, type QualitySection } from "@arkaik/schema";
 import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection, PANEL_GUTTER, PANEL_GUTTER_BLEED } from "@/components/panels/PanelSection";
-import { cn } from "@/lib/utils";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { KritikLibrary, QualitySection } from "@arkaik/schema";
-import { buildCriterionModel, buildSurfaceTitles, type FindingRow } from "@/lib/utils/quality";
+import {
+  CitedText,
+  ClampedText,
+  FoldTile,
+  levelTone,
+  onTabKey,
+  QualityHero,
+} from "@/components/quality/QualityPanelParts";
+import { QualityPanelShape } from "@/components/quality/QualityPanelShape";
+import {
+  buildCriterionModel,
+  buildSurfaceTitles,
+  type AssessmentModel,
+  type CriterionModel,
+  type FindingRow,
+} from "@/lib/utils/quality";
 
 interface CriterionDetailPanelProps {
   criterionId: string;
@@ -33,9 +53,15 @@ function formatDate(iso: string | undefined): string {
 }
 
 /**
- * What identifies the panel in the stack's header — the domain, the criterion
- * id, its name, and the surface being read. The close button belongs to
- * `PanelStack`, which owns every panel's frame.
+ * What identifies the panel in the stack's header — the rubric seal, the
+ * domain, the criterion id and the surface being read. The close button
+ * belongs to `PanelStack`, which owns every panel's frame.
+ *
+ * A node panel's header is its species seal and its species word; a criterion
+ * has no species, so it wears the rubric seal in a teal no species owns, and
+ * its DOMAIN takes the species word's place — it is the one answer to "what
+ * kind of criterion is this" the pack gives. `data-kp-hue` on the hook is what
+ * tints the header segment (`app/m3/quality-panels.css`).
  */
 export function CriterionDetailPanelHeader({
   criterionId,
@@ -47,22 +73,24 @@ export function CriterionDetailPanelHeader({
   const { domainLabel, surfaceTitle } = buildCriterionModel(criterionId, surface, library, section, []);
 
   return (
-    // `display: contents`: a hook for the panel stylesheet, not a box —
-    // the header row stays `PanelStack`'s.
-    <div className="contents" data-quality-panel-header="criterion">
-      {/* Grouped so the two chips never separate when the header row runs out
-          of room; the row itself is `PanelStack`'s. */}
-      <div className="flex min-w-0 shrink-0 items-center gap-2">
-        {domainLabel !== "" && (
-          <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
-            {domainLabel}
-          </span>
-        )}
-        <PanelHeaderEntityId id={criterionId} />
-      </div>
-      {surfaceTitle !== "" && (
-        <span className="shrink-0 text-xs text-muted-foreground">{surfaceTitle}</span>
+    // `display: contents`: a hook for the panel stylesheet, not a box — the
+    // seal and the chips are items of `PanelStack`'s own header row.
+    <div className="contents" data-quality-panel-header="criterion" data-kp-hue="rubric">
+      <span className="kp-seal" aria-hidden="true">
+        <QualityPanelShape shape="rubric" className="kp-seal-shape" />
+        <GaugeIcon className="kp-seal-icon" />
+      </span>
+      {/* The domain truncates first (it is the longest and the least needed
+          to tell two panels apart); the id never does. */}
+      {domainLabel !== "" && (
+        <span className="kp-head-kind" title={domainLabel}>
+          {domainLabel}
+        </span>
       )}
+      <span className="kp-head-id">
+        <PanelHeaderEntityId id={criterionId} />
+      </span>
+      {surfaceTitle !== "" && <span className="kp-head-chip">{surfaceTitle}</span>}
     </div>
   );
 }
@@ -75,6 +103,13 @@ export function CriterionDetailPanelHeader({
  * library content, so everything above the evidence is identical in every
  * project pinning the same pack, and only the last two sections are this
  * project's.
+ *
+ * It reads the way a node panel reads: a seal, a hero that bleeds up under the
+ * header, and ONE loud thing — the level this project was scored at, as a
+ * track of L0–L4 the way a node's status is a lifecycle track. What the pack
+ * says to do about it (remediation, checklist, signals, references) is
+ * reference material, so it folds into one deck rather than four headings at
+ * full volume.
  *
  * **Every section is conditional, and that is the feature.**
  * `resolveKritikLibrary` synthesizes a library when a bundle embeds no pack:
@@ -103,228 +138,395 @@ export function CriterionDetailPanel({
     () => buildCriterionModel(criterionId, surface, library, section, findings),
     [criterionId, surface, library, section, findings],
   );
-  const {
-    name,
-    question,
-    definition,
-    remediation,
-    anchors,
-    checklist,
-    signals,
-    references,
-    packEmbedded,
-    assessments,
-    scoredLevel,
-    defaultAnchorLevel,
-    findings: criterionFindings,
-  } = model;
   const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 py-5 lg:py-6" data-quality-panel="criterion">
-      {/* The name is the panel's title, in the body — where a node panel puts
-          its own — rather than a third chip in the header. It was in the header
-          because a criterion has no editable title block to sit in, but that
-          made this the one panel whose subject was named in the chrome and not
-          in the panel, and a long criterion name truncated against the close
-          button. What is left up there is what identifies the panel in a trail:
-          the domain, the id, the surface.
+      <CriterionIntro model={model} />
+      <CriterionAnchors model={model} />
+      <CriterionEvidence model={model} />
+      <CriterionGuidance model={model} />
+      <CriterionFindings model={model} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
+    </div>
+  );
+}
 
-          The question sits under it as the description, in the same block and
-          at the same spacing a node's description gets — it is the one sentence
-          that says what the name means. */}
-      {(name !== "" || question !== "") && (
-        <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")}>
-          {name !== "" && <p className="text-lg font-semibold text-foreground">{name}</p>}
-          {question !== "" && (
-            <p className="text-sm leading-relaxed text-foreground">{question}</p>
-          )}
+/* ───────────────────────────── intro ───────────────────────────── */
+
+/**
+ * The honest gap: no pack in the bundle, said as an open slot in one line
+ * rather than as five empty headings.
+ */
+function NoPack() {
+  return (
+    <p className="kp-gap">
+      <span className="kp-gap-word">open:</span> this bundle does not carry the criteria pack, so what this
+      criterion asks is not available here — only the score and findings recorded against it.
+    </p>
+  );
+}
+
+/**
+ * The name, at headline scale, is the panel's title, in the body — where a
+ * node panel puts its own — rather than a third chip in the header. It was in
+ * the header once, because a criterion has no editable title block to sit in,
+ * but that made this the one panel whose subject was named in the chrome and
+ * not in the panel, and a long criterion name truncated against the close
+ * button.
+ *
+ * The question sits under it as the description, in the same block — it is
+ * the one sentence that says what the name means. The definition follows as
+ * the panel's first section: it is the long answer to the same question, and
+ * a hero holding a paragraph that size stops being a hero.
+ */
+function CriterionIntro({ model }: { model: CriterionModel }) {
+  return (
+    <>
+      <QualityHero panel="criterion" hue="rubric" shape="rubric">
+        {model.name !== "" && <p className="kp-hero-title">{model.name}</p>}
+        {model.question !== "" && <p className="kp-hero-desc">{model.question}</p>}
+        {!model.packEmbedded && <NoPack />}
+      </QualityHero>
+      {model.definition !== "" && (
+        <PanelSection title="Definition">
+          <p className="text-sm leading-relaxed">{model.definition}</p>
+        </PanelSection>
+      )}
+    </>
+  );
+}
+
+/* ───────────────────────────── anchors ───────────────────────────── */
+
+function anchorOf(model: CriterionModel, level: number): string | undefined {
+  return model.anchors.find((anchor) => anchor.level === level)?.text;
+}
+
+/** The surfaces scored at a level — only when several are in view and no one level is THE score. */
+function surfacesAt(model: CriterionModel, level: number): AssessmentModel[] {
+  return model.scoredLevel === undefined ? model.assessments.filter((assessment) => assessment.level === level) : [];
+}
+
+/** A step's accessible name: the visible "L2" says nothing about which one is scored, or where. */
+function stepLabel(model: CriterionModel, level: number): string {
+  const parts = [`Level ${level}`];
+  if (level === model.scoredLevel) parts.push("scored");
+  const here = surfacesAt(model, level);
+  if (here.length > 0) parts.push(`scored on ${here.map((assessment) => assessment.surfaceTitle).join(", ")}`);
+  if (anchorOf(model, level) === undefined) parts.push("no anchor written");
+  return parts.join(", ");
+}
+
+/**
+ * The maturity anchors, as one connected track of L0–L4.
+ *
+ * A strip rather than a list: five anchors are five paragraphs, and only one
+ * of them is this cell's answer. The scored level opens by default so the
+ * panel says where the project stands without the reader scrolling past the
+ * four levels it does not stand at; the other four are one click away, which
+ * is what reading an anchor against its neighbours actually needs. Falls back
+ * to the lowest anchor written when there is no single score to open on — see
+ * `defaultAnchorLevel`.
+ *
+ * Two marks that do not compete: the SCORED step grows and takes its level's
+ * tone whether it is selected or not, and the selected one is the one lifted
+ * out of the track. Reading L2 while the project sits at L4 is the whole
+ * reason the track is clickable, so "where I am" and "where the project is"
+ * have to be legible at the same time. Opened across surfaces, no step is the
+ * score; each carries a pip per surface scored there instead.
+ *
+ * All five steps always draw, so the track keeps its shape; a level the pack
+ * wrote no anchor for is a disabled step, named as such.
+ */
+function CriterionAnchors({ model }: { model: CriterionModel }) {
+  const base = useId();
+  const [shown, setShown] = useState(model.defaultAnchorLevel);
+  if (model.anchors.length === 0) return null;
+  return (
+    <PanelSection title="Maturity anchors">
+      <div role="tablist" aria-label="Maturity levels" className="kp-track">
+        {MATURITY_LEVELS.map((level) => {
+          const written = anchorOf(model, level) !== undefined;
+          const scored = level === model.scoredLevel;
+          const here = surfacesAt(model, level);
+          const selected = level === shown;
+          return (
+            <button
+              key={level}
+              id={`${base}-t${level}`}
+              type="button"
+              role="tab"
+              data-key={level}
+              aria-selected={selected}
+              aria-controls={`${base}-p`}
+              aria-label={stepLabel(model, level)}
+              tabIndex={selected ? 0 : -1}
+              disabled={!written}
+              data-kp-level={levelTone(level)}
+              data-scored={scored ? "" : undefined}
+              onClick={() => setShown(level)}
+              onKeyDown={(event) => onTabKey(event, (key) => setShown(Number(key) as typeof level))}
+            >
+              <span className="kp-track-num">L{level}</span>
+              {scored && <span className="kp-track-word">Scored</span>}
+              {here.length > 0 && (
+                <span className="kp-track-pips" aria-hidden="true">
+                  {here.map((assessment) => (
+                    <span key={assessment.key} title={assessment.surfaceTitle} />
+                  ))}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {shown !== undefined && (
+        <div
+          role="tabpanel"
+          id={`${base}-p`}
+          aria-labelledby={`${base}-t${shown}`}
+          className="kp-anchor-card"
+          data-kp-level={levelTone(shown)}
+        >
+          <p>{anchorOf(model, shown)}</p>
         </div>
       )}
+    </PanelSection>
+  );
+}
 
-      {!packEmbedded && (
-        <p className={cn(PANEL_GUTTER, "text-sm text-muted-foreground")}>
-          This bundle does not carry the criteria pack, so what this criterion asks is not
-          available here — only the score and findings recorded against it.
-        </p>
-      )}
+/* ───────────────────────────── evidence ───────────────────────────── */
 
-      {definition !== "" && (
-        <PanelSection title="Definition">
-          <p className="text-sm leading-relaxed">{definition}</p>
-        </PanelSection>
-      )}
-
-      {anchors.length > 0 && (
-        <PanelSection title="Maturity anchors">
-          {/* A strip rather than a list: five anchors are five paragraphs, and
-              only one of them is this cell's answer. The scored level opens by
-              default so the panel says where the project stands without the
-              reader scrolling past the four levels it does not stand at; the
-              other four are one click away, which is what reading an anchor
-              against its neighbours actually needs. Falls back to the lowest
-              anchor written when there is no single score to open on — see
-              `scoredLevel`. */}
-          <Tabs defaultValue={String(defaultAnchorLevel)}>
-            <TabsList className="w-full">
-              {anchors.map(({ level }) => {
-                const scored = level === scoredLevel;
-                return (
-                  <TabsTrigger
-                    key={level}
-                    value={String(level)}
-                    // Two marks that do not compete: the selected tab is the
-                    // one raised out of the rail (border, weight, foreground
-                    // text), and the scored one carries a dot it keeps whether
-                    // it is selected or not. Reading L2 while the project sits
-                    // at L4 is the whole reason the strip is clickable, so
-                    // "where I am" and "where the project is" have to be
-                    // legible at the same time.
-                    className="font-mono data-[state=active]:border-border data-[state=active]:font-semibold data-[state=active]:text-foreground"
-                  >
-                    {scored && (
-                      <span
-                        className="size-1.5 rounded-full bg-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    )}
-                    L{level}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-            {anchors.map(({ level, text }) => (
-              <TabsContent key={level} value={String(level)}>
-                <div className="flex items-start gap-2">
-                  <p className="flex-1 text-sm leading-relaxed">{text}</p>
-                </div>
-              </TabsContent>
-            ))}
-          </Tabs>
-        </PanelSection>
-      )}
-
-      {assessments.length > 0 && (
-        <PanelSection title={assessments.length === 1 ? "Evidence" : "Evidence by surface"}>
-          <div className="flex flex-col gap-2">
-            {assessments.map((assessment) => (
-              <div
-                // Unique because `assessmentsOn` collapses the list to one row
-                // per cell — the bundle itself only warns about a second.
-                key={assessment.key}
-                className="flex flex-col gap-1.5 rounded-md border p-3"
+/**
+ * The evidence, read as an argument rather than as code: the auditor's prose
+ * at reading size in the body face, its `file:line` citations lit where they
+ * fall, and attributed underneath — the level, the surface, the audit and the
+ * date. It was a monospace block, which made a paragraph of reasoning look
+ * like a log and the citations in it impossible to find.
+ *
+ * One quote per surface in view. The surface is repeated in the attribution
+ * even when the panel is scoped to one, because this block is the thing a
+ * reader quotes. Long evidence rests at seven lines under "Show the evidence".
+ */
+function CriterionEvidence({ model }: { model: CriterionModel }) {
+  if (model.assessments.length === 0) return null;
+  return (
+    <PanelSection title={model.assessments.length === 1 ? "Evidence" : "Evidence by surface"}>
+      <div className="kp-quotes">
+        {model.assessments.map((assessment) => (
+          // Unique because `buildCriterionModel` collapses the list to one row
+          // per cell — the bundle itself only warns about a second.
+          <figure key={assessment.key} className="kp-quote" data-kp-hue="rubric">
+            {assessment.evidence !== "" ? (
+              <ClampedText
+                text={assessment.evidence}
+                limit={520}
+                lines={7}
+                className="kp-quote-text"
+                what="the evidence"
               >
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                  <span className="font-medium text-foreground">Level {assessment.level}</span>
-                  {/* The surface is repeated here even when the panel is scoped to
-                      one, because this block is the thing a reader quotes. */}
-                  <span>{assessment.surfaceTitle}</span>
-                  {assessment.auditId && <span>· {assessment.auditId}</span>}
-                  {assessment.ts && (
-                    <time dateTime={assessment.ts}>· {formatDate(assessment.ts)}</time>
-                  )}
-                </div>
-                {assessment.evidence !== "" && (
-                  <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground">
-                    {assessment.evidence}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </PanelSection>
-      )}
-
-      {checklist.length > 0 && (
-        <PanelSection title="Checklist">
-          <ul className="arkaik-bullets space-y-1.5 pl-4">
-            {checklist.map((step, index) => (
-              <li key={index} className="text-sm leading-relaxed">
-                {step}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
-      )}
-
-      {references.length > 0 && (
-        <PanelSection title="References">
-          <div className="flex flex-col gap-0.5">
-            {references.map((reference, index) =>
-              reference.url !== "" ? (
-                <a
-                  key={index}
-                  href={reference.url}
-                  target="_blank"
-                  rel="nofollow noreferrer"
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                >
-                  <ExternalLinkIcon
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{reference.label}</span>
-                  {reference.anchor !== "" && (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {reference.anchor}
-                    </span>
-                  )}
-                </a>
-              ) : (
-                <span key={index} className="px-2 py-1.5 text-sm text-muted-foreground">
-                  {reference.label}
-                  {reference.anchor !== "" && ` — ${reference.anchor}`}
-                </span>
-              ),
+                <CitedText text={assessment.evidence} />
+              </ClampedText>
+            ) : (
+              <p className="kp-gap">
+                <span className="kp-gap-word">open:</span> scored with no evidence written.
+              </p>
             )}
-          </div>
-        </PanelSection>
-      )}
+            <figcaption className="kp-quote-by">
+              <span className="kp-level-badge" data-kp-level={levelTone(assessment.level)}>
+                <span className="sr-only">Level </span>L{assessment.level}
+              </span>
+              <span className="kp-ev-surface">{assessment.surfaceTitle}</span>
+              <span className="kp-ev-meta">
+                {assessment.auditId && <span>{assessment.auditId}</span>}
+                {assessment.ts && <time dateTime={assessment.ts}>{formatDate(assessment.ts)}</time>}
+              </span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </PanelSection>
+  );
+}
 
-      {signals.length > 0 && (
-        <PanelSection title="Signals">
-          <ul className="arkaik-bullets space-y-1.5 pl-4">
-            {signals.map((signal, index) => (
-              <li key={index} className="text-sm leading-relaxed">
-                {signal}
-              </li>
-            ))}
-          </ul>
-        </PanelSection>
-      )}
+/* ───────────────────────────── guidance ───────────────────────────── */
 
-      {remediation !== "" && (
-        <PanelSection title="Remediation">
-          <p className="text-sm leading-relaxed">{remediation}</p>
-        </PanelSection>
-      )}
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-      {criterionFindings.length > 0 && (
-        // The board, not a list of its own. This panel had a second rendering
-        // of a finding — a bordered row with a severity dot — and two
-        // renderings meant two answers to "which of these is worst": the rail's
-        // marks say it at a glance, and the dot did not say it at all. The
-        // Findings page and the cell panel already share this component; a
-        // criterion is the third place a finding is read and had no business
-        // being the one that looked different.
-        //
-        // `PANEL_GUTTER_BLEED` because `PanelSection` gutters its body and the
-        // board carries its own `p-4`; without it the rail sits a gutter and a
-        // half in from the prose above it.
-        //
-        // No `onOpenCriterion`: every row here answers to the criterion in this
-        // panel's own header, so the chip would be a button that re-opens the
-        // panel it is drawn in. `FindingCard` drops it with the handler.
-        <PanelSection title="Findings">
-          <div className={PANEL_GUTTER_BLEED}>
-            <FindingsBoard
-              rows={criterionFindings}
-              surfaceTitles={surfaceTitles}
-              onOpenFinding={onOpenFinding}
-            />
-          </div>
-        </PanelSection>
-      )}
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="kp-list">
+      {items.map((item, index) => (
+        <li key={index}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function References({ references }: { references: CriterionModel["references"] }) {
+  return (
+    <ul className="kp-refs">
+      {references.map((reference, index) => (
+        <li key={index}>
+          {reference.url !== "" ? (
+            <a href={reference.url} target="_blank" rel="nofollow noreferrer" className="kp-ref">
+              <ExternalLinkIcon className="kp-ref-icon" aria-hidden="true" />
+              <span className="kp-ref-label">{reference.label}</span>
+              {reference.anchor !== "" && <span className="kp-ref-anchor">{reference.anchor}</span>}
+            </a>
+          ) : (
+            <span className="kp-ref">
+              <span className="kp-ref-label">{reference.label}</span>
+              {reference.anchor !== "" && <span className="kp-ref-anchor">{reference.anchor}</span>}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+interface GuidancePart {
+  key: string;
+  title: string;
+  peek: string;
+  icon: typeof WrenchIcon;
+  body: ReactNode;
+}
+
+/**
+ * What the pack says to do about it, in the order a reader reaches for it:
+ * how to fix it, how to check, what to look for, where it comes from. Each
+ * part only when the pack wrote it.
+ */
+function guidanceParts(model: CriterionModel): GuidancePart[] {
+  const parts: GuidancePart[] = [];
+  if (model.remediation !== "")
+    parts.push({
+      key: "fix",
+      title: "Remediation",
+      peek: "how to fix it",
+      icon: WrenchIcon,
+      body: <p className="kp-prose">{model.remediation}</p>,
+    });
+  if (model.checklist.length > 0)
+    parts.push({
+      key: "check",
+      title: "Checklist",
+      peek: count(model.checklist.length, "step", "steps"),
+      icon: ListChecksIcon,
+      body: <Bullets items={model.checklist} />,
+    });
+  if (model.signals.length > 0)
+    parts.push({
+      key: "signals",
+      title: "Signals",
+      peek: count(model.signals.length, "signal", "signals"),
+      icon: RadarIcon,
+      body: <Bullets items={model.signals} />,
+    });
+  if (model.references.length > 0)
+    parts.push({
+      key: "refs",
+      title: "References",
+      peek: count(model.references.length, "link", "links"),
+      icon: BookOpenIcon,
+      body: <References references={model.references} />,
+    });
+  return parts;
+}
+
+/**
+ * The guidance as one connected deck. Four headings at full volume made the
+ * reference material as loud as the score; folded, the first part opens and
+ * the rest wait as one line each, with a count of what is inside.
+ */
+function CriterionGuidance({ model }: { model: CriterionModel }) {
+  const parts = guidanceParts(model);
+  if (parts.length === 0) return null;
+  return (
+    <div className={PANEL_GUTTER}>
+      <ul className="kp-folds">
+        {parts.map((part, index) => (
+          <FoldTile
+            key={part.key}
+            title={part.title}
+            peek={part.peek}
+            icon={<part.icon className="size-4" />}
+            defaultOpen={index === 0}
+          >
+            {part.body}
+          </FoldTile>
+        ))}
+      </ul>
     </div>
+  );
+}
+
+/* ───────────────────────────── findings ───────────────────────────── */
+
+const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
+
+/**
+ * The findings against this criterion: a tally of what is still open, by
+ * priority, above the board.
+ *
+ * The board, not a list of its own. This panel had a second rendering of a
+ * finding — a bordered row with a severity dot — and two renderings meant two
+ * answers to "which of these is worst": the rail's marks say it at a glance,
+ * and the dot did not say it at all. The Findings page and the cell panel
+ * already share this component; a criterion is the third place a finding is
+ * read and had no business being the one that looked different.
+ *
+ * `PANEL_GUTTER_BLEED` because `PanelSection` gutters its body and the board
+ * carries its own `p-4`; without it the rail sits a gutter and a half in from
+ * the prose above it.
+ *
+ * No `onOpenCriterion`: every row here answers to the criterion in this
+ * panel's own header, so the chip would be a button that re-opens the panel it
+ * is drawn in. `FindingCard` drops it with the handler.
+ */
+function CriterionFindings({
+  model,
+  surfaceTitles,
+  onOpenFinding,
+}: {
+  model: CriterionModel;
+  surfaceTitles: ReadonlyMap<string, string>;
+  onOpenFinding: (findingId: string) => void;
+}) {
+  if (model.findings.length === 0) return null;
+  const open = model.findings.filter((finding) => finding.open);
+  const decided = model.findings.length - open.length;
+  return (
+    <PanelSection title="Findings">
+      <ul className="kp-tally" aria-label="Findings by priority">
+        {PRIORITIES.map((priority) => {
+          const n = open.filter((finding) => finding.priority === priority).length;
+          if (n === 0) return null;
+          return (
+            <li key={priority} data-kp-hue={priority.toLowerCase()}>
+              <span className="kp-tally-n">{n}</span>
+              <span className="kp-tally-word">{priority} open</span>
+            </li>
+          );
+        })}
+        {open.length === 0 && (
+          <li data-kp-hue="resolved">
+            <span className="kp-tally-n">0</span>
+            <span className="kp-tally-word">open</span>
+          </li>
+        )}
+        {decided > 0 && (
+          <li data-quiet="">
+            <span className="kp-tally-n">{decided}</span>
+            <span className="kp-tally-word">decided</span>
+          </li>
+        )}
+      </ul>
+      <div className={PANEL_GUTTER_BLEED}>
+        <FindingsBoard rows={model.findings} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
+      </div>
+    </PanelSection>
   );
 }
