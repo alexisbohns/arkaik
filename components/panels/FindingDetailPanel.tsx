@@ -21,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
-import { criterionOf, type FindingRow } from "@/lib/utils/quality";
+import { criterionOf, verdictRepeatsStatus, type FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
 
 interface FindingDetailPanelProps {
@@ -376,7 +376,13 @@ export function FindingDetailPanel({
       {verdict && row.verification?.note && row.verification.note !== acceptedNote && (
         <PanelSection title="Verification">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            <span className="font-medium text-foreground">{VERDICT_LABEL[verdict]}</span> —{" "}
+            {/* The verdict word, unless it only repeats the status badge in the
+                title block (a refuted finding's REFUTED). */}
+            {!verdictRepeatsStatus(row) && (
+              <>
+                <span className="font-medium text-foreground">{VERDICT_LABEL[verdict]}</span> —{" "}
+              </>
+            )}
             {row.verification.note}
           </p>
         </PanelSection>

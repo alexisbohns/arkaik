@@ -3,6 +3,7 @@
 import { ShieldIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { FINDING_STATUS_LABEL } from "@/components/quality/quality-styles";
+import { cn } from "@/lib/utils";
 
 /**
  * An accepted risk, as the decision it is — the decision log's bordered row
@@ -20,13 +21,15 @@ import { FINDING_STATUS_LABEL } from "@/components/quality/quality-styles";
  * this file would make the component know about a layout it is only a guest
  * in.
  *
- * An empty note renders nothing at all. Callers derive the note as
- * `verification?.note || detail`, and the `||` only guards the first of those:
- * a finding filed with no detail and verified with no note falls all the way
- * through to `""`, and the box was drawn around an empty paragraph — which is
- * precisely the failure the `||` exists to prevent, one step further along.
- * Guarding here rather than at each call site, because each call site already
- * proved it would forget.
+ * `note` is `undefined` for every finding that is not an accepted risk, and
+ * that is the only case that renders nothing. Callers derive it as
+ * `verification?.note || detail`, and a finding filed with no detail and
+ * verified with no note falls all the way through to `""`. That finding is
+ * still an accepted risk, and this callout is the one place either surface
+ * states it — the status badge beside the scales steps aside for it — so an
+ * empty note used to make the decision vanish outright. It now keeps the badge
+ * and says the rationale is missing, as a visible gap rather than an empty
+ * paragraph inside a box.
  *
  * **Amber, not the neutral card.** It was `bg-muted/30` with a plain border,
  * which was distinctive while it was the only boxed thing in the panel. The
@@ -39,7 +42,8 @@ import { FINDING_STATUS_LABEL } from "@/components/quality/quality-styles";
  * same reason.
  */
 export function AcceptedRiskCallout({ note, className }: { note?: string; className?: string }) {
-  if (!note || note.trim() === "") return null;
+  if (note === undefined) return null;
+  const missing = note.trim() === "";
 
   return (
     <div className={className}>
@@ -51,7 +55,9 @@ export function AcceptedRiskCallout({ note, className }: { note?: string; classN
           <ShieldIcon className="size-3" aria-hidden="true" />
           {FINDING_STATUS_LABEL["accepted-risk"]}
         </Badge>
-        <p className="text-sm leading-relaxed text-muted-foreground">{note}</p>
+        <p className={cn("text-sm leading-relaxed text-muted-foreground", missing && "italic")}>
+          {missing ? "No rationale was recorded with this decision." : note}
+        </p>
       </div>
     </div>
   );

@@ -996,6 +996,20 @@ export function burndownFilterOf(filters: Pick<QualityFilters, "surface" | "doma
 }
 
 /**
+ * Whether a finding's verification verdict only repeats its status.
+ *
+ * A refuted finding carries the status `refuted` *and* the verdict `REFUTED`,
+ * and both used to print: "Refuted" as the status badge and "· Refuted" (or
+ * "Refuted — …") as the verdict beside it. The two are one decision said
+ * twice. Every other pairing says two things — `resolved` confirmed by a
+ * `CONFIRMED` verdict is a status and the evidence for it — so this is the
+ * only pair the verdict yields to the status in.
+ */
+export function verdictRepeatsStatus(row: Pick<FindingRow, "status" | "verification">): boolean {
+  return row.status === "refuted" && row.verification?.verdict === "REFUTED";
+}
+
+/**
  * The live open count a burndown line closes on — from the rows, never from
  * the burndown's last point. The replay is what the journal says happened;
  * the rows are what the section says *is*, and the headline's "180 open" is
