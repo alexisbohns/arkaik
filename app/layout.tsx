@@ -66,6 +66,17 @@ const jsonLd = {
   },
 };
 
+/**
+ * Records the last input modality on <html data-modality>: "pointer" on
+ * pointerdown, "keyboard" on any key without a command modifier. Read by
+ * app/m3/controls.css, which drops the controls' focus ring while the pointer
+ * is driving — Radix hands focus back to a trigger after a mouse pick, and
+ * Chrome counts that programmatic focus as :focus-visible. Inline and
+ * capture-phase, so it is in place before hydration and before any handler
+ * can stop the event.
+ */
+const INPUT_MODALITY_SCRIPT = `(function(){var d=document.documentElement;function s(m){if(d.dataset.modality!==m)d.dataset.modality=m}addEventListener("pointerdown",function(){s("pointer")},true);addEventListener("keydown",function(e){if(e.metaKey||e.ctrlKey||e.altKey)return;s("keyboard")},true)})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -78,6 +89,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: INPUT_MODALITY_SCRIPT }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

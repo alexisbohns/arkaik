@@ -137,6 +137,25 @@
   box-shadow: none;
 }
 
+/* The ring is for the keyboard. After a pick made with the mouse, Radix hands
+   focus back to the trigger programmatically and Chrome counts that as
+   :focus-visible, so the trigger (and, on the next open, the chosen row) wore
+   the ring though no key was pressed. No selector can tell that focus apart,
+   so app/layout.tsx records the last input on <html data-modality> —
+   "pointer" on pointerdown, "keyboard" on keydown — and the ring stands down
+   while the pointer is driving. One key press brings it straight back. Text
+   fields are left alone: a caret's field always shows where you type. */
+:root[data-modality="pointer"] :is(
+  [data-slot="select-trigger"],
+  .m3-icon-trigger,
+  [data-slot="segmented-control"] > button,
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
+  [data-slot="select-item"],
+  [data-slot^="dropdown-menu-"][role^="menuitem"]
+):focus-visible {
+  outline: none;
+}
+
 /* The icon triggers' ring sits a step further out (the Arkademy's lifted-tile
    offset), clear of the cookie, which grows past the circle once set. */
 .m3-icon-trigger:focus-visible {
