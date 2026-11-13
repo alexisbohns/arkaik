@@ -1369,4 +1369,85 @@ assert(
 );
 assert(!verdictRepeatsStatus({ status: "refuted" }), "no verdict, nothing to repeat");
 
+// ============================ panel models ===================================
+
+const { buildCriterionModel, buildFindingModel, cellHistoryStep, surfaceTitleOf } = loadQuality();
+
+{
+  const scoped = buildCriterionModel("PLT-08", "supabase", pack, section, rows);
+  assert(scoped.packEmbedded && scoped.name !== "", "a criterion the pack defines is embedded and named");
+  assert(scoped.domainCode === "PLT" && scoped.domainLabel !== "PLT", "the domain is named from the pack, its code kept");
+  assert(scoped.anchors.length === 5, "all five anchors the pack wrote are read, in level order");
+  assert(scoped.assessments.length === 1 && scoped.scoredLevel === 2, "scoped to one surface: one assessment, one scored level");
+  assert(scoped.defaultAnchorLevel === 2, "the anchor strip opens on the scored level");
+  assert(scoped.nextAnchorLevel === 3, "the next step is the first written anchor above the scored level");
+  assert(scoped.findings.length === 3 && scoped.findings.every((r) => r.criterionId === "PLT-08"), "its findings on that surface");
+
+  const unscoped = buildCriterionModel("TST-02", undefined, pack, section, rows);
+  assert(unscoped.assessments.length === 5, "unscoped: the latest assessment on every surface");
+  assert(unscoped.scoredLevel === undefined && unscoped.nextAnchorLevel === undefined, "several surfaces have no single scored level");
+  assert(unscoped.defaultAnchorLevel === unscoped.anchors[0].level, "with no single score, the strip opens on the lowest anchor");
+  assert(buildCriterionModel("TST-02", "", pack, section, rows).surface === undefined, "an empty surface is the unscoped panel");
+
+  const onIos = buildCriterionModel("TST-02", "ios", pack, section, rows);
+  assert(
+    onIos.findings.some((r) => r.surface === "cross-surface") && onIos.findings.every((r) => r.surface !== "android"),
+    "scoped to a surface: its own findings and the cross-surface ones, never another surface's",
+  );
+
+  const packless = buildCriterionModel("PLT-08", "supabase", undefined, section, buildFindingRows(section, undefined));
+  assert(!packless.packEmbedded && packless.anchors.length === 0, "without a pack nothing is embedded");
+  assert(packless.scoredLevel === 2, "without a pack the score is still known");
+}
+
+{
+  const base = rows.find((r) => r.id === "F-2026-08-PLT-supabase-02");
+  const open = buildFindingModel(base, { surfaceTitles: new Map([["supabase", "Database contract"]]), library: pack });
+  assert(open.tone === base.priority.toLowerCase(), "an open finding wears its priority's tone");
+  assert(!open.showStatus && open.acceptedNote === undefined, "an open finding says no status word and has no callout");
+  assert(open.surfaceTitle === "Database contract" && open.criterionQuestion !== "", "surface titled, criterion question read");
+
+  const accepted = buildFindingModel({ ...base, status: "accepted-risk", open: false, detail: "", verification: undefined });
+  assert(accepted.acceptedNote === "" && accepted.tone === "accepted", "an accepted risk with no rationale keeps its callout, empty");
+  assert(!accepted.showStatus, "an accepted risk's status is the callout's to say");
+
+  const noted = buildFindingModel({
+    ...base,
+    status: "accepted-risk",
+    open: false,
+    verification: { verdict: "DOWNGRADED", note: "Owned until Q3." },
+  });
+  assert(noted.acceptedNote === "Owned until Q3." && noted.verification === null, "the note the callout says is not said again as the verification");
+  assert(noted.detail === base.detail, "the detail stays when the callout said the note");
+
+  const refuted = buildFindingModel({ ...base, status: "refuted", open: false, verification: { verdict: "REFUTED", note: "n" } });
+  assert(refuted.showStatus && refuted.verification.repeatsStatus && refuted.tone === "refuted", "a refuted finding: status said, verdict yields");
+
+  assert(surfaceTitleOf("cross-surface", new Map()) === "Cross-surface", "the cross-surface lens is named, never its slug");
+  assert(surfaceTitleOf("gone", new Map()) === "gone", "an untitled surface falls back to its id");
+}
+
+{
+  const history = [
+    { auditId: "a", ts: "1", score: 40, comparable: true },
+    { auditId: "b", ts: "2", score: 46, comparable: true },
+    { auditId: "c", ts: "3", score: null, comparable: true },
+    { auditId: "d", ts: "4", score: 50, comparable: false },
+    { auditId: "e", ts: "5", score: 52, comparable: true },
+  ];
+  assert(cellHistoryStep(history, 0) === undefined, "the first reading has no step");
+  const step = cellHistoryStep(history, 1);
+  assert(step && step.previous === 40 && step.delta === 6, "a step is the move from the reading before");
+  assert(cellHistoryStep(history, 2) === undefined, "an unscored reading has no step");
+  assert(cellHistoryStep(history, 3) === undefined, "no step across a framework bump");
+  assert(cellHistoryStep(history, 4).delta === 2, "a step after a bump compares with the bumped reading");
+}
+
+{
+  const { gradeBands } = loadQuality();
+  const bands = gradeBands(pack);
+  assert(bands.map((b) => b.grade).join("") === "ABCDE", "the bands read best to worst, one per grade");
+  assert(bands[bands.length - 1].min === 0 && bands.every((b, i) => i === 0 || b.min < bands[i - 1].min), "each band starts below the one before; the last at 0");
+}
+
 process.exit(failures === 0 ? 0 : 1);

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ChevronRightIcon, ExternalLinkIcon, ListChecksIcon } from "lucide-react";
-import { CROSS_SURFACE_ID, type KritikLibrary, type QualitySection } from "@arkaik/schema";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import { EntityId, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
@@ -21,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
-import { criterionOf, verdictRepeatsStatus, type FindingRow } from "@/lib/utils/quality";
+import { buildFindingModel, buildSurfaceTitles, surfaceTitleOf, type FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
 
 interface FindingDetailPanelProps {
@@ -49,18 +49,6 @@ interface FindingDetailPanelProps {
 }
 
 /**
- * A surface id as the profile titles it.
- *
- * `cross-surface` is a findings-only lens no profile declares, so it is named
- * here rather than left to print its raw slug — the rule `FindingCard` follows,
- * and the reason a reader scoped to one surface cannot mistake it for theirs.
- */
-function surfaceTitleOf(surface: string, section?: QualitySection): string {
-  if (surface === CROSS_SURFACE_ID) return "Cross-surface";
-  return section?.profile?.surfaces?.find((candidate) => candidate?.id === surface)?.title ?? surface;
-}
-
-/**
  * What identifies the panel in the stack's header: what kind of thing this is,
  * which one it is, and the surface it was filed on. The close button belongs
  * to `PanelStack`, which owns every panel's frame.
@@ -85,7 +73,9 @@ export function FindingDetailPanelHeader({
   const row = findings.find((candidate) => candidate.id === findingId);
 
   return (
-    <>
+    // `display: contents`: a hook for the panel stylesheet, not a box —
+    // the header row stays `PanelStack`'s.
+    <div className="contents" data-quality-panel-header="finding">
       {/* Grouped so the two chips never separate when the header row runs out
           of room; the row itself is `PanelStack`'s. The idiom, and this
           comment, are `CriterionDetailPanelHeader`'s — the neighbouring panel
@@ -99,10 +89,10 @@ export function FindingDetailPanelHeader({
       </div>
       {row && (
         <span className="shrink-0 text-xs text-muted-foreground">
-          {surfaceTitleOf(row.surface, section)}
+          {surfaceTitleOf(row.surface, buildSurfaceTitles(section))}
         </span>
       )}
-    </>
+    </div>
   );
 }
 
@@ -159,7 +149,7 @@ export function FindingDetailPanel({
   // went.
   if (!row) {
     return (
-      <div className={cn(PANEL_GUTTER, "min-h-0 flex-1 overflow-y-auto py-5 lg:py-6")}>
+      <div className={cn(PANEL_GUTTER, "min-h-0 flex-1 overflow-y-auto py-5 lg:py-6")} data-quality-panel="finding">
         <EmptyState
           message={
             <>
@@ -173,28 +163,19 @@ export function FindingDetailPanel({
     );
   }
 
-  const verdict = row.verification?.verdict;
-  const acceptedRisk = row.status === "accepted-risk";
-  // The guard that keeps one sentence from appearing twice: a finding carries
-  // no dedicated note field, so an accepted risk's rationale is the refutation
-  // pass's note when it wrote one and the filed detail otherwise — and the
-  // detail is also what the Detail section renders.
-  //
-  // `||` rather than `??`, because `""` is not a note somebody wrote.
-  const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
-
-  // The pack's own prose for the criterion this answers to. `""` whenever the
-  // bundle carries no pack, or carries one that does not define this id — both
-  // are ordinary states here, and the card simply has one line fewer.
-  const criterion = criterionOf(row.criterionId, library);
-  const question = typeof criterion?.question === "string" ? criterion.question : "";
+  // Which status word shows, the accepted-risk note, the detail and the
+  // verification that do not repeat it, the criterion's question: every rule
+  // is `buildFindingModel`'s (lib/utils/quality.ts), tested there.
+  const model = buildFindingModel(row, { surfaceTitles: buildSurfaceTitles(section), library });
+  const { acceptedNote, verification } = model;
+  const question = model.criterionQuestion;
 
   return (
     // No `opacity-70` on a decided finding, unlike the card: dimming says "this
     // row is history" to somebody scanning a board, and there is no board here
     // — the reader asked for this one record, and greying what they asked for
     // reads as broken rather than as filed away.
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4" data-quality-panel="finding">
       {/* The title block. The same shape every other panel's title sits in — a
           gutter'd `gap-1.5` column at `text-lg font-semibold` (`NodeDetailPanel`,
           `CriterionDetailPanel`). It used to be `text-sm font-medium`, which
@@ -221,7 +202,7 @@ export function FindingDetailPanel({
               deliberately absent: its callout below states the status in the
               treatment that says it is a decision, and a badge up here would
               say it twice and more quietly. */}
-          {!row.open && !acceptedRisk && (
+          {model.showStatus && (
             <Badge
               variant="outline"
               className={cn(
@@ -325,7 +306,7 @@ export function FindingDetailPanel({
                 it is badged rather than left to print its raw slug — see
                 `surfaceTitleOf`, and the reason a reader scoped to one surface
                 cannot mistake it for theirs. */}
-            {row.surface === CROSS_SURFACE_ID ? (
+            {model.crossSurface ? (
               <Badge variant="outline" className="ms-auto shrink-0 font-normal">
                 Cross-surface
               </Badge>
@@ -334,7 +315,7 @@ export function FindingDetailPanel({
                 className="ms-auto min-w-0 truncate text-xs text-muted-foreground"
                 title={row.surface}
               >
-                {surfaceTitleOf(row.surface, section)}
+                {model.surfaceTitle}
               </span>
             )}
             <ChevronRightIcon
@@ -356,9 +337,9 @@ export function FindingDetailPanel({
         </button>
       </PanelSection>
 
-      {row.detail !== "" && row.detail !== acceptedNote && (
+      {model.detail !== "" && (
         <PanelSection title="Detail">
-          <p className="text-sm leading-relaxed">{row.detail}</p>
+          <p className="text-sm leading-relaxed">{model.detail}</p>
         </PanelSection>
       )}
 
@@ -373,17 +354,17 @@ export function FindingDetailPanel({
         </PanelSection>
       )}
 
-      {verdict && row.verification?.note && row.verification.note !== acceptedNote && (
+      {verification && (
         <PanelSection title="Verification">
           <p className="text-sm leading-relaxed text-muted-foreground">
             {/* The verdict word, unless it only repeats the status badge in the
                 title block (a refuted finding's REFUTED). */}
-            {!verdictRepeatsStatus(row) && (
+            {!verification.repeatsStatus && (
               <>
-                <span className="font-medium text-foreground">{VERDICT_LABEL[verdict]}</span> —{" "}
+                <span className="font-medium text-foreground">{VERDICT_LABEL[verification.verdict]}</span> —{" "}
               </>
             )}
-            {row.verification.note}
+            {verification.note}
           </p>
         </PanelSection>
       )}

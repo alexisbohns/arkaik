@@ -1,7 +1,7 @@
 "use client";
 
 import { CROSS_SURFACE_ID } from "@arkaik/schema";
-import type { FindingRow } from "@/lib/utils/quality";
+import { buildFindingModel, type FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
@@ -52,13 +52,9 @@ interface FindingCardProps {
  * Changelog dropped for the same reason.
  */
 export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion }: FindingCardProps) {
-  const acceptedRisk = row.status === "accepted-risk";
-  // What the accepted-risk callout shows: a finding carries no dedicated note
-  // field, so the rationale is the refutation pass's note when it wrote one and
-  // the filed detail otherwise. `||` rather than `??`, because `""` is not a
-  // note somebody wrote — a verification carrying an empty one would otherwise
-  // draw the bordered callout around an empty paragraph.
-  const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
+  // The accepted-risk note and the surface's name are `buildFindingModel`'s
+  // (lib/utils/quality.ts): the same rules the finding panel renders from.
+  const model = buildFindingModel(row, { surfaceTitles });
 
   return (
     <article
@@ -119,7 +115,7 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
         ) : (
           <span title={row.surface}>
             {onOpenCriterion && "· "}
-            {surfaceTitles.get(row.surface) ?? row.surface}
+            {model.surfaceTitle}
           </span>
         )}
       </div>
@@ -137,7 +133,7 @@ export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion
         is that somebody already weighed this and said "not now", and a reader
         scanning the board must not have to open a panel to learn it.
       */}
-      <AcceptedRiskCallout note={acceptedNote} className="mt-1" />
+      <AcceptedRiskCallout note={model.acceptedNote} className="mt-1" />
     </article>
   );
 }
