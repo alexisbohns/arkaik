@@ -49,14 +49,14 @@ export function Minimap({ colorBy = "status" }: MinimapProps) {
 
   return (
     <ReactFlowMinimap
-      bgColor={isDark ? "#111827" : "#f8fafc"}
+      bgColor="var(--md-surface-container)"
       nodeColor={nodeColor}
       nodeStrokeColor={nodeColor}
       // The mask paints everything *outside* the viewport. Transparent meant the
       // focus zone was carried by its 1.5px stroke alone — invisible on a dense
       // map. Dimming the surroundings is what makes "you are here" readable.
-      maskColor={isDark ? "rgba(17, 24, 39, 0.65)" : "rgba(148, 163, 184, 0.35)"}
-      maskStrokeColor={isDark ? "#60a5fa" : "#3b82f6"}
+      maskColor="color-mix(in srgb, var(--md-on-surface) 22%, transparent)"
+      maskStrokeColor="var(--md-secondary)"
       nodeStrokeWidth={2}
       pannable
       zoomable

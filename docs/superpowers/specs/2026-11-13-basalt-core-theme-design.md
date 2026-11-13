@@ -100,18 +100,18 @@ Eight color families, all taken from the expressive palettes (their hue and
 chroma come from the Basalt, Ember · Expressive and Ember · Tonal spot roles),
 with chroma capped at 40 so they stay calm next to Basalt. Each family is an
 M3 tonal palette (generated with `@material/material-color-utilities`); the
-app uses three tones per family:
+app uses two tones per family:
 
-| Family | Hue / chroma | Light (T40) | Dark (T80) | Minimap (T60) | Comes from |
-|---|---|---|---|---|---|
-| neutral | 274 / 8 | `#5D5E67` | `#C6C6D0` | `#8F909A` | Basalt secondary |
-| slate | 271 / 16 | `#585E72` | `#C0C6DD` | `#8A90A6` | Basalt tertiary |
-| indigo | 273 / 40 | `#485B99` | `#B5C4FF` | `#7B8ED0` | Ember · Expressive primary |
-| ember | 33 / 36 | `#8F4B39` | `#FFB4A1` | `#CB7C67` | Ember · Tonal spot primary |
-| plum | 330 / 33 | `#7B4F7A` | `#EAB6E7` | `#B181AF` | new hue, same chroma band |
-| green | 153 / 32 | `#3A6844` | `#A0D3A7` | `#6C9C73` | Ember · Expressive tertiary |
-| amber | 68 / 32 | `#805520` | `#F5BC7D` | `#B9874D` | Ember · Vibrant tertiary |
-| red | 25 / 84 | `#BA1A1A` | `#FFB4AB` | `#FF5449` | M3 error |
+| Family | Hue / chroma | Light (T40) | Dark (T80) | Comes from |
+|---|---|---|---|---|
+| neutral | 274 / 8 | `#5D5E67` | `#C6C6D0` | Basalt secondary |
+| slate | 271 / 16 | `#585E72` | `#C0C6DD` | Basalt tertiary |
+| indigo | 273 / 40 | `#485B99` | `#B5C4FF` | Ember · Expressive primary |
+| ember | 33 / 36 | `#8F4B39` | `#FFB4A1` | Ember · Tonal spot primary |
+| plum | 330 / 33 | `#7B4F7A` | `#EAB6E7` | new hue, same chroma band |
+| green | 153 / 32 | `#3A6844` | `#A0D3A7` | Ember · Expressive tertiary |
+| amber | 68 / 32 | `#805520` | `#F5BC7D` | Ember · Vibrant tertiary |
+| red | 25 / 84 | `#BA1A1A` | `#FFB4AB` | M3 error |
 
 Every light tone is ≥ 5.8:1 on surface and surface-container-low; every dark
 tone is ≥ 10:1. All pass WCAG AA as text.
@@ -152,8 +152,9 @@ The style maps then read:
 - `DECISION_STATUS_STYLES[s]`: `badge: text-tone-X`, `dot: bg-tone-X`.
 - `DECISION_STATUS_TILE[s]` and the two changelog tiles: `bg-tone-X/10
   text-tone-X` (the dark variant comes from the variable, so no `dark:` class).
-- `STATUS_MINIMAP_FILL`: the T60 hex (SVG fill attributes can't read a CSS
-  variable), with the family named in the comment.
+- `STATUS_MINIMAP_FILL`: the same `var(--tone-*)` (React Flow paints minimap
+  nodes with inline style, which reads the variable); the minimap's background,
+  mask and viewport outline sit on Basalt roles.
 
 Whole literal class strings, as `node-styles.ts` already requires (Tailwind
 reads source text).

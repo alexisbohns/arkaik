@@ -141,14 +141,14 @@ test("the installed app's title bar follows the Basalt surfaces", () => {
 console.log("basalt theme — status tones");
 
 const FAMILIES = {
-  neutral: ["#5D5E67", "#C6C6D0", "#8F909A"],
-  slate: ["#585E72", "#C0C6DD", "#8A90A6"],
-  indigo: ["#485B99", "#B5C4FF", "#7B8ED0"],
-  ember: ["#8F4B39", "#FFB4A1", "#CB7C67"],
-  plum: ["#7B4F7A", "#EAB6E7", "#B181AF"],
-  green: ["#3A6844", "#A0D3A7", "#6C9C73"],
-  amber: ["#805520", "#F5BC7D", "#B9874D"],
-  red: ["#BA1A1A", "#FFB4AB", "#FF5449"],
+  neutral: ["#5D5E67", "#C6C6D0"],
+  slate: ["#585E72", "#C0C6DD"],
+  indigo: ["#485B99", "#B5C4FF"],
+  ember: ["#8F4B39", "#FFB4A1"],
+  plum: ["#7B4F7A", "#EAB6E7"],
+  green: ["#3A6844", "#A0D3A7"],
+  amber: ["#805520", "#F5BC7D"],
+  red: ["#BA1A1A", "#FFB4AB"],
 };
 const STATUS_FAMILY = {
   idea: "neutral", discovery: "ember", backlog: "slate", development: "indigo",
@@ -177,9 +177,32 @@ test("every tone reads as text (AA, 4.5:1) on the surfaces it sits on", () => {
   }
 });
 
+/** `fg` laid over `bg` at `alpha`, per sRGB channel, as a hex. */
+function mix(fg, bg, alpha) {
+  const channel = (hex, i) => parseInt(hex.slice(i, i + 2), 16);
+  const hex = [1, 3, 5]
+    .map((i) => Math.round(alpha * channel(fg, i) + (1 - alpha) * channel(bg, i)).toString(16).padStart(2, "0"))
+    .join("");
+  return `#${hex}`;
+}
+
+test("every tone reads as text on its own 10% tile (AA, 4.5:1)", () => {
+  for (const [theme, vars] of [["light", LIGHT], ["dark", DARK]]) {
+    for (const family of Object.keys(FAMILIES)) {
+      const tone = vars[`--tone-${family}`];
+      const tile = mix(tone, vars["--md-surface-container-low"], 0.1);
+      const ratio = contrast(tone, tile);
+      assert.ok(ratio >= 4.5, `${theme} ${family} on its tile ${tile}: ${ratio.toFixed(2)}:1`);
+    }
+  }
+});
+
 test("Tailwind knows every tone as a color", () => {
+  const start = globals.indexOf("@theme inline {");
+  assert.ok(start !== -1, "no @theme inline block");
+  const theme = globals.slice(start, globals.indexOf("\n}", start));
   for (const family of Object.keys(FAMILIES)) {
-    assert.match(globals, new RegExp(`--color-tone-${family}:\\s*var\\(--tone-${family}\\);`));
+    assert.match(theme, new RegExp(`--color-tone-${family}:\\s*var\\(--tone-${family}\\);`));
   }
 });
 
@@ -189,7 +212,7 @@ function constant(source, name) {
   assert.ok(start !== -1, `no export const ${name}`);
   return source.slice(start, source.indexOf("};", start));
 }
-const RAW_HUE = /\b(?:gray|zinc|slate|violet|blue|purple|green|red|amber|rose|teal|sky|emerald)-\d{2,3}\b/;
+const RAW_HUE = /\b(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
 const nodeStyles = read("components/graph/nodes/node-styles.ts");
 
 test("statuses wear their family's tone, and no raw Tailwind hue", () => {
@@ -204,11 +227,11 @@ test("statuses wear their family's tone, and no raw Tailwind hue", () => {
   }
 });
 
-test("the minimap fills are the families' T60 tones", () => {
+test("the minimap fills read their family's tone variable", () => {
   const src = constant(nodeStyles, "STATUS_MINIMAP_FILL");
   for (const [status, family] of Object.entries(STATUS_FAMILY)) {
     const row = src.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
-    assert.ok(row && row.includes(`"${FAMILIES[family][2]}"`), `${status}: expected ${FAMILIES[family][2]}`);
+    assert.ok(row && row.includes(`"var(--tone-${family})"`), `${status}: expected var(--tone-${family})`);
   }
 });
 
@@ -219,8 +242,10 @@ test("decision statuses and their tiles wear their family's tone", () => {
   assert.doesNotMatch(tiles, RAW_HUE);
   for (const [status, family] of Object.entries(DECISION_FAMILY)) {
     const row = styles.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(row, `no row for ${status}`);
     assert.ok(row.includes(`text-tone-${family}`) && row.includes(`bg-tone-${family}"`), `${status} style`);
     const tile = tiles.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(tile, `no tile for ${status}`);
     assert.ok(tile.includes(`"bg-tone-${family}/10 text-tone-${family}"`), `${status} tile`);
   }
 });

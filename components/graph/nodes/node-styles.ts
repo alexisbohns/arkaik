@@ -107,19 +107,19 @@ export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
 };
 
 /**
- * Status → minimap fill, the hex twin of {@link STATUS_STYLES}. Kept beside it
- * so a status can't read as one color on a card badge and another in the
- * minimap. SVG fill attributes can't read a CSS variable, so these are each
- * family's T60 tone — the midpoint that holds on a light and a dark minimap.
+ * Status → minimap fill, the twin of {@link STATUS_STYLES} as a CSS color. Kept
+ * beside it so a status can't read as one color on a card badge and another in
+ * the minimap. React Flow paints minimap nodes through inline `style`, which
+ * reads the variable, so the fill flips with the theme like the class does.
  */
 export const STATUS_MINIMAP_FILL: Record<StatusId, string> = {
-  idea:        "#8F909A", // neutral T60
-  discovery:   "#CB7C67", // ember T60
-  backlog:     "#8A90A6", // slate T60
-  development: "#7B8ED0", // indigo T60
-  releasing:   "#B181AF", // plum T60
-  live:        "#6C9C73", // green T60
-  archived:    "#8F909A", // neutral T60
+  idea:        "var(--tone-neutral)",
+  discovery:   "var(--tone-ember)",
+  backlog:     "var(--tone-slate)",
+  development: "var(--tone-indigo)",
+  releasing:   "var(--tone-plum)",
+  live:        "var(--tone-green)",
+  archived:    "var(--tone-neutral)",
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {
