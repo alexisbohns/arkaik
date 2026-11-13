@@ -8,7 +8,7 @@ import {
   type PanelPreferences,
 } from "@/lib/config/panel-preferences";
 
-export type { PanelLook, PanelPreferences } from "@/lib/config/panel-preferences";
+export type { PanelGroupStyle, PanelLook, PanelPreferences } from "@/lib/config/panel-preferences";
 
 let cached: PanelPreferences | null = null;
 const listeners = new Set<() => void>();
@@ -27,6 +27,8 @@ function apply(preferences: PanelPreferences) {
   const root = document.documentElement;
   if (preferences.look === "calm") root.setAttribute("data-panel-look", "calm");
   else root.removeAttribute("data-panel-look");
+  if (preferences.groups === "cards") root.setAttribute("data-panel-groups", "cards");
+  else root.removeAttribute("data-panel-groups");
 }
 
 function getSnapshot(): PanelPreferences {

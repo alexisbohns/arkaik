@@ -1,13 +1,18 @@
 "use client";
 
-import { LayoutGridIcon, ListIcon, SparklesIcon, TextIcon } from "lucide-react";
+import { HeadingIcon, LayoutGridIcon, ListIcon, PanelsTopLeftIcon, SparklesIcon, TextIcon } from "lucide-react";
 
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   useDisplayPreferences,
   type AcceptanceDisplay,
 } from "@/lib/hooks/useDisplayPreferences";
-import { setPanelPreferences, usePanelPreferences, type PanelLook } from "@/lib/hooks/usePanelPreferences";
+import {
+  setPanelPreferences,
+  usePanelPreferences,
+  type PanelGroupStyle,
+  type PanelLook,
+} from "@/lib/hooks/usePanelPreferences";
 
 const ACCEPTANCE_DISPLAY_OPTIONS = [
   { id: "rows", label: "Rows", icon: ListIcon },
@@ -18,6 +23,11 @@ const PANEL_LOOK_OPTIONS = [
   { id: "expressive", label: "Expressive", icon: SparklesIcon },
   { id: "calm", label: "Calm", icon: TextIcon },
 ] as const satisfies readonly { id: PanelLook; label: string; icon: typeof ListIcon }[];
+
+const PANEL_GROUP_OPTIONS = [
+  { id: "headlines", label: "Headlines", icon: HeadingIcon },
+  { id: "cards", label: "Cards", icon: PanelsTopLeftIcon },
+] as const satisfies readonly { id: PanelGroupStyle; label: string; icon: typeof ListIcon }[];
 
 /**
  * How this reader wants the project drawn — the settings that change a display
@@ -54,6 +64,23 @@ export function DisplayPreferencesPanel({ projectId }: { projectId: string }) {
           options={PANEL_LOOK_OPTIONS}
           value={panels.look}
           onChange={(look) => setPanelPreferences({ look })}
+        />
+      </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Panel sections</p>
+          <p className="text-sm text-muted-foreground">
+            Headlines set a panel&rsquo;s Platforms, Relations and History apart with space
+            alone. Cards lift each one onto its own surface. Applies to every project in this
+            browser.
+          </p>
+        </div>
+        <SegmentedControl
+          className="shrink-0 self-start"
+          ariaLabel="Panel sections"
+          options={PANEL_GROUP_OPTIONS}
+          value={panels.groups}
+          onChange={(groups) => setPanelPreferences({ groups })}
         />
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

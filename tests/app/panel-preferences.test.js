@@ -36,6 +36,13 @@ assert(parsePanelPreferences('{"look":"calm"}').look === "calm", "a stored Calm 
 assert(parsePanelPreferences('{"look":"loud"}').look === "expressive", "an unknown look falls back to the default");
 assert(parsePanelPreferences("not json").look === "expressive", "garbage in storage falls back to the default");
 assert(parsePanelPreferences("null").look === "expressive", "a stored null falls back to the default");
+assert(parsePanelPreferences(null).groups === "headlines", "group bars default to headlines");
+assert(parsePanelPreferences('{"groups":"cards"}').groups === "cards", "stored floating cards read back");
+assert(parsePanelPreferences('{"groups":"tiles"}').groups === "headlines", "an unknown group style falls back");
+assert(
+  parsePanelPreferences('{"look":"calm","groups":"cards"}').look === "calm",
+  "look and group style are independent",
+);
 
 /** Runs the inline script against a fake document and storage; returns the attributes it set. */
 function runScript(stored, { throwOnRead = false } = {}) {
@@ -58,6 +65,8 @@ assert(!("data-panel-look" in runScript(null)), "with nothing stored, the script
 assert(!("data-panel-look" in runScript('{"look":"expressive"}')), "Expressive is the absence of the attribute");
 assert(!("data-panel-look" in runScript("{oops")), "corrupt storage writes nothing and does not throw");
 assert(!("data-panel-look" in runScript(null, { throwOnRead: true })), "storage that throws (private mode) is survived");
+assert(runScript('{"groups":"cards"}')["data-panel-groups"] === "cards", "the script puts floating cards on <html>");
+assert(!("data-panel-groups" in runScript('{"look":"calm"}')), "headlines are the absence of the groups attribute");
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);
