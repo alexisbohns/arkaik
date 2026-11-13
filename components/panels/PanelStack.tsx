@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { XIcon } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -278,23 +279,31 @@ export function PanelStack<T>({
                   <div className="flex min-w-0 flex-1 flex-row items-center gap-2">
                     {renderHeader(entry, index)}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0 cursor-pointer"
-                    aria-label={`Close ${labelOf(entry)}`}
-                    // The section, not the article: the button sits in the
-                    // header, which is the article's sibling, so `closest` walks
-                    // straight past it to the cell. That cell is what `runClose`
-                    // asks about focus, and it has to be the whole column —
-                    // focus parked in the body must still count as focus inside
-                    // the panel being closed.
-                    onClick={(event) =>
-                      runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
-                    }
-                  >
-                    <XIcon className="size-4" />
-                  </Button>
+                  {/* An icon-only control names itself on hover as well as to a
+                      screen reader: the aria-label below says which panel,
+                      the tooltip only needs the verb. */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 cursor-pointer"
+                        aria-label={`Close ${labelOf(entry)}`}
+                        // The section, not the article: the button sits in the
+                        // header, which is the article's sibling, so `closest` walks
+                        // straight past it to the cell. That cell is what `runClose`
+                        // asks about focus, and it has to be the whole column —
+                        // focus parked in the body must still count as focus inside
+                        // the panel being closed.
+                        onClick={(event) =>
+                          runClose([index], () => onCloseAt(index), event.currentTarget.closest("section"))
+                        }
+                      >
+                        <XIcon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Close</TooltipContent>
+                  </Tooltip>
                 </header>
               )}
               {/*

@@ -11,6 +11,8 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  ImageMinus,
+  ImagePlus,
   CirclePlus,
   Pencil,
   ArrowRightLeft,
@@ -65,6 +67,8 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "quality.finding.resolved": CircleCheck,
   "quality.finding.accepted": ShieldCheck,
   "quality.signal.tripped": Radar,
+  "screenshot.recorded": ImagePlus,
+  "screenshot.removed": ImageMinus,
 };
 
 export interface DescribedEvent {
@@ -205,6 +209,21 @@ export function describeJournalEvent(
       const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
       const commit = str(event.commit);
       return { icon, text: `Signal tripped: ${where}`, meta: [str(event.signal), commit ? `at ${commit.slice(0, 7)}` : undefined].filter(Boolean).join(" · ") };
+    }
+    case "screenshot.recorded": {
+      const platform = str(event.platform);
+      const where = platform ? PLATFORM_LABELS[platform as keyof typeof PLATFORM_LABELS] ?? platform : "?";
+      const source = str(event.source);
+      return {
+        icon,
+        text: `${resolveTitle(event.node_id, nodesById)}: ${where} screenshot recorded`,
+        meta: source === "manual" ? "by hand" : source,
+      };
+    }
+    case "screenshot.removed": {
+      const platform = str(event.platform);
+      const where = platform ? PLATFORM_LABELS[platform as keyof typeof PLATFORM_LABELS] ?? platform : "?";
+      return { icon, text: `${resolveTitle(event.node_id, nodesById)}: ${where} screenshot removed` };
     }
     default:
       // Unknown type — forward-compatible: render the raw type rather than erroring.
