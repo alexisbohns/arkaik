@@ -59,7 +59,7 @@ export function DeliverableTimeline({
               and so is there whether or not a link exists. */}
           <div className="flex flex-col items-center">
             <DeliverableHoverCard deliverable={deliverable} nodesById={nodesById}>
-              <span className={`${SHIP_MARK} bg-green-500/10 text-green-600 dark:text-green-400`}>
+              <span className={`${SHIP_MARK} bg-tone-green/10 text-tone-green`}>
                 <PackageIcon className="size-3" aria-hidden="true" />
               </span>
             </DeliverableHoverCard>

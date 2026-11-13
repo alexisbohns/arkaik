@@ -39,6 +39,15 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+  /* Status tones (app/m3/basalt.css): text-tone-green, bg-tone-green/10, … */
+  --color-tone-neutral: var(--tone-neutral);
+  --color-tone-slate: var(--tone-slate);
+  --color-tone-indigo: var(--tone-indigo);
+  --color-tone-ember: var(--tone-ember);
+  --color-tone-plum: var(--tone-plum);
+  --color-tone-green: var(--tone-green);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-red: var(--tone-red);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

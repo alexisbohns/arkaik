@@ -138,6 +138,102 @@ test("the installed app's title bar follows the Basalt surfaces", () => {
   assert.doesNotMatch(manifest, /#f7f7f7/i);
 });
 
+console.log("basalt theme — status tones");
+
+const FAMILIES = {
+  neutral: ["#5D5E67", "#C6C6D0", "#8F909A"],
+  slate: ["#585E72", "#C0C6DD", "#8A90A6"],
+  indigo: ["#485B99", "#B5C4FF", "#7B8ED0"],
+  ember: ["#8F4B39", "#FFB4A1", "#CB7C67"],
+  plum: ["#7B4F7A", "#EAB6E7", "#B181AF"],
+  green: ["#3A6844", "#A0D3A7", "#6C9C73"],
+  amber: ["#805520", "#F5BC7D", "#B9874D"],
+  red: ["#BA1A1A", "#FFB4AB", "#FF5449"],
+};
+const STATUS_FAMILY = {
+  idea: "neutral", discovery: "ember", backlog: "slate", development: "indigo",
+  releasing: "plum", live: "green", archived: "neutral",
+};
+const DECISION_FAMILY = {
+  proposed: "neutral", approved: "indigo", enacted: "green",
+  rejected: "red", deprecated: "amber", superseded: "plum",
+};
+
+test("each family is declared per theme, with its T40 / T80 tone", () => {
+  for (const [family, [light, dark]] of Object.entries(FAMILIES)) {
+    assert.equal(LIGHT[`--tone-${family}`], light, `light ${family}`);
+    assert.equal(DARK[`--tone-${family}`], dark, `dark ${family}`);
+  }
+});
+
+test("every tone reads as text (AA, 4.5:1) on the surfaces it sits on", () => {
+  for (const [theme, vars] of [["light", LIGHT], ["dark", DARK]]) {
+    for (const family of Object.keys(FAMILIES)) {
+      for (const surface of ["--md-surface", "--md-surface-container-low", "--md-surface-container"]) {
+        const ratio = contrast(vars[`--tone-${family}`], vars[surface]);
+        assert.ok(ratio >= 4.5, `${theme} ${family} on ${surface}: ${ratio.toFixed(2)}:1`);
+      }
+    }
+  }
+});
+
+test("Tailwind knows every tone as a color", () => {
+  for (const family of Object.keys(FAMILIES)) {
+    assert.match(globals, new RegExp(`--color-tone-${family}:\\s*var\\(--tone-${family}\\);`));
+  }
+});
+
+/** The text of `export const NAME … = { … };` in a source file. */
+function constant(source, name) {
+  const start = source.indexOf(`export const ${name}`);
+  assert.ok(start !== -1, `no export const ${name}`);
+  return source.slice(start, source.indexOf("};", start));
+}
+const RAW_HUE = /\b(?:gray|zinc|slate|violet|blue|purple|green|red|amber|rose|teal|sky|emerald)-\d{2,3}\b/;
+const nodeStyles = read("components/graph/nodes/node-styles.ts");
+
+test("statuses wear their family's tone, and no raw Tailwind hue", () => {
+  const src = constant(nodeStyles, "STATUS_STYLES");
+  assert.doesNotMatch(src, RAW_HUE);
+  for (const [status, family] of Object.entries(STATUS_FAMILY)) {
+    const row = src.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(row, `no row for ${status}`);
+    for (const cls of [`text-tone-${family}`, `bg-tone-${family}"`, `stroke-tone-${family}`, `bg-tone-${family}/10`]) {
+      assert.ok(row.includes(cls), `${status}: missing ${cls}`);
+    }
+  }
+});
+
+test("the minimap fills are the families' T60 tones", () => {
+  const src = constant(nodeStyles, "STATUS_MINIMAP_FILL");
+  for (const [status, family] of Object.entries(STATUS_FAMILY)) {
+    const row = src.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(row && row.includes(`"${FAMILIES[family][2]}"`), `${status}: expected ${FAMILIES[family][2]}`);
+  }
+});
+
+test("decision statuses and their tiles wear their family's tone", () => {
+  const styles = constant(nodeStyles, "DECISION_STATUS_STYLES");
+  const tiles = constant(nodeStyles, "DECISION_STATUS_TILE");
+  assert.doesNotMatch(styles, RAW_HUE);
+  assert.doesNotMatch(tiles, RAW_HUE);
+  for (const [status, family] of Object.entries(DECISION_FAMILY)) {
+    const row = styles.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(row.includes(`text-tone-${family}`) && row.includes(`bg-tone-${family}"`), `${status} style`);
+    const tile = tiles.split("\n").find((line) => line.trimStart().startsWith(`${status}:`));
+    assert.ok(tile.includes(`"bg-tone-${family}/10 text-tone-${family}"`), `${status} tile`);
+  }
+});
+
+test("the changelog's ship mark is green and the forge tile plum", () => {
+  const timeline = read("components/journal/DeliverableTimeline.tsx");
+  const hover = read("components/journal/DeliverableHoverCard.tsx");
+  assert.match(timeline, /bg-tone-green\/10 text-tone-green/);
+  assert.match(hover, /export const FORGE_TILE = "bg-tone-plum\/10 text-tone-plum";/);
+  assert.match(hover, /group-hover:bg-tone-plum\/20/);
+  assert.doesNotMatch(timeline + hover, /(?:green|purple)-[456]00/);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
