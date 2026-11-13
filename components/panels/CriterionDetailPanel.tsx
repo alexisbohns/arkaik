@@ -12,7 +12,9 @@ import {
 import { MATURITY_LEVELS, type KritikLibrary, type QualitySection } from "@arkaik/schema";
 import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection, PANEL_GUTTER, PANEL_GUTTER_BLEED } from "@/components/panels/PanelSection";
+import { cn } from "@/lib/utils";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
+import { usePanelPreferences } from "@/lib/hooks/usePanelPreferences";
 import {
   CitedText,
   ClampedText,
@@ -139,14 +141,18 @@ export function CriterionDetailPanel({
     [criterionId, surface, library, section, findings],
   );
   const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
+  // The panel look is a reader's preference (Settings → Display). Most of it
+  // is CSS on `<html data-panel-look>`; the intro and the findings heading
+  // differ in markup, so they read it here — the way `NodeDetailPanel` does.
+  const calm = usePanelPreferences().look === "calm";
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 py-5 lg:py-6" data-quality-panel="criterion">
-      <CriterionIntro model={model} />
+      <CriterionIntro model={model} calm={calm} />
       <CriterionAnchors model={model} />
       <CriterionEvidence model={model} />
       <CriterionGuidance model={model} />
-      <CriterionFindings model={model} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
+      <CriterionFindings model={model} calm={calm} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
     </div>
   );
 }
@@ -178,8 +184,45 @@ function NoPack() {
  * the one sentence that says what the name means. The definition follows as
  * the panel's first section: it is the long answer to the same question, and
  * a hero holding a paragraph that size stops being a hero.
+ *
+ * Expressive puts the two on a hero that bleeds up under the header. Calm has
+ * no hero: the same block on the panel itself, at the Calm node title's 19px
+ * with the question muted — sized by the stylesheet through the
+ * `data-criterion-*` hooks, so the block itself stays plain.
  */
-function CriterionIntro({ model }: { model: CriterionModel }) {
+function CriterionIntro({ model, calm }: { model: CriterionModel; calm: boolean }) {
+  const definition = model.definition !== "" && (
+    <PanelSection title="Definition">
+      <p className="text-sm leading-relaxed" data-criterion-definition="">
+        {model.definition}
+      </p>
+    </PanelSection>
+  );
+  if (calm)
+    return (
+      <>
+        {(model.name !== "" || model.question !== "") && (
+          <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")} data-criterion-intro="">
+            {model.name !== "" && (
+              <p className="text-lg font-semibold text-foreground" data-criterion-name="">
+                {model.name}
+              </p>
+            )}
+            {model.question !== "" && (
+              <p className="text-sm leading-relaxed text-foreground" data-criterion-question="">
+                {model.question}
+              </p>
+            )}
+          </div>
+        )}
+        {!model.packEmbedded && (
+          <div className={PANEL_GUTTER}>
+            <NoPack />
+          </div>
+        )}
+        {definition}
+      </>
+    );
   return (
     <>
       <QualityHero panel="criterion" hue="rubric" shape="rubric">
@@ -187,11 +230,7 @@ function CriterionIntro({ model }: { model: CriterionModel }) {
         {model.question !== "" && <p className="kp-hero-desc">{model.question}</p>}
         {!model.packEmbedded && <NoPack />}
       </QualityHero>
-      {model.definition !== "" && (
-        <PanelSection title="Definition">
-          <p className="text-sm leading-relaxed">{model.definition}</p>
-        </PanelSection>
-      )}
+      {definition}
     </>
   );
 }
@@ -485,19 +524,42 @@ const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
  * No `onOpenCriterion`: every row here answers to the criterion in this
  * panel's own header, so the chip would be a button that re-opens the panel it
  * is drawn in. `FindingCard` drops it with the handler.
+ *
+ * Calm drops the tally for a count in the heading — "Findings 3 · 1 open",
+ * or just "3" when all of them are open — the Calm look's way of saying a
+ * number: quietly, where the eye already is.
  */
 function CriterionFindings({
   model,
+  calm,
   surfaceTitles,
   onOpenFinding,
 }: {
   model: CriterionModel;
+  calm: boolean;
   surfaceTitles: ReadonlyMap<string, string>;
   onOpenFinding: (findingId: string) => void;
 }) {
   if (model.findings.length === 0) return null;
   const open = model.findings.filter((finding) => finding.open);
   const decided = model.findings.length - open.length;
+  const board = (
+    <div className={PANEL_GUTTER_BLEED}>
+      <FindingsBoard rows={model.findings} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
+    </div>
+  );
+  if (calm)
+    return (
+      <section className={cn(PANEL_GUTTER, "kp-calm-section")}>
+        <h3 className="kp-calm-h">
+          <span>Findings</span>
+          <span className="kp-calm-h-meta">
+            {decided === 0 ? `${open.length}` : `${model.findings.length} · ${open.length} open`}
+          </span>
+        </h3>
+        {board}
+      </section>
+    );
   return (
     <PanelSection title="Findings">
       <ul className="kp-tally" aria-label="Findings by priority">
@@ -524,9 +586,7 @@ function CriterionFindings({
           </li>
         )}
       </ul>
-      <div className={PANEL_GUTTER_BLEED}>
-        <FindingsBoard rows={model.findings} surfaceTitles={surfaceTitles} onOpenFinding={onOpenFinding} />
-      </div>
+      {board}
     </PanelSection>
   );
 }

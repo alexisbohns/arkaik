@@ -13,7 +13,17 @@ import type { KritikLibrary, QualitySection } from "@arkaik/schema";
 import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
 import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { SpeciesShape } from "@/components/panels/species-shape";
-import { CitedText, FoldTile, QualityHero } from "@/components/quality/QualityPanelParts";
+import {
+  CalmChip,
+  CalmFold,
+  CalmProp,
+  CalmProps,
+  CitedText,
+  ClampedText,
+  FoldTile,
+  MeasuredClamp,
+  QualityHero,
+} from "@/components/quality/QualityPanelParts";
 import { QualityPanelShape } from "@/components/quality/QualityPanelShape";
 import {
   COST_HINT,
@@ -27,6 +37,7 @@ import {
 } from "@/components/quality/quality-styles";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
+import { usePanelPreferences } from "@/lib/hooks/usePanelPreferences";
 import {
   buildFindingModel,
   buildSurfaceTitles,
@@ -159,6 +170,10 @@ export function FindingDetailPanel({
   // context threaded through the stack to carry one row, and the panel takes
   // an id rather than a row for the reason `findings` documents above.
   const row = findings.find((candidate) => candidate.id === findingId);
+  // The panel look is a reader's preference (Settings → Display). Most of it
+  // is CSS on `<html data-panel-look>`; the intro, the risk and the detail
+  // differ in markup, so they read it here — the way `NodeDetailPanel` does.
+  const calm = usePanelPreferences().look === "calm";
 
   // Say so rather than rendering nothing: a blank body would read as a bug.
   //
@@ -197,10 +212,10 @@ export function FindingDetailPanel({
     // reads as broken rather than as filed away. The tone does that work: a
     // decided finding stops wearing its priority.
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4" data-quality-panel="finding">
-      <FindingIntro model={model} />
-      <FindingRisk model={model} />
+      {calm ? <FindingIntroCalm model={model} /> : <FindingIntro model={model} />}
+      {calm ? <FindingRiskCalm model={model} /> : <FindingRisk model={model} />}
       <FindingCriterion model={model} onOpenCriterion={onOpenCriterion} />
-      <FindingDetail model={model} />
+      <FindingDetail model={model} calm={calm} />
       <FindingNodes model={model} nodesById={nodesById} onOpenNode={onOpenNode} />
     </div>
   );
@@ -270,6 +285,48 @@ function FindingIntro({ model }: { model: FindingModel }) {
         )}
       </QualityHero>
       <AcceptedDecision model={model} />
+    </div>
+  );
+}
+
+/**
+ * Calm's intro: no hero, the title on the panel at the Calm node title's
+ * scale, and a status chip only once the finding is decided — green for
+ * `resolved` alone, the rule the rail follows.
+ *
+ * An accepted risk is a quiet ruled note instead of a tile: the shield and
+ * the words, then the rationale resting at three lines. Like the Expressive
+ * tile it states the status whatever the note holds, and says so when no
+ * rationale was recorded (`acceptedNote === ""`).
+ */
+function FindingIntroCalm({ model }: { model: FindingModel }) {
+  const note = model.acceptedNote?.trim() ?? "";
+  return (
+    <div className={cn(PANEL_GUTTER, "kp-calm-intro")}>
+      <p className="kp-calm-title">{model.row.title}</p>
+      {model.showStatus && (
+        <div className="kp-calm-chips">
+          <CalmChip tone={model.row.status === "resolved" ? "green" : undefined}>
+            <span className="kp-calm-dot" aria-hidden="true" />
+            {FINDING_STATUS_LABEL[model.row.status]}
+          </CalmChip>
+        </div>
+      )}
+      {model.acceptedRisk && (
+        <div className="kp-calm-accepted">
+          <p className="kp-calm-accepted-tag">
+            <ShieldIcon className="size-3.5" aria-hidden="true" />
+            {FINDING_STATUS_LABEL["accepted-risk"]}
+          </p>
+          {note !== "" ? (
+            <MeasuredClamp lines={3} className="kp-calm-prose kp-calm-muted">
+              {note}
+            </MeasuredClamp>
+          ) : (
+            <p className="kp-calm-prose kp-calm-muted italic">No rationale was recorded with this decision.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -364,6 +421,70 @@ function FindingRisk({ model }: { model: FindingModel }) {
   );
 }
 
+/** Priority and severity → the basalt tone each wears in the Calm equation. */
+const PRIORITY_TONE = { P0: "red", P1: "ember", P2: "amber", P3: "neutral" } as const;
+const SEVERITY_TONE = { critical: "red", high: "ember", medium: "amber", low: "indigo", info: "neutral" } as const;
+
+function Term({ value, label, tone }: { value: ReactNode; label: string; tone?: string }) {
+  return (
+    <span className="kp-calm-term" data-tone={tone}>
+      <span className="kp-calm-term-v">{value}</span>
+      <span className="kp-calm-term-l">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * Calm's bill, as one equation — impact × likelihood = risk → severity · cost
+ * — under the priority, the panel's one tinted tile, with the priority's gloss
+ * beside it. The other glosses wait behind "How it adds up". A screen reader
+ * hears the whole bill as one sentence; the equation is its picture.
+ */
+function FindingRiskCalm({ model }: { model: FindingModel }) {
+  const { row } = model;
+  return (
+    <section className={cn(PANEL_GUTTER, "kp-calm-section")}>
+      <h3 className="kp-calm-h">Risk</h3>
+      <div className="kp-calm-risk">
+        <span className="kp-calm-prio" data-tone={PRIORITY_TONE[row.priority]} data-size="l">
+          {row.priority}
+        </span>
+        <div className="kp-calm-risk-body">
+          <p className="kp-calm-risk-gloss">{PRIORITY_GLOSS[row.priority]}</p>
+          <p className="sr-only">
+            Impact {row.impact} times likelihood {row.likelihood} gives a risk of {row.risk}:{" "}
+            {SEVERITY_LABEL[row.severity]} severity, priority {row.priority}, remediation cost {COST_TERM[row.cost]}.
+          </p>
+          <p className="kp-calm-eq" aria-hidden="true">
+            <Term value={row.impact} label="impact" />
+            <span className="kp-calm-op">×</span>
+            <Term value={row.likelihood} label="likelihood" />
+            <span className="kp-calm-op">=</span>
+            <Term value={row.risk} label="risk" />
+            <span className="kp-calm-op">→</span>
+            <Term value={SEVERITY_LABEL[row.severity]} label="severity" tone={SEVERITY_TONE[row.severity]} />
+            <span className="kp-calm-op kp-calm-op-gap">·</span>
+            <Term value={row.cost} label="cost" />
+          </p>
+        </div>
+      </div>
+      <CalmFold title="How it adds up">
+        <CalmProps>
+          <CalmProp label="Risk">
+            <span className="kp-calm-muted">Impact × likelihood.</span>
+          </CalmProp>
+          <CalmProp label={SEVERITY_LABEL[row.severity]}>
+            <span className="kp-calm-muted">{SEVERITY_HINT[row.severity]}</span>
+          </CalmProp>
+          <CalmProp label={COST_TERM[row.cost]}>
+            <span className="kp-calm-muted">{COST_HINT[row.cost]}</span>
+          </CalmProp>
+        </CalmProps>
+      </CalmFold>
+    </section>
+  );
+}
+
 /* ───────────────────────────── criterion ───────────────────────────── */
 
 /**
@@ -435,27 +556,36 @@ interface DetailTile {
  * The evidence keeps its preserved line breaks and lights its `file:line`
  * citations: a citation reflowed into prose is a citation nobody can paste
  * into an editor. The verification's verdict leads it, unless it only repeats
- * the status pill in the hero (`repeatsStatus`, a refuted finding's REFUTED).
+ * the status in the intro (`repeatsStatus`, a refuted finding's REFUTED).
+ *
+ * The same deck in both looks. In Calm an open tile's text also rests at a
+ * few lines under "Show all", so one long tile cannot turn the quiet look
+ * into a wall of prose.
  */
-function FindingDetail({ model }: { model: FindingModel }) {
+function FindingDetail({ model, calm }: { model: FindingModel; calm: boolean }) {
+  // Calm clamps each body; Expressive shows it whole.
+  const clamp = (text: string, limit: number, lines: number, className: string, what: string, body: ReactNode) =>
+    calm ? (
+      <ClampedText text={text} limit={limit} lines={lines} className={className} what={what}>
+        {body}
+      </ClampedText>
+    ) : (
+      <p className={className}>{body}</p>
+    );
   const tiles: DetailTile[] = [];
   if (model.detail !== "")
     tiles.push({
       key: "detail",
       title: "Detail",
       peek: firstWords(model.detail),
-      body: <p className="kp-prose">{model.detail}</p>,
+      body: clamp(model.detail, 360, 4, "kp-prose", "the detail", model.detail),
     });
   if (model.evidence !== "")
     tiles.push({
       key: "evidence",
       title: "Evidence",
       peek: firstWords(model.evidence, 48),
-      body: (
-        <p className="kp-mono">
-          <CitedText text={model.evidence} />
-        </p>
-      ),
+      body: clamp(model.evidence, 420, 6, "kp-mono", "the evidence", <CitedText text={model.evidence} />),
     });
   const { verification } = model;
   if (verification) {
@@ -469,9 +599,7 @@ function FindingDetail({ model }: { model: FindingModel }) {
       body: (
         <div className="kp-verify">
           {verdict}
-          <p className="kp-prose">
-            <CitedText text={verification.note} />
-          </p>
+          {clamp(verification.note, 300, 3, "kp-prose", "the note", <CitedText text={verification.note} />)}
         </div>
       ),
     });
