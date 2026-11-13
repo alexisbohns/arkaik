@@ -11,7 +11,6 @@ import {
   describeBurndownCause,
   describeBurndownTrend,
   describeBurndownDetail,
-  describeClosedSince,
 } from "@/lib/utils/quality";
 
 /** The sparkline's box. `preserveAspectRatio="none"` stretches it to the card; strokes do not scale. */
@@ -59,39 +58,15 @@ export function BurndownSparkline({ burndown, className }: { burndown: FindingsB
 }
 
 /**
- * The closed-since sentence: `20 closed since the 2026-08 audit · 180 open`.
+ * What the open count is made of since the last audit, as a sentence: `19
+ * resolved, 0 accepted as risks, 0 opened since the 2026-09 audit.`
  *
  * This is the line issue #441 exists for. The matrix scores what the code is,
  * and does not move until a re-audit; this says what was *done* in the
- * meantime, the day it was done. The `title` splits "closed" into fixes and
- * accepted risks, and names what opened.
- */
-export function ClosedSinceLine({
-  burndown,
-  openNow,
-  className,
-}: {
-  burndown: FindingsBurndown;
-  openNow: number;
-  className?: string;
-}) {
-  const text = describeClosedSince(burndown, openNow);
-  if (text === null) return null;
-  return (
-    <span className={className} title={describeBurndownDetail(burndown) ?? undefined}>
-      {text}
-    </span>
-  );
-}
-
-/**
- * The closed-since line's breakdown, said as a sentence: `19 resolved, 0
- * accepted as risks, 0 opened since the 2026-09 audit.`
- *
- * For a hero whose numeral already says "N open": the closed-since sentence
- * would end on that same number, so the hero says what the number is made of
- * instead — `describeBurndownDetail`, the closed-since line's own tooltip,
- * said once and in the open.
+ * meantime, the day it was done. It sits under a hero numeral that already
+ * says "N open", so it splits the closes into fixes and accepted risks and
+ * names what opened, rather than ending on the number just said
+ * (`describeClosedSince`'s "· 185 open").
  */
 export function BurndownDetail({ burndown }: { burndown: FindingsBurndown }) {
   const text = describeBurndownDetail(burndown);

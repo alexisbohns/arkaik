@@ -1490,3 +1490,40 @@ export function buildFindingModel(
   };
 }
 
+
+/** What a run of findings can be headed by — the four sort keys a row carries. */
+export type FindingGroupKey = "priority" | "severity" | "surface" | "domain";
+
+const FINDING_GROUP_KEYS: readonly FindingGroupKey[] = ["priority", "severity", "surface", "domain"];
+
+/**
+ * The rows as they are sorted, cut into contiguous runs under the key they are
+ * sorted by — read off the rows themselves, as the key that splits them into
+ * the fewest runs (and more than one).
+ *
+ * A presentation of the order, never a second one: no row moves, and nothing is
+ * filtered. The board does not know which sort produced its rows (the cell and
+ * criterion panels hand it their own), so it asks the rows; a list with nothing
+ * to split on — one finding, or every row in one lane — comes back as a single
+ * run with no key, and gets no headings. Ties go to the earlier key, so a list
+ * where priority and severity cut identically is headed by priority, the lane a
+ * reader acts on.
+ */
+export function groupFindingRuns(rows: readonly FindingRow[]): {
+  key: FindingGroupKey | null;
+  runs: { value: string; rows: FindingRow[] }[];
+} {
+  let best: { key: FindingGroupKey; runs: { value: string; rows: FindingRow[] }[] } | null = null;
+  for (const key of FINDING_GROUP_KEYS) {
+    const runs: { value: string; rows: FindingRow[] }[] = [];
+    for (const row of rows) {
+      const value = row[key];
+      const last = runs[runs.length - 1];
+      if (last && last.value === value) last.rows.push(row);
+      else runs.push({ value, rows: [row] });
+    }
+    if (runs.length < 2) continue;
+    if (!best || runs.length < best.runs.length) best = { key, runs };
+  }
+  return best ?? { key: null, runs: rows.length === 0 ? [] : [{ value: "", rows: [...rows] }] };
+}

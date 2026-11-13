@@ -1,11 +1,16 @@
 "use client";
 
-import { CROSS_SURFACE_ID } from "@arkaik/schema";
-import { buildFindingModel, type FindingRow } from "@/lib/utils/quality";
-import { Badge } from "@/components/ui/badge";
+import { ShieldIcon } from "lucide-react";
+import { buildFindingModel, verdictRepeatsStatus, type FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
-import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
-import { FindingScales } from "@/components/quality/FindingScales";
+import { RiskBadge } from "@/components/quality/RiskBadge";
+import { ScaleChip } from "@/components/quality/ScaleChip";
+import {
+  COST_HINT,
+  COST_TERM,
+  FINDING_STATUS_LABEL,
+  VERDICT_LABEL,
+} from "@/components/quality/quality-styles";
 
 interface FindingCardProps {
   row: FindingRow;
@@ -40,100 +45,108 @@ interface FindingCardProps {
  * `FindingDetailPanel`, and the title is the control that opens it.
  *
  * What stays on the card is what a reader triages from without opening
- * anything: the title, the criterion and surface it answers to, and the scales.
+ * anything, in the order they ask it: how bad (the risk badge, leading — the
+ * figure the board is sorted by, see `RiskBadge`), what (the title), where (the
+ * criterion and the surface), what it costs and what the review said, and —
+ * for an accepted risk — the decision itself.
  *
- * The severity treatment comes from `row.severity`, never from `row.risk`. They
- * agree today, and the day a pack moves a bucket they would stop agreeing —
- * with the colour saying one thing and the lane the board sorted it into saying
- * another. `severityOf` is the pack's answer; this only paints it.
- *
- * No card chrome. The entry sits on the timeline's rail, and a bordered box per
- * entry inside a rail that is already the grouping is the second lid the
- * Changelog dropped for the same reason.
+ * No card chrome of its own: the board's deck tile is the card, and a tile
+ * inside a tile is the second lid the Changelog dropped for the same reason.
+ * The rules — the accepted-risk note, the surface's name, whether the status is
+ * said — are `buildFindingModel`'s (lib/utils/quality.ts), the same the finding
+ * panel renders from.
  */
 export function FindingCard({ row, surfaceTitles, onOpenFinding, onOpenCriterion }: FindingCardProps) {
-  // The accepted-risk note and the surface's name are `buildFindingModel`'s
-  // (lib/utils/quality.ts): the same rules the finding panel renders from.
   const model = buildFindingModel(row, { surfaceTitles });
+  const verdict = row.verification?.verdict;
 
   return (
     <article
-      className={cn(
-        "flex min-w-0 flex-col gap-1",
-        // Resolved and refuted findings are history, not work. Dimmed rather
-        // than dropped, because the board is also where somebody checks what
-        // was already answered — and the status filter is how you hide them.
-        !row.open && "opacity-70",
-      )}
+      className="kq-scope kq-fcard"
+      // Resolved and refuted findings are history, not work. Dimmed rather
+      // than dropped, because the board is also where somebody checks what
+      // was already answered — and the status filter is how you hide them.
+      data-decided={!row.open || undefined}
     >
-      {/* The name first, on the line the rail's square centres against, and the
-          control that opens the finding. */}
-      <button
-        type="button"
-        onClick={() => onOpenFinding(row.id)}
-        className="w-full text-left text-sm font-medium leading-relaxed hover:underline focus-visible:underline hover:underline-offset-4 focus-visible:underline-offset-4"
-      >
-        {row.title}
-      </button>
+      <RiskBadge impact={row.impact} likelihood={row.likelihood} risk={row.risk} severity={row.severity} />
+      <div className="kq-fcard-main">
+        {/* The name, and the control that opens the finding. */}
+        <button type="button" className="kq-fcard-title" onClick={() => onOpenFinding(row.id)}>
+          {row.title}
+        </button>
 
-      {/* The reference, on its own line: which criterion this finding answers
-          to, and on which surface. It is what somebody quotes when they file it
-          or argue it, so it is not left to fight for space in a meta line with
-          five numbers in it.
+        {/* The reference, on its own line: which criterion this finding answers
+            to, and on which surface. It is what somebody quotes when they file
+            it or argue it. Outside the title button, because the criterion in
+            it is a control of its own and a button inside a button is not
+            markup a browser will honour. */}
+        <span className="kq-fref">
+          {onOpenCriterion && (
+            <>
+              <button
+                type="button"
+                className="kq-fref-id"
+                onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+                title={`Open ${row.criterionName}`}
+              >
+                {row.criterionId}
+              </button>
+              {model.hasCriterionName && <span className="kq-fref-name">{row.criterionName}</span>}
+            </>
+          )}
+          {/* A finding that belongs to no single surface is called that, in a
+              tonal chip, rather than left to read as a surface id nobody
+              titled — `cross-surface` is a findings-only lens no profile
+              declares, and it is the row a reader is most likely to mistake
+              for the surface they are scoped to. Everywhere else: the
+              profile's title, the matrix's own word; the id is on the hover. */}
+          {model.crossSurface ? (
+            <span className="kq-fref-cross">{model.surfaceTitle}</span>
+          ) : (
+            <span className="kq-fref-surface" title={row.surface}>
+              {model.surfaceTitle}
+            </span>
+          )}
+        </span>
 
-          Outside the title button, because the criterion in it is a control of
-          its own and a button inside a button is not markup a browser will
-          honour. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        {onOpenCriterion && (
-          <>
-            <button
-              type="button"
-              onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-              className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] transition-colors hover:bg-muted hover:text-foreground"
-              title={`Open ${row.criterionName}`}
-            >
-              {row.criterionId}
-            </button>
-            {row.criterionName !== row.criterionId && (
-              <span className="max-w-[24rem] truncate">{row.criterionName}</span>
-            )}
-          </>
-        )}
-        {/* A finding that belongs to no single surface is called that, in a
-            badge, rather than left to read as a surface id nobody titled —
-            `cross-surface` is a findings-only lens and no profile declares it,
-            so the fallback below would print the raw slug. It is also the row a
-            reader is most likely to mistake for the surface they are scoped to.
+        <span className="kq-fscales">
+          <ScaleChip term={COST_TERM[row.cost]} hint={COST_HINT[row.cost]} className="kq-cost">
+            <span className="kq-cost-word">cost</span> {row.cost}
+          </ScaleChip>
+          {/* Not when it only repeats the status word: a refuted finding's
+              REFUTED verdict is the same decision, said twice. */}
+          {verdict && !verdictRepeatsStatus(row) && <span className="kq-verdict">{VERDICT_LABEL[verdict]}</span>}
+          {/* The word for a decided finding, pushed to the end — tinted for
+              `resolved` alone, the one status that means the defect is gone.
+              Not for an accepted risk: the block below states it, as the
+              decision it is. */}
+          {model.showStatus && (
+            <span className="kq-status" data-resolved={row.status === "resolved" || undefined}>
+              {FINDING_STATUS_LABEL[row.status]}
+            </span>
+          )}
+        </span>
 
-            Everywhere else: the profile's title, the same word the matrix
-            column header and the Surface menu use. The id is on the hover. */}
-        {row.surface === CROSS_SURFACE_ID ? (
-          <Badge variant="outline" className="font-normal">
-            Cross-surface
-          </Badge>
-        ) : (
-          <span title={row.surface}>
-            {onOpenCriterion && "· "}
-            {model.surfaceTitle}
-          </span>
+        {/*
+          An accepted risk is a decision, so it reads as one, in the amber its
+          status owns. It stays on the card rather than moving to the panel
+          with everything else: somebody already weighed this and said "not
+          now", and a reader scanning the board must not have to open a panel
+          to learn it. A decision recorded with no rationale still says so —
+          the gap shown, never the status hidden.
+        */}
+        {model.acceptedNote !== undefined && (
+          <div className="kq-accepted">
+            <span className="kq-accepted-badge">
+              <ShieldIcon className="size-3.5" aria-hidden="true" />
+              {FINDING_STATUS_LABEL["accepted-risk"]}
+            </span>
+            <p className={cn(model.acceptedNote.trim() === "" && "italic")}>
+              {model.acceptedNote.trim() === "" ? "No rationale was recorded with this decision." : model.acceptedNote}
+            </p>
+          </div>
         )}
       </div>
-
-      {/* The scales, on the third line: severity and cost as chips that gloss
-          themselves, with the numbers severity is read from between them.
-
-          The priority is not repeated here: it is the square on the rail. */}
-      <FindingScales row={row} />
-
-      {/*
-        An accepted risk is a decision, so it reads as one — the decision log's
-        bordered row with its status stated. It stays on the card rather than
-        moving to the panel with everything else: the whole point of the status
-        is that somebody already weighed this and said "not now", and a reader
-        scanning the board must not have to open a panel to learn it.
-      */}
-      <AcceptedRiskCallout note={model.acceptedNote} className="mt-1" />
     </article>
   );
 }

@@ -73,7 +73,6 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "figma", seed: 15 },
   { name: "file-text", seed: 1 },
   { name: "file-up", seed: 11 },
-  { name: "flag", seed: 11 },
   { name: "flame", seed: 4 },
   { name: "flask-conical", seed: 4 },
   { name: "folder-kanban", seed: 7 },

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { deriveFindingsBurndown } from "@arkaik/schema";
-import { BurndownChart, ClosedSinceLine } from "@/components/quality/BurndownChart";
+import { BurndownChart, BurndownDetail } from "@/components/quality/BurndownChart";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { QualityFilterBar } from "@/components/quality/QualityFilterBar";
 import { QualityFrame } from "@/components/quality/QualityFrame";
@@ -249,33 +249,51 @@ export default function ProjectQualityFindingsPage() {
         />
       }
     >
-      {data.rows.length === 0 ? (
-        // An audit that found nothing is not a filter that matched nothing, and
-        // only this page can tell them apart: `FindingsBoard` sees an empty
-        // list either way and says "No findings match these filters." — which
-        // would greet a clean audit by blaming the reader for it.
-        <div className="p-4">
-          <EmptyState message="Nothing to fix. This audit scored every surface and raised no findings at all." />
-        </div>
-      ) : (
-        <>
-          {burndown.points.length > 0 && (
-            // Above the board and scrolled away with it: the board's sticky
-            // priority headings pin to the scrollport's top, and this is the
-            // context read once on arrival, not a header to keep in view.
-            <div className="flex flex-col gap-1 border-b p-4">
-              <ClosedSinceLine burndown={burndown} openNow={openNow} className="text-xs font-medium text-foreground/80" />
-              <BurndownChart burndown={burndown} caption={burnCaption || undefined} className="max-w-3xl" />
-            </div>
-          )}
-          <FindingsBoard
-            rows={filtered}
-            surfaceTitles={data.surfaceTitles}
-            onOpenFinding={handleOpenFinding}
-            onOpenCriterion={handleOpenCriterion}
-          />
-        </>
-      )}
+      {/* The page body's hook (`app/m3/quality.css`): a tonal page under the
+          raised hero and the lane tiles, at least as tall as the scrollport so
+          the tone reaches its bottom edge. */}
+      <div className="flex min-h-full flex-col" data-quality-page="findings">
+        {data.rows.length === 0 ? (
+          // An audit that found nothing is not a filter that matched nothing,
+          // and only this page can tell them apart: `FindingsBoard` sees an
+          // empty list either way and says "No findings match these filters."
+          // — which would greet a clean audit by blaming the reader for it.
+          <div className="p-4">
+            <EmptyState message="Nothing to fix. This audit scored every surface and raised no findings at all." />
+          </div>
+        ) : (
+          <>
+            {burndown.points.length > 0 && (
+              // Above the board and scrolled away with it: the board's sticky
+              // lane headings pin to the scrollport's top, and this is the
+              // context read once on arrival, not a header to keep in view.
+              //
+              // The number still open is the screen's one loud thing — the
+              // count a reader comes back to see fall — with what it is made
+              // of under it and the chart beside it. Narrowed by the Surface
+              // and Domain menus like the chart, and captioned with them.
+              <section className="kq-scope kq-burnhero" aria-label="Open findings over time">
+                <div className="kq-burnhero-in">
+                  <div className="kq-burnhero-head">
+                    <p className="kq-hero-number">
+                      <span className="kq-hero-numeral">{openNow}</span>
+                      <span className="kq-hero-unit">open{burnCaption ? ` ${burnCaption}` : ""}</span>
+                    </p>
+                    <BurndownDetail burndown={burndown} />
+                  </div>
+                  <BurndownChart burndown={burndown} caption={burnCaption || undefined} className="kq-burnhero-chart" />
+                </div>
+              </section>
+            )}
+            <FindingsBoard
+              rows={filtered}
+              surfaceTitles={data.surfaceTitles}
+              onOpenFinding={handleOpenFinding}
+              onOpenCriterion={handleOpenCriterion}
+            />
+          </>
+        )}
+      </div>
     </QualityFrame>
   );
 }

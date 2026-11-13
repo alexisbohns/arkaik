@@ -1450,4 +1450,26 @@ const { buildCriterionModel, buildFindingModel, cellHistoryStep, surfaceTitleOf 
   assert(bands[bands.length - 1].min === 0 && bands.every((b, i) => i === 0 || b.min < bands[i - 1].min), "each band starts below the one before; the last at 0");
 }
 
+{
+  const { groupFindingRuns, filterFindings, EMPTY_QUALITY_FILTERS } = loadQuality();
+  const all = buildFindingRows(section, pack);
+  const byPriority = filterFindings(all, { ...EMPTY_QUALITY_FILTERS, sort: "priority" });
+  const lanes = groupFindingRuns(byPriority);
+  assert(lanes.key === "priority", "rows sorted by priority are headed by priority");
+  assert(lanes.runs.flatMap((run) => run.rows).map((row) => row.id).join() === byPriority.map((row) => row.id).join(), "grouping never moves a row");
+  assert(lanes.runs.every((run) => run.rows.every((row) => row.priority === run.value)), "each run holds one lane");
+  assert(new Set(lanes.runs.map((run) => run.value)).size === lanes.runs.length, "a sorted list has one run per lane");
+
+  const bySurface = filterFindings(all, { ...EMPTY_QUALITY_FILTERS, sort: "surface" });
+  assert(groupFindingRuns(bySurface).key === "surface", "rows sorted by surface are headed by surface");
+
+  const single = groupFindingRuns([all[0]]);
+  assert(single.key === null && single.runs.length === 1 && single.runs[0].rows.length === 1, "one finding: one run, no heading");
+  assert(groupFindingRuns([]).runs.length === 0, "no findings: no runs");
+
+  const sameLane = all.filter((row) => row.priority === "P2" && row.severity === "medium" && row.surface === all.find((r) => r.priority === "P2").surface);
+  const sameAll = sameLane.filter((row) => row.domain === sameLane[0].domain);
+  assert(groupFindingRuns(sameAll).key === null, "rows that share every key get no heading");
+}
+
 process.exit(failures === 0 ? 0 : 1);
