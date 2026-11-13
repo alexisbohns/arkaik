@@ -86,7 +86,7 @@ export function MapDisplayPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button size="sm" variant="outline" className="cursor-pointer bg-background" aria-label="Display">
+            <Button size="sm" variant="outline" className="cursor-pointer" aria-label="Display">
               <SlidersHorizontalIcon className="size-4" />
               <span className="hidden md:inline">Display</span>
             </Button>

@@ -89,6 +89,14 @@
 
   /* Floating surfaces: the soft raised surface (lowest in light, high in dark). */
   --m3-float: var(--md-surface-container-lowest);
+
+  /* Shapes for the icon triggers: equal vertex counts, so they morph. The
+   * cookie is cookie12 from components/arkademy/ExpressiveShape.tsx (the mask
+   * in app/m3/basalt.css); the circle and the squircle (a superellipse, n=5)
+   * are sampled at the cookie's own angles from the centre. */
+  --m3-shape-circle: polygon(50% 0%,51.6% 0%,53.2% 0.1%,54.9% 0.2%,56.5% 0.4%,58.2% 0.7%,59.7% 1%,61.4% 1.3%,62.9% 1.7%,64.5% 2.2%,66.1% 2.7%,67.6% 3.2%,69.1% 3.8%,70.7% 4.5%,72.1% 5.2%,73.6% 5.9%,75% 6.7%,76.4% 7.5%,77.8% 8.4%,79.1% 9.3%,80.4% 10.3%,81.7% 11.3%,83% 12.4%,84.2% 13.5%,85.4% 14.6%,86.5% 15.8%,87.6% 17%,88.7% 18.3%,89.7% 19.6%,90.7% 20.9%,91.6% 22.2%,92.5% 23.6%,93.3% 25%,94.1% 26.4%,94.8% 27.9%,95.5% 29.3%,96.2% 30.9%,96.8% 32.4%,97.3% 33.9%,97.8% 35.5%,98.3% 37.1%,98.7% 38.6%,99% 40.3%,99.3% 41.8%,99.6% 43.5%,99.8% 45.1%,99.9% 46.8%,100% 48.4%,100% 50%,100% 51.6%,99.9% 53.2%,99.8% 54.9%,99.6% 56.5%,99.3% 58.2%,99% 59.7%,98.7% 61.4%,98.3% 62.9%,97.8% 64.5%,97.3% 66.1%,96.8% 67.6%,96.2% 69.1%,95.5% 70.7%,94.8% 72.1%,94.1% 73.6%,93.3% 75%,92.5% 76.4%,91.6% 77.8%,90.7% 79.1%,89.7% 80.4%,88.7% 81.7%,87.6% 83%,86.5% 84.2%,85.4% 85.4%,84.2% 86.5%,83% 87.6%,81.7% 88.7%,80.4% 89.7%,79.1% 90.7%,77.8% 91.6%,76.4% 92.5%,75% 93.3%,73.6% 94.1%,72.1% 94.8%,70.7% 95.5%,69.1% 96.2%,67.6% 96.8%,66.1% 97.3%,64.5% 97.8%,62.9% 98.3%,61.4% 98.7%,59.7% 99%,58.2% 99.3%,56.5% 99.6%,54.9% 99.8%,53.2% 99.9%,51.6% 100%,50% 100%,48.4% 100%,46.8% 99.9%,45.1% 99.8%,43.5% 99.6%,41.8% 99.3%,40.3% 99%,38.6% 98.7%,37.1% 98.3%,35.5% 97.8%,33.9% 97.3%,32.4% 96.8%,30.9% 96.2%,29.3% 95.5%,27.9% 94.8%,26.4% 94.1%,25% 93.3%,23.6% 92.5%,22.2% 91.6%,20.9% 90.7%,19.6% 89.7%,18.3% 88.7%,17% 87.6%,15.8% 86.5%,14.6% 85.4%,13.5% 84.2%,12.4% 83%,11.3% 81.7%,10.3% 80.4%,9.3% 79.1%,8.4% 77.8%,7.5% 76.4%,6.7% 75%,5.9% 73.6%,5.2% 72.1%,4.5% 70.7%,3.8% 69.1%,3.2% 67.6%,2.7% 66.1%,2.2% 64.5%,1.7% 62.9%,1.3% 61.4%,1% 59.7%,0.7% 58.2%,0.4% 56.5%,0.2% 54.9%,0.1% 53.2%,0% 51.6%,0% 50%,0% 48.4%,0.1% 46.8%,0.2% 45.1%,0.4% 43.5%,0.7% 41.8%,1% 40.3%,1.3% 38.6%,1.7% 37.1%,2.2% 35.5%,2.7% 33.9%,3.2% 32.4%,3.8% 30.9%,4.5% 29.3%,5.2% 27.9%,5.9% 26.4%,6.7% 25%,7.5% 23.6%,8.4% 22.2%,9.3% 20.9%,10.3% 19.6%,11.3% 18.3%,12.4% 17%,13.5% 15.8%,14.6% 14.6%,15.8% 13.5%,17% 12.4%,18.3% 11.3%,19.6% 10.3%,20.9% 9.3%,22.2% 8.4%,23.6% 7.5%,25% 6.7%,26.4% 5.9%,27.9% 5.2%,29.3% 4.5%,30.9% 3.8%,32.4% 3.2%,33.9% 2.7%,35.5% 2.2%,37.1% 1.7%,38.6% 1.3%,40.3% 1%,41.8% 0.7%,43.5% 0.4%,45.1% 0.2%,46.8% 0.1%,48.4% 0%);
+  --m3-shape-squircle: polygon(50% 0%,51.6% 0%,53.3% 0%,54.9% 0%,56.6% 0%,58.3% 0%,59.9% 0%,61.7% 0%,63.3% 0%,65.2% 0%,67% 0%,68.8% 0.1%,70.7% 0.1%,72.6% 0.2%,74.5% 0.3%,76.5% 0.4%,78.5% 0.6%,80.5% 0.9%,82.6% 1.2%,84.6% 1.7%,86.6% 2.3%,88.5% 3%,90.4% 4%,92% 5.1%,93.5% 6.5%,94.9% 8%,96% 9.6%,97% 11.5%,97.7% 13.4%,98.3% 15.4%,98.8% 17.4%,99.1% 19.5%,99.4% 21.5%,99.6% 23.5%,99.7% 25.5%,99.8% 27.4%,99.9% 29.3%,99.9% 31.2%,100% 33%,100% 34.8%,100% 36.7%,100% 38.3%,100% 40.1%,100% 41.7%,100% 43.4%,100% 45.1%,100% 46.7%,100% 48.4%,100% 50%,100% 51.6%,100% 53.3%,100% 54.9%,100% 56.6%,100% 58.3%,100% 59.9%,100% 61.7%,100% 63.3%,100% 65.2%,100% 67%,99.9% 68.8%,99.9% 70.7%,99.8% 72.6%,99.7% 74.5%,99.6% 76.5%,99.4% 78.5%,99.1% 80.5%,98.8% 82.6%,98.3% 84.6%,97.7% 86.6%,97% 88.5%,96% 90.4%,94.9% 92%,93.5% 93.5%,92% 94.9%,90.4% 96%,88.5% 97%,86.6% 97.7%,84.6% 98.3%,82.6% 98.8%,80.5% 99.1%,78.5% 99.4%,76.5% 99.6%,74.5% 99.7%,72.6% 99.8%,70.7% 99.9%,68.8% 99.9%,67% 100%,65.2% 100%,63.3% 100%,61.7% 100%,59.9% 100%,58.3% 100%,56.6% 100%,54.9% 100%,53.3% 100%,51.6% 100%,50% 100%,48.4% 100%,46.7% 100%,45.1% 100%,43.4% 100%,41.7% 100%,40.1% 100%,38.3% 100%,36.7% 100%,34.8% 100%,33% 100%,31.2% 99.9%,29.3% 99.9%,27.4% 99.8%,25.5% 99.7%,23.5% 99.6%,21.5% 99.4%,19.5% 99.1%,17.4% 98.8%,15.4% 98.3%,13.4% 97.7%,11.5% 97%,9.6% 96%,8% 94.9%,6.5% 93.5%,5.1% 92%,4% 90.4%,3% 88.5%,2.3% 86.6%,1.7% 84.6%,1.2% 82.6%,0.9% 80.5%,0.6% 78.5%,0.4% 76.5%,0.3% 74.5%,0.2% 72.6%,0.1% 70.7%,0.1% 68.8%,0% 67%,0% 65.2%,0% 63.3%,0% 61.7%,0% 59.9%,0% 58.3%,0% 56.6%,0% 54.9%,0% 53.3%,0% 51.6%,0% 50%,0% 48.4%,0% 46.7%,0% 45.1%,0% 43.4%,0% 41.7%,0% 40.1%,0% 38.3%,0% 36.7%,0% 34.8%,0% 33%,0.1% 31.2%,0.1% 29.3%,0.2% 27.4%,0.3% 25.5%,0.4% 23.5%,0.6% 21.5%,0.9% 19.5%,1.2% 17.4%,1.7% 15.4%,2.3% 13.4%,3% 11.5%,4% 9.6%,5.1% 8%,6.5% 6.5%,8% 5.1%,9.6% 4%,11.5% 3%,13.4% 2.3%,15.4% 1.7%,17.4% 1.2%,19.5% 0.9%,21.5% 0.6%,23.5% 0.4%,25.5% 0.3%,27.4% 0.2%,29.3% 0.1%,31.2% 0.1%,33% 0%,34.8% 0%,36.7% 0%,38.3% 0%,40.1% 0%,41.7% 0%,43.4% 0%,45.1% 0%,46.7% 0%,48.4% 0%);
+  --m3-shape-cookie12: polygon(50% 0%,51.6% 0.2%,53.2% 0.8%,54.7% 1.8%,56.2% 2.9%,57.6% 4.1%,58.9% 5.1%,60.3% 6%,61.6% 6.5%,63.1% 6.8%,64.7% 6.7%,66.4% 6.4%,68.2% 6.1%,70% 5.9%,71.8% 5.8%,73.5% 6.1%,75% 6.7%,76.3% 7.7%,77.4% 9%,78.2% 10.6%,78.9% 12.3%,79.5% 14%,80.2% 15.6%,80.9% 17%,81.8% 18.2%,83% 19.1%,84.4% 19.8%,86% 20.5%,87.7% 21.1%,89.4% 21.8%,91% 22.6%,92.3% 23.7%,93.3% 25%,93.9% 26.5%,94.2% 28.2%,94.1% 30%,93.9% 31.8%,93.6% 33.6%,93.3% 35.3%,93.2% 36.9%,93.5% 38.4%,94% 39.7%,94.9% 41.1%,95.9% 42.4%,97.1% 43.8%,98.2% 45.3%,99.2% 46.8%,99.8% 48.4%,100% 50%,99.8% 51.6%,99.2% 53.2%,98.2% 54.7%,97.1% 56.2%,95.9% 57.6%,94.9% 58.9%,94% 60.3%,93.5% 61.6%,93.2% 63.1%,93.3% 64.7%,93.6% 66.4%,93.9% 68.2%,94.1% 70%,94.2% 71.8%,93.9% 73.5%,93.3% 75%,92.3% 76.3%,91% 77.4%,89.4% 78.2%,87.7% 78.9%,86% 79.5%,84.4% 80.2%,83% 80.9%,81.8% 81.8%,80.9% 83%,80.2% 84.4%,79.5% 86%,78.9% 87.7%,78.2% 89.4%,77.4% 91%,76.3% 92.3%,75% 93.3%,73.5% 93.9%,71.8% 94.2%,70% 94.1%,68.2% 93.9%,66.4% 93.6%,64.7% 93.3%,63.1% 93.2%,61.6% 93.5%,60.3% 94%,58.9% 94.9%,57.6% 95.9%,56.2% 97.1%,54.7% 98.2%,53.2% 99.2%,51.6% 99.8%,50% 100%,48.4% 99.8%,46.8% 99.2%,45.3% 98.2%,43.8% 97.1%,42.4% 95.9%,41.1% 94.9%,39.7% 94%,38.4% 93.5%,36.9% 93.2%,35.3% 93.3%,33.6% 93.6%,31.8% 93.9%,30% 94.1%,28.2% 94.2%,26.5% 93.9%,25% 93.3%,23.7% 92.3%,22.6% 91%,21.8% 89.4%,21.1% 87.7%,20.5% 86%,19.8% 84.4%,19.1% 83%,18.2% 81.8%,17% 80.9%,15.6% 80.2%,14% 79.5%,12.3% 78.9%,10.6% 78.2%,9% 77.4%,7.7% 76.3%,6.7% 75%,6.1% 73.5%,5.8% 71.8%,5.9% 70%,6.1% 68.2%,6.4% 66.4%,6.7% 64.7%,6.8% 63.1%,6.5% 61.6%,6% 60.3%,5.1% 58.9%,4.1% 57.6%,2.9% 56.2%,1.8% 54.7%,0.8% 53.2%,0.2% 51.6%,0% 50%,0.2% 48.4%,0.8% 46.8%,1.8% 45.3%,2.9% 43.8%,4.1% 42.4%,5.1% 41.1%,6% 39.7%,6.5% 38.4%,6.8% 36.9%,6.7% 35.3%,6.4% 33.6%,6.1% 31.8%,5.9% 30%,5.8% 28.2%,6.1% 26.5%,6.7% 25%,7.7% 23.7%,9% 22.6%,10.6% 21.8%,12.3% 21.1%,14% 20.5%,15.6% 19.8%,17% 19.1%,18.2% 18.2%,19.1% 17%,19.8% 15.6%,20.5% 14%,21.1% 12.3%,21.8% 10.6%,22.6% 9%,23.7% 7.7%,25% 6.7%,26.5% 6.1%,28.2% 5.8%,30% 5.9%,31.8% 6.1%,33.6% 6.4%,35.3% 6.7%,36.9% 6.8%,38.4% 6.5%,39.7% 6%,41.1% 5.1%,42.4% 4.1%,43.8% 2.9%,45.3% 1.8%,46.8% 0.8%,48.4% 0.2%);
 }
 
 .dark {
@@ -111,17 +119,201 @@
    control this sheet skins. */
 :is(
   [data-slot="select-trigger"],
-  [data-slot="segmented-control"] > button
+  [data-slot="dropdown-menu-trigger"].m3-icon-trigger,
+  .m3-icon-trigger,
+  [data-slot="segmented-control"] > button,
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]
 ):focus-visible {
   outline: 3px solid var(--md-secondary);
   outline-offset: 2px;
   box-shadow: none;
 }
-/* ── Pills: the select trigger ─────────────────────────────────────────────── */
+/* A search pill takes its ring inside its own edge: it is a field you type in,
+   often focused on open (an add popover's picker), and an outside ring would
+   crowd the surface's corners. Same role, 2px, inset. */
+:is([data-slot="toolbar"], [role="toolbar"], .m3-float) [data-slot="search-input"] input:focus-visible {
+  outline: 2px solid var(--md-secondary);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+/* The icon triggers' ring sits a step further out (the Arkademy's lifted-tile
+   offset), clear of the cookie, which grows past the circle once set. */
+.m3-icon-trigger:focus-visible {
+  outline-offset: 3px;
+}
+
+/* ── Pills: the select trigger and every button in a bar ───────────────────── */
 
 /* A press tightens the pill (M3 Expressive: shape morph on press). */
-[data-slot="select-trigger"]:active {
+[data-slot="select-trigger"]:not(.m3-icon-trigger):active {
   border-radius: var(--md-shape-md);
+}
+
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size] {
+  height: var(--m3-ctl-h);
+  padding-inline: 1rem;
+  border: 0;
+  border-radius: calc(var(--m3-ctl-h) / 2);
+  box-shadow: none;
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-size="icon"] {
+  width: var(--m3-ctl-h);
+  padding-inline: 0;
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:is([data-variant="outline"], [data-variant="secondary"]) {
+  background: var(--m3-control);
+  color: var(--m3-on-control);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:is([data-variant="outline"], [data-variant="secondary"]):hover {
+  background: var(--m3-control-hover);
+  color: var(--md-on-surface);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-variant="ghost"] {
+  color: var(--m3-on-control);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-variant="ghost"]:hover {
+  background: var(--m3-hover);
+  color: var(--md-on-surface);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:active {
+  border-radius: var(--md-shape-md);
+}
+
+/* A toggle that is on settles into a squircle on the tonal "on" fill. */
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][aria-pressed="true"] {
+  border-radius: var(--md-shape-md);
+  background: var(--m3-on);
+  color: var(--m3-on-on);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][aria-pressed="true"]:hover {
+  background: var(--m3-on-hover);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][aria-pressed="true"]:active {
+  border-radius: var(--md-shape-sm);
+}
+
+/* Toggles with a meaning of their own keep their tone, from the roles. */
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-tone="error"] {
+  color: var(--md-error);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-tone="error"][aria-pressed="true"] {
+  background: var(--md-error-container);
+  color: var(--md-on-error-container);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-tone="amber"] {
+  color: var(--tone-amber);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-tone="amber"][aria-pressed="true"] {
+  background: color-mix(in srgb, var(--tone-amber) 20%, var(--m3-control));
+  color: var(--tone-amber);
+}
+
+/* The search field in a bar — or at the top of a floating surface (an add
+   popover's picker) — is a tonal pill like its neighbours. In a surface with
+   p-2 its 20px ends sit concentric with the surface's 28px corners. */
+:is([data-slot="toolbar"], [role="toolbar"], .m3-float) [data-slot="search-input"] input {
+  height: var(--m3-ctl-h);
+  padding-inline-end: 1rem;
+  padding-inline-start: 2.5rem;
+  border: 0;
+  border-radius: calc(var(--m3-ctl-h) / 2);
+  background: var(--m3-control);
+  box-shadow: none;
+}
+:is([data-slot="toolbar"], [role="toolbar"], .m3-float) [data-slot="search-input"] > svg {
+  left: 0.875rem;
+}
+
+/* Controls floating over a canvas (MapCanvasControls) rest flat: 32px,
+   no shadow, tone alone. The select is a 12px field on the
+   surface tone; a button is a pill on surface-container-highest. */
+[data-slot="toolbar"][data-floating] {
+  --m3-ctl-h: 2rem;
+  --m3-control: var(--md-surface-container-highest);
+  --m3-control-hover: color-mix(in srgb, var(--md-on-surface) 8%, var(--md-surface-container-highest));
+}
+[data-slot="toolbar"][data-floating] :is([data-variant][data-size], [data-slot="select-trigger"]) {
+  height: var(--m3-ctl-h);
+  box-shadow: none;
+}
+[data-slot="toolbar"][data-floating] [data-slot="select-trigger"] {
+  border-radius: var(--md-shape-md);
+  background: var(--md-surface);
+}
+[data-slot="toolbar"][data-floating] [data-slot="select-trigger"]:hover {
+  background: color-mix(in srgb, var(--md-on-surface) 8%, var(--md-surface));
+}
+[data-slot="toolbar"][data-floating] [data-slot="select-trigger"]:is(:active, [aria-expanded="true"]) {
+  border-radius: var(--md-shape-sm);
+}
+
+/* ── Icon triggers: circle at rest, cookie when set ─────────────────────────
+   The fill is a ::before clipped to a polygon, so the shape can morph: the
+   circle, the squircle and the cookie share their 192 vertices (sampled at
+   the cookie's own angles), and polygons with equal vertex counts
+   interpolate. The trigger itself stays a round box, so the focus outline
+   follows a circle and is never clipped. */
+.m3-icon-trigger {
+  position: relative;
+  isolation: isolate;
+  color: var(--m3-on-control);
+}
+.m3-icon-trigger::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--m3-control);
+  clip-path: var(--m3-shape-circle);
+  pointer-events: none;
+}
+.m3-icon-trigger:hover {
+  color: var(--md-on-surface);
+}
+.m3-icon-trigger:hover::before {
+  background: var(--m3-control-hover);
+}
+.m3-icon-trigger:active::before {
+  clip-path: var(--m3-shape-squircle);
+}
+.m3-icon-trigger.m3-set {
+  color: var(--m3-on-on);
+}
+.m3-icon-trigger.m3-set::before {
+  background: var(--m3-set);
+  clip-path: var(--m3-shape-cookie12);
+  scale: 1.08;
+  rotate: 30deg;
+}
+.m3-icon-trigger.m3-set:hover::before {
+  background: var(--m3-set-hover);
+}
+.m3-icon-trigger.m3-set:active::before {
+  clip-path: var(--m3-shape-squircle);
+  scale: 1;
+}
+/* The rail's glyphs sit bare on the rail's own pill until hovered or set. */
+.m3-icon-trigger.m3-bare:not(.m3-set)::before {
+  background: transparent;
+}
+.m3-icon-trigger.m3-bare:not(.m3-set):hover::before {
+  background: var(--m3-hover);
+}
+/* …and keep a fill while their menu is out, so the rail says which
+   item the open menu belongs to. Read off aria-expanded, not data-state: in a
+   TooltipTrigger the tooltip's data-state replaces the menu's. */
+.m3-icon-trigger.m3-bare:not(.m3-set)[aria-expanded="true"]::before {
+  background: color-mix(in srgb, var(--md-on-surface) 12%, transparent);
+}
+.m3-icon-trigger.m3-bare:not(.m3-set)[aria-expanded="true"] {
+  color: var(--md-on-surface);
+}
+.m3-icon-trigger:disabled {
+  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent);
+}
+.m3-icon-trigger:disabled::before {
+  background: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
 }
 
 /* ── Connected button groups ───────────────────────────────────────────────
@@ -213,6 +405,7 @@
   }
 
   [data-slot="select-trigger"],
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
   [data-slot="segmented-control"] > button {
     transition:
       border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
@@ -221,8 +414,15 @@
       background-color 200ms var(--mx-effects),
       color 200ms var(--mx-effects);
   }
-  [data-slot="select-trigger"] > svg:last-child {
+  [data-slot="select-trigger"]:not(.m3-icon-trigger) > svg:last-child {
     transition: rotate var(--mx-spring-fast-dur) var(--mx-spring-fast);
+  }
+  .m3-icon-trigger::before {
+    transition:
+      clip-path var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      scale var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      rotate var(--mx-spring-dur) var(--mx-spring),
+      background-color 200ms var(--mx-effects);
   }
 }
 
@@ -233,7 +433,7 @@
 }
 
 /* The select's chevron turns over while its list is open. */
-[data-slot="select-trigger"][aria-expanded="true"] > svg:last-child {
+[data-slot="select-trigger"]:not(.m3-icon-trigger)[aria-expanded="true"] > svg:last-child {
   rotate: 180deg;
 }
 
@@ -244,14 +444,28 @@
    rules above so the fallback wins on specificity. */
 @media (forced-colors: active) {
   [data-slot="select-trigger"],
-  [data-slot="segmented-control"] > button {
+  .m3-icon-trigger,
+  [data-slot="segmented-control"] > button,
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
+  :is([data-slot="toolbar"], [role="toolbar"], .m3-float) [data-slot="search-input"] input {
     border: 1px solid ButtonText;
   }
   .m3-float,
   [data-slot="combobox"] > div:last-child {
     border: 1px solid CanvasText;
   }
-  [data-slot="segmented-control"] > button[aria-pressed="true"] {
+  .m3-icon-trigger::before {
+    background: ButtonFace;
+  }
+  .m3-icon-trigger.m3-set::before {
+    background: Highlight;
+  }
+  .m3-icon-trigger.m3-set {
+    color: HighlightText;
+  }
+  [data-slot="segmented-control"] > button[aria-pressed="true"],
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][aria-pressed="true"],
+  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size][data-tone][aria-pressed="true"] {
     background: Highlight;
     color: HighlightText;
     forced-color-adjust: none;

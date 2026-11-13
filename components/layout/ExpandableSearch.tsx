@@ -39,7 +39,7 @@ export function ExpandableSearch({ value, onChange, placeholder, "aria-label": l
             variant="outline"
             aria-label={label}
             onClick={() => setOpened(true)}
-            className="cursor-pointer bg-transparent text-muted-foreground dark:bg-transparent"
+            className="cursor-pointer"
           >
             <SearchIcon className="size-4" />
           </Button>

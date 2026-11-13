@@ -65,7 +65,7 @@ export function DecisionFilterBar({
 
   return (
     <Toolbar>
-      <ToolbarGroup className="w-full flex-1 md:max-w-sm">
+      <ToolbarGroup className="w-full flex-[1_1_16rem] md:max-w-sm">
         <SearchInput
           value={search}
           onChange={onSearchChange}
@@ -104,10 +104,10 @@ export function DecisionFilterBar({
               aria-pressed={detailed}
               aria-label={toggleLabel}
               onClick={() => onDetailedChange(!detailed)}
-              // Border only, no fill: the menu beside it uses a soft filled
-              // surface to say "a value is set", and this button sets no value —
-              // it opens and shuts the prose and chips under each decision.
-              className="bg-transparent dark:bg-transparent"
+              // A tonal pill like the menu beside it; "on" settles into a
+              // squircle (app/m3/controls.css), never the menu's "set" cookie:
+              // this button sets no value, it opens and shuts the prose and
+              // chips under each decision.
             >
               {detailed ? <ListChevronsDownUpIcon className="size-4" /> : <ListChevronsUpDownIcon className="size-4" />}
             </Button>

@@ -47,7 +47,7 @@ export function LibraryFilterBar({
       {/* `md:max-w-md`, not wider: the control renders `null` for a project
           with no products, and this row must then be exactly the width it was
           before the control existed. */}
-      <ToolbarGroup className="w-full flex-1 md:max-w-md">
+      <ToolbarGroup className="w-full flex-[1_1_16rem] gap-3 md:max-w-md">
         <ProductOverrideSelector projectId={projectId} project={project} />
         <SearchInput
           value={search}
@@ -58,13 +58,16 @@ export function LibraryFilterBar({
         />
       </ToolbarGroup>
 
-      <ToolbarGroup>
+      {/* `gap-3`: this band keeps the airier 12px between its controls. */}
+      <ToolbarGroup className="gap-3">
+        {/* `data-tone="error"`: the bar's skin (app/m3/controls.css) draws it
+            in the error role — the glyph at rest, the error container once on. */}
         <Button
           type="button"
-          variant={blockedOnly ? "default" : "outline"}
+          variant="outline"
+          data-tone="error"
           aria-pressed={blockedOnly}
           onClick={() => onBlockedOnlyChange(!blockedOnly)}
-          className={blockedOnly ? "bg-red-500 text-white hover:bg-red-500/90" : "text-red-600 hover:text-red-700"}
         >
           <BanIcon className="size-4" /> Blocked
         </Button>

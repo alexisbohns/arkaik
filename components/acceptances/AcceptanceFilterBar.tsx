@@ -123,7 +123,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
 
   return (
     <Toolbar>
-      <ToolbarGroup className="w-full flex-1 md:max-w-sm">
+      <ToolbarGroup className="w-full flex-[1_1_16rem] md:max-w-sm">
         <ProductOverrideSelector projectId={projectId} project={project} />
         <SearchInput
           value={searchDraft}
@@ -211,8 +211,8 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
 
         {/* Two icon toggles, not two labelled buttons: the band already carries
             four menus, and both of these are states you can read off the button
-            itself — amber-filled means "only gaps", and the chevrons say whether
-            the groups are shut or open. The label lives in the tooltip and, for
+            itself — the amber squircle means "only gaps", and the chevrons say
+            whether the groups are shut or open. The label lives in the tooltip and, for
             screen readers, in `aria-label`.
 
             The parity toggle is there only when parity is a question at all: on
@@ -225,11 +225,11 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
               <Button
                 type="button"
                 size="icon"
-                variant={filters.parityGap ? "default" : "outline"}
+                variant="outline"
+                data-tone="amber"
                 aria-pressed={filters.parityGap}
                 aria-label={filters.parityGap ? "Showing only parity gaps" : "Show only parity gaps"}
                 onClick={() => onChange({ ...filters, parityGap: !filters.parityGap })}
-                className={filters.parityGap ? "bg-amber-500 text-white hover:bg-amber-500/90" : "text-amber-600 hover:text-amber-700"}
               >
                 <StethoscopeIcon className="size-4" />
               </Button>
@@ -247,11 +247,9 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
               aria-pressed={allExpanded}
               aria-label={allExpanded ? "Collapse all groups" : "Expand all groups"}
               onClick={onToggleExpandAll}
-              // Border only, no fill: the filter menus beside it now use a soft
-              // filled surface to say "a value is set", and this button sets no
-              // value — it opens and shuts the groups. Same shape, so the fill
-              // has to be the thing that tells them apart.
-              className="bg-transparent dark:bg-transparent"
+              // The filter menus beside it say "a value is set" with the cookie
+              // shape; this button sets no value — it opens and shuts the
+              // groups — so it stays a tonal pill, a squircle while on.
             >
               {allExpanded
                 ? <ListChevronsUpDownIcon className="size-4" />

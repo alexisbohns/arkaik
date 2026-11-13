@@ -148,7 +148,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
 
   return (
     <Toolbar>
-      <ToolbarGroup className="w-full flex-1 md:max-w-sm">
+      <ToolbarGroup className="w-full flex-[1_1_16rem] md:max-w-sm">
         <SearchInput
           value={searchDraft}
           onChange={setSearchDraft}
@@ -164,7 +164,7 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
         */}
         {cell && (
           <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-accent px-2 py-1 text-xs dark:bg-accent/50"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-(--md-secondary-container) ps-3 pe-1.5 text-xs text-(--md-on-secondary-container)"
             /* Both halves are truncated below, and this is where the untrimmed
                pair still reads. */
             title={`${domainNameOf(cell.domain, domains)} × ${surfaceTitleOf(cell.surface, surfaces)}`}
@@ -177,13 +177,13 @@ export function QualityFilterBar({ filters, onChange, surfaces, domains }: Quali
                 who has not read the pack, and the matrix cell this chip echoes
                 was clicked under its name. */}
             <span className="max-w-[10rem] truncate font-medium">{domainNameOf(cell.domain, domains)}</span>
-            <span className="text-muted-foreground">×</span>
+            <span className="opacity-70">×</span>
             <span className="max-w-[8rem] truncate">{surfaceTitleOf(cell.surface, surfaces)}</span>
             <button
               type="button"
               onClick={() => onChange({ ...filters, cell: null })}
               aria-label="Clear the selected cell"
-              className="-me-1 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+              className="grid size-6 cursor-pointer place-items-center rounded-full transition-colors hover:bg-(--md-on-secondary-container)/10 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-(--md-secondary)"
             >
               <XIcon className="size-3" />
             </button>
