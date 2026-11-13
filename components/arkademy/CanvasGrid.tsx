@@ -64,7 +64,7 @@ export interface CanvasGridProps {
  * The nine blocks of a canvas. The grid adapts to its container, not the
  * window, so a cover card and a full page both read well: ten columns in the
  * canonical arrangement from 48rem, two in question order from 32rem (from
- * 20rem in the mini density, so a phone-width gallery card is half as tall),
+ * 18rem in the mini density, so a phone-width gallery card is half as tall),
  * one below. Nothing scrolls sideways. Source order is question order, which is
  * what a screen reader follows whatever the arrangement.
  *
@@ -89,7 +89,7 @@ export function CanvasGrid({
 
   return (
     <div role="group" aria-label={label} className="@container">
-      <div className={cn("grid grid-cols-1 gap-2 @lg:grid-cols-2", mini && "@xs:grid-cols-2", CANONICAL)}>
+      <div className={cn("grid grid-cols-1 gap-2 @lg:grid-cols-2", mini && "@[18rem]:grid-cols-2", CANONICAL)}>
         {questions.map((question, i) => {
           const entry = byKey.get(question.key);
           // Cleaned, empties dropped: the same answers the paragraph reads.
@@ -145,7 +145,7 @@ export function CanvasGrid({
                 <>
                   <ul
                     className={cn(
-                      "flex list-disc flex-col pl-4 break-words marker:text-muted-foreground",
+                      "flex list-none flex-col break-words [&>li]:first-letter:uppercase",
                       mini ? "gap-1 text-xs leading-snug" : "gap-1.5 text-sm leading-snug",
                     )}
                   >
@@ -157,7 +157,7 @@ export function CanvasGrid({
                     ))}
                   </ul>
                   {answers.length > listed.length && (
-                    <p className="pl-4 text-[11px] text-muted-foreground">+{answers.length - listed.length} more</p>
+                    <p className="text-[11px] text-muted-foreground">+{answers.length - listed.length} more</p>
                   )}
                 </>
               ) : (

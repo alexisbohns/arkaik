@@ -21,13 +21,17 @@ export const ARKADEMY_SECTION_TITLE = "text-2xl font-semibold tracking-tight tex
  * page under it: the `/p/[id]` header pattern — the arkaik mark home, the word
  * "Arkademy" to the shell, the theme toggle — and the page's `main`.
  *
+ * The `data-arkademy-*` hooks let one page restyle the chrome from its own
+ * scoped stylesheet (the cover's Material reading, app/arkademy/
+ * business-model-canvas/m3.css) without the chrome knowing about it.
+ *
  * It holds no `h1`; each page renders exactly one. A server component: the
  * only client piece is ThemeToggle.
  */
 export function ArkademyChrome({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col bg-background font-sans">
-      <header className="border-b">
+    <div data-arkademy-shell="" className="flex min-h-svh flex-col bg-background font-sans">
+      <header data-arkademy-bar="" className="border-b">
         <div className={cn(ARKADEMY_COLUMN, "flex items-center justify-between gap-4 py-3")}>
           <div className="flex min-w-0 items-center gap-3">
             <Link
@@ -40,6 +44,7 @@ export function ArkademyChrome({ children }: { children: ReactNode }) {
             <span aria-hidden="true" className="h-5 w-px shrink-0 bg-border" />
             <Link
               href={ARKADEMY_PATH}
+              data-arkademy-title=""
               className={cn(
                 gochiHand.className,
                 "rounded-sm text-[1.6rem] leading-none text-foreground outline-none hover:text-foreground/80 focus-visible:ring-[3px] focus-visible:ring-ring/50",

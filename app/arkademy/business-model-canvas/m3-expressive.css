@@ -1,0 +1,1092 @@
+/*
+ * The Business Model Canvas cover, read as Material 3 Expressive.
+ *
+ * Scope: every rule here applies only while the cover is on screen — keyed on
+ * the cover's `[data-m3="expressive"]` wrapper through `:has()`, set on the
+ * root so the Arkademy's header (the top app bar) and the notes' popovers,
+ * which Radix portals to <body>, take the same scheme. Leave the cover and
+ * nothing here matches.
+ *
+ * Color: an M3 "vibrant" scheme from one seed, #E5552F — the ember of the
+ * Travertine, Pumice and Lava stones (scripts/generate/lib/stones.js, their
+ * icon tone). HCT hue 33, chroma 72.6, tone 55.4. Palettes: primary (h, 200:
+ * as much chroma as the gamut holds), secondary (h + 18, 24), tertiary
+ * (h + 35, 32), neutral (h, 10), neutral variant (h, 12); computed once with a
+ * CAM16/L* solver (checked against the M3 baseline #6750A4) and hard-coded
+ * below. The app's own tokens (--background, --muted, --border…) are remapped
+ * to their M3 roles so the shared pieces follow without being touched.
+ *
+ * Preview schemes: three more (the ember seed through M3's Expressive and
+ * Tonal spot variants, and Basalt's grey through Neutral) come from the same solver, each scoped by the
+ * wrapper's `[data-scheme]` (components/arkademy/m3-schemes.ts lists them;
+ * SchemePicker sets it). Each passes AA on the pairs the page uses.
+ *
+ * Type: DynaPuff for display, headline and title; Inclusive Sans for body,
+ * label, subtitles and every digit. See "Type" below. The rules behind all of
+ * this are written up in docs/arkademy-design.md.
+ *
+ * Motion: springs, written as CSS linear() curves sampled from M3 Expressive's
+ * spring tokens (expressive spatial: damping 0.8, stiffness 380; fast spatial:
+ * damping 0.6, stiffness 800). All of it sits behind
+ * `prefers-reduced-motion: no-preference`.
+ */
+:root:has([data-m3="expressive"]) {
+  color-scheme: light;
+  --md-primary: #B32A00;
+  --md-on-primary: #FFFFFF;
+  --md-primary-container: #FFDAD1;
+  --md-on-primary-container: #891E00;
+  --md-secondary: #7F553A;
+  --md-on-secondary: #FFFFFF;
+  --md-secondary-container: #FFDBC7;
+  --md-on-secondary-container: #643E25;
+  --md-tertiary: #805520;
+  --md-on-tertiary: #FFFFFF;
+  --md-tertiary-container: #FFDCBA;
+  --md-on-tertiary-container: #653E09;
+  --md-error: #BA1A1A;
+  --md-on-error: #FFFFFF;
+  --md-error-container: #FFDAD5;
+  --md-on-error-container: #93000A;
+  --md-primary-fixed: #FFDAD1;
+  --md-primary-fixed-dim: #FFB4A1;
+  --md-on-primary-fixed: #3D0700;
+  --md-on-primary-fixed-variant: #891E00;
+  --md-tertiary-fixed: #FFDCBA;
+  --md-tertiary-fixed-dim: #F5BC7C;
+  --md-on-tertiary-fixed: #2C1700;
+  --md-on-tertiary-fixed-variant: #653E09;
+  --md-surface: #FFF8F6;
+  --md-surface-dim: #F0D4CD;
+  --md-surface-bright: #FFF8F6;
+  --md-surface-container-lowest: #FFFFFF;
+  --md-surface-container-low: #FFF0ED;
+  --md-surface-container: #FFE9E4;
+  --md-surface-container-high: #FFE2DB;
+  --md-surface-container-highest: #F9DCD5;
+  --md-on-surface: #271814;
+  --md-on-surface-variant: #58413C;
+  --md-outline: #8C716A;
+  --md-outline-variant: #E0BFB8;
+  --md-inverse-surface: #3D2C28;
+  --md-inverse-on-surface: #FFEDE8;
+  --md-inverse-primary: #FFB4A1;
+  --mx-on-inverse-btn: #3D0700;
+  --background: 13.3 100.0% 98.2%;
+  --foreground: 12.6 32.2% 11.6%;
+  --card: 10.0 100.0% 96.5%;
+  --card-foreground: 12.6 32.2% 11.6%;
+  --popover: 11.1 100.0% 94.7%;
+  --popover-foreground: 12.6 32.2% 11.6%;
+  --primary: 14.1 100.0% 35.1%;
+  --primary-foreground: 0.0 0.0% 100.0%;
+  --secondary: 21.4 100.0% 89.0%;
+  --secondary-foreground: 23.8 46.0% 26.9%;
+  --muted: 11.7 100.0% 92.9%;
+  --muted-foreground: 10.7 18.9% 29.0%;
+  --accent: 21.4 100.0% 89.0%;
+  --accent-foreground: 23.8 46.0% 26.9%;
+  --border: 10.5 39.2% 80.0%;
+  --input: 12.4 13.8% 48.2%;
+  --ring: 23.5 37.3% 36.3%;
+}
+:root.dark:has([data-m3="expressive"]) {
+  color-scheme: dark;
+  --md-primary: #FFB4A1;
+  --md-on-primary: #611200;
+  --md-primary-container: #891E00;
+  --md-on-primary-container: #FFDAD1;
+  --md-secondary: #F2BB9A;
+  --md-on-secondary: #4A2810;
+  --md-secondary-container: #643E25;
+  --md-on-secondary-container: #FFDBC7;
+  --md-tertiary: #F5BC7C;
+  --md-on-tertiary: #482900;
+  --md-tertiary-container: #653E09;
+  --md-on-tertiary-container: #FFDCBA;
+  --md-error: #FFB3AA;
+  --md-on-error: #690004;
+  --md-error-container: #93000A;
+  --md-on-error-container: #FFDAD5;
+  --md-primary-fixed: #FFDAD1;
+  --md-primary-fixed-dim: #FFB4A1;
+  --md-on-primary-fixed: #3D0700;
+  --md-on-primary-fixed-variant: #891E00;
+  --md-tertiary-fixed: #FFDCBA;
+  --md-tertiary-fixed-dim: #F5BC7C;
+  --md-on-tertiary-fixed: #2C1700;
+  --md-on-tertiary-fixed-variant: #653E09;
+  --md-surface: #1E100C;
+  --md-surface-dim: #1E100C;
+  --md-surface-bright: #473530;
+  --md-surface-container-lowest: #180B08;
+  --md-surface-container-low: #271814;
+  --md-surface-container: #2B1C18;
+  --md-surface-container-high: #372622;
+  --md-surface-container-highest: #42312C;
+  --md-on-surface: #F9DCD5;
+  --md-on-surface-variant: #E0BFB8;
+  --md-outline: #A78A83;
+  --md-outline-variant: #58413C;
+  --md-inverse-surface: #F9DCD5;
+  --md-inverse-on-surface: #3D2C28;
+  --md-inverse-primary: #B32A00;
+  --mx-on-inverse-btn: #FFFFFF;
+  --background: 13.3 42.9% 8.2%;
+  --foreground: 11.7 75.0% 90.6%;
+  --card: 12.6 32.2% 11.6%;
+  --card-foreground: 11.7 75.0% 90.6%;
+  --popover: 12.6 28.4% 13.1%;
+  --popover-foreground: 11.7 75.0% 90.6%;
+  --primary: 12.1 100.0% 81.6%;
+  --primary-foreground: 11.1 100.0% 19.0%;
+  --secondary: 23.8 46.0% 26.9%;
+  --secondary-foreground: 21.4 100.0% 89.0%;
+  --muted: 11.4 23.6% 17.5%;
+  --muted-foreground: 10.5 39.2% 80.0%;
+  --accent: 23.8 46.0% 26.9%;
+  --accent-foreground: 21.4 100.0% 89.0%;
+  --border: 10.7 18.9% 29.0%;
+  --input: 11.7 17.0% 58.4%;
+  --ring: 22.5 77.2% 77.6%;
+}
+:root:has([data-m3="expressive"][data-scheme="ember-expressive"]) {
+  --md-primary: #485B99;
+  --md-on-primary: #FFFFFF;
+  --md-primary-container: #DBE1FF;
+  --md-on-primary-container: #2F4380;
+  --md-secondary: #56633C;
+  --md-on-secondary: #FFFFFF;
+  --md-secondary-container: #D9E9B7;
+  --md-on-secondary-container: #3E4B26;
+  --md-tertiary: #3A6844;
+  --md-on-tertiary: #FFFFFF;
+  --md-tertiary-container: #BBEFC1;
+  --md-on-tertiary-container: #21502E;
+  --md-error: #BA1A1A;
+  --md-on-error: #FFFFFF;
+  --md-error-container: #FFDAD5;
+  --md-on-error-container: #93000A;
+  --md-primary-fixed: #DBE1FF;
+  --md-primary-fixed-dim: #B4C4FF;
+  --md-on-primary-fixed: #00174D;
+  --md-on-primary-fixed-variant: #2F4380;
+  --md-tertiary-fixed: #BBEFC1;
+  --md-tertiary-fixed-dim: #A0D3A7;
+  --md-on-tertiary-fixed: #00210B;
+  --md-on-tertiary-fixed-variant: #21502E;
+  --md-surface: #FFF8F5;
+  --md-surface-dim: #EBD6CC;
+  --md-surface-bright: #FFF8F5;
+  --md-surface-container-lowest: #FFFFFF;
+  --md-surface-container-low: #FFF1EA;
+  --md-surface-container: #FFEADF;
+  --md-surface-container-high: #FAE4D9;
+  --md-surface-container-highest: #F4DED4;
+  --md-on-surface: #241913;
+  --md-on-surface-variant: #574237;
+  --md-outline: #8B7265;
+  --md-outline-variant: #DEC0B2;
+  --md-inverse-surface: #3B2E27;
+  --md-inverse-on-surface: #FFEDE5;
+  --md-inverse-primary: #B4C4FF;
+  --mx-on-inverse-btn: #00174D;
+  --background: 18.0 100.0% 98.0%;
+  --foreground: 21.2 30.9% 10.8%;
+  --card: 20.0 100.0% 95.9%;
+  --card-foreground: 21.2 30.9% 10.8%;
+  --popover: 20.6 100.0% 93.7%;
+  --popover-foreground: 21.2 30.9% 10.8%;
+  --primary: 225.9 36.0% 44.1%;
+  --primary-foreground: 0.0 0.0% 100.0%;
+  --secondary: 79.2 53.2% 81.6%;
+  --secondary-foreground: 81.1 32.7% 22.2%;
+  --muted: 20.0 76.7% 91.6%;
+  --muted-foreground: 20.6 22.5% 27.8%;
+  --accent: 79.2 53.2% 81.6%;
+  --accent-foreground: 81.1 32.7% 22.2%;
+  --border: 19.1 40.0% 78.4%;
+  --input: 20.5 15.8% 47.1%;
+  --ring: 80.0 24.5% 31.2%;
+}
+:root.dark:has([data-m3="expressive"][data-scheme="ember-expressive"]) {
+  --md-primary: #B4C4FF;
+  --md-on-primary: #162C68;
+  --md-primary-container: #2F4380;
+  --md-on-primary-container: #DBE1FF;
+  --md-secondary: #BDCD9C;
+  --md-on-secondary: #283412;
+  --md-secondary-container: #3E4B26;
+  --md-on-secondary-container: #D9E9B7;
+  --md-tertiary: #A0D3A7;
+  --md-on-tertiary: #063919;
+  --md-tertiary-container: #21502E;
+  --md-on-tertiary-container: #BBEFC1;
+  --md-error: #FFB3AA;
+  --md-on-error: #690004;
+  --md-error-container: #93000A;
+  --md-on-error-container: #FFDAD5;
+  --md-primary-fixed: #DBE1FF;
+  --md-primary-fixed-dim: #B4C4FF;
+  --md-on-primary-fixed: #00174D;
+  --md-on-primary-fixed-variant: #2F4380;
+  --md-tertiary-fixed: #BBEFC1;
+  --md-tertiary-fixed-dim: #A0D3A7;
+  --md-on-tertiary-fixed: #00210B;
+  --md-on-tertiary-fixed-variant: #21502E;
+  --md-surface: #1B110B;
+  --md-surface-dim: #1B110B;
+  --md-surface-bright: #44362F;
+  --md-surface-container-lowest: #160C07;
+  --md-surface-container-low: #241913;
+  --md-surface-container: #291D17;
+  --md-surface-container-high: #342721;
+  --md-surface-container-highest: #3F322B;
+  --md-on-surface: #F4DED4;
+  --md-on-surface-variant: #DEC0B2;
+  --md-outline: #A68B7E;
+  --md-outline-variant: #574237;
+  --md-inverse-surface: #F4DED4;
+  --md-inverse-on-surface: #3B2E27;
+  --md-inverse-primary: #485B99;
+  --mx-on-inverse-btn: #FFFFFF;
+  --background: 22.5 42.1% 7.5%;
+  --foreground: 18.7 59.3% 89.4%;
+  --card: 21.2 30.9% 10.8%;
+  --card-foreground: 18.7 59.3% 89.4%;
+  --popover: 20.0 28.1% 12.5%;
+  --popover-foreground: 18.7 59.3% 89.4%;
+  --primary: 227.2 100.0% 85.3%;
+  --primary-foreground: 223.9 65.1% 24.7%;
+  --secondary: 81.1 32.7% 22.2%;
+  --secondary-foreground: 79.2 53.2% 81.6%;
+  --muted: 18.9 22.4% 16.7%;
+  --muted-foreground: 19.1 40.0% 78.4%;
+  --accent: 81.1 32.7% 22.2%;
+  --accent-foreground: 79.2 53.2% 81.6%;
+  --border: 20.6 22.5% 27.8%;
+  --input: 19.5 18.3% 57.3%;
+  --ring: 79.6 32.9% 70.8%;
+}
+:root:has([data-m3="expressive"][data-scheme="ember-tonal-spot"]) {
+  --md-primary: #8F4B39;
+  --md-on-primary: #FFFFFF;
+  --md-primary-container: #FFDAD1;
+  --md-on-primary-container: #723524;
+  --md-secondary: #77574E;
+  --md-on-secondary: #FFFFFF;
+  --md-secondary-container: #FFDAD1;
+  --md-on-secondary-container: #5D4038;
+  --md-tertiary: #6C5D2E;
+  --md-on-tertiary: #FFFFFF;
+  --md-tertiary-container: #F7E1A6;
+  --md-on-tertiary-container: #534519;
+  --md-error: #BA1A1A;
+  --md-on-error: #FFFFFF;
+  --md-error-container: #FFDAD5;
+  --md-on-error-container: #93000A;
+  --md-primary-fixed: #FFDAD1;
+  --md-primary-fixed-dim: #FFB4A1;
+  --md-on-primary-fixed: #3A0A01;
+  --md-on-primary-fixed-variant: #723524;
+  --md-tertiary-fixed: #F7E1A6;
+  --md-tertiary-fixed-dim: #DAC58D;
+  --md-on-tertiary-fixed: #241A00;
+  --md-on-tertiary-fixed-variant: #534519;
+  --md-surface: #FFF8F6;
+  --md-surface-dim: #E8D6D2;
+  --md-surface-bright: #FFF8F6;
+  --md-surface-container-lowest: #FFFFFF;
+  --md-surface-container-low: #FFF0ED;
+  --md-surface-container: #FCEAE6;
+  --md-surface-container-high: #F7E4E0;
+  --md-surface-container-highest: #F1DFDA;
+  --md-on-surface: #231917;
+  --md-on-surface-variant: #53433F;
+  --md-outline: #85736F;
+  --md-outline-variant: #D8C2BC;
+  --md-inverse-surface: #392E2B;
+  --md-inverse-on-surface: #FFEDE8;
+  --md-inverse-primary: #FFB4A1;
+  --mx-on-inverse-btn: #3A0A01;
+  --background: 13.3 100.0% 98.2%;
+  --foreground: 10.0 20.7% 11.4%;
+  --card: 10.0 100.0% 96.5%;
+  --card-foreground: 10.0 20.7% 11.4%;
+  --popover: 10.9 78.6% 94.5%;
+  --popover-foreground: 10.0 20.7% 11.4%;
+  --primary: 12.6 43.0% 39.2%;
+  --primary-foreground: 0.0 0.0% 100.0%;
+  --secondary: 11.7 100.0% 91.0%;
+  --secondary-foreground: 13.0 24.8% 29.2%;
+  --muted: 10.4 59.0% 92.4%;
+  --muted-foreground: 12.0 13.7% 28.6%;
+  --accent: 11.7 100.0% 91.0%;
+  --accent-foreground: 13.0 24.8% 29.2%;
+  --border: 12.9 26.4% 79.2%;
+  --input: 10.9 9.0% 47.8%;
+  --ring: 13.2 20.8% 38.6%;
+}
+:root.dark:has([data-m3="expressive"][data-scheme="ember-tonal-spot"]) {
+  --md-primary: #FFB4A1;
+  --md-on-primary: #561F10;
+  --md-primary-container: #723524;
+  --md-on-primary-container: #FFDAD1;
+  --md-secondary: #E7BDB3;
+  --md-on-secondary: #442A23;
+  --md-secondary-container: #5D4038;
+  --md-on-secondary-container: #FFDAD1;
+  --md-tertiary: #DAC58D;
+  --md-on-tertiary: #3B2F04;
+  --md-tertiary-container: #534519;
+  --md-on-tertiary-container: #F7E1A6;
+  --md-error: #FFB3AA;
+  --md-on-error: #690004;
+  --md-error-container: #93000A;
+  --md-on-error-container: #FFDAD5;
+  --md-primary-fixed: #FFDAD1;
+  --md-primary-fixed-dim: #FFB4A1;
+  --md-on-primary-fixed: #3A0A01;
+  --md-on-primary-fixed-variant: #723524;
+  --md-tertiary-fixed: #F7E1A6;
+  --md-tertiary-fixed-dim: #DAC58D;
+  --md-on-tertiary-fixed: #241A00;
+  --md-on-tertiary-fixed-variant: #534519;
+  --md-surface: #1A110F;
+  --md-surface-dim: #1A110F;
+  --md-surface-bright: #423734;
+  --md-surface-container-lowest: #140C0A;
+  --md-surface-container-low: #231917;
+  --md-surface-container: #271D1B;
+  --md-surface-container-high: #322825;
+  --md-surface-container-highest: #3D3230;
+  --md-on-surface: #F1DFDA;
+  --md-on-surface-variant: #D8C2BC;
+  --md-outline: #A08C88;
+  --md-outline-variant: #53433F;
+  --md-inverse-surface: #F1DFDA;
+  --md-inverse-on-surface: #392E2B;
+  --md-inverse-primary: #8F4B39;
+  --mx-on-inverse-btn: #FFFFFF;
+  --background: 10.9 26.8% 8.0%;
+  --foreground: 13.0 45.1% 90.0%;
+  --card: 10.0 20.7% 11.4%;
+  --card-foreground: 13.0 45.1% 90.0%;
+  --popover: 10.0 18.2% 12.9%;
+  --popover-foreground: 13.0 45.1% 90.0%;
+  --primary: 12.1 100.0% 81.6%;
+  --primary-foreground: 12.9 68.6% 20.0%;
+  --secondary: 13.0 24.8% 29.2%;
+  --secondary-foreground: 11.7 100.0% 91.0%;
+  --muted: 13.8 14.9% 17.1%;
+  --muted-foreground: 12.9 26.4% 79.2%;
+  --accent: 13.0 24.8% 29.2%;
+  --accent-foreground: 11.7 100.0% 91.0%;
+  --border: 12.0 13.7% 28.6%;
+  --input: 10.0 11.2% 58.0%;
+  --ring: 11.5 52.0% 80.4%;
+}
+:root:has([data-m3="expressive"][data-scheme="basalt-neutral"]) {
+  --md-primary: #5B5E6C;
+  --md-on-primary: #FFFFFF;
+  --md-primary-container: #DFE1F2;
+  --md-on-primary-container: #434654;
+  --md-secondary: #5D5E67;
+  --md-on-secondary: #FFFFFF;
+  --md-secondary-container: #E2E2EC;
+  --md-on-secondary-container: #45464F;
+  --md-tertiary: #585E72;
+  --md-on-tertiary: #FFFFFF;
+  --md-tertiary-container: #DDE1F9;
+  --md-on-tertiary-container: #414659;
+  --md-error: #BA1A1A;
+  --md-on-error: #FFFFFF;
+  --md-error-container: #FFDAD5;
+  --md-on-error-container: #93000A;
+  --md-primary-fixed: #DFE1F2;
+  --md-primary-fixed-dim: #C3C6D6;
+  --md-on-primary-fixed: #181B27;
+  --md-on-primary-fixed-variant: #434654;
+  --md-tertiary-fixed: #DDE1F9;
+  --md-tertiary-fixed-dim: #C1C6DD;
+  --md-on-tertiary-fixed: #151B2C;
+  --md-on-tertiary-fixed-variant: #414659;
+  --md-surface: #F9F9F9;
+  --md-surface-dim: #DCD9DA;
+  --md-surface-bright: #F9F9F9;
+  --md-surface-container-lowest: #FFFFFF;
+  --md-surface-container-low: #F3F3F3;
+  --md-surface-container: #EEEEEE;
+  --md-surface-container-high: #E8E8E8;
+  --md-surface-container-highest: #E5E2E3;
+  --md-on-surface: #1B1B1D;
+  --md-on-surface-variant: #474648;
+  --md-outline: #787678;
+  --md-outline-variant: #C8C6C7;
+  --md-inverse-surface: #313032;
+  --md-inverse-on-surface: #F1F1F1;
+  --md-inverse-primary: #C3C6D6;
+  --mx-on-inverse-btn: #181B27;
+  --background: 0.0 0.0% 97.6%;
+  --foreground: 240.0 3.6% 11.0%;
+  --card: 0.0 0.0% 95.3%;
+  --card-foreground: 240.0 3.6% 11.0%;
+  --popover: 0.0 0.0% 93.3%;
+  --popover-foreground: 240.0 3.6% 11.0%;
+  --primary: 229.4 8.5% 39.0%;
+  --primary-foreground: 0.0 0.0% 100.0%;
+  --secondary: 240.0 20.8% 90.6%;
+  --secondary-foreground: 234.0 6.8% 29.0%;
+  --muted: 0.0 0.0% 91.0%;
+  --muted-foreground: 270.0 1.4% 27.8%;
+  --accent: 240.0 20.8% 90.6%;
+  --accent-foreground: 234.0 6.8% 29.0%;
+  --border: 330.0 1.8% 78.0%;
+  --input: 300.0 0.8% 46.7%;
+  --ring: 234.0 5.1% 38.4%;
+}
+:root.dark:has([data-m3="expressive"][data-scheme="basalt-neutral"]) {
+  --md-primary: #C3C6D6;
+  --md-on-primary: #2D303D;
+  --md-primary-container: #434654;
+  --md-on-primary-container: #DFE1F2;
+  --md-secondary: #C5C6D0;
+  --md-on-secondary: #2E3038;
+  --md-secondary-container: #45464F;
+  --md-on-secondary-container: #E2E2EC;
+  --md-tertiary: #C1C6DD;
+  --md-on-tertiary: #2A3042;
+  --md-tertiary-container: #414659;
+  --md-on-tertiary-container: #DDE1F9;
+  --md-error: #FFB3AA;
+  --md-on-error: #690004;
+  --md-error-container: #93000A;
+  --md-on-error-container: #FFDAD5;
+  --md-primary-fixed: #DFE1F2;
+  --md-primary-fixed-dim: #C3C6D6;
+  --md-on-primary-fixed: #181B27;
+  --md-on-primary-fixed-variant: #434654;
+  --md-tertiary-fixed: #DDE1F9;
+  --md-tertiary-fixed-dim: #C1C6DD;
+  --md-on-tertiary-fixed: #151B2C;
+  --md-on-tertiary-fixed-variant: #414659;
+  --md-surface: #131315;
+  --md-surface-dim: #131315;
+  --md-surface-bright: #39393A;
+  --md-surface-container-lowest: #0E0E0F;
+  --md-surface-container-low: #1B1B1D;
+  --md-surface-container: #201F21;
+  --md-surface-container-high: #2A2A2B;
+  --md-surface-container-highest: #353436;
+  --md-on-surface: #E5E2E3;
+  --md-on-surface-variant: #C8C6C7;
+  --md-outline: #929092;
+  --md-outline-variant: #474648;
+  --md-inverse-surface: #E5E2E3;
+  --md-inverse-on-surface: #313032;
+  --md-inverse-primary: #5B5E6C;
+  --mx-on-inverse-btn: #FFFFFF;
+  --background: 240.0 5.0% 7.8%;
+  --foreground: 340.0 5.5% 89.2%;
+  --card: 240.0 3.6% 11.0%;
+  --card-foreground: 340.0 5.5% 89.2%;
+  --popover: 270.0 3.1% 12.5%;
+  --popover-foreground: 340.0 5.5% 89.2%;
+  --primary: 230.5 18.8% 80.2%;
+  --primary-foreground: 228.8 15.1% 20.8%;
+  --secondary: 234.0 6.8% 29.0%;
+  --secondary-foreground: 240.0 20.8% 90.6%;
+  --muted: 240.0 1.2% 16.7%;
+  --muted-foreground: 330.0 1.8% 78.0%;
+  --accent: 234.0 6.8% 29.0%;
+  --accent-foreground: 240.0 20.8% 90.6%;
+  --border: 270.0 1.4% 27.8%;
+  --input: 300.0 0.9% 56.9%;
+  --ring: 234.5 10.5% 79.4%;
+}
+
+/* ── Shape, motion, the faces ───────────────────────────────────────────── */
+:root:has([data-m3="expressive"]) {
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-lg-inc: 20px;
+  --md-shape-xl: 28px;
+  --md-shape-xl-inc: 32px;
+  --md-shape-xxl: 48px;
+  --md-shape-full: 9999px;
+  /* the app's rounded-lg/md/sm follow the large shape */
+  --radius: 16px;
+  --mx-spring: linear(0, 0.123 5.7%, 0.345 11.2%, 0.564 16.7%, 0.74 22.2%, 0.863 27.8%, 0.941 33.3%, 0.984 38.8%, 1.005 44.3%, 1.013 49.8%, 1.014 55.3%, 1.011 60.8%, 1.008 66.3%, 1.005 71.9%, 1.003 77.4%, 1.001 82.9%, 1);
+  --mx-spring-dur: 510ms;
+  --mx-spring-fast: linear(0, 0.193 5.6%, 0.525 11.1%, 0.815 16.5%, 0.999 21.9%, 1.079 27.3%, 1.09 32.7%, 1.067 38.1%, 1.037 43.6%, 1.012 49%, 0.998 54.4%, 0.992 59.8%, 0.992 65.2%, 0.994 70.7%, 0.997 76.1%, 0.999 81.5%, 1);
+  --mx-spring-fast-dur: 440ms;
+  --mx-effects: cubic-bezier(0.2, 0, 0, 1);
+  --mx-bar-height: 64px;
+  /* the prompt's panel: the inverse surface, and a button that reads on it (--mx-on-inverse-btn is per scheme) */
+  --mx-inverse-btn: var(--md-inverse-primary);
+  /* the hero's small burst: the palest tone the hero's ground can carry */
+  --mx-hero-burst: var(--md-surface-container-lowest);
+  /* two faces: brand (display, headline, title) and plain (body, label) */
+  --mx-font-brand: var(--md-font-brand, var(--md-font, system-ui)), system-ui, sans-serif;
+  --mx-font-plain: var(--md-font, system-ui), system-ui, sans-serif;
+  scroll-padding-top: calc(var(--mx-bar-height) + 24px);
+}
+:root.dark:has([data-m3="expressive"]) {
+  --mx-hero-burst: var(--md-on-primary-container);
+}
+:root:has([data-m3="expressive"]) body {
+  background: var(--md-surface);
+}
+:root:has([data-m3="expressive"]) :is(body, [data-arkademy-shell]),
+[data-m3="expressive"] {
+  font-family: var(--mx-font-plain);
+  font-optical-sizing: auto;
+}
+[data-m3="expressive"] {
+  color: var(--md-on-surface);
+}
+
+/* ── Type: the M3 scale in two faces ───────────────────────────────────
+ * The brand face (DynaPuff by default; PREVIEW ONLY: any of the faces in
+ * components/arkademy/m3-fonts.ts, by `[data-font]`) carries display,
+ * headline and title. Inclusive Sans carries body, label and the subtitles,
+ * where weight still works. Digits are never set in the brand face: a
+ * handwritten 1 reads as a 7 (see .mx-numeral).
+ *
+ * The faces differ a lot in width, x-height and weights, so each gets a row
+ * of tuning: a size scale for the hero and one for the other roles, a
+ * line-height factor, tracking, a weight and its axes. The sizes are
+ * factors of Gochi Hand's scale (its row: 1, no tracking, its one weight);
+ * the unkeyed row is the default face's, DynaPuff. font-synthesis is off for
+ * every face: a single-weight face is never faux-bolded. */
+:root:has([data-m3="expressive"]) { --mx-fs-hero: 0.74; --mx-fs: 0.8; --mx-lh: 1.05; --mx-ls: -0.01em; --mx-fw: 600; --mx-fvs: "wdth" 90; }
+:root:has([data-m3="expressive"][data-font="gochi-hand"]) { --mx-fs-hero: 1; --mx-fs: 1; --mx-lh: 1; --mx-ls: 0; --mx-fw: 400; --mx-fvs: normal; }
+:root:has([data-m3="expressive"][data-font="bitcount-grid-single"]) { --mx-fs-hero: 0.62; --mx-fs: 0.7; --mx-lh: 1.1; --mx-ls: 0; --mx-fw: 500; --mx-fvs: normal; }
+:root:has([data-m3="expressive"][data-font="ruslan-display"]) { --mx-fs-hero: 0.72; --mx-fs: 0.76; --mx-lh: 1.14; --mx-ls: 0; --mx-fw: 400; --mx-fvs: normal; }
+:root:has([data-m3="expressive"][data-font="yatra-one"]) { --mx-fs-hero: 0.8; --mx-fs: 0.86; --mx-lh: 1.1; --mx-ls: 0; --mx-fw: 400; --mx-fvs: normal; }
+:is(.mx-hero-title, .mx-display, .mx-headline-l, .mx-headline-m, .mx-title-l, .mx-title-l-em, .mx-title-m) {
+  font-family: var(--mx-font-brand);
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  letter-spacing: var(--mx-ls);
+}
+.mx-hero-title {
+  font-size: calc(clamp(3.75rem, 1.9rem + 7.2vw, 8.5rem) * var(--mx-fs-hero));
+  line-height: calc(0.92 * var(--mx-lh));
+  text-wrap: balance;
+}
+.mx-display { font-size: calc(clamp(2.75rem, 1.9rem + 2.8vw, 4.25rem) * var(--mx-fs)); line-height: calc(1 * var(--mx-lh)); }
+.mx-headline-l { font-size: calc(clamp(2.1rem, 1.6rem + 1.6vw, 3rem) * var(--mx-fs)); line-height: calc(1.08 * var(--mx-lh)); }
+.mx-headline-m { font-size: calc(34px * var(--mx-fs)); line-height: calc(38px * var(--mx-lh) * var(--mx-fs)); }
+.mx-title-l { font-size: calc(26px * var(--mx-fs)); line-height: calc(32px * var(--mx-fs)); }
+.mx-title-l-em { font-size: calc(28px * var(--mx-fs)); line-height: 1.05; }
+.mx-title-m { font-size: calc(20px * var(--mx-fs)); line-height: calc(26px * var(--mx-fs)); }
+/* the subtitles (the hero's tagline): the plain face at title-large size */
+.mx-subtitle { font-family: var(--mx-font-plain); font-size: 22px; line-height: 32px; font-weight: 400; letter-spacing: 0; }
+.mx-lede { font-size: 20px; line-height: 30px; font-weight: 400; letter-spacing: 0; }
+.mx-body-l { font-size: 17px; line-height: 27px; font-weight: 400; letter-spacing: 0; }
+.mx-body-m { font-size: 14px; line-height: 21px; font-weight: 400; letter-spacing: 0.1px; }
+.mx-body-s { font-size: 12px; line-height: 17px; font-weight: 400; letter-spacing: 0.2px; }
+.mx-label-l { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.1px; }
+/* digits always in the plain face (the hero's 9, block numbers) */
+.mx-numeral { font-family: var(--mx-font-plain); font-variant-numeric: tabular-nums; }
+
+/* ── Top app bar, inside the hero ───────────────────────────────────────
+ * The Arkademy's header is restyled only on this page: sticky, borderless,
+ * and drawn in the hero's own color, so at the top of the page it reads as
+ * part of the hero (which runs up under it to the window's top). Once the
+ * hero has scrolled away under it (HeroBarWatch sets the attribute), it takes
+ * the surface-container color, as an M3 top app bar does on scroll. */
+:root:has([data-m3="expressive"]) [data-arkademy-bar] {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 0;
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  --mx-bar-ink: var(--md-on-primary-container);
+}
+:root[data-mx-bar-solid]:has([data-m3="expressive"]) [data-arkademy-bar] {
+  background: var(--md-surface-container);
+  --mx-bar-ink: var(--md-on-surface);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:has([data-m3="expressive"]) [data-arkademy-bar],
+  :root:has([data-m3="expressive"]) [data-arkademy-bar] :is([data-arkademy-title], svg, button) {
+    transition: background-color 300ms var(--mx-effects), color 300ms var(--mx-effects);
+  }
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] > div {
+  min-height: var(--mx-bar-height);
+  padding-block: 0;
+}
+:root:has([data-m3="expressive"]) [data-arkademy-title] {
+  font-family: var(--mx-font-brand);
+  font-size: calc(28px * var(--mx-fs));
+  line-height: 28px;
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  letter-spacing: var(--mx-ls);
+  color: var(--mx-bar-ink);
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] svg[role="img"] {
+  color: var(--mx-bar-ink);
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] [aria-hidden="true"].bg-border {
+  background: color-mix(in srgb, var(--mx-bar-ink) 30%, transparent);
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] button {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--md-shape-full);
+  border: 0;
+  background: color-mix(in srgb, var(--mx-bar-ink) 10%, transparent);
+  box-shadow: none;
+  color: var(--mx-bar-ink);
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] button:hover {
+  background: color-mix(in srgb, var(--mx-bar-ink) 18%, transparent);
+}
+:root:has([data-m3="expressive"]) [data-arkademy-bar] :focus-visible,
+[data-m3="expressive"] :is(a, button, summary, input, [tabindex]):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* The hero runs up under the bar, edge to edge, its top square with the
+ * window and its foot in the extra-extra-large shape. */
+.mx-hero {
+  margin-top: calc(-1 * var(--mx-bar-height));
+  padding-top: var(--mx-bar-height);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-radius: 0 0 var(--md-shape-xxl) var(--md-shape-xxl);
+}
+
+/* ── Buttons: state layers, and a shape that morphs on press ─────────────── */
+.mx-btn {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 20px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+  outline: none;
+}
+.mx-btn > svg { width: 20px; height: 20px; flex: none; }
+.mx-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 150ms var(--mx-effects);
+  pointer-events: none;
+}
+.mx-btn:hover::before { opacity: 0.08; }
+.mx-btn:focus-visible::before,
+.mx-btn:active::before { opacity: 0.1; }
+.mx-btn:active { border-radius: var(--md-shape-sm); }
+/* medium (56) and large (96-ish) sizes from the Expressive button scale */
+.mx-btn--m { height: 56px; padding: 0 24px; border-radius: 28px; font-size: 16px; line-height: 24px; }
+.mx-btn--m > svg { width: 24px; height: 24px; }
+.mx-btn--m:active { border-radius: var(--md-shape-lg); }
+.mx-btn--l { height: 72px; padding: 0 32px; border-radius: 36px; font-size: 20px; line-height: 28px; font-weight: 650; font-variation-settings: "ROND" 100; }
+.mx-btn--l > svg { width: 28px; height: 28px; }
+.mx-btn--l:active { border-radius: var(--md-shape-lg-inc); }
+.mx-btn--filled { background: var(--md-primary); color: var(--md-on-primary); }
+.mx-btn--tonal { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.mx-btn--elevated { background: var(--md-surface-container-lowest); color: var(--md-primary); }
+.mx-btn--inverse { background: var(--mx-inverse-btn); color: var(--mx-on-inverse-btn); }
+
+/* The carousel's arrows: a connected button group — two halves that share
+ * an edge; the one pressed widens and squares its outer corner. */
+.mx-group { display: inline-flex; gap: 4px; }
+.mx-group > button {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 56px;
+  border: 0;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  cursor: pointer;
+  outline: none;
+}
+.mx-group > button > svg { width: 24px; height: 24px; }
+.mx-group > button:first-child { border-radius: 28px 8px 8px 28px; }
+.mx-group > button:last-child { border-radius: 8px 28px 28px 8px; }
+.mx-group > button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 150ms var(--mx-effects);
+}
+.mx-group > button:hover::before { opacity: 0.08; }
+.mx-group > button:active::before { opacity: 0.1; }
+.mx-group > button:active { width: 76px; }
+.mx-group > button:first-child:active { border-radius: 16px 8px 8px 16px; }
+.mx-group > button:last-child:active { border-radius: 8px 16px 16px 8px; }
+.mx-group > button:disabled {
+  cursor: default;
+  background: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent);
+}
+.mx-group > button:disabled::before { opacity: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mx-btn { transition: border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast); }
+  .mx-group > button {
+    transition:
+      width var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast);
+  }
+}
+
+/* ── Chip ───────────────────────────────────────────────────────────────── */
+.mx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px 0 8px;
+  border-radius: var(--md-shape-sm);
+  background: var(--md-tertiary-container);
+  color: var(--md-on-tertiary-container);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.mx-chip > svg { width: 16px; height: 16px; }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .mx-hero-shape {
+    animation: mx-shape-in 900ms var(--mx-spring) both;
+  }
+  .mx-hero-shape--late { animation-delay: 120ms; }
+  .mx-hero-shape--later { animation-delay: 220ms; }
+}
+@keyframes mx-shape-in {
+  from { transform: scale(0.8) rotate(-40deg); }
+  to { transform: none; }
+}
+
+/* ── The carousel ──────────────────────────────────────────────────────── */
+.mx-item {
+  background: var(--md-surface-container);
+  border-radius: var(--md-shape-xl-inc);
+}
+/* The canvas's blocks, tinted by side: how it's made (secondary), what it
+ * offers (primary), who it's for (tertiary), money (the neutral highest). */
+.mx-item [data-block] {
+  border-color: transparent;
+  border-radius: var(--mx-joint);
+  background: var(--md-surface-container-highest);
+}
+.mx-item [data-block]:is([data-question="kp"], [data-question="ka"], [data-question="kr"]) {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+.mx-item [data-block][data-question="vp"] {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.mx-item [data-block]:is([data-question="cr"], [data-question="ch"], [data-question="seg"]) {
+  background: var(--md-tertiary-container);
+  color: var(--md-on-tertiary-container);
+}
+.mx-item [data-block] :is(h3, h4) {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: inherit;
+}
+.mx-item [data-block] :is(h3, h4) > span:first-child {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 4px;
+  border-radius: var(--md-shape-full);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.mx-item [data-block] ul { font-size: 12px; line-height: 16px; }
+.mx-item [data-block] :is(ul, p) { color: inherit; }
+.mx-item [data-block] ul::marker,
+.mx-item [data-block] li::marker { color: currentColor; }
+/* a block left open on purpose keeps its dashed outline */
+.mx-item [data-block][class*="border-dashed"] {
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  border-color: var(--md-outline);
+}
+
+/* ── One line at a time ────────────────────────────────────────────────
+ * Inside a card, hovering (or focusing into) one question — a sentence, a gap
+ * pill or a block — makes the card's other sentences and blocks recede, so
+ * the question and its block stand out together. It rides on CanvasLink's
+ * data attributes (lib/arkademy/canvas-link.ts adds its own tint and outline)
+ * and is scoped to the cover's carousel items, so the tour and your own
+ * canvas don't change. */
+.mx-item { --mx-recede: 0.3; }
+@media (hover: hover) {
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="seg"]:hover) :is([data-kind],[data-block]):not([data-question="seg"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="vp"]:hover) :is([data-kind],[data-block]):not([data-question="vp"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ch"]:hover) :is([data-kind],[data-block]):not([data-question="ch"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cr"]:hover) :is([data-kind],[data-block]):not([data-question="cr"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="rev"]:hover) :is([data-kind],[data-block]):not([data-question="rev"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kr"]:hover) :is([data-kind],[data-block]):not([data-question="kr"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ka"]:hover) :is([data-kind],[data-block]):not([data-question="ka"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kp"]:hover) :is([data-kind],[data-block]):not([data-question="kp"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cost"]:hover) :is([data-kind],[data-block]):not([data-question="cost"]) {
+    opacity: var(--mx-recede);
+  }
+}
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="seg"]:focus-within) :is([data-kind],[data-block]):not([data-question="seg"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="vp"]:focus-within) :is([data-kind],[data-block]):not([data-question="vp"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ch"]:focus-within) :is([data-kind],[data-block]):not([data-question="ch"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cr"]:focus-within) :is([data-kind],[data-block]):not([data-question="cr"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="rev"]:focus-within) :is([data-kind],[data-block]):not([data-question="rev"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kr"]:focus-within) :is([data-kind],[data-block]):not([data-question="kr"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ka"]:focus-within) :is([data-kind],[data-block]):not([data-question="ka"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kp"]:focus-within) :is([data-kind],[data-block]):not([data-question="kp"]),
+
+.mx-item [data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cost"]:focus-within) :is([data-kind],[data-block]):not([data-question="cost"]) {
+  opacity: var(--mx-recede);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mx-item :is([data-kind], [data-block]) {
+    transition: opacity 260ms var(--mx-effects);
+  }
+}
+
+/* ── The canvas as one connected shape ─────────────────────────────────
+ * M3 Expressive's connected-group rule: where blocks meet each other the
+ * corners are small (--mx-joint); on the canvas's outer edge they take the
+ * large shape (--mx-outer). Gaps are tight so the nine read as one piece.
+ * The outer corners depend on the layout, which follows the canvas's own
+ * width (CanvasGrid's container queries), so these do too:
+ *   one column (< 18rem):  seg top, cost bottom
+ *   two columns (18–48rem): seg vp / ch cr / rev kr / ka kp / cost (spanning)
+ *   canonical (≥ 48rem):   kp ka vp cr seg / kp kr vp ch seg / cost rev */
+.mx-item { --mx-joint: 5px; --mx-outer: 22px; }
+.mx-item .grid:has(> [data-block]) { gap: 3px; }
+@container (width < 18rem) {
+  .mx-item [data-block][data-question="seg"] { border-top-left-radius: var(--mx-outer); border-top-right-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="cost"] { border-bottom-left-radius: var(--mx-outer); border-bottom-right-radius: var(--mx-outer); }
+}
+@container (18rem <= width < 48rem) {
+  .mx-item [data-block][data-question="cost"] { grid-column: 1 / -1; border-bottom-left-radius: var(--mx-outer); border-bottom-right-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="seg"] { border-top-left-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="vp"] { border-top-right-radius: var(--mx-outer); }
+}
+@container (width >= 48rem) {
+  .mx-item [data-block][data-question="kp"] { border-top-left-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="seg"] { border-top-right-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="cost"] { border-bottom-left-radius: var(--mx-outer); }
+  .mx-item [data-block][data-question="rev"] { border-bottom-right-radius: var(--mx-outer); }
+}
+
+/* ── The linked tile lifts out of the canvas ───────────────────────────
+ * When a question is hovered or focused (its sentence, gap pill or block),
+ * its block leaves the connected shape: every corner morphs to the large
+ * radius, and CanvasLink's 1px outline becomes the M3 focus indicator — a
+ * 3px ring in secondary, offset from the tile. The doubled attribute out-
+ * ranks lib/arkademy/canvas-link.ts's rule whatever the stylesheets' order.
+ * The tile sits above its neighbours so the ring is never painted under them. */
+.mx-item { --mx-lifted: 24px; }
+@media (hover: hover) {
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="seg"]:hover) [data-block][data-question="seg"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="vp"]:hover) [data-block][data-question="vp"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ch"]:hover) [data-block][data-question="ch"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cr"]:hover) [data-block][data-question="cr"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="rev"]:hover) [data-block][data-question="rev"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kr"]:hover) [data-block][data-question="kr"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ka"]:hover) [data-block][data-question="ka"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kp"]:hover) [data-block][data-question="kp"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cost"]:hover) [data-block][data-question="cost"] {
+  border-radius: var(--mx-lifted);
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 3px;
+  position: relative;
+  z-index: 1;
+}
+}
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="seg"]:focus-within) [data-block][data-question="seg"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="vp"]:focus-within) [data-block][data-question="vp"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ch"]:focus-within) [data-block][data-question="ch"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cr"]:focus-within) [data-block][data-question="cr"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="rev"]:focus-within) [data-block][data-question="rev"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kr"]:focus-within) [data-block][data-question="kr"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="ka"]:focus-within) [data-block][data-question="ka"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="kp"]:focus-within) [data-block][data-question="kp"],
+.mx-item [data-canvas-link][data-canvas-link]:has(:is([data-kind],[data-block])[data-question="cost"]:focus-within) [data-block][data-question="cost"] {
+  border-radius: var(--mx-lifted);
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 3px;
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mx-item [data-block] {
+    transition:
+      opacity 260ms var(--mx-effects),
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      outline-offset var(--mx-spring-fast-dur) var(--mx-spring-fast);
+  }
+}
+
+/* Each item morphs as it enters and leaves the carousel's focus: smaller,
+ * rounder, then full size and its own shape once it rests. Scroll-driven,
+ * so it is exactly as fast as the hand; off with reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .mx-carousel > li {
+      animation: mx-item-enter linear both, mx-item-exit linear both;
+      animation-timeline: view(inline), view(inline);
+      animation-range: entry 0% entry 100%, exit 0% exit 100%;
+    }
+    .mx-carousel > li > .mx-item {
+      animation: mx-item-round-in linear both, mx-item-round-out linear both;
+      animation-timeline: view(inline), view(inline);
+      animation-range: entry 0% entry 100%, exit 0% exit 100%;
+    }
+  }
+}
+@keyframes mx-item-enter { from { transform: scale(0.88); } to { transform: none; } }
+@keyframes mx-item-exit { from { transform: none; } to { transform: scale(0.88); } }
+@keyframes mx-item-round-in { from { border-radius: 72px; } to { border-radius: var(--md-shape-xl-inc); } }
+@keyframes mx-item-round-out { from { border-radius: var(--md-shape-xl-inc); } to { border-radius: 72px; } }
+
+/* ── The prompt, on the inverse surface ────────────────────────────────── */
+.mx-inverse {
+  background: var(--md-inverse-surface);
+  color: var(--md-inverse-on-surface);
+  border-radius: var(--md-shape-xxl);
+}
+.mx-code {
+  border: 0;
+  border-radius: var(--md-shape-xl);
+  background: color-mix(in srgb, var(--md-inverse-on-surface) 9%, var(--md-inverse-surface));
+  color: var(--md-inverse-on-surface);
+}
+.mx-code pre { padding: 20px 24px; font-size: 13px; line-height: 21px; }
+.mx-code pre > div { margin-inline: -24px; padding-inline: 24px; }
+
+/* ── The preview scheme picker (a tool for reviewing, not the page) ─────── */
+.mx-picker-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(20rem, calc(100vw - 2rem));
+  height: 48px;
+  padding: 0 16px 0 14px;
+  border-radius: var(--md-shape-lg);
+  background: var(--md-inverse-surface);
+  color: var(--md-inverse-on-surface);
+  font-family: var(--mx-font-plain);
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3), 0 4px 8px 3px rgb(0 0 0 / 0.15);
+}
+.mx-picker-button::-webkit-details-marker { display: none; }
+.mx-picker-button > svg { width: 20px; height: 20px; flex: none; }
+.mx-picker-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--md-shape-full);
+  border: 1px dashed color-mix(in srgb, var(--md-inverse-on-surface) 60%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.mx-picker-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: calc(100svh - 6rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px 8px;
+  border: 0;
+  border-radius: var(--md-shape-xl);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3), 0 4px 8px 3px rgb(0 0 0 / 0.15);
+}
+.mx-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--md-shape-lg);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.mx-picker-option:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
+.mx-picker-option:has(:checked) { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
+.mx-picker-option input { accent-color: var(--md-primary); width: 18px; height: 18px; flex: none; }
+
+/* The hero's 9 (and the phone-width badge's) in the plain face, bold: a
+ * numeral is never set in the brand face. */
+.mx-numeral:is(.mx-hero-title, .mx-headline-l) { font-weight: 700; letter-spacing: -0.02em; font-variation-settings: normal; line-height: 1; }
+.mx-numeral.mx-hero-title { font-size: 8rem; }
+.mx-numeral.mx-headline-l { font-size: 2.25rem; }
+.mx-picker-option--compact { min-height: 36px; gap: 8px; padding: 0 10px; font-size: 13px; }
