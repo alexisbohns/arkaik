@@ -1,0 +1,124 @@
+"use client";
+
+/**
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — the floating tweaker. Pick a variant per section; the
+ * picks compose. "Copy recipe" yields the `?tw=` string that reproduces the
+ * composition (paste it back to Claude to say what you picked).
+ */
+import { useState } from "react";
+import { TWEAK_SECTIONS } from "./contract";
+import { PRESETS, variantsFor } from "./registry";
+import { setPick, setPicks, toRecipe, usePicks } from "./store";
+
+const AUTHOR_DOT = {
+  bold: "bg-[#E5552F]",
+  calm: "bg-[#5B7FA6]",
+} as const;
+
+export function Tweaker() {
+  const picks = usePicks();
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const recipe = toRecipe(picks);
+  const active = Object.keys(picks).length;
+
+  return (
+    <div className="fixed bottom-4 left-20 z-[200] font-sans text-[12px] text-neutral-900" data-tweaker>
+      {open ? (
+        <div className="flex max-h-[78vh] w-[380px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
+          <div className="flex items-center gap-2 border-b border-black/10 px-3 py-2">
+            <strong className="text-[13px]">Tweaks</strong>
+            <span className="flex items-center gap-1 text-neutral-500">
+              <i className={`size-2 rounded-full ${AUTHOR_DOT.bold}`} /> bold
+              <i className={`ml-2 size-2 rounded-full ${AUTHOR_DOT.calm}`} /> calm
+            </span>
+            <button type="button" className="ml-auto rounded px-2 py-0.5 hover:bg-black/5" onClick={() => setOpen(false)}>
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+            {PRESETS.length > 0 && (
+              <section className="mb-3">
+                <h4 className="mb-1 font-semibold text-neutral-500 uppercase tracking-wide text-[10px]">Presets</h4>
+                <div className="flex flex-wrap gap-1">
+                  {PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      title={p.note}
+                      onClick={() => setPicks(p.picks)}
+                      className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1 hover:bg-neutral-200"
+                    >
+                      <i className={`size-2 rounded-full ${AUTHOR_DOT[p.author]}`} />
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            {TWEAK_SECTIONS.map((section) => {
+              const variants = variantsFor(section.id);
+              const current = picks[section.id] ?? "base";
+              const currentNote = variants.find((v) => v.id === current)?.note;
+              return (
+                <section key={section.id} className="mb-3">
+                  <h4 className="mb-1 flex items-baseline gap-2">
+                    <span className="font-semibold text-neutral-500 uppercase tracking-wide text-[10px]">{section.label}</span>
+                    <span className="truncate text-[10px] text-neutral-400">{section.hint}</span>
+                  </h4>
+                  <div className="flex flex-wrap gap-1">
+                    {[{ id: "base", label: "Current", author: null as null | "bold" | "calm", note: "What ships today" }, ...variants].map((v) => {
+                      const on = current === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          title={`${v.id}${v.note ? ` — ${v.note}` : ""}`}
+                          onClick={() => setPick(section.id, v.id)}
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 ${
+                            on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"
+                          }`}
+                        >
+                          {v.author && <i className={`size-2 rounded-full ${AUTHOR_DOT[v.author]}`} />}
+                          {v.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {currentNote && current !== "base" && <p className="mt-1 text-[11px] text-neutral-500">{currentNote}</p>}
+                </section>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 border-t border-black/10 px-3 py-2">
+            <code className="min-w-0 flex-1 truncate text-[11px] text-neutral-600" title={recipe}>
+              {recipe}
+            </code>
+            <button
+              type="button"
+              className="rounded-full bg-neutral-900 px-2.5 py-1 text-white"
+              onClick={() => {
+                void navigator.clipboard?.writeText(`?tw=${recipe}`);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1200);
+              }}
+            >
+              {copied ? "Copied" : "Copy recipe"}
+            </button>
+            <button type="button" className="rounded-full px-2 py-1 hover:bg-black/5" onClick={() => setPicks({})}>
+              Reset
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1.5 text-white shadow-lg"
+        >
+          Tweaks{active > 0 && <span className="rounded-full bg-white/20 px-1.5">{active}</span>}
+        </button>
+      )}
+    </div>
+  );
+}

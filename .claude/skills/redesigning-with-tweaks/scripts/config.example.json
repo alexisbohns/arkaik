@@ -1,0 +1,161 @@
+{
+  "_about": "The config that shipped the node-panel redesign (stack #597), kept as a worked example. Relative paths resolve from this file.",
+  "sources": [
+    "exploration/tweaks/bold/bold.css",
+    "exploration/tweaks/calm/calm.css"
+  ],
+  "_sources": "The authors' stylesheets, keyed on :root[data-tw-<section>=...]. Concatenated in order.",
+  "axes": {
+    "look": {
+      "attr": "data-panel-look",
+      "values": [
+        "expressive",
+        "calm"
+      ],
+      "default": "expressive"
+    },
+    "groups": {
+      "attr": "data-panel-groups",
+      "values": [
+        "headlines",
+        "cards"
+      ],
+      "default": "headlines"
+    }
+  },
+  "_axes": "The shipped preferences. The default value of each axis is the ABSENCE of its attribute, so the inline script only ever writes non-default values.",
+  "sections": {
+    "header": {
+      "by": "look",
+      "expressive": "bold-header-expressive",
+      "calm": "calm-header-calm"
+    },
+    "intro": {
+      "by": "look",
+      "expressive": "bold-intro-bleed",
+      "calm": "calm-intro-2"
+    },
+    "meta": {
+      "by": "look",
+      "expressive": "bold-meta-expressive",
+      "calm": "calm-meta-calm"
+    },
+    "authored": {
+      "by": "look",
+      "expressive": "bold-authored-lit",
+      "calm": "calm-authored-2"
+    },
+    "platforms": {
+      "all": "bold-platforms-mixed"
+    },
+    "relations": {
+      "all": "bold-relations-tiles"
+    },
+    "playlist": {
+      "by": "look",
+      "expressive": "bold-playlist-steps",
+      "calm": "calm-playlist-2"
+    },
+    "history": {
+      "all": "bold-history-preview"
+    },
+    "groups": {
+      "by": "groups",
+      "headlines": "bold-groups-headline",
+      "cards": "bold-groups-cards"
+    },
+    "body": {
+      "by": "look",
+      "expressive": "bold-body-motion",
+      "calm": "calm-body-1"
+    }
+  },
+  "_sections": "Per tweak section, the owner's pick: one id for every combination ('all'), or one per value of the axis it varies by ('by').",
+  "parts": {
+    "3": {
+      "look": [
+        "expressive"
+      ],
+      "groups": [
+        "headlines"
+      ]
+    },
+    "4": {
+      "groups": [
+        "headlines"
+      ]
+    },
+    "5": {}
+  },
+  "_parts": "Per stack part, the axis values that part ships. A selector is kept when it holds for at least one shipped combination.",
+  "rekey": [
+    [
+      "[data-node-panel] :has(> section > h4, > section > div > h4)",
+      "[data-relation-lines]"
+    ],
+    [
+      "[data-node-panel] ol:has(> li[data-active]) + div",
+      "[data-node-panel] ol[data-playlist-steps] + div"
+    ],
+    [
+      "[data-node-panel] ol > li[data-active]",
+      "[data-node-panel] ol[data-playlist-steps] > li[data-active]"
+    ],
+    [
+      "[data-node-panel] div:has(> div.items-start.rounded-md)",
+      "[data-node-panel] [data-history-feed]"
+    ],
+    [
+      "> div.items-start",
+      "> [data-feed-row]"
+    ],
+    [
+      "[data-bold-header=\"seal\"]",
+      "[data-node-panel-header]"
+    ]
+  ],
+  "_rekey": "Literal replacements run BEFORE renaming: structural selectors (:has(> section > h4), utility classes) re-keyed onto data hooks the shipped components carry.",
+  "rename": [
+    [
+      "\\bbold-",
+      "np-"
+    ],
+    [
+      "(?<![\\w-])calm-",
+      "np-calm-"
+    ]
+  ],
+  "_rename": "[regex, replacement] pairs: exploration prefixes to the shipped prefix (classes, CSS variables, data-* attributes, keyframes).",
+  "post_replace": [
+    [
+      "\"np-calm-",
+      "\"calm-"
+    ]
+  ],
+  "class_prefix": "np-",
+  "_class_prefix": "Selectors naming a class with this prefix that no file under 'components' contains are pruned.",
+  "components": [
+    "../../components",
+    "../../app",
+    "../../lib"
+  ],
+  "patches": [
+    {
+      "old": "…exact text of a generated rule…",
+      "new": "…its hand-fixed replacement…"
+    }
+  ],
+  "_patches": "Hand fixes on the generated CSS. Each 'old' must match exactly once, or the run fails.",
+  "appends": [
+    {
+      "file": "calm-playlist.css",
+      "parts": [
+        "4",
+        "5"
+      ]
+    }
+  ],
+  "_appends": "Hand-written rules on stable hooks, appended from the listed parts on.",
+  "header": "header.css",
+  "_header": "Prepended verbatim: the stylesheet's own doc comment (looks, scoping, hooks, the traps it avoids)."
+}

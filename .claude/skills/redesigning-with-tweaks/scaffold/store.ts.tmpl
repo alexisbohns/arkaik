@@ -1,0 +1,104 @@
+"use client";
+
+/**
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — which variant each section shows.
+ *
+ * Picks live in localStorage. `?tw=meta:bold-2,header:calm-1` in the URL
+ * overrides them on load (that is how screenshots pin a composition), and
+ * `?tw=base` clears everything. Every pick is mirrored on <html> as
+ * `data-tw-<section>="<id>"` for CSS-only variants.
+ */
+import { useSyncExternalStore } from "react";
+import { TWEAK_SECTIONS, type SectionId } from "./contract";
+
+export type Picks = Partial<Record<SectionId, string>>;
+
+const KEY = "arkaik.tweaks"; // one key per exploration is fine; picks are throwaway
+const SECTION_IDS = new Set<string>(TWEAK_SECTIONS.map((s) => s.id));
+const EMPTY: Picks = {};
+
+let picks: Picks = EMPTY;
+let loaded = false;
+const listeners = new Set<() => void>();
+
+export function parseRecipe(recipe: string): Picks {
+  const out: Picks = {};
+  for (const part of recipe.split(",")) {
+    const [section, id] = part.split(":").map((s) => s?.trim());
+    if (section && id && SECTION_IDS.has(section) && id !== "base") out[section as SectionId] = id;
+  }
+  return out;
+}
+
+export function toRecipe(p: Picks): string {
+  return TWEAK_SECTIONS.flatMap((s) => (p[s.id] ? [`${s.id}:${p[s.id]}`] : [])).join(",") || "base";
+}
+
+function mirror() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  for (const s of TWEAK_SECTIONS) {
+    const attr = `data-tw-${s.id}`;
+    const v = picks[s.id];
+    if (v) root.setAttribute(attr, v);
+    else root.removeAttribute(attr);
+  }
+}
+
+function load() {
+  if (loaded || typeof window === "undefined") return;
+  loaded = true;
+  try {
+    const stored = window.localStorage.getItem(KEY);
+    if (stored) picks = JSON.parse(stored) as Picks;
+  } catch {
+    /* private mode — picks stay in memory */
+  }
+  const fromUrl = new URLSearchParams(window.location.search).get("tw");
+  if (fromUrl !== null) picks = parseRecipe(fromUrl);
+  mirror();
+}
+
+function emit() {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(picks));
+  } catch {
+    /* ignore */
+  }
+  mirror();
+  for (const l of listeners) l();
+}
+
+export function setPick(section: SectionId, id: string | null) {
+  load();
+  const next = { ...picks };
+  if (!id || id === "base") delete next[section];
+  else next[section] = id;
+  picks = next;
+  emit();
+}
+
+export function setPicks(next: Picks) {
+  load();
+  picks = { ...next };
+  emit();
+}
+
+function subscribe(l: () => void) {
+  load();
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+function snapshot() {
+  load();
+  return picks;
+}
+
+export function usePicks(): Picks {
+  return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
+}
+
+export function usePick(section: SectionId): string {
+  return usePicks()[section] ?? "base";
+}
