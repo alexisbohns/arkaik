@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
+import { inclusiveSans } from "@/lib/fonts";
 import { GeistMono } from "geist/font/mono";
 import "highlight.js/styles/github.css";
 import "./globals.css";
@@ -45,11 +45,12 @@ export const metadata: Metadata = {
   },
 };
 
-// The installed app's title bar (app/manifest.ts) follows the system theme.
+// The installed app's title bar (app/manifest.ts) follows the system theme,
+// on the Basalt surfaces (app/m3/basalt.css: --md-surface, light and dark).
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f7f7" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+    { media: "(prefers-color-scheme: light)", color: "#F9F9F9" },
+    { media: "(prefers-color-scheme: dark)", color: "#131315" },
   ],
 };
 
@@ -76,7 +77,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      className={`${inclusiveSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
       data-stone-light={DEFAULT_STONES.light}
       data-stone-dark={DEFAULT_STONES.dark}

@@ -1,4 +1,4 @@
-import { Gochi_Hand } from "next/font/google";
+import { Gochi_Hand, Inclusive_Sans } from "next/font/google";
 
 /**
  * The handwritten accent, in one place.
@@ -11,4 +11,16 @@ import { Gochi_Hand } from "next/font/google";
 export const gochiHand = Gochi_Hand({
   subsets: ["latin"],
   weight: "400",
+});
+
+/**
+ * The reading face of the whole app (Tailwind's `font-sans`, through
+ * `--font-inclusive-sans` on <html>) and the Arkademy's plain face
+ * (components/arkademy/m3-fonts.ts reads `.style.fontFamily`). Declared once
+ * here, for the same reason as `gochiHand`: one call site, one download.
+ */
+export const inclusiveSans = Inclusive_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inclusive-sans",
 });

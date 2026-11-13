@@ -1,16 +1,17 @@
 import {
   Bitcount_Grid_Single,
   DynaPuff,
-  Inclusive_Sans,
   Ruslan_Display,
   Yatra_One,
 } from "next/font/google";
 
 import type { M3FontId } from "@/components/arkademy/m3-font-options";
-import { gochiHand } from "@/lib/fonts";
+import { gochiHand, inclusiveSans } from "@/lib/fonts";
+
+export { inclusiveSans };
 
 /**
- * The cover's faces. Inclusive Sans is the plain face (body, label, digits);
+ * The cover's faces. Inclusive Sans (declared in lib/fonts.ts, the whole app's reading face) is the plain face (body, label, digits);
  * the brand face (display, headline, title) is DynaPuff by default.
  *
  * PREVIEW ONLY: the four other brand faces (the owner's shortlist) exist so the owner can compare
@@ -21,8 +22,6 @@ import { gochiHand } from "@/lib/fonts";
  * call's options written out as a literal, hence the repetition.) Drop this table, and
  * the panel's font group, once a face is chosen.
  */
-export const inclusiveSans = Inclusive_Sans({ subsets: ["latin"], display: "swap" });
-
 /** The default brand face, so the one preloaded. */
 export const dynaPuff = DynaPuff({ subsets: ["latin"], display: "swap", axes: ["wdth"] });
 const bitcountGridSingle = Bitcount_Grid_Single({ subsets: ["latin"], display: "swap", preload: false });
