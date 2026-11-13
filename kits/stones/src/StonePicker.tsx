@@ -4,9 +4,9 @@ import { useId, useRef, type CSSProperties } from "react";
 import { PyramidIcon, RouteIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useStonePreferences } from "@/lib/hooks/useStonePreferences";
-import { RADIUS_MAX, RADIUS_MIN, isDefaultStonePreferences } from "@/lib/stones/preferences";
-import { STONES, type StoneEntry, type StoneSide } from "@/lib/stones/stones-registry.generated";
+import { useStonePreferences } from "./useStonePreferences";
+import { RADIUS_MAX, RADIUS_MIN, isDefaultStonePreferences } from "./preferences";
+import { STONES, type StoneEntry, type StoneSide } from "../dist/stones-registry.generated";
 import { cn } from "@/lib/utils";
 
 const swatch = (s: StoneEntry): CSSProperties => ({

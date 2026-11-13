@@ -8,7 +8,7 @@ import {
   applyStonePreferences,
   parseStonePreferences,
   type StonePreferences,
-} from "@/lib/stones/preferences";
+} from "./preferences";
 
 /**
  * A module store read through `useSyncExternalStore`, the same shape as

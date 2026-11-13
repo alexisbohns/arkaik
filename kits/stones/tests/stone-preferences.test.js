@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * The reader's stone preference (lib/stones/preferences.ts): parsing a stored
+ * The reader's stone preference (src/preferences.ts): parsing a stored
  * record key by key, applying it to <html>, and the inline boot script that
  * does the same before first paint.
  *
  * Transpiled like playlist-utils.test.js. preferences.ts imports the generated
- * registry by a relative path, so both are transpiled into the same build dir
- * and no alias rewriting is needed.
+ * registry by a relative path (../dist/), so both are transpiled into a build
+ * dir with the same src/ and dist/ layout and no alias rewriting is needed.
  */
 
 const assert = require("node:assert/strict");
@@ -16,7 +16,7 @@ const path = require("path");
 const vm = require("vm");
 const ts = require("typescript");
 
-const ROOT = path.join(__dirname, "..", "..");
+const ROOT = path.join(__dirname, "..");
 const BUILD_DIR = path.join(__dirname, `.test-build-stone-prefs-${process.pid}`);
 
 function transpile(rel, outName) {
@@ -29,11 +29,12 @@ function transpile(rel, outName) {
 }
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
-fs.mkdirSync(BUILD_DIR, { recursive: true });
+fs.mkdirSync(path.join(BUILD_DIR, "src"), { recursive: true });
+fs.mkdirSync(path.join(BUILD_DIR, "dist"), { recursive: true });
 fs.writeFileSync(path.join(BUILD_DIR, "package.json"), JSON.stringify({ type: "commonjs" }));
-transpile("lib/stones/stones-registry.generated.ts", "stones-registry.generated.js");
-transpile("lib/stones/preferences.ts", "preferences.js");
-const prefs = require(path.join(BUILD_DIR, "preferences.js"));
+transpile("dist/stones-registry.generated.ts", path.join("dist", "stones-registry.generated.js"));
+transpile("src/preferences.ts", path.join("src", "preferences.js"));
+const prefs = require(path.join(BUILD_DIR, "src", "preferences.js"));
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 const {

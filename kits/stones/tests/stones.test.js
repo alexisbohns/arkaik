@@ -15,8 +15,8 @@ const assert = require("node:assert/strict");
 const path = require("path");
 const fs = require("fs");
 
-const ROOT = path.join(__dirname, "..", "..");
-const { STONES, DEFAULT_STONES, stoneSVG } = require(path.join(ROOT, "scripts", "generate", "lib", "stones.js"));
+const ROOT = path.join(__dirname, "..");
+const { STONES, DEFAULT_STONES, stoneSVG } = require(path.join(ROOT, "data", "stones.js"));
 
 function luminance(hex) {
   return [1, 3, 5]
@@ -78,9 +78,9 @@ test("every texture is a standalone SVG document", () => {
 });
 
 test("the generated artifacts match the definitions", () => {
-  const css = fs.readFileSync(path.join(ROOT, "app", "stones.generated.css"), "utf8");
-  const registry = fs.readFileSync(path.join(ROOT, "lib", "stones", "stones-registry.generated.ts"), "utf8");
-  const dir = path.join(ROOT, "public", "stones");
+  const css = fs.readFileSync(path.join(ROOT, "dist", "stones.generated.css"), "utf8");
+  const registry = fs.readFileSync(path.join(ROOT, "dist", "stones-registry.generated.ts"), "utf8");
+  const dir = path.join(ROOT, "dist", "svg");
   for (const s of STONES) {
     assert.ok(css.includes(`:root[data-stone-${s.side}="${s.id}"]`), `${s.id}: CSS block`);
     assert.ok(registry.includes(`id: "${s.id}"`), `${s.id}: registry row`);

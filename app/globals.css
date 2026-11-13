@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./wobble.generated.css";
 @import "./m3/basalt.css";
+@source not "../kits";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -18,7 +18,7 @@ import {
  * (`arkaik:arkademy:bmc`, spec § "Browser storage").
  *
  * A module store read through `useSyncExternalStore`, like
- * useOverviewLayout and useStonePreferences, so nothing calls setState in an
+ * useOverviewLayout, so nothing calls setState in an
  * effect and the server and the first client render agree: both see
  * `{ phase: "loading" }` (the page draws a skeleton), and the draft is read
  * from storage when the first component subscribes — after mount — so a

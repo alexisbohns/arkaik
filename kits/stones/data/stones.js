@@ -7,7 +7,7 @@
  * mottling, veins traced along a contour of the noise, drawn veins (a seamless
  * wavy band), crystal facets, then speckles and a fine grain. Every value here
  * was tuned by eye in the "Arkaik Gem Accents" artifact — change one only with
- * a reason, and rerun `npm run generate`.
+ * a reason, and rerun `node kits/stones/generate.js`.
  *
  * The tiles stitch cleanly left to right, but the contour veins can show a faint
  * seam top to bottom — keep stone surfaces shorter than a tile (`size`), as every

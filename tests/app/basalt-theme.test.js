@@ -362,6 +362,31 @@ test("the stone sheets are no longer imported and the generator no longer runs",
   assert.doesNotMatch(ci, /test:stone|public\/stones|stones\.generated|stones-registry/);
 });
 
+console.log("basalt theme — the stone kit");
+
+test("the stone library lives in kits/stones/ and nowhere in the app", () => {
+  for (const rel of [
+    "kits/stones/README.md", "kits/stones/data/stones.js", "kits/stones/generate.js",
+    "kits/stones/css/stones.css", "kits/stones/dist/stones.generated.css",
+    "kits/stones/dist/stones-registry.generated.ts", "kits/stones/dist/svg/basalt.svg",
+    "kits/stones/src/preferences.ts", "kits/stones/src/useStonePreferences.ts",
+    "kits/stones/src/StonePicker.tsx", "kits/stones/src/StoneDefs.tsx",
+    "kits/stones/tests/stones.test.js", "kits/stones/tests/stone-preferences.test.js",
+  ]) assert.ok(fs.existsSync(path.join(ROOT, rel)), `${rel} missing`);
+  for (const rel of [
+    "public/stones", "app/stones.css", "app/stones.generated.css", "lib/stones",
+    "components/stones", "components/settings/StonePicker.tsx", "lib/hooks/useStonePreferences.ts",
+    "scripts/generate/generate-stones.js", "scripts/generate/lib/stones.js",
+    "tests/app/stones.test.js", "tests/app/stone-preferences.test.js",
+  ]) assert.ok(!fs.existsSync(path.join(ROOT, rel)), `${rel} still in the app`);
+});
+
+test("the app's tooling ignores the kit", () => {
+  assert.ok(JSON.parse(read("tsconfig.json")).exclude.includes("kits"), "tsconfig exclude");
+  assert.match(read("eslint.config.mjs"), /"kits\/\*\*"/);
+  assert.match(globals, /@source not "\.\.\/kits";/);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
