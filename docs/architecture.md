@@ -67,7 +67,7 @@ app/
     page.tsx            # /arkademy — the shell: one card per tool in the library
     not-found.tsx       # notFound() under /arkademy, inside the chrome
     business-model-canvas/
-      page.tsx          # The cover, in Material 3 Expressive: hero, pitch, the examples as a gallery, baseline prompt
+      page.tsx          # The cover, in Material 3 Expressive (docs/arkademy-design.md): hero, pitch, the examples as a gallery, baseline prompt
       m3-expressive.css # The cover's design system: M3 roles for 4 schemes, type in two faces, shapes, springs, the connected canvas
       tour/
         m3-tour.css     # The tour's own sheet on top of the cover's: bars, step pips, bubbles, the deck, the end
