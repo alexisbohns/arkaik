@@ -9,7 +9,7 @@ import type { MetadataRoute } from "next";
  * installing. `id` stays `/` so the install identity survives a later change of
  * start page.
  *
- * The colors mirror the light theme's `--background` in globals.css; the title
+ * The colors mirror Basalt's light `--md-surface` (app/m3/basalt.css); the title
  * bar follows the system theme through `viewport.themeColor` in the root
  * layout, which overrides `theme_color` once a page is loaded.
  *
@@ -28,8 +28,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/projects",
     scope: "/",
     display: "standalone",
-    background_color: "#f7f7f7",
-    theme_color: "#f7f7f7",
+    background_color: "#F9F9F9",
+    theme_color: "#F9F9F9",
     categories: ["developer", "productivity"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

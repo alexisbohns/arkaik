@@ -104,6 +104,10 @@ test("the installed app's title bar follows the Basalt surfaces", () => {
   const layout = read("app/layout.tsx");
   assert.match(layout, /color: "#F9F9F9"/);
   assert.match(layout, /color: "#131315"/);
+  const manifest = read("app/manifest.ts");
+  assert.match(manifest, /background_color: "#F9F9F9"/);
+  assert.match(manifest, /theme_color: "#F9F9F9"/);
+  assert.doesNotMatch(manifest, /#f7f7f7/i);
 });
 
 if (failures) {
