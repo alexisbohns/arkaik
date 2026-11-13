@@ -1,9 +1,10 @@
 import { CircleDashedIcon } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 
 import { SourcedNote } from "@/components/arkademy/SourcedNote";
 import type { ParagraphSegment } from "@/lib/arkademy/paragraph";
 import type { BmcQuestionKey } from "@/lib/arkademy/schema";
+import { isWord, splitWords, wordTurn } from "@/lib/arkademy/tour-stage";
 import { cn } from "@/lib/utils";
 
 interface ParagraphViewProps {
@@ -14,7 +15,23 @@ interface ParagraphViewProps {
    * question. Without it gaps are plain text, as on the cover and the tour.
    */
   onSelectQuestion?: (question: BmcQuestionKey) => void;
+  /**
+   * The tour's end: each word (each gap pill, each note marker) in a
+   * `.mx-word` span whose `--mx-word-at` is its turn (`wordTurn`: words
+   * arrive in runs of `runSize`, one run every `runMs`), for the tour's
+   * stylesheet to fade in as a flow. The words sit inside
+   * their sentence's span, so the paragraph–canvas link is untouched; each
+   * run of words is hidden from assistive technology and read whole from a
+   * visually hidden copy beside it, so a screen reader never meets it word by
+   * word. Without it (the cover, your own canvas) nothing is split.
+   */
+  words?: { start: number; runSize: number; runMs: number };
   className?: string;
+}
+
+/** A word's turn, for the tour's stylesheet. */
+function turn(at: number): CSSProperties {
+  return { "--mx-word-at": `${at}ms` } as CSSProperties;
 }
 
 /**
@@ -54,7 +71,39 @@ function GapText({ open, text }: { open: boolean; text: string }) {
  * marker is a client island); a client screen (the tour, your own canvas)
  * renders it with handlers. It sets no width: the caller's `className` does.
  */
-export function ParagraphView({ segments, onSelectQuestion, className }: ParagraphViewProps) {
+export function ParagraphView({ segments, onSelectQuestion, words, className }: ParagraphViewProps) {
+  // The running count of words, across sentences, gaps and markers.
+  let n = 0;
+  const next = () => (words ? wordTurn(words, n++) : 0);
+  /** A run of a sentence's text: as it is, or split into words with a whole copy for assistive technology. */
+  const textRun = (text: string, key: number): ReactNode => {
+    if (!words) return <Fragment key={key}>{text}</Fragment>;
+    return (
+      <Fragment key={key}>
+        <span className="sr-only">{text}</span>
+        <span aria-hidden="true">
+          {splitWords(text).map((piece, j) =>
+            isWord(piece) ? (
+              <span key={j} className="mx-word" style={turn(next())}>
+                {piece}
+              </span>
+            ) : (
+              <Fragment key={j}>{piece}</Fragment>
+            ),
+          )}
+        </span>
+      </Fragment>
+    );
+  };
+  /** A gap pill or a note marker: one word's turn, whole. */
+  const asWord = (node: ReactNode, key?: number): ReactNode =>
+    words ? (
+      <span key={key} className="mx-word" style={turn(next())}>
+        {node}
+      </span>
+    ) : (
+      node
+    );
   return (
     <p className={cn("text-[15px] leading-7 break-words text-foreground", className)}>
       {segments.map((segment, i) => (
@@ -63,11 +112,9 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
           {segment.kind === "sentence" ? (
             <span data-question={segment.question} data-kind="sentence">
               {segment.parts.map((part, j) =>
-                part.kind === "text" ? (
-                  <Fragment key={j}>{part.text}</Fragment>
-                ) : (
-                  <SourcedNote key={j} note={part.note} answer={part.answer} />
-                ),
+                part.kind === "text"
+                  ? textRun(part.text, j)
+                  : asWord(<SourcedNote key={j} note={part.note} answer={part.answer} />, j),
               )}
             </span>
           ) : onSelectQuestion ? (
@@ -85,13 +132,15 @@ export function ParagraphView({ segments, onSelectQuestion, className }: Paragra
               <GapText open={segment.open} text={segment.text} />
             </button>
           ) : (
-            <span
-              data-question={segment.question}
-              data-kind="gap"
-              className={cn(GAP, segment.open ? GAP_OPEN_ON_PURPOSE : GAP_UNANSWERED)}
-            >
-              <GapText open={segment.open} text={segment.text} />
-            </span>
+            asWord(
+              <span
+                data-question={segment.question}
+                data-kind="gap"
+                className={cn(GAP, segment.open ? GAP_OPEN_ON_PURPOSE : GAP_UNANSWERED)}
+              >
+                <GapText open={segment.open} text={segment.text} />
+              </span>,
+            )
           )}
         </Fragment>
       ))}

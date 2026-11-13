@@ -4,7 +4,7 @@ import { useState, type FocusEvent, type FormEvent, type KeyboardEvent, type Rea
 import { flushSync } from "react-dom";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 
-import { ARKADEMY_KICKER } from "@/components/arkademy/QuestionCard";
+import { ARKADEMY_KICKER } from "@/components/arkademy/ArkademyChrome";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";

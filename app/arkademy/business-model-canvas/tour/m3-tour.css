@@ -1,0 +1,824 @@
+/*
+ * The tour, read as Material 3 Expressive: one question, one screen, in two
+ * beats (components/arkademy/TourStage.tsx).
+ *
+ * It builds on the cover's stylesheet (../m3-expressive.css: the scheme's
+ * roles, the type scale in two faces, the shape scale, the springs, the
+ * buttons, the chip, the `.mx-item` canvas rules) and adds only what the tour
+ * needs: the full-window stage and its two bars, the step indicator, the
+ * conversation's bubbles, the deck of tiles that flip, the end. Everything
+ * is scoped to the tour's wrapper, `[data-m3="expressive"][data-m3-tour]`, or
+ * to `.mx-*` classes only the tour uses.
+ *
+ * Motion: every entrance is a CSS animation that plays once when its screen
+ * mounts, behind `prefers-reduced-motion: no-preference`, and none when the
+ * reader steps back onto a screen (`[data-enter="back"]`). With reduced
+ * motion a screen swaps with a short fade: no flips, no springs.
+ */
+
+/* ── The column: the tour's rows share it (the tour draws no Arkademy
+ * header: ArkademyHeaderSlot leaves it out on this route) ───────────────── */
+[data-m3-tour] {
+  --mx-gutter: 16px;
+  --mx-column: 80rem;
+}
+@media (min-width: 640px) { [data-m3-tour] { --mx-gutter: 24px; } }
+@media (min-width: 1024px) { [data-m3-tour] { --mx-gutter: 40px; } }
+
+/* ── Sides of the canvas: a block's tint, and its strong colour ─────────── */
+[data-m3-tour] [data-side="people"] { --mx-side: var(--md-tertiary-container); --mx-on-side: var(--md-on-tertiary-container); --mx-side-strong: var(--md-tertiary); }
+[data-m3-tour] [data-side="offer"] { --mx-side: var(--md-primary-container); --mx-on-side: var(--md-on-primary-container); --mx-side-strong: var(--md-primary); }
+[data-m3-tour] [data-side="make"] { --mx-side: var(--md-secondary-container); --mx-on-side: var(--md-on-secondary-container); --mx-side-strong: var(--md-secondary); }
+[data-m3-tour] [data-side="money"] { --mx-side: var(--md-surface-container-highest); --mx-on-side: var(--md-on-surface); --mx-side-strong: var(--md-on-surface-variant); }
+
+/* ── The stage: the whole window, the tour's bar above and below ───────── */
+.mx-tour {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100svh;
+}
+.mx-tour-row {
+  width: 100%;
+  max-width: calc(var(--mx-column) + 2 * var(--mx-gutter));
+  margin-inline: auto;
+  padding-inline: var(--mx-gutter);
+}
+
+/* the top bar, the tour's only chrome: leave, who, where, and the theme */
+.mx-tour-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "close who theme" "pips pips pips";
+  align-items: center;
+  gap: 4px 12px;
+  padding-block: 8px 0;
+}
+@media (min-width: 768px) {
+  .mx-tour-top {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "close who pips theme";
+    column-gap: 16px;
+    padding-block: 12px;
+  }
+}
+.mx-tour-top__who { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.mx-tour-top__tool { font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.1px; color: var(--md-on-surface-variant); }
+.mx-icon-btn {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--md-shape-full);
+  color: var(--md-on-surface-variant);
+}
+.mx-icon-btn > svg { width: 24px; height: 24px; }
+.mx-icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 150ms var(--mx-effects);
+}
+.mx-icon-btn:hover::before { opacity: 0.08; }
+.mx-icon-btn:active::before { opacity: 0.12; }
+/* tonal: the theme toggle, discreet at the bar's end */
+.mx-icon-btn--tonal {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+}
+.mx-icon-btn--tonal > svg { width: 20px; height: 20px; }
+.mx-theme-moon { display: none; }
+:root.dark .mx-theme-moon { display: block; }
+:root.dark .mx-theme-sun { display: none; }
+
+/* ── The step indicator: nine pips that become tiles ───────────────────── */
+.mx-pips-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.mx-pips { display: flex; align-items: center; gap: 0; margin: 0; padding: 0; list-style: none; }
+.mx-pip {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 40px;
+  border-radius: var(--md-shape-sm);
+}
+@media (min-width: 400px) { .mx-pip { width: 30px; } }
+.mx-pip__mark {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--md-shape-full);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--md-outline);
+}
+.mx-pip:hover .mx-pip__mark { box-shadow: inset 0 0 0 2px var(--md-on-surface); }
+/* answered: a small tile in its side's colour */
+.mx-pip[data-pip="done"] .mx-pip__mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--mx-side-strong);
+  box-shadow: none;
+}
+/* being asked: the long pill */
+.mx-pip[data-pip="current"] { width: 52px; }
+.mx-pip[data-pip="current"] .mx-pip__mark {
+  width: 40px;
+  height: 14px;
+  border-radius: var(--md-shape-full);
+  background: var(--md-primary);
+  box-shadow: none;
+}
+/* just turned: the pill has become this question's tile, ringed */
+.mx-pip[data-pip="turned"] { width: 40px; }
+.mx-pip[data-pip="turned"] .mx-pip__mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--mx-side-strong);
+  box-shadow: 0 0 0 2px var(--md-surface), 0 0 0 4px var(--md-secondary);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mx-pip { transition: width var(--mx-spring-dur) var(--mx-spring); }
+  .mx-pip__mark {
+    transition:
+      width var(--mx-spring-dur) var(--mx-spring),
+      height var(--mx-spring-dur) var(--mx-spring),
+      border-radius var(--mx-spring-dur) var(--mx-spring),
+      background-color 200ms var(--mx-effects),
+      box-shadow 200ms var(--mx-effects);
+  }
+}
+.mx-pips__count {
+  flex: none;
+  min-width: 3.5em;
+  text-align: right;
+  font-family: var(--mx-font-plain);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--md-on-surface-variant);
+}
+.mx-pips__now { font-size: 22px; font-weight: 700; color: var(--md-on-surface); }
+
+/* ── The screen between the bars ───────────────────────────────────────── */
+.mx-tour-stage {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding-block: 20px 28px;
+}
+@media (min-width: 1024px) { .mx-tour-stage { padding-block: 8px 12px; } }
+.mx-tour[data-stage="canvas"] .mx-tour-stage { align-content: start; }
+
+.mx-turn { display: flex; flex-direction: column; min-width: 0; }
+
+/* ── The opening ───────────────────────────────────────────────────────── */
+.mx-opening {
+  display: grid;
+  gap: 32px;
+  align-items: center;
+  padding: 28px 20px 24px;
+  border-radius: var(--md-shape-xxl);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+@media (min-width: 640px) { .mx-opening { padding: 40px; } }
+@media (min-width: 1024px) {
+  .mx-opening { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 48px; padding: 56px 56px 56px 64px; }
+}
+.mx-opening__text { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; min-width: 0; }
+.mx-opening__name {
+  font-family: var(--mx-font-brand);
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  letter-spacing: var(--mx-ls);
+  font-size: calc(clamp(3.25rem, 1.6rem + 6vw, 7.5rem) * var(--mx-fs-hero));
+  line-height: calc(0.95 * var(--mx-lh));
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+.mx-opening__one-liner { max-width: 34rem; color: var(--md-on-primary-container); }
+@media (max-width: 639px) { .mx-opening__one-liner { font-size: 19px; line-height: 28px; } }
+.mx-opening__how {
+  max-width: 34rem;
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--md-on-primary-container);
+}
+.mx-opening__note { max-width: 34rem; color: var(--md-on-primary-container); }
+.mx-opening__table { min-width: 0; padding: 4px 0 8px; }
+
+/* ── The company's badge, and the asker's ──────────────────────────────── */
+.mx-badge { position: relative; display: grid; flex: none; place-items: center; }
+.mx-badge__shape { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mx-badge__letter {
+  position: relative;
+  color: var(--ink);
+  font-family: var(--mx-font-brand);
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  line-height: 1;
+}
+.mx-badge--s { width: 36px; height: 36px; }
+.mx-badge--s .mx-badge__letter { font-size: calc(20px * var(--mx-fs)); }
+.mx-badge--m { width: 48px; height: 48px; }
+.mx-badge--m .mx-badge__letter { font-size: calc(28px * var(--mx-fs)); }
+.mx-badge--xl { width: 80px; height: 80px; }
+.mx-badge--xl .mx-badge__letter { font-size: calc(48px * var(--mx-fs)); }
+@media (min-width: 1024px) {
+  .mx-badge--xl { width: 104px; height: 104px; }
+  .mx-badge--xl .mx-badge__letter { font-size: calc(62px * var(--mx-fs)); }
+}
+
+/* ── The conversation ──────────────────────────────────────────────────
+ * Two voices. The asker (the Arkademy: a "?" in its cookie, on the inverse
+ * surface) speaks in one bubble style — the question, then its explanation a
+ * size smaller, both on primary-container, one shape family whose joined
+ * corners are small. The company answers on the other side, its badge first,
+ * each answer tinted like the block it fills. */
+.mx-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 60rem;
+  margin-inline: auto;
+}
+@media (min-width: 1024px) { .mx-chat { gap: 28px; } }
+.mx-chat__ask { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.mx-chat__asker {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--md-inverse-surface);
+}
+.mx-chat__asker-mark {
+  position: relative;
+  color: var(--md-inverse-on-surface);
+  font-family: var(--mx-font-brand);
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  font-size: calc(26px * var(--mx-fs));
+  line-height: 1;
+}
+@media (min-width: 1024px) {
+  .mx-chat__asker { width: 56px; height: 56px; }
+  .mx-chat__asker-mark { font-size: calc(32px * var(--mx-fs)); }
+}
+.mx-chat__bubbles { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+
+/* Every message bubble speaks in the plain face (Inclusive Sans): the brand
+ * face stays with the page's titles. */
+.mx-bubble { max-width: 100%; overflow-wrap: anywhere; font-family: var(--mx-font-plain); }
+/* The asker's one bubble style, calm: a light tonal surface lifted at M3
+ * elevation level 1, the shape family below; only the type differs. */
+[data-m3-tour] {
+  --mx-asker-surface: var(--md-surface-container-lowest);
+  --mx-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+}
+:root.dark [data-m3-tour] {
+  --mx-asker-surface: var(--md-surface-container-high);
+  --mx-elevation-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 3px 1px rgb(0 0 0 / 0.3);
+}
+.mx-bubble--asker {
+  background: var(--mx-asker-surface);
+  color: var(--md-on-surface);
+  box-shadow: var(--mx-elevation-1);
+  border-radius: 8px 28px 28px 28px;
+}
+.mx-chat__bubbles > .mx-bubble--asker:not(:last-child) { border-bottom-left-radius: 8px; }
+.mx-chat__bubbles > .mx-bubble--asker + .mx-bubble--asker { border-top-left-radius: 8px; }
+/* the question leads: larger and semi-bold */
+.mx-bubble--question {
+  padding: 16px 22px 18px;
+  font-size: clamp(1.4rem, 1.1rem + 1.3vw, 2.125rem);
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  /* pretty, not balance: the bubble hugs lines that fill it */
+  text-wrap: pretty;
+  max-width: min(100%, 24em);
+  outline: none;
+}
+@media (min-width: 1024px) {
+  .mx-bubble--asker { border-radius: 10px 36px 36px 36px; }
+  .mx-chat__bubbles > .mx-bubble--asker:not(:last-child) { border-bottom-left-radius: 10px; }
+  .mx-chat__bubbles > .mx-bubble--asker + .mx-bubble--asker { border-top-left-radius: 10px; }
+  .mx-bubble--question { padding: 22px 30px 24px; }
+}
+/* the explanation: body size, the same bubble */
+.mx-bubble--hint {
+  padding: 12px 22px 14px;
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--md-on-surface-variant);
+}
+@media (min-width: 1024px) { .mx-bubble--hint { max-width: 44rem; padding: 14px 30px 16px; font-size: 18px; line-height: 28px; } }
+
+/* the company's side: its badge at the top right, its answers stacked below it */
+.mx-chat__reply {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding-left: 28px;
+}
+@media (min-width: 1024px) { .mx-chat__reply { padding-left: 120px; } }
+.mx-chat__answers {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-bubble--answer {
+  padding: 12px 20px 13px;
+  border-radius: 26px 8px 8px 26px;
+  /* the block's tint, softened toward the surface beside the calm asker */
+  background: color-mix(in srgb, var(--mx-side) 70%, var(--md-surface));
+  color: var(--mx-on-side);
+  font-size: 18px;
+  line-height: 26px;
+}
+@media (min-width: 1024px) { .mx-bubble--answer { padding: 11px 22px 12px; font-size: 18px; line-height: 27px; } }
+/* one shape family, mirrored: the first takes the tail by the badge, the last rounds off */
+.mx-chat__answers > :first-child { border-top-right-radius: 8px; }
+.mx-chat__answers > :last-child { border-bottom-right-radius: 26px; }
+/* the note marker reads on the tinted bubble */
+.mx-bubble--answer [data-note-marker] { color: inherit; opacity: 0.8; }
+.mx-bubble--answer [data-note-marker]:hover { opacity: 1; }
+.mx-bubble--open {
+  padding: 11px 19px 12px;
+  border: 2px dashed var(--md-outline);
+  border-radius: 26px 8px 8px 26px;
+  background: transparent;
+  color: var(--md-on-surface);
+  font-size: 18px;
+  line-height: 26px;
+}
+@media (min-width: 1024px) { .mx-bubble--open { font-size: 19px; line-height: 27px; } }
+.mx-bubble--aside {
+  padding: 10px 18px;
+  border-radius: 22px 8px 22px 22px;
+  background: var(--md-surface-container);
+  color: var(--md-on-surface-variant);
+  font-size: 15px;
+  line-height: 22px;
+}
+.mx-chat__avatar { margin-top: 2px; }
+@media (max-width: 639px) { .mx-chat__avatar { width: 36px; height: 36px; } .mx-chat__avatar .mx-badge__letter { font-size: calc(20px * var(--mx-fs)); } }
+
+/* ── The deck: nine tiles in the canvas's arrangement ─────────────────── */
+.mx-deck {
+  container-type: inline-size;
+  --mx-joint: 5px;
+  --mx-outer: 22px;
+  --mx-deck-row: 4.5rem;
+}
+.mx-deck__grid {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas: "seg vp" "ch cr" "rev kr" "ka kp" "cost cost";
+  grid-auto-rows: minmax(var(--mx-deck-row), auto);
+}
+.mx-tile[data-question="seg"] { grid-area: seg; }
+.mx-tile[data-question="vp"] { grid-area: vp; }
+.mx-tile[data-question="ch"] { grid-area: ch; }
+.mx-tile[data-question="cr"] { grid-area: cr; }
+.mx-tile[data-question="rev"] { grid-area: rev; }
+.mx-tile[data-question="kr"] { grid-area: kr; }
+.mx-tile[data-question="ka"] { grid-area: ka; }
+.mx-tile[data-question="kp"] { grid-area: kp; }
+.mx-tile[data-question="cost"] { grid-area: cost; }
+/* the connected shape's outer corners, two columns */
+.mx-tile { --tl: var(--mx-joint); --tr: var(--mx-joint); --br: var(--mx-joint); --bl: var(--mx-joint); }
+.mx-tile[data-question="seg"] { --tl: var(--mx-outer); }
+.mx-tile[data-question="vp"] { --tr: var(--mx-outer); }
+.mx-tile[data-question="cost"] { --bl: var(--mx-outer); --br: var(--mx-outer); }
+
+/* canonical: kp ka vp cr seg / kp kr vp ch seg / cost rev */
+@container (width >= 48rem) {
+  .mx-deck__grid {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    grid-template-areas:
+      "kp kp ka ka vp vp cr cr seg seg"
+      "kp kp kr kr vp vp ch ch seg seg"
+      "cost cost cost cost cost rev rev rev rev rev";
+    grid-template-rows: minmax(var(--mx-deck-row), auto) minmax(var(--mx-deck-row), auto) minmax(calc(var(--mx-deck-row) * 0.62), auto);
+  }
+  .mx-tile[data-question] { --tl: var(--mx-joint); --tr: var(--mx-joint); --br: var(--mx-joint); --bl: var(--mx-joint); }
+  .mx-tile[data-question="kp"] { --tl: var(--mx-outer); }
+  .mx-tile[data-question="seg"] { --tr: var(--mx-outer); }
+  .mx-tile[data-question="cost"] { --bl: var(--mx-outer); }
+  .mx-tile[data-question="rev"] { --br: var(--mx-outer); }
+}
+/* the opening's small deck keeps the canonical arrangement at any width */
+.mx-deck--canonical .mx-deck__grid {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-areas:
+    "kp kp ka ka vp vp cr cr seg seg"
+    "kp kp kr kr vp vp ch ch seg seg"
+    "cost cost cost cost cost rev rev rev rev rev";
+  grid-template-rows: minmax(var(--mx-deck-row), auto) minmax(var(--mx-deck-row), auto) minmax(calc(var(--mx-deck-row) * 0.62), auto);
+}
+.mx-deck--canonical .mx-tile[data-question] { --tl: var(--mx-joint); --tr: var(--mx-joint); --br: var(--mx-joint); --bl: var(--mx-joint); }
+.mx-deck--canonical .mx-tile[data-question="kp"] { --tl: var(--mx-outer); }
+.mx-deck--canonical .mx-tile[data-question="seg"] { --tr: var(--mx-outer); }
+.mx-deck--canonical .mx-tile[data-question="cost"] { --bl: var(--mx-outer); }
+.mx-deck--canonical .mx-tile[data-question="rev"] { --br: var(--mx-outer); }
+
+/* the opening's deck lies on the table, tilted */
+.mx-deck--table { --mx-deck-row: clamp(3.25rem, 7vw, 6.5rem); --mx-outer: 18px; }
+.mx-deck--table .mx-deck__grid { transform: perspective(1600px) rotateX(24deg) rotateZ(-7deg); transform-origin: 50% 60%; }
+@media (min-width: 1024px) { .mx-deck--table { --mx-deck-row: clamp(5rem, 9vh, 7.5rem); } }
+
+/* the canvas beat's deck fills the stage; the flip's burst never leaves it */
+.mx-deck--stage { --mx-deck-row: 4.75rem; overflow: clip; overflow-clip-margin: var(--mx-gutter); }
+@media (min-width: 768px) { .mx-deck--stage { --mx-deck-row: clamp(5rem, (100svh - 230px) / 2.75, 15rem); } }
+
+/* ── A tile: a back, a face, and for the one turning, both ─────────────── */
+.mx-tile {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  perspective: 1400px;
+  border-radius: var(--tl) var(--tr) var(--br) var(--bl);
+}
+.mx-tile__card {
+  display: grid;
+  min-width: 0;
+  transform-style: preserve-3d;
+}
+.mx-tile__face,
+.mx-tile__back {
+  grid-area: 1 / 1;
+  min-width: 0;
+  border-radius: var(--tl) var(--tr) var(--br) var(--bl);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.mx-tile__card > .mx-tile__back { transform: rotateY(180deg); }
+
+/* the back: the deck's pattern, the slot's number, a cookie in the middle */
+.mx-tile__back {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--mx-on-back) 16%, transparent) 1.4px, transparent 1.6px) 0 0 / 12px 12px,
+    var(--mx-back);
+  color: var(--mx-on-back);
+}
+[data-m3-tour] { --mx-back: var(--md-primary); --mx-on-back: var(--md-on-primary); }
+:root.dark [data-m3-tour] { --mx-back: var(--md-inverse-primary); --mx-on-back: var(--mx-on-inverse-btn); }
+.mx-tile__back-number {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.mx-tile__back-shape {
+  width: clamp(18px, 34%, 64px);
+  height: auto;
+  aspect-ratio: 1;
+  color: color-mix(in srgb, var(--mx-on-back) 22%, transparent);
+}
+
+/* the face: tinted by side, as the cover's blocks are */
+.mx-tile__face {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  background: var(--mx-side);
+  color: var(--mx-on-side);
+}
+@media (min-width: 1024px) { .mx-tile__face { padding: 12px 14px 14px; } }
+.mx-tile[data-open] .mx-tile__face {
+  background: var(--md-surface);
+  color: var(--md-on-surface-variant);
+  box-shadow: inset 0 0 0 2px var(--md-outline);
+  background-image: none;
+}
+.mx-tile[data-open] .mx-tile__face { border: 2px dashed var(--md-outline); box-shadow: none; }
+.mx-tile__title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mx-font-plain);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  outline: none;
+}
+.mx-tile__number {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 5px;
+  border-radius: var(--md-shape-full);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.mx-tile__answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.mx-tile__answers li::first-letter { text-transform: uppercase; }
+.mx-tile__empty { font-size: 13px; line-height: 18px; }
+.mx-tile__tally { display: none; font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
+@container (width < 36rem) {
+  .mx-tile[data-tile="up"] .mx-tile__answers {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .mx-tile[data-tile="up"] .mx-tile__tally { display: block; }
+}
+/* a screen's focus lands on its heading for assistive technology; the heading
+ * is not a control, and the screen shows where it is, so no ring */
+[data-m3="expressive"] [data-tour-focus]:focus-visible { outline: none; }
+
+/* the tile just turned: lifted out of the connected shape, ringed as on the cover */
+.mx-tile[data-tile="turning"] {
+  --tl: 24px; --tr: 24px; --br: 24px; --bl: 24px;
+  z-index: 2;
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 3px;
+}
+.mx-tile__burst { display: none; }
+
+/* ── The end: the paragraph, then the whole canvas ─────────────────────── */
+.mx-end { display: flex; flex-direction: column; gap: 20px; width: 100%; min-width: 0; }
+.mx-end__title {
+  font-family: var(--mx-font-brand);
+  font-weight: var(--mx-fw);
+  font-variation-settings: var(--mx-fvs);
+  font-synthesis: none;
+  letter-spacing: var(--mx-ls);
+  font-size: calc(clamp(2.1rem, 1.6rem + 1.6vw, 3rem) * var(--mx-fs));
+  line-height: calc(1.08 * var(--mx-lh));
+  color: var(--md-primary);
+  text-wrap: balance;
+  outline: none;
+}
+.mx-end__card { display: flex; flex-direction: column; gap: 24px; padding: 20px 16px; min-width: 0; }
+@media (min-width: 640px) { .mx-end__card { padding: 32px; gap: 28px; } }
+/* side by side on a wide screen: the paragraph on the left, the canvas on the right */
+@media (min-width: 1024px) {
+  .mx-end { gap: 12px; }
+  .mx-end__card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; gap: 36px; padding: 28px 32px 32px 36px; }
+}
+
+/* The paragraph, sized to fit by its length (lib/arkademy/tour-stage.ts
+ * `paragraphFit`), so beside the canvas at 1440×900 each one in the library
+ * is whole on screen as it arrives. A short one leaves the canvas the 48rem
+ * its canonical shape needs (from 1280px wide); a long one takes the wider
+ * column, and its canvas keeps the two-column list. */
+.mx-end__paragraph.mx-end__paragraph { max-width: 72ch; font-size: 19px; line-height: 30px; color: var(--md-on-surface); }
+@media (max-width: 639px) {
+  .mx-end__card:is([data-fit="l"], [data-fit="xl"]) .mx-end__paragraph.mx-end__paragraph { font-size: 17px; line-height: 27px; }
+}
+@media (min-width: 640px) {
+  .mx-end__card[data-fit="s"] .mx-end__paragraph.mx-end__paragraph { font-size: 20px; line-height: 32px; }
+  .mx-end__card[data-fit="m"] .mx-end__paragraph.mx-end__paragraph { font-size: 18px; line-height: 28px; }
+  .mx-end__card[data-fit="l"] .mx-end__paragraph.mx-end__paragraph { font-size: 17px; line-height: 26px; }
+  .mx-end__card[data-fit="xl"] .mx-end__paragraph.mx-end__paragraph { font-size: 16px; line-height: 24.5px; }
+}
+@media (min-width: 1024px) {
+  .mx-end__card:is([data-fit="l"], [data-fit="xl"]) .mx-end__paragraph.mx-end__paragraph { max-width: none; }
+  .mx-end__card[data-fit="l"] { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .mx-end__card[data-fit="m"] { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .mx-end__card[data-fit="xl"] { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+}
+@media (min-width: 1280px) {
+  .mx-end__card[data-fit="s"] { grid-template-columns: minmax(0, 1fr) 48rem; }
+  .mx-end__card[data-fit="s"] .mx-end__paragraph.mx-end__paragraph { font-size: 19px; line-height: 30px; }
+}
+.mx-end__canvas { min-width: 0; }
+
+/* ── The bottom bar: Back, and Continue (or the end's two choices) ─────── */
+.mx-tour-bottom {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  padding-block: 12px max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--md-surface) 75%, color-mix(in srgb, var(--md-surface) 0%, transparent));
+}
+@media (min-width: 1024px) { .mx-tour-bottom { padding-block: 16px 20px; } }
+.mx-tour-bottom__inner { display: flex; align-items: center; gap: 12px; }
+.mx-tour-back {
+  height: 56px;
+  min-width: 56px;
+  padding: 0 20px 0 16px;
+  border-radius: 28px;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font-size: 16px;
+  line-height: 24px;
+}
+.mx-tour-back > svg { width: 24px; height: 24px; }
+.mx-tour-back:active { border-radius: var(--md-shape-lg); }
+@media (max-width: 639px) {
+  .mx-tour-back { padding: 0; width: 56px; }
+  .mx-tour-back__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+.mx-tour-quiet { color: var(--md-primary); background: transparent; padding-inline: 12px 16px; }
+.mx-tour-bottom__end { display: flex; flex: 1 1 auto; align-items: center; justify-content: flex-end; gap: 16px; min-width: 0; }
+.mx-tour-keys { display: none; align-items: center; gap: 4px; color: var(--md-on-surface-variant); font-size: 13px; line-height: 18px; }
+.mx-tour-keys kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding-inline: 5px;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 6px;
+  font-family: var(--mx-font-plain);
+  font-size: 13px;
+  line-height: 1;
+}
+@media (min-width: 1024px) and (hover: hover) { .mx-tour-keys { display: inline-flex; } }
+.mx-tour-cta {
+  height: 64px;
+  padding: 0 28px;
+  border-radius: 32px;
+  font-size: 18px;
+  line-height: 24px;
+}
+.mx-tour-cta > svg { width: 24px; height: 24px; }
+.mx-tour-cta:active { border-radius: var(--md-shape-lg); }
+@media (min-width: 1024px) {
+  .mx-tour-cta { height: 72px; padding: 0 36px; border-radius: 36px; font-size: 20px; line-height: 28px; }
+  .mx-tour-cta > svg { width: 28px; height: 28px; }
+  .mx-tour-cta:active { border-radius: var(--md-shape-lg-inc); }
+}
+.mx-tour-choices { display: flex; flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+@media (min-width: 640px) { .mx-tour-choices { flex: 0 1 auto; } }
+.mx-tour-choices > * { flex: 0 0 auto; }
+/* on a phone the end scrolls (the paragraph, then the canvas), so its two
+ * choices wait at the foot of it, stacked, rather than riding over both */
+@media (max-width: 639px) {
+  .mx-tour[data-stage="end"] .mx-tour-bottom { position: static; padding-top: 8px; }
+  .mx-tour-choices { flex-direction: column; align-items: stretch; }
+  .mx-tour-choices > span > .mx-btn { width: 100%; }
+}
+
+/* the preview picker sits above the bottom bar */
+/* the preview picker (a review tool): a round button at the window's edge,
+ * above the bottom bar, clear of the stage; its words stay its name */
+[data-m3-tour] .mx-picker { right: 12px; bottom: 104px; }
+@media (min-width: 1024px) { [data-m3-tour] .mx-picker { bottom: 120px; } }
+[data-m3-tour] .mx-picker-button { width: 48px; padding: 0; justify-content: center; border-radius: var(--md-shape-full); }
+[data-m3-tour] .mx-picker-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  /* the conversation's bubbles, and every staged entrance: pop on a spring */
+  .mx-tour-stage:not([data-enter="back"]) .mx-pop,
+  .mx-tour-choices .mx-pop {
+    animation: mx-tour-pop var(--mx-spring-dur) var(--mx-spring) both;
+    animation-delay: var(--mx-at, 0ms);
+  }
+  .mx-chat__ask .mx-bubble { transform-origin: 0 0; }
+  .mx-chat__reply .mx-bubble { transform-origin: 100% 0; }
+  .mx-tour-stage:not([data-enter="back"]) .mx-pop--shape {
+    animation: mx-tour-shape-in 900ms var(--mx-spring) both;
+    animation-delay: var(--mx-at, 0ms);
+  }
+  /* the conversation keeps its rhythm: every pop snappy, on the fast spring */
+  .mx-tour-stage:not([data-enter="back"]) .mx-chat .mx-pop {
+    animation: mx-tour-pop-quick var(--mx-spring-fast-dur) var(--mx-spring-fast) both;
+    animation-delay: var(--mx-at, 0ms);
+  }
+  .mx-tour-stage:not([data-enter="back"]) .mx-chat .mx-pop--shape {
+    animation: mx-tour-shape-quick var(--mx-spring-fast-dur) var(--mx-spring-fast) both;
+    animation-delay: var(--mx-at, 0ms);
+  }
+
+  /* the deck is dealt: each tile springs up into its slot, in question order */
+  .mx-tour-stage:not([data-enter="back"]) .mx-tile {
+    animation: mx-tour-deal var(--mx-spring-dur) var(--mx-spring) both;
+    animation-delay: calc(80ms + var(--mx-deal, 0) * 45ms);
+  }
+  /* the turning tile: lifted, flipped over on the spring, then ringed */
+  .mx-tour-stage:not([data-enter="back"]) .mx-tile[data-tile="turning"] {
+    animation:
+      mx-tour-deal var(--mx-spring-dur) var(--mx-spring) both calc(80ms + var(--mx-deal, 0) * 45ms),
+      mx-tour-ring var(--mx-spring-dur) var(--mx-spring-fast) both 1500ms;
+  }
+  .mx-tour-stage:not([data-enter="back"]) .mx-tile[data-tile="turning"] .mx-tile__card {
+    animation: mx-tour-flip 1250ms both 620ms;
+  }
+  .mx-tour-stage:not([data-enter="back"]) .mx-tile__burst {
+    display: block;
+    position: absolute;
+    z-index: -1;
+    left: 50%;
+    top: 50%;
+    width: max(150%, 240px);
+    height: auto;
+    aspect-ratio: 1;
+    color: var(--mx-side);
+    pointer-events: none;
+    animation: mx-tour-burst 950ms var(--mx-effects) both 1080ms;
+  }
+  /* the end's paragraph, word by word (ParagraphView's `words`), each at its turn */
+  .mx-tour-stage:not([data-enter="back"]) .mx-word {
+    animation: mx-tour-word 260ms var(--mx-effects) both;
+    animation-delay: var(--mx-word-at, 0ms);
+  }
+
+  /* the opening's deck settles onto the table */
+  .mx-tour-stage:not([data-enter="back"]) .mx-deck--table .mx-tile {
+    animation-delay: calc(300ms + var(--mx-deal, 0) * 55ms);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-tour-stage { animation: mx-tour-fade 160ms linear both; }
+}
+
+@keyframes mx-tour-pop {
+  from { opacity: 0; transform: translateY(16px) scale(0.72); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mx-tour-pop-quick {
+  from { opacity: 0; transform: translateY(8px) scale(0.86); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mx-tour-shape-quick {
+  from { opacity: 0; transform: scale(0.5) rotate(-30deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mx-tour-shape-in {
+  from { opacity: 0; transform: scale(0.3) rotate(-70deg); }
+  30% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mx-tour-deal {
+  from { opacity: 0; transform: translateY(36px) scale(0.78) rotate(-4deg); }
+  to { opacity: 1; transform: none; }
+}
+/* lift (a quick rise), then the flip on the expressive spring: past flat and back */
+@keyframes mx-tour-flip {
+  0% { transform: rotateY(180deg); animation-timing-function: var(--mx-effects); }
+  22% { transform: translateZ(150px) rotateY(180deg) scale(1.06); animation-timing-function: linear(0, 0.123 5.7%, 0.345 11.2%, 0.564 16.7%, 0.74 22.2%, 0.863 27.8%, 0.941 33.3%, 0.984 38.8%, 1.005 44.3%, 1.013 49.8%, 1.014 55.3%, 1.011 60.8%, 1.008 66.3%, 1.005 71.9%, 1.003 77.4%, 1.001 82.9%, 1); }
+  100% { transform: translateZ(0) rotateY(0deg) scale(1); }
+}
+@keyframes mx-tour-ring {
+  from { outline-color: transparent; outline-offset: 14px; }
+  to { outline-color: var(--md-secondary); outline-offset: 3px; }
+}
+@keyframes mx-tour-burst {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
+  18% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15) rotate(70deg); }
+}
+@keyframes mx-tour-word {
+  from { opacity: 0; filter: blur(4px); }
+  to { opacity: 1; filter: none; }
+}
+@keyframes mx-tour-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

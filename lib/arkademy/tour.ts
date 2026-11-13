@@ -13,6 +13,12 @@ import { bmcTourPath } from "./tools";
  * what a step shows at a given time, and the player's reducer. The React side
  * (lib/hooks/useTourPlayer.ts) only schedules one timeout to the next phase.
  *
+ * The tour no longer plays itself: the reader moves it, one screen at a time
+ * (lib/arkademy/tour-stage.ts, components/arkademy/TourStage.tsx). What the
+ * tour still takes from here is `tourEndAnnouncement`; your own canvas takes
+ * `parseStepParam`. The clock, the reducer and the focus helpers stay only
+ * while lib/hooks/useTourPlayer.ts, now unused, imports them.
+ *
  * Imports only its siblings, like every module in lib/arkademy/.
  */
 

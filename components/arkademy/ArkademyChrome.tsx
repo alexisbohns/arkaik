@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ArkademyHeaderSlot } from "@/components/arkademy/ArkademyHeaderSlot";
 import { ArkaikLogo } from "@/components/branding/ArkaikLogo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ARKADEMY_PATH } from "@/lib/arkademy/tools";
@@ -16,6 +17,9 @@ export const ARKADEMY_TITLE = cn(gochiHand.className, "text-[2.75rem] leading-[1
 /** A section's `h2` on an Arkademy page. */
 export const ARKADEMY_SECTION_TITLE = "text-2xl font-semibold tracking-tight text-balance";
 
+/** The small mono labels of your own canvas (the landing's kicker style). */
+export const ARKADEMY_KICKER = "font-mono text-[11px] tracking-[0.14em] text-muted-foreground uppercase";
+
 /**
  * The Arkademy's chrome, rendered once by app/arkademy/layout.tsx around every
  * page under it: the `/p/[id]` header pattern — the arkaik mark home, the word
@@ -25,37 +29,42 @@ export const ARKADEMY_SECTION_TITLE = "text-2xl font-semibold tracking-tight tex
  * scoped stylesheet (the cover's Material reading, app/arkademy/
  * business-model-canvas/m3.css) without the chrome knowing about it.
  *
+ * The tour's screen draws its own top bar instead of this header
+ * (ArkademyHeaderSlot leaves it out by route).
+ *
  * It holds no `h1`; each page renders exactly one. A server component: the
  * only client piece is ThemeToggle.
  */
 export function ArkademyChrome({ children }: { children: ReactNode }) {
   return (
     <div data-arkademy-shell="" className="flex min-h-svh flex-col bg-background font-sans">
-      <header data-arkademy-bar="" className="border-b">
-        <div className={cn(ARKADEMY_COLUMN, "flex items-center justify-between gap-4 py-3")}>
-          <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href="/"
-              aria-label="Go to arkaik home"
-              className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              <ArkaikLogo className="w-20" />
-            </Link>
-            <span aria-hidden="true" className="h-5 w-px shrink-0 bg-border" />
-            <Link
-              href={ARKADEMY_PATH}
-              data-arkademy-title=""
-              className={cn(
-                gochiHand.className,
-                "rounded-sm text-[1.6rem] leading-none text-foreground outline-none hover:text-foreground/80 focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              )}
-            >
-              Arkademy
-            </Link>
+      <ArkademyHeaderSlot>
+        <header data-arkademy-bar="" className="border-b">
+          <div className={cn(ARKADEMY_COLUMN, "flex items-center justify-between gap-4 py-3")}>
+            <div className="flex min-w-0 items-center gap-3">
+              <Link
+                href="/"
+                aria-label="Go to arkaik home"
+                className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <ArkaikLogo className="w-20" />
+              </Link>
+              <span aria-hidden="true" className="h-5 w-px shrink-0 bg-border" />
+              <Link
+                href={ARKADEMY_PATH}
+                data-arkademy-title=""
+                className={cn(
+                  gochiHand.className,
+                  "rounded-sm text-[1.6rem] leading-none text-foreground outline-none hover:text-foreground/80 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                )}
+              >
+                Arkademy
+              </Link>
+            </div>
+            <ThemeToggle />
           </div>
-          <ThemeToggle />
-        </div>
-      </header>
+        </header>
+      </ArkademyHeaderSlot>
       <main className="flex-1">{children}</main>
     </div>
   );
