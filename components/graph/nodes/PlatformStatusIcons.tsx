@@ -4,6 +4,7 @@ import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PLATFORM_ICONS, STATUS_LABELS, STATUS_STYLES } from "./node-styles";
 
 interface PlatformStatusIconsProps {
@@ -28,7 +29,9 @@ interface PlatformStatusIconsProps {
  * of forcing every item into a card.
  *
  * Colour is the *only* channel carrying status here, so every glyph also names
- * its status in `title` and in its accessible label. An unset platform draws at
+ * its status in a tooltip ("Web · Live") and in its accessible label. A real
+ * tooltip, not `title`: the native one waits about a second and cannot be
+ * styled, and this glyph is the only place the status is said at all. An unset platform draws at
  * a muted opacity rather than being dropped: the platform is still claimed, and
  * a missing glyph would read as "not on iOS" rather than "nobody has said yet".
  *
@@ -53,15 +56,22 @@ export function PlatformStatusIcons({
           // The `title` rides on a wrapping span rather than on the icon: a
           // lucide icon renders its children into an unkeyed array, so a
           // `<title>` element inside one costs a React key warning per glyph.
-          <span key={platform.id} title={`${platform.label} — ${label}`} className="inline-flex">
-            <Icon
-              className={cn(
-                "size-3.5 shrink-0",
-                status ? STATUS_STYLES[status].badge : "text-muted-foreground/40",
-              )}
-              aria-label={`${platform.label}: ${label}`}
-            />
-          </span>
+          <Tooltip key={platform.id}>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Icon
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    status ? STATUS_STYLES[status].badge : "text-muted-foreground/40",
+                  )}
+                  aria-label={`${platform.label}: ${label}`}
+                />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {platform.label} · {label}
+            </TooltipContent>
+          </Tooltip>
         );
       })}
     </div>

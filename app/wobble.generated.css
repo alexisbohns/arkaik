@@ -94,6 +94,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-heart-pulse { filter: url(#wob-heart-pulse); }
 .lucide-history { filter: url(#wob-history); }
 .lucide-hourglass { filter: url(#wob-hourglass); }
+.lucide-image-minus { filter: url(#wob-image-minus); }
 .lucide-image-off { filter: url(#wob-image-off); }
 .lucide-image-plus { filter: url(#wob-image-plus); }
 .lucide-inbox { filter: url(#wob-inbox); }
