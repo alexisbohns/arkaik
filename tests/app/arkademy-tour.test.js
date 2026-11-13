@@ -486,9 +486,11 @@ same("href: a step", tourHref("tidewise", 4), "/arkademy/business-model-canvas/t
   check("cover: each example card links to its tour", found.tourHref >= 1);
   // Part 4: the cover's actions row leads with your own canvas, and the tour's end card offers it.
   const coverText = fs.readFileSync(file, "utf8");
+  // The Material cover draws it as its own button: StartYourOwnLink, StartYourOwnButton's words unstyled.
+  const startAt = Math.max(coverText.indexOf("<StartYourOwnButton"), coverText.indexOf("<StartYourOwnLink"));
   check(
     "cover: Start your own leads the hero's actions, before Play a tour (part 4)",
-    found.yours || (coverText.indexOf("<StartYourOwnButton") >= 0 && coverText.indexOf("<StartYourOwnButton") < coverText.lastIndexOf("Play a tour")),
+    found.yours || (startAt >= 0 && startAt < coverText.lastIndexOf("Play a tour")),
   );
   const tourPage = fs.readFileSync(path.join(ROOT, "app", "arkademy", "business-model-canvas", "tour", "[example]", "page.tsx"), "utf8");
   check("tour: the end card offers your own canvas (part 4)", tourPage.includes("endActions={<StartYourOwnButton"));

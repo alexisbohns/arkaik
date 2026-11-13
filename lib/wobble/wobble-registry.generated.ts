@@ -137,6 +137,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "pause", seed: 1 },
   { name: "pen-tool", seed: 9 },
   { name: "pencil", seed: 4 },
+  { name: "pencil-line", seed: 1 },
   { name: "pencil-ruler", seed: 1 },
   { name: "piggy-bank", seed: 12 },
   { name: "play", seed: 7 },

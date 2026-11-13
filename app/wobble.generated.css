@@ -134,6 +134,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-pause { filter: url(#wob-pause); }
 .lucide-pen-tool { filter: url(#wob-pen-tool); }
 .lucide-pencil { filter: url(#wob-pencil); }
+.lucide-pencil-line { filter: url(#wob-pencil-line); }
 .lucide-pencil-ruler { filter: url(#wob-pencil-ruler); }
 .lucide-piggy-bank { filter: url(#wob-piggy-bank); }
 .lucide-play { filter: url(#wob-play); }
