@@ -179,6 +179,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "tags", seed: 16 },
   { name: "telescope", seed: 19 },
   { name: "terminal", seed: 9 },
+  { name: "text-align-start", seed: 7 },
   { name: "thumbs-up", seed: 18 },
   { name: "ticket", seed: 17 },
   { name: "ticket-check", seed: 0 },

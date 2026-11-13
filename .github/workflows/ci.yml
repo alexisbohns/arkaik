@@ -283,6 +283,9 @@ jobs:
       - name: Panel document-semantics tests
         run: npm run test:panel-semantics
 
+      - name: Panel look preference tests
+        run: npm run test:panel-preferences
+
       - name: Platform screenshot write-control gate tests
         run: npm run test:platform-variants-gates
 

@@ -1,12 +1,20 @@
 /*
- * Node panels — the Expressive look (Material 3 Expressive, read through
- * Arkaik's species): a seal header, a hero title that bleeds up under it, the
- * status as a lifecycle track, a lit Gherkin, a status deck per platform, and
- * headline group bars.
+ * Node panels, in two looks a reader picks in Settings → Display.
+ *
+ * - Expressive (the default; Material 3 Expressive read through Arkaik's
+ *   species): a seal header, a hero title that bleeds up under it, the status
+ *   as a lifecycle track, a lit Gherkin.
+ * - Calm: a one-line header, a clamped description, the status as a chip, a
+ *   Gherkin that reads as steps, a dense quiet playlist rail.
+ *
+ * Both share the status deck per platform, relation tiles, the History
+ * timeline and the headline group bars.
  *
  * Scoping. A rule that holds for every look sits on `:root`. A rule for the
  * Expressive look only sits on `:root:not([data-panel-look="calm"])`, so
- * Expressive is the look with no attribute at all; a rule for the Headline
+ * Expressive is the look with no attribute at all, and a Calm-only rule sits
+ * on `:root[data-panel-look="calm"]` (or on an `np-calm-` class only the Calm
+ * markup renders); a rule for the Headline
  * group bars only sits on `:root:not([data-panel-groups="cards"])`, for the
  * same reason. The attributes are a reader's preference (Settings → Display).
  *
@@ -1581,4 +1589,474 @@
 }
 [class*="calm-"][hidden] {
   display: none !important;
+}
+.np-calm-props {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.np-calm-prop {
+  display: grid;
+  grid-template-columns: clamp(4.5rem, 28%, 6.5rem) minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: center;
+  min-height: 2rem;
+}
+.np-calm-prop-top {
+  align-items: start;
+}
+.np-calm-prop-top > .np-calm-prop-label {
+  padding-top: 0.375rem;
+}
+.np-calm-prop-label {
+  font-size: 13px;
+  line-height: 1.25rem;
+  font-weight: 400;
+  color: var(--md-on-surface-variant);
+}
+.np-calm-prop-value {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.np-calm-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--md-on-surface);
+}
+.np-calm-value-empty {
+  color: var(--md-on-surface-variant);
+}
+.np-calm-menu-hint {
+  max-width: 18rem;
+  padding-bottom: 0.5rem;
+  white-space: normal;
+  font-weight: 400;
+  line-height: 1.45;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger {
+  height: 2rem;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 0.375rem;
+  margin-inline-start: -0.5rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--md-shape-sm);
+  background: transparent;
+  font-size: 13px;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger:hover {
+  background: var(--m3-hover);
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger[aria-expanded="true"] {
+  border-radius: var(--md-shape-sm);
+  background: var(--m3-on);
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger:disabled {
+  background: transparent;
+  opacity: 0.5;
+}
+.np-calm-quiet-trigger > svg:last-child {
+  opacity: 0;
+}
+.np-calm-quiet-trigger:is(:hover, :focus-visible, [aria-expanded="true"])
+  > svg:last-child {
+  opacity: 0.6;
+}
+@media (hover: none) {
+  .np-calm-quiet-trigger > svg:last-child {
+    opacity: 0.6;
+  }
+}
+.np-calm-quiet-trigger [data-slot="select-value"],
+.np-calm-quiet-trigger [data-slot="select-value"] > span {
+  min-width: 0;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger.np-calm-inline-trigger {
+  height: 1.75rem;
+  margin-inline: 0;
+  padding-inline: 0.375rem;
+}
+.np-calm-inline-trigger .np-calm-value > .truncate,
+.np-calm-inline-trigger [data-slot="select-value"] > span {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--md-on-surface-variant) 55%,
+    transparent
+  );
+  text-underline-offset: 3px;
+}
+.np-calm-inline-trigger > svg:last-child {
+  display: none;
+}
+.np-calm-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.75rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--md-shape-sm);
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+}
+.np-calm-text-button:hover {
+  background: var(--m3-hover);
+  color: var(--md-on-surface);
+}
+.np-calm-text-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.np-calm-textarea {
+  display: block;
+  width: 100%;
+  resize: none;
+  border: 0;
+  border-radius: var(--md-shape-md);
+  background: var(--m3-control);
+  padding: 0.4375rem 0.75rem;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--md-on-surface);
+  outline: none;
+}
+.np-calm-textarea::placeholder {
+  color: var(--md-on-surface-variant);
+  opacity: 0.75;
+}
+.np-calm-textarea:hover {
+  background: var(--m3-control-hover);
+}
+.np-calm-textarea:focus {
+  outline: 2px solid var(--md-secondary);
+  outline-offset: -2px;
+  background: var(--m3-control);
+}
+.np-calm-textarea:disabled {
+  opacity: 0.5;
+}
+.np-calm-textarea-grow {
+  field-sizing: content;
+  min-height: 2rem;
+  max-height: 18rem;
+}
+:is(
+  .np-calm-text-button,
+  .np-calm-gherkin-read,
+  .np-calm-header-actions
+):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root[data-modality="pointer"]
+  :is(.np-calm-text-button, .np-calm-header-actions):focus-visible {
+  outline: none;
+}
+.np-calm-header {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+.np-calm-header-actions {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  cursor: pointer;
+}
+.np-calm-header-product {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  max-width: 50%;
+  min-width: 0;
+  gap: 0.125rem;
+}
+.np-calm-header button[aria-label^="Copy "] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.np-calm-header-in {
+  font-size: 12.5px;
+  color: var(--md-on-surface-variant);
+}
+.np-calm-header-product [data-slot="select-trigger"] {
+  font-size: 12.5px;
+}
+.np-calm-header abbr {
+  margin-inline-start: -0.375rem;
+  padding-inline: 0.375rem;
+  border-color: transparent;
+  border-radius: var(--md-shape-sm);
+  font-size: 12.5px;
+  color: var(--md-on-surface-variant);
+}
+.np-calm-header abbr:hover {
+  background: var(--m3-hover);
+}
+.np-calm-header button[aria-label^="Copy "] {
+  background: transparent;
+  border-color: transparent;
+  color: color-mix(in srgb, var(--md-on-surface-variant) 80%, transparent);
+}
+.np-calm-header button[aria-label^="Copy "]:hover {
+  background: var(--m3-hover);
+  color: var(--md-on-surface);
+}
+.np-calm-header-bare abbr {
+  margin-inline-start: -0.25rem;
+  padding: 0.25rem;
+}
+:root[data-panel-look="calm"] header:has([data-node-panel-header]) {
+  padding-block: 0.875rem;
+}
+.np-calm-intro {
+  gap: 0.5rem;
+}
+.np-calm-intro [data-panel-title] {
+  font-size: 1.1875rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.np-calm-intro [data-panel-description] {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--md-on-surface-variant);
+  max-width: 68ch;
+}
+@media (pointer: coarse) {
+  .np-calm-intro [data-panel-description] {
+    font-size: 1rem;
+  }
+}
+.np-calm-intro {
+  display: flex;
+  flex-direction: column;
+}
+.np-calm-clamp[data-clamped] [data-panel-description]:not(:focus) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.np-calm-clamp-toggle {
+  align-self: flex-start;
+  margin-top: -0.375rem;
+  margin-inline-start: -0.5rem;
+}
+.np-calm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger.np-calm-chip,
+.np-calm-chip-static {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  margin: 0;
+  padding-inline: 0.625rem;
+  border-radius: 14px;
+  background: var(--m3-control);
+  font-size: 12.5px;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger.np-calm-chip:hover {
+  background: var(--m3-control-hover);
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger.np-calm-chip[aria-expanded="true"] {
+  border-radius: var(--md-shape-sm);
+  background: var(--m3-on);
+}
+.np-calm-chip > svg:last-child {
+  opacity: 0.5;
+}
+.np-calm-chip .np-calm-value,
+.np-calm-chip-static .np-calm-value {
+  font-size: 12.5px;
+}
+[data-slot="select-trigger"].np-calm-quiet-trigger.np-calm-inline-trigger:first-child {
+  padding-inline-start: 0;
+}
+.np-calm-values > div > div:first-child {
+  min-height: 2.25rem;
+  border-color: transparent;
+  border-radius: var(--md-shape-md);
+  background: var(--m3-control);
+  box-shadow: none;
+}
+.np-calm-values > div > div:first-child:hover {
+  background: var(--m3-control-hover);
+}
+.np-calm-values > div > div:first-child:focus-within {
+  outline: 2px solid var(--md-secondary);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+.np-calm-values span.rounded-full {
+  border-color: transparent;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+.np-calm-prop-top .np-calm-values {
+  width: 100%;
+}
+.np-calm-gherkin-read {
+  display: block;
+  width: calc(100% + 1.5rem);
+  margin-inline: -0.75rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--md-shape-md);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--md-on-surface);
+  cursor: text;
+}
+.np-calm-gherkin-read:hover {
+  background: var(--m3-hover);
+}
+.np-calm-gherkin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.np-calm-gherkin-line {
+  display: block;
+}
+.np-calm-gherkin-line:has(> .np-calm-gherkin-kw) {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+}
+.np-calm-gherkin-kw {
+  display: inline-block;
+  min-width: 3.25rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-on-surface-variant);
+}
+:root[data-panel-look="calm"] [data-node-panel] .uppercase {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+:root[data-panel-look="calm"] [data-node-panel] {
+  gap: 1.5rem;
+  padding-block: 1.75rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] > div:first-child {
+  gap: 1.5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .np-calm-quiet-trigger > svg:last-child {
+    transition:
+      rotate var(--mx-spring-fast-dur, 440ms) var(--mx-spring-fast, ease-out),
+      opacity 200ms var(--mx-effects, ease);
+  }
+  .np-calm-textarea,
+  .np-calm-gherkin-read {
+    transition: background-color 200ms var(--mx-effects, ease);
+  }
+}
+@media (forced-colors: active) {
+  .np-calm-textarea,
+  .np-calm-chip-static,
+  .np-calm-gherkin-read,
+  .np-calm-values > div > div:first-child {
+    border: 1px solid ButtonText;
+  }
+}
+.np-calm-prop-value > .np-calm-gherkin-read {
+  width: calc(100% + 0.5rem);
+  margin-inline: -0.5rem 0;
+  padding-inline: 0.5rem;
+}
+.np-calm-props > .np-calm-prop-top + .np-calm-prop,
+.np-calm-props > .np-calm-prop + .np-calm-prop-top {
+  margin-top: 0.375rem;
+}
+
+/* Calm — the playlist as a dense, quiet rail: numerals without their circle,
+   a fainter rail, regular-weight titles at a tighter step, and the platform
+   marks resting dim until their row is pointed at or active. */
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  > div:first-child
+  > button:first-child {
+  border-color: transparent;
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  > div:first-child
+  > button:first-child:hover {
+  background: var(--m3-hover);
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  > div:first-child
+  > span[aria-hidden] {
+  background: var(--md-outline-variant);
+  opacity: 0.6;
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  > div:last-child {
+  padding-bottom: 0.5rem;
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  > div:last-child
+  p {
+  font-size: 13px;
+  font-weight: 400;
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li
+  [data-platform-status-icons] {
+  opacity: 0.55;
+}
+:root[data-panel-look="calm"]
+  [data-node-panel]
+  ol[data-playlist-steps]
+  > li:is(:hover, [data-active="true"])
+  [data-platform-status-icons] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-panel-look="calm"]
+    [data-node-panel]
+    ol[data-playlist-steps]
+    > li
+    [data-platform-status-icons] {
+    transition: opacity 200ms var(--mx-effects, ease);
+  }
 }

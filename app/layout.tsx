@@ -9,6 +9,7 @@ import { AppToaster } from "@/components/ui/toaster";
 import { SyncProvider } from "@/components/sync/SyncProvider";
 import { WobbleFilters } from "@/components/wobble/WobbleFilters";
 import { WobbleBoil } from "@/components/wobble/WobbleBoil";
+import { PANEL_PREFERENCES_SCRIPT } from "@/lib/config/panel-preferences";
 
 export const metadata: Metadata = {
   title: "arkaik",
@@ -90,6 +91,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: INPUT_MODALITY_SCRIPT }} />
+        {/* The reader's panel look, on <html> before first paint (panels.css). */}
+        <script dangerouslySetInnerHTML={{ __html: PANEL_PREFERENCES_SCRIPT }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
