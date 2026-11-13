@@ -65,9 +65,13 @@ export const PUBLISHED_DOC_AREAS: readonly string[] = [
  * - `arkademy` — the operator guide for uploading the Arkademy library: how the
  *   owner runs the upload script against production. Its public contract (the
  *   route and the table) is in `spec/services.md`.
+ * - `arkademy-design` — the Arkademy's design system (Material 3 Expressive,
+ *   the Arkaik way): the brief, principles and rules for building its pages.
+ *   Working guidance for whoever builds the next page, not product docs.
  */
 export const INTERNAL_DOC_AREAS: readonly string[] = [
   "arkademy",
+  "arkademy-design",
   "arkaik-bootstrap-skill",
   "arkaik-skill",
   "audit",
