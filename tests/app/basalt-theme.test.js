@@ -286,6 +286,24 @@ test("the destructive button wears its foreground role, and the pair reaches AA 
   }
 });
 
+console.log("basalt theme — the menu badge");
+
+test("the active row's badge is the cookie12 shape, on secondary-container", () => {
+  const shapes = read("components/arkademy/ExpressiveShape.tsx");
+  const cookie12 = shapes.match(/cookie12:\s*"([^"]+)"/)[1];
+  assert.ok(basalt.includes(`d='${cookie12}'`), "basalt.css's mask is not EXPRESSIVE_SHAPES.cookie12");
+  const rule = basalt.slice(basalt.indexOf('[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before'));
+  assert.match(rule, /background:\s*var\(--md-secondary-container\)/);
+  assert.match(rule, /-webkit-mask:/);
+  assert.match(rule, /\bmask:/);
+  assert.match(basalt, /stroke:\s*var\(--md-on-secondary-container\)/);
+  assert.doesNotMatch(basalt, /#stone-icon/);
+});
+
+test("sidebar rows no longer read the stone radius", () => {
+  assert.doesNotMatch(read("components/ui/sidebar.tsx"), /--stone-radius/);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
