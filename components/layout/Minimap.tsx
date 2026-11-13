@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { MiniMap as ReactFlowMinimap, type Node } from "@xyflow/react";
-import { useTheme } from "next-themes";
 import type { MapMinimapColorMode } from "@arkaik/schema";
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
@@ -27,16 +26,13 @@ interface MinimapProps {
 }
 
 export function Minimap({ colorBy = "status" }: MinimapProps) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
   /**
    * A function, not a string: React Flow only funnels a string `nodeColor`
    * into the `--xy-minimap-node-background-color-props` CSS variable, which is
    * one fill for the whole map. Per-node color has to come from here.
    */
   const nodeColor = useCallback((node: Node) => {
-    const fallback = isDark ? "#94a3b8" : "#64748b";
+    const fallback = "var(--md-outline)";
 
     if (colorBy === "species") {
       const species = node.type ? NODE_TYPE_TO_SPECIES[node.type] : undefined;
@@ -45,18 +41,18 @@ export function Minimap({ colorBy = "status" }: MinimapProps) {
 
     const status = node.data?.status as StatusId | undefined;
     return (status && STATUS_MINIMAP_FILL[status]) || fallback;
-  }, [colorBy, isDark]);
+  }, [colorBy]);
 
   return (
     <ReactFlowMinimap
-      bgColor={isDark ? "#111827" : "#f8fafc"}
+      bgColor="var(--md-surface-container)"
       nodeColor={nodeColor}
       nodeStrokeColor={nodeColor}
       // The mask paints everything *outside* the viewport. Transparent meant the
       // focus zone was carried by its 1.5px stroke alone — invisible on a dense
       // map. Dimming the surroundings is what makes "you are here" readable.
-      maskColor={isDark ? "rgba(17, 24, 39, 0.65)" : "rgba(148, 163, 184, 0.35)"}
-      maskStrokeColor={isDark ? "#60a5fa" : "#3b82f6"}
+      maskColor="color-mix(in srgb, var(--md-on-surface) 22%, transparent)"
+      maskStrokeColor="var(--md-secondary)"
       nodeStrokeWidth={2}
       pannable
       zoomable

@@ -19,16 +19,16 @@ import type { Node } from "@/lib/data/types";
 const MAX_NODES = 6;
 
 /**
- * The merge mark's purple. The same purple the `releasing` status already uses
+ * The merge mark's plum. The same plum the `releasing` status already uses
  * on the canvas — a shipped pull request and a releasing node are the same
  * moment in the product's life, so they share a hue rather than each picking
  * one.
  *
  * The colour stays on the *tile*. Labels beside these marks are system
- * foreground: purple here means "this is the forge", and a purple word next to
- * a purple box says it twice while making the text harder to read.
+ * foreground: plum here means "this is the forge", and a plum word next to
+ * a plum box says it twice while making the text harder to read.
  */
-export const FORGE_TILE = "bg-purple-500/10 text-purple-600 dark:text-purple-400";
+export const FORGE_TILE = "bg-tone-plum/10 text-tone-plum";
 
 /**
  * The touched nodes, with their *current* status.
@@ -192,7 +192,7 @@ export function DeliverableChips({
               }
               className={`${ICON_CHIP_ROW} text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50`}
             >
-              <span className={cn(iconChipVariants({ variant: "bare" }), FORGE_TILE, "group-hover:bg-purple-500/20")}>
+              <span className={cn(iconChipVariants({ variant: "bare" }), FORGE_TILE, "group-hover:bg-tone-plum/20")}>
                 <GitMergeIcon className="size-3" aria-hidden="true" />
               </span>
               {/* The number when there is one; otherwise the word, so the mark

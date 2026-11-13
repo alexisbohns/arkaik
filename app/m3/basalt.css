@@ -1,0 +1,175 @@
+/*
+ * The core app's palette: Material 3 Expressive's Basalt · Neutral
+ * (docs/superpowers/specs/2026-11-13-basalt-core-theme-design.md).
+ *
+ * The --md-* roles are the Arkademy's `basalt-neutral` scheme, copied verbatim
+ * from app/arkademy/business-model-canvas/m3-expressive.css (one HCT solver
+ * run, seed #A3A3AB; tests/app/basalt-theme.test.js holds the two copies
+ * equal — never retune one by hand). The app's shadcn tokens are then mapped
+ * onto those roles, exactly as the Arkademy maps them, so every ui/* component
+ * follows without being touched.
+ *
+ * The Arkademy keeps its own scheme: its rules are keyed on
+ * `:root:has([data-m3="expressive"])`, more specific than `:root`, so on its
+ * pages Ember · Vibrant wins, light and dark.
+ */
+:root {
+  --md-primary: #5B5E6C;
+  --md-on-primary: #FFFFFF;
+  --md-primary-container: #DFE1F2;
+  --md-on-primary-container: #434654;
+  --md-secondary: #5D5E67;
+  --md-on-secondary: #FFFFFF;
+  --md-secondary-container: #E2E2EC;
+  --md-on-secondary-container: #45464F;
+  --md-tertiary: #585E72;
+  --md-on-tertiary: #FFFFFF;
+  --md-tertiary-container: #DDE1F9;
+  --md-on-tertiary-container: #414659;
+  --md-error: #BA1A1A;
+  --md-on-error: #FFFFFF;
+  --md-error-container: #FFDAD5;
+  --md-on-error-container: #93000A;
+  --md-primary-fixed: #DFE1F2;
+  --md-primary-fixed-dim: #C3C6D6;
+  --md-on-primary-fixed: #181B27;
+  --md-on-primary-fixed-variant: #434654;
+  --md-tertiary-fixed: #DDE1F9;
+  --md-tertiary-fixed-dim: #C1C6DD;
+  --md-on-tertiary-fixed: #151B2C;
+  --md-on-tertiary-fixed-variant: #414659;
+  --md-surface: #F9F9F9;
+  --md-surface-dim: #DCD9DA;
+  --md-surface-bright: #F9F9F9;
+  --md-surface-container-lowest: #FFFFFF;
+  --md-surface-container-low: #F3F3F3;
+  --md-surface-container: #EEEEEE;
+  --md-surface-container-high: #E8E8E8;
+  --md-surface-container-highest: #E5E2E3;
+  --md-on-surface: #1B1B1D;
+  --md-on-surface-variant: #474648;
+  --md-outline: #787678;
+  --md-outline-variant: #C8C6C7;
+  --md-inverse-surface: #313032;
+  --md-inverse-on-surface: #F1F1F1;
+  --md-inverse-primary: #C3C6D6;
+  --mx-on-inverse-btn: #181B27;
+  --background: 0.0 0.0% 97.6%;
+  --foreground: 240.0 3.6% 11.0%;
+  --card: 0.0 0.0% 95.3%;
+  --card-foreground: 240.0 3.6% 11.0%;
+  --popover: 0.0 0.0% 93.3%;
+  --popover-foreground: 240.0 3.6% 11.0%;
+  --primary: 229.4 8.5% 39.0%;
+  --primary-foreground: 0.0 0.0% 100.0%;
+  --secondary: 240.0 20.8% 90.6%;
+  --secondary-foreground: 234.0 6.8% 29.0%;
+  --muted: 0.0 0.0% 91.0%;
+  --muted-foreground: 270.0 1.4% 27.8%;
+  --accent: 240.0 20.8% 90.6%;
+  --accent-foreground: 234.0 6.8% 29.0%;
+  --border: 330.0 1.8% 78.0%;
+  --input: 300.0 0.8% 46.7%;
+  --ring: 234.0 5.1% 38.4%;
+  /* the tokens the Arkademy never needed: error, and the sidebar's set */
+  --destructive: 0.0 75.5% 41.6%;
+  --destructive-foreground: 0.0 0.0% 100.0%;
+  --sidebar-background: 0.0 0.0% 95.3%;
+  --sidebar-foreground: 270.0 1.4% 27.8%;
+  --sidebar-primary: 229.4 8.5% 39.0%;
+  --sidebar-primary-foreground: 0.0 0.0% 100.0%;
+  --sidebar-accent: 240.0 20.8% 90.6%;
+  --sidebar-accent-foreground: 234.0 6.8% 29.0%;
+  --sidebar-border: 330.0 1.8% 78.0%;
+  --sidebar-ring: 234.0 5.1% 38.4%;
+  --sidebar: hsl(0.0 0.0% 95.3%);
+  /* Status tones (spec § 3): M3 tonal palettes on the expressive schemes'
+   * hues, chroma capped at 40 so they stay calm beside Basalt. T40 here, T80
+   * under .dark; the minimap reads the same variables. */
+  --tone-neutral: #5D5E67;
+  --tone-slate: #585E72;
+  --tone-indigo: #485B99;
+  --tone-ember: #8F4B39;
+  --tone-plum: #7B4F7A;
+  --tone-green: #3A6844;
+  --tone-amber: #805520;
+  --tone-red: #BA1A1A;
+}
+.dark {
+  --md-primary: #C3C6D6;
+  --md-on-primary: #2D303D;
+  --md-primary-container: #434654;
+  --md-on-primary-container: #DFE1F2;
+  --md-secondary: #C5C6D0;
+  --md-on-secondary: #2E3038;
+  --md-secondary-container: #45464F;
+  --md-on-secondary-container: #E2E2EC;
+  --md-tertiary: #C1C6DD;
+  --md-on-tertiary: #2A3042;
+  --md-tertiary-container: #414659;
+  --md-on-tertiary-container: #DDE1F9;
+  --md-error: #FFB3AA;
+  --md-on-error: #690004;
+  --md-error-container: #93000A;
+  --md-on-error-container: #FFDAD5;
+  --md-primary-fixed: #DFE1F2;
+  --md-primary-fixed-dim: #C3C6D6;
+  --md-on-primary-fixed: #181B27;
+  --md-on-primary-fixed-variant: #434654;
+  --md-tertiary-fixed: #DDE1F9;
+  --md-tertiary-fixed-dim: #C1C6DD;
+  --md-on-tertiary-fixed: #151B2C;
+  --md-on-tertiary-fixed-variant: #414659;
+  --md-surface: #131315;
+  --md-surface-dim: #131315;
+  --md-surface-bright: #39393A;
+  --md-surface-container-lowest: #0E0E0F;
+  --md-surface-container-low: #1B1B1D;
+  --md-surface-container: #201F21;
+  --md-surface-container-high: #2A2A2B;
+  --md-surface-container-highest: #353436;
+  --md-on-surface: #E5E2E3;
+  --md-on-surface-variant: #C8C6C7;
+  --md-outline: #929092;
+  --md-outline-variant: #474648;
+  --md-inverse-surface: #E5E2E3;
+  --md-inverse-on-surface: #313032;
+  --md-inverse-primary: #5B5E6C;
+  --mx-on-inverse-btn: #FFFFFF;
+  --background: 240.0 5.0% 7.8%;
+  --foreground: 340.0 5.5% 89.2%;
+  --card: 240.0 3.6% 11.0%;
+  --card-foreground: 340.0 5.5% 89.2%;
+  --popover: 270.0 3.1% 12.5%;
+  --popover-foreground: 340.0 5.5% 89.2%;
+  --primary: 230.5 18.8% 80.2%;
+  --primary-foreground: 228.8 15.1% 20.8%;
+  --secondary: 234.0 6.8% 29.0%;
+  --secondary-foreground: 240.0 20.8% 90.6%;
+  --muted: 240.0 1.2% 16.7%;
+  --muted-foreground: 330.0 1.8% 78.0%;
+  --accent: 234.0 6.8% 29.0%;
+  --accent-foreground: 240.0 20.8% 90.6%;
+  --border: 270.0 1.4% 27.8%;
+  --input: 300.0 0.9% 56.9%;
+  --ring: 234.5 10.5% 79.4%;
+  --destructive: 6.4 100.0% 83.3%;
+  --destructive-foreground: 357.7 100.0% 20.6%;
+  --sidebar-background: 240.0 3.6% 11.0%;
+  --sidebar-foreground: 330.0 1.8% 78.0%;
+  --sidebar-primary: 230.5 18.8% 80.2%;
+  --sidebar-primary-foreground: 228.8 15.1% 20.8%;
+  --sidebar-accent: 234.0 6.8% 29.0%;
+  --sidebar-accent-foreground: 240.0 20.8% 90.6%;
+  --sidebar-border: 270.0 1.4% 27.8%;
+  --sidebar-ring: 234.5 10.5% 79.4%;
+  --sidebar: hsl(240.0 3.6% 11.0%);
+  --tone-neutral: #C6C6D0;
+  --tone-slate: #C0C6DD;
+  --tone-indigo: #B5C4FF;
+  --tone-ember: #FFB4A1;
+  --tone-plum: #EAB6E7;
+  --tone-green: #A0D3A7;
+  --tone-amber: #F5BC7D;
+  --tone-red: #FFB4AB;
+}

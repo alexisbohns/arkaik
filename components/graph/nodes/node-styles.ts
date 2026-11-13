@@ -20,15 +20,16 @@ import {
  * Per-status classes. `surface` is the status's soft wash — its own hue at low
  * opacity — for an area that belongs to the status as a whole (a Delivery
  * column), where the solid `dot` would shout.
+ * Colors are the palette's status tones (app/m3/basalt.css), light and dark from one class.
  */
 export const STATUS_STYLES: Record<StatusId, { badge: string; dot: string; stroke: string; surface: string }> = {
-  idea:        { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400",   surface: "bg-gray-400/10"   },
-  discovery:   { badge: "text-violet-400",  dot: "bg-violet-400",  stroke: "stroke-violet-400", surface: "bg-violet-400/10" },
-  backlog:     { badge: "text-blue-400",    dot: "bg-blue-400",    stroke: "stroke-blue-400",   surface: "bg-blue-400/10"   },
-  development: { badge: "text-blue-500",    dot: "bg-blue-500",    stroke: "stroke-blue-500",   surface: "bg-blue-500/10"   },
-  releasing:   { badge: "text-purple-500",  dot: "bg-purple-500",  stroke: "stroke-purple-500", surface: "bg-purple-500/10" },
-  live:        { badge: "text-green-500",   dot: "bg-green-500",   stroke: "stroke-green-500",  surface: "bg-green-500/10"  },
-  archived:    { badge: "text-gray-400",    dot: "bg-gray-400",    stroke: "stroke-gray-400",   surface: "bg-gray-400/10"   },
+  idea:        { badge: "text-tone-neutral", dot: "bg-tone-neutral", stroke: "stroke-tone-neutral", surface: "bg-tone-neutral/10" },
+  discovery:   { badge: "text-tone-ember",   dot: "bg-tone-ember",   stroke: "stroke-tone-ember",   surface: "bg-tone-ember/10"   },
+  backlog:     { badge: "text-tone-slate",   dot: "bg-tone-slate",   stroke: "stroke-tone-slate",   surface: "bg-tone-slate/10"   },
+  development: { badge: "text-tone-indigo",  dot: "bg-tone-indigo",  stroke: "stroke-tone-indigo",  surface: "bg-tone-indigo/10"  },
+  releasing:   { badge: "text-tone-plum",    dot: "bg-tone-plum",    stroke: "stroke-tone-plum",    surface: "bg-tone-plum/10"    },
+  live:        { badge: "text-tone-green",   dot: "bg-tone-green",   stroke: "stroke-tone-green",   surface: "bg-tone-green/10"   },
+  archived:    { badge: "text-tone-neutral", dot: "bg-tone-neutral", stroke: "stroke-tone-neutral", surface: "bg-tone-neutral/10" },
 };
 
 export const STATUS_ICONS: Record<StatusId, LucideIcon> = {
@@ -106,18 +107,19 @@ export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
 };
 
 /**
- * Status → minimap fill, the hex twin of {@link STATUS_STYLES}. Kept beside it
- * so a status can't read as one color on a card badge and another in the
- * minimap; the comments name the Tailwind shade each one mirrors.
+ * Status → minimap fill, the twin of {@link STATUS_STYLES} as a CSS color. Kept
+ * beside it so a status can't read as one color on a card badge and another in
+ * the minimap. React Flow paints minimap nodes through inline `style`, which
+ * reads the variable, so the fill flips with the theme like the class does.
  */
 export const STATUS_MINIMAP_FILL: Record<StatusId, string> = {
-  idea:        "#9ca3af", // gray-400
-  discovery:   "#a78bfa", // violet-400
-  backlog:     "#60a5fa", // blue-400
-  development: "#3b82f6", // blue-500
-  releasing:   "#a855f7", // purple-500
-  live:        "#22c55e", // green-500
-  archived:    "#9ca3af", // gray-400
+  idea:        "var(--tone-neutral)",
+  discovery:   "var(--tone-ember)",
+  backlog:     "var(--tone-slate)",
+  development: "var(--tone-indigo)",
+  releasing:   "var(--tone-plum)",
+  live:        "var(--tone-green)",
+  archived:    "var(--tone-neutral)",
 };
 
 export const PLATFORM_DOT_STYLES: Record<PlatformId, string> = {
@@ -180,12 +182,12 @@ export const REF_TYPE_LABEL_FALLBACK = "Link";
 // Record is the compile-time gate for future vocabulary edits, exactly like
 // STATUS_STYLES above.
 export const DECISION_STATUS_STYLES: Record<DecisionStatusId, { badge: string; dot: string }> = {
-  proposed:   { badge: "text-gray-400",   dot: "bg-gray-400"   },
-  approved:   { badge: "text-blue-400",   dot: "bg-blue-400"   },
-  enacted:    { badge: "text-green-500",  dot: "bg-green-500"  },
-  rejected:   { badge: "text-red-400",    dot: "bg-red-400"    },
-  deprecated: { badge: "text-amber-500",  dot: "bg-amber-500"  },
-  superseded: { badge: "text-violet-400", dot: "bg-violet-400" },
+  proposed:   { badge: "text-tone-neutral", dot: "bg-tone-neutral" },
+  approved:   { badge: "text-tone-indigo",  dot: "bg-tone-indigo"  },
+  enacted:    { badge: "text-tone-green",   dot: "bg-tone-green"   },
+  rejected:   { badge: "text-tone-red",     dot: "bg-tone-red"     },
+  deprecated: { badge: "text-tone-amber",   dot: "bg-tone-amber"   },
+  superseded: { badge: "text-tone-plum",    dot: "bg-tone-plum"    },
 };
 
 /**
@@ -199,12 +201,12 @@ export const DECISION_STATUS_STYLES: Record<DecisionStatusId, { badge: string; d
  * the top of this file.
  */
 export const DECISION_STATUS_TILE: Record<DecisionStatusId, string> = {
-  proposed:   "bg-gray-400/10 text-gray-600 dark:text-gray-400",
-  approved:   "bg-blue-400/10 text-blue-600 dark:text-blue-400",
-  enacted:    "bg-green-500/10 text-green-600 dark:text-green-400",
-  rejected:   "bg-red-400/10 text-red-600 dark:text-red-400",
-  deprecated: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  superseded: "bg-violet-400/10 text-violet-600 dark:text-violet-400",
+  proposed:   "bg-tone-neutral/10 text-tone-neutral",
+  approved:   "bg-tone-indigo/10 text-tone-indigo",
+  enacted:    "bg-tone-green/10 text-tone-green",
+  rejected:   "bg-tone-red/10 text-tone-red",
+  deprecated: "bg-tone-amber/10 text-tone-amber",
+  superseded: "bg-tone-plum/10 text-tone-plum",
 };
 
 export const DECISION_STATUS_ICONS: Record<DecisionStatusId, LucideIcon> = {

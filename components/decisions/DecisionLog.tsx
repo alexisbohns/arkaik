@@ -120,7 +120,7 @@ function formatDecidedInstant(instant: string): string {
  * line cannot both be self-evident, and the room is there once the count is
  * outside the box.
  *
- * **Both tiles are neutral.** The Changelog paints its forge mark purple
+ * **Both tiles are neutral.** The Changelog paints its forge mark plum
  * because the forge has an identity; these two have none to claim, and the one
  * thing colour means on a decision row is the status on the rail. A green
  * acceptance tile beside a green `enacted` mark would be two greens saying

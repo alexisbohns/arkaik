@@ -27,8 +27,8 @@ export interface ScreenInspectorProps {
 
 /** The state word's badge: green for a current live shot, amber for a gap, muted otherwise. Colour is never alone: the word says it. */
 const TONE_STYLES: Record<InspectorTone, string> = {
-  live: "border-green-500/40 text-green-600 dark:text-green-400",
-  gap: "border-amber-500/50 text-amber-600 dark:text-amber-400",
+  live: "border-tone-green/40 text-tone-green",
+  gap: "border-tone-amber/50 text-tone-amber",
   quiet: "border-border text-muted-foreground",
 };
 

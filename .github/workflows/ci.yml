@@ -313,6 +313,9 @@ jobs:
       - name: Stone preference tests
         run: npm run test:stone-preferences
 
+      - name: Basalt theme tests
+        run: npm run test:basalt-theme
+
       - name: Keyboard shortcut catalogue tests
         run: npm run test:keyboard-shortcuts
 

@@ -42,7 +42,7 @@ export const iconChipVariants = cva(
          *
          * Colour rides on the tile and any label beside it stays system
          * foreground — the rule the forge mark states and every mark here
-         * follows, because a purple word next to a purple box says it twice
+         * follows, because a plum word next to a plum box says it twice
          * and reads worse doing it.
          */
         plain: "bg-muted text-muted-foreground",

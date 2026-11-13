@@ -1,27 +1,27 @@
 import {
   Bitcount_Grid_Single,
   DynaPuff,
-  Inclusive_Sans,
   Ruslan_Display,
   Yatra_One,
 } from "next/font/google";
 
 import type { M3FontId } from "@/components/arkademy/m3-font-options";
+import { inclusiveSans } from "@/lib/font-sans";
 import { gochiHand } from "@/lib/fonts";
 
-/**
- * The cover's faces. Inclusive Sans is the plain face (body, label, digits);
- * the brand face (display, headline, title) is DynaPuff by default.
+/*
+ * The cover's faces. Inclusive Sans (lib/font-sans.ts, the whole app's reading
+ * face) is the plain face (body, label, digits); the brand face (display,
+ * headline, title) is DynaPuff by default.
  *
- * PREVIEW ONLY: the four other brand faces (the owner's shortlist) exist so the owner can compare
- * them from the preview panel (`?font=`). Every one is in Next 16.2's Google
- * font list, so all go through next/font (self-hosted, no CSS <link>), each
- * with `preload: false`: their @font-face rules ship with the page, but a
- * file is fetched only when a face is actually shown. (next/font needs each
- * call's options written out as a literal, hence the repetition.) Drop this table, and
- * the panel's font group, once a face is chosen.
+ * PREVIEW ONLY: the four other brand faces (the owner's shortlist) exist so the
+ * owner can compare them from the preview panel (`?font=`). Every one is in
+ * Next 16.2's Google font list, so all go through next/font (self-hosted, no
+ * CSS <link>), each with `preload: false`: their @font-face rules ship with the
+ * page, but a file is fetched only when a face is actually shown. (next/font
+ * needs each call's options written out as a literal, hence the repetition.)
+ * Drop this table, and the panel's font group, once a face is chosen.
  */
-export const inclusiveSans = Inclusive_Sans({ subsets: ["latin"], display: "swap" });
 
 /** The default brand face, so the one preloaded. */
 export const dynaPuff = DynaPuff({ subsets: ["latin"], display: "swap", axes: ["wdth"] });
