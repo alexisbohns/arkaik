@@ -22,8 +22,7 @@
  * SchemePicker sets it). Each passes AA on the pairs the page uses.
  *
  * Type: DynaPuff for display, headline and title; Inclusive Sans for body,
- * label, subtitles and every digit. See "Type" below. The rules behind all of
- * this are written up in docs/arkademy-design.md.
+ * label, subtitles and every digit. See "Type" below.
  *
  * Motion: springs, written as CSS linear() curves sampled from M3 Expressive's
  * spring tokens (expressive spatial: damping 0.8, stiffness 380; fast spatial:
