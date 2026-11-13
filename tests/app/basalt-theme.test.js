@@ -292,12 +292,30 @@ test("the active row's badge is the cookie12 shape, on secondary-container", () 
   const shapes = read("components/arkademy/ExpressiveShape.tsx");
   const cookie12 = shapes.match(/cookie12:\s*"([^"]+)"/)[1];
   assert.ok(basalt.includes(`d='${cookie12}'`), "basalt.css's mask is not EXPRESSIVE_SHAPES.cookie12");
-  const rule = basalt.slice(basalt.indexOf('[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before'));
+  const start = basalt.indexOf('[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before');
+  assert.ok(start >= 0, "no badge ::before rule");
+  const rule = basalt.slice(start, basalt.indexOf("}", start));
   assert.match(rule, /background:\s*var\(--md-secondary-container\)/);
-  assert.match(rule, /-webkit-mask:/);
-  assert.match(rule, /\bmask:/);
+  assert.match(rule, /^\s*-webkit-mask:/m);
+  assert.match(rule, /^\s*mask:/m);
   assert.match(basalt, /stroke:\s*var\(--md-on-secondary-container\)/);
   assert.doesNotMatch(basalt, /#stone-icon/);
+});
+
+test("the forced-colors fallback outranks the badge rule and recolours the icon", () => {
+  const start = basalt.indexOf("@media (forced-colors: active)");
+  assert.ok(start >= 0, "no forced-colors block");
+  const media = basalt.slice(start);
+  const pseudo = media.slice(0, media.indexOf("{", media.indexOf("::before")));
+  for (const kind of ["menu-button", "menu-sub-button"]) {
+    assert.ok(
+      pseudo.includes(`[data-sidebar="${kind}"][data-active="true"]:has(> svg:first-child)::before`),
+      `${kind} ::before selector lacks :has(> svg:first-child)`,
+    );
+  }
+  assert.match(media, /background:\s*ButtonFace/);
+  assert.match(media, /^\s*mask:\s*none/m);
+  assert.match(media, /stroke:\s*ButtonText/);
 });
 
 test("sidebar rows no longer read the stone radius", () => {

@@ -213,12 +213,16 @@
 [data-sidebar="menu-sub-button"][data-active="true"] > svg {
   stroke: var(--md-on-secondary-container);
 }
-/* Windows High Contrast: no mask, a system-colour tile, so the icon stays legible. */
+/* Windows High Contrast: no mask, a system-colour tile, and the icon in the system text colour, so it stays legible. */
 @media (forced-colors: active) {
-  [data-sidebar="menu-button"][data-active="true"]::before,
-  [data-sidebar="menu-sub-button"][data-active="true"]::before {
+  [data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before,
+  [data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child)::before {
     background: ButtonFace;
     -webkit-mask: none;
     mask: none;
+  }
+  [data-sidebar="menu-button"][data-active="true"] > svg,
+  [data-sidebar="menu-sub-button"][data-active="true"] > svg {
+    stroke: ButtonText;
   }
 }
