@@ -13,6 +13,11 @@ import { cn } from "@/lib/utils";
  * Two deliberate departures from upstream, both pre-existing and both visual:
  * `sideOffset` is 6 rather than 4, and the panel padding is `p-3` rather than
  * `p-4` — this app's popovers hold compact option lists, not prose.
+ *
+ * Skinned M3 Expressive since (app/m3/controls.css `.m3-float`): no stroke,
+ * the soft raised surface at elevation 2, 28px corners, 20px of padding, and
+ * a spring entrance that grows out of the trigger (Radix's transform origin).
+ * The padding went past upstream's on purpose — breath, not density.
  */
 
 function Popover({
@@ -46,12 +51,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-72 rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out",
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-          "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-          "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2",
-          "data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "m3-float z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-(--md-shape-xl) p-5 outline-none",
           className,
         )}
         {...props}

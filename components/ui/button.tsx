@@ -50,6 +50,13 @@ function Button({
   return (
     <Comp
       data-slot="button"
+      // Read by app/m3/controls.css: inside a bar (`Toolbar`, a `role="toolbar"`)
+      // the outline and ghost buttons become M3 pills, which a class string
+      // cannot say from outside. The sheet keys on these two, not on
+      // `data-slot`, because a `TooltipTrigger asChild` overwrites the slot.
+      // Upstream shadcn carries the same two attributes.
+      data-variant={variant ?? "default"}
+      data-size={size ?? "default"}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

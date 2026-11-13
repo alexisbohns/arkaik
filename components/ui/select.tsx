@@ -33,14 +33,20 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
-        "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4 flex h-9 w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus:ring-[3px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+        // M3 Expressive (app/m3/controls.css): a tonal pill, no stroke. A press
+        // tightens the corners; while the list is open the trigger settles
+        // into a squarer shape on the "on" fill and its chevron turns over.
+        // The pill is `--m3-pill` (20px), never `rounded-full`: a spring from
+        // 9999px to 12px undershoots zero and flashes square. Open is read off
+        // aria-expanded, which a wrapping TooltipTrigger cannot overwrite.
+        "flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-(--m3-pill) bg-(--m3-control) px-4 text-sm text-(--md-on-surface) outline-none hover:bg-(--m3-control-hover) data-[placeholder]:text-(--md-on-surface-variant) aria-expanded:rounded-(--md-shape-md) aria-expanded:bg-(--m3-on) aria-expanded:text-(--m3-on-on) disabled:cursor-not-allowed disabled:bg-(--md-on-surface)/10 disabled:text-(--md-on-surface)/38 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="size-4 opacity-50" />
+        <ChevronDownIcon className="size-4 opacity-70" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -93,9 +99,12 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border shadow-md",
+          // A floating surface (app/m3/controls.css `.m3-float`): tone and
+          // elevation instead of a stroke, 28px corners, a spring entrance
+          // that grows from the trigger.
+          "m3-float relative z-50 max-h-96 min-w-[10rem] origin-(--radix-select-content-transform-origin) overflow-hidden rounded-(--md-shape-xl)",
           position === "popper" &&
-            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+            "data-[side=bottom]:translate-y-1.5 data-[side=left]:-translate-x-1.5 data-[side=right]:translate-x-1.5 data-[side=top]:-translate-y-1.5",
           className
         )}
         position={position}
@@ -104,7 +113,7 @@ function SelectContent({
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(
-            "p-1",
+            "p-2",
             position === "popper" &&
               "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
           )}
@@ -124,7 +133,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("px-2 py-1.5 text-xs font-medium text-muted-foreground", className)}
+      className={cn("px-4 pt-2 pb-1 text-xs font-medium text-(--md-on-surface-variant)", className)}
       {...props}
     />
   );
@@ -139,13 +148,15 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex w-full cursor-default select-none items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        // Rows are pills: 40px, 2px apart (app/m3/controls.css), a state layer
+        // under the pointer, and the chosen one a full pill on tertiary-container.
+        "relative flex min-h-10 w-full cursor-pointer select-none items-center justify-between gap-3 rounded-full px-4 py-2 text-sm outline-none data-[highlighted]:bg-(--m3-hover) data-[state=checked]:bg-(--m3-row-on) data-[state=checked]:font-medium data-[state=checked]:text-(--m3-on-row-on) data-[state=checked]:data-[highlighted]:bg-(--m3-row-on-hover) data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
         className
       )}
       {...props}
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      <span className="flex size-3.5 items-center justify-center text-muted-foreground">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <CheckIcon className="size-4" />
         </SelectPrimitive.ItemIndicator>
@@ -161,7 +172,8 @@ function SelectSeparator({
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn("bg-border -mx-1 my-1 h-px", className)}
+      // M3 Expressive sets groups apart with a gap, not a rule.
+      className={cn("h-2", className)}
       {...props}
     />
   );

@@ -23,6 +23,13 @@ import { cn } from "@/lib/utils";
  * interactive primitive here carries and all three hand-rolled versions lacked —
  * this is a keyboard-reachable control that gave no sign of being focused.
  *
+ * **Since the M3 Expressive pass it is a connected button group**, the same
+ * one `SegmentedControl` draws (app/m3/controls.css,
+ * `data-slot="segmented-control"`): tonal pieces 3px apart with 5px joints,
+ * and every chosen platform lifting out into a full, wider pill on the solid
+ * fill. Multi-select is the same picture with several pieces lifted. No border
+ * in either state any more, so nothing shifts when one is chosen.
+ *
  * The colored `PLATFORM_DOT_STYLES` dot from `NewNodeForm` is deliberately not
  * carried over: platform colors are the language of per-node *facts* (the chips
  * in `PlatformList`, a node card's border), and this is a choice editor, where
@@ -72,7 +79,8 @@ export function PlatformToggleGroup({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={cn("flex flex-wrap items-center gap-2", className)}
+      data-slot="segmented-control"
+      className={cn("flex flex-wrap items-center", className)}
     >
       {menu.map((platform) => {
         const selected = value.includes(platform.id);
@@ -83,12 +91,7 @@ export function PlatformToggleGroup({
             type="button"
             aria-pressed={selected}
             onClick={() => toggle(platform.id)}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-              selected
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-transparent text-muted-foreground hover:bg-muted/50"
-            )}
+            className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium whitespace-nowrap outline-none"
           >
             {platform.label}
           </button>
