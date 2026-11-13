@@ -1,41 +1,34 @@
 import type { KritikLibrary } from "@arkaik/schema";
 import { gradeBands } from "@/lib/utils/quality";
-import { CELL_SEVERITIES, MAX_DOTS } from "@/components/quality/FindingDots";
-import { GRADE_TINT, SEVERITY_DOT, SEVERITY_LABEL } from "@/components/quality/quality-styles";
-import { cn } from "@/lib/utils";
 
 /**
- * What the cards' colours and marks mean.
+ * What the matrix's colours and marks mean.
  *
  * It earns its place on one line: a grade a letter worse than its own number is
- * unexplainable without it, and the dots are colour with no key anywhere else
- * on the page.
+ * unexplainable without it. The grade bands are one connected tinted strip —
+ * the tiles' own tones, in the grade track's order — so the key reads as a
+ * piece of the matrix rather than a footnote under it; the cap is said once.
+ *
+ * No severity key. It explained the cards' finding dots, and nothing on this
+ * page draws dots any more: the heatmap and worst-first tiles carry a score, a
+ * grade and a movement, and the Overall gauges a grade track. A key to marks
+ * the reader cannot find is the opposite of honest data.
  */
 export function QualityLegend({ library }: { library?: KritikLibrary }) {
   const bands = gradeBands(library);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-      <span className="flex flex-wrap items-center gap-2">
+    <aside className="kq-scope kq-legend" aria-label="How to read the matrix">
+      <span className="kq-legend-strip">
         {bands.map((band, index) => (
-          <span key={band.grade} className={cn("rounded px-1.5 py-0.5 font-medium", GRADE_TINT[band.grade])}>
-            {band.grade} {band.min === 0 && index > 0 ? `below ${bands[index - 1].min}` : `${band.min}+`}
+          <span key={band.grade} className="kq-legend-band" data-kq-grade={band.grade}>
+            <b>{band.grade}</b> {band.min === 0 && index > 0 ? `below ${bands[index - 1].min}` : `${band.min}+`}
           </span>
         ))}
       </span>
-      <span className="flex items-center gap-1.5">
-        {CELL_SEVERITIES.map((severity) => (
-          <span key={severity} className="flex items-center gap-1">
-            <span className={cn("size-1.5 rounded-full", SEVERITY_DOT[severity])} aria-hidden="true" />
-            {SEVERITY_LABEL[severity]}
-          </span>
-        ))}
-        <span>· open findings, {MAX_DOTS} dots at most each</span>
+      <span className="kq-legend-note">
+        <b>*</b> an open Critical or High capped the grade below its score&apos;s band
       </span>
-      <span>
-        <span className="font-medium text-foreground">*</span> an open Critical or High finding capped this
-        grade below the band its score earned
-      </span>
-    </div>
+    </aside>
   );
 }

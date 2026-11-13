@@ -3,15 +3,15 @@
 import type { ReactNode } from "react";
 import { formatDelta, type QualityGrade, type QualityMatrixCell, type ScoreDelta } from "@arkaik/schema";
 import { FindingDots, CELL_SEVERITIES } from "@/components/quality/FindingDots";
-import { GradeScale } from "@/components/quality/GradeScale";
-import { DELTA_TONE, GRADE_BORDER, SEVERITY_LABEL } from "@/components/quality/quality-styles";
+import { GradeTrack } from "@/components/quality/GradeTrack";
+import { SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
 import { describeDelta } from "@/lib/utils/quality";
 
 interface SurfaceScoreCardProps {
-  /** The surface's title, named under the score. */
+  /** The surface's title, named at the top of the card. */
   title: string;
-  /** `null` when nothing was scored here — the card renders N/A and is inert. */
+  /** `null` when nothing was scored here — the card says so and is inert. */
   score: number | null;
   grade: QualityGrade | null;
   /** An open Critical or High pushed the grade below its score's band. */
@@ -20,25 +20,23 @@ interface SurfaceScoreCardProps {
   findings?: QualityMatrixCell["findings"];
   /**
    * The score against the last recorded audit. Draws `▲ +6`, `▼ −3` or `=`
-   * after the grade; nothing at all when there is no earlier reading, so a
+   * beside the title; nothing at all when there is no earlier reading, so a
    * first audit does not render as "unchanged".
    */
   delta?: ScoreDelta;
-  /** A line under the title — the roll-up's open-finding count. */
+  /** A line under the track — the roll-up's open-finding count. */
   meta?: string;
   /**
    * A footnote under the meta — the roll-up cards' burndown sparkline. Last on
    * the card: it is the history behind the numbers above it, read after them.
    */
   footer?: ReactNode;
-  /** The card's accessible name; see {@link cellLabel}. */
+  /** The card's accessible name — every number on it, in words. */
   label: string;
-  active?: boolean;
-  onClick?: () => void;
 }
 
 /**
- * What a cell says, spelled out for the card's accessible name and its `title`.
+ * What a cell says, spelled out for a tile's accessible name and its `title`.
  *
  * It is also where the dot cap is made harmless: the dots stop at four, this
  * does not, so a cell with nine open Criticals still reports nine to anyone who
@@ -67,38 +65,49 @@ export function cellLabel(
 }
 
 /**
- * The arrow after the grade: which way the score moved since the last
- * recorded audit, and by how much. Muted and small — it is a footnote to the
- * number, not a second number — and tinted by direction with the positive and
- * negative tones, never the severity palette, since a delta is not a finding.
- * Renders nothing when there is no delta to draw: a first audit is a first
- * audit, and a reading across a framework major bump is not comparable.
+ * Which way a score moved since the last recorded audit, and by how much, as
+ * a small tonal chip. A footnote to the number, not a second number — and
+ * tinted by direction with the positive and negative tones, never the severity
+ * palette, since a delta is not a finding: a cell that dropped three points
+ * has not raised a Critical. Renders nothing when there is no delta to draw: a
+ * first audit is a first audit, and a reading across a framework major bump is
+ * not comparable.
+ *
+ * `aria-hidden`: every label it sits under spells the movement out, and a
+ * glyph read aloud as "black up-pointing triangle" helps nobody.
  */
 export function DeltaArrow({ delta, className }: { delta?: ScoreDelta; className?: string }) {
   const amount = delta?.delta ?? null;
   const text = formatDelta(amount);
   if (text === null || amount === null) return null;
-  const tone = amount > 0 ? "up" : amount < 0 ? "down" : "flat";
   return (
-    <span className={cn("text-[11px] font-medium leading-none tabular-nums", DELTA_TONE[tone], className)} aria-hidden="true">
+    <span className={cn("kq-delta", className)} data-dir={amount > 0 ? "up" : amount < 0 ? "down" : "flat"} aria-hidden="true">
       {text}
     </span>
   );
 }
 
 /**
- * One surface's standing in one domain, as a card in a gallery.
+ * One surface's standing, as a card: the Overall row's roll-up, and the
+ * Overview's Quality section, which renders this same component from the same
+ * gauges so the two cannot disagree.
  *
- * This is the old matrix table's cell, freed of the table. The table was the
- * problem it solves: eleven domains across five surfaces is a grid nobody can
- * read on a laptop, worse once a panel opens, and a wide scrollport shared by
- * every row means scrolling to reach `api` in one domain scrolls it out of
- * reach in the next. A gallery per domain scrolls independently, and the card
- * has room to name the surface it is about instead of relying on a header row
- * that scrolled away.
+ * Read top-down: the title leads (the first question is *which surface is
+ * this*), with its movement beside it; then the score as the card's figure;
+ * then the grade as the lifecycle track's connected A–E steps, the one in
+ * force lit; then what is open. A raised tile with no border — the grade
+ * lives in the track, where it means something, not smeared across the card,
+ * so a row of five is still a row of names and numbers rather than a wall of
+ * colour.
  *
- * A fixed width, not a flexible one: the cards are meant to be *compared*, and
- * a card that widens because its surface has a long title says louder.
+ * The matrix's own cells are not this card: the heatmap and the worst-first
+ * bands draw tiles of their own, because there a tile is the structure, not a
+ * card placed in it.
+ *
+ * A fixed width in a gallery (`app/m3/quality.css`), not a flexible one: the
+ * cards are meant to be *compared*, and a card that widens because its surface
+ * has a long title says louder. A grid that sizes them evenly sets it back to
+ * `auto`.
  */
 export function SurfaceScoreCard({
   title,
@@ -110,74 +119,51 @@ export function SurfaceScoreCard({
   meta,
   footer,
   label,
-  active = false,
-  onClick,
 }: SurfaceScoreCardProps) {
-  const body = (
+  const scored = score !== null;
+  const body = scored ? (
     <>
-      {/* The title leads. A card is read top-down, and the first question is
-          *which surface is this* — the score answers "how is it doing", which
-          is not a question until you know what "it" is. Foreground, never the
-          grade's colour: the title is the card's name, and a name tinted by its
-          own diagnosis reads as part of the verdict. */}
-      <span className="w-full truncate text-center text-xs font-medium text-foreground" title={title}>
+      <span className="kq-card-row kq-card-top">
+        {/* Foreground-neutral, never the grade's colour: the title is the
+            card's name, and a name tinted by its own diagnosis reads as part
+            of the verdict. */}
+        <span className="kq-card-title" title={title}>
+          {title}
+        </span>
+        <DeltaArrow delta={delta} />
+      </span>
+      <span className="kq-card-score">{score}</span>
+      <GradeTrack grade={grade ?? "C"} capped={capped} size="sm" />
+      <span className="kq-card-row kq-card-foot">
+        {findings && <FindingDots findings={findings} />}
+        {meta && <span className="kq-card-meta">{meta}</span>}
+      </span>
+      {footer}
+    </>
+  ) : (
+    <>
+      <span className="kq-card-title" title={title}>
         {title}
       </span>
-      {score === null ? (
-        <span className="py-2 text-sm text-muted-foreground">N/A</span>
-      ) : (
-        <>
-          <span className="text-3xl font-semibold leading-none tabular-nums">{score}</span>
-          <GradeScale grade={grade ?? "C"} capped={capped} />
-          {/* After the grade, so the card reads score, grade, movement — the
-              verdict first, then which way it is heading. `aria-hidden`: the
-              label already spells the movement out, and a glyph read aloud
-              as "black up-pointing triangle" helps nobody. */}
-          <DeltaArrow delta={delta} />
-        </>
-      )}
-      {findings && <FindingDots findings={findings} />}
-      {meta && <span className="text-[10px] text-muted-foreground">{meta}</span>}
-      {footer}
+      <span className="kq-card-gap">Not scored</span>
+      {meta && <span className="kq-card-meta">{meta}</span>}
     </>
   );
 
-  // No background tint: eleven galleries of tinted blocks is a page of colour
-  // with no figure in it, and a tint behind the whole card leaves nowhere for
-  // the title to be neutral. The grade lives on the edge and in the scale.
-  const shape = cn(
-    "flex w-40 shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-lg border bg-card px-3 py-4",
-    score === null ? "border-dashed text-muted-foreground" : GRADE_BORDER[grade ?? "C"],
-  );
-
-  // Not a button when there is nothing to open: an unscored cell has no
-  // criteria to show and no findings to narrow to, and a roll-up card is a
-  // summary of cards that are themselves the buttons.
-  if (!onClick) {
-    return (
-      <div className={shape} aria-label={label} title={label} role="img">
-        {body}
-      </div>
-    );
-  }
-
+  // Never a button: a roll-up card is a summary of cells that are themselves
+  // the buttons, and the Overview's card links to this page as a whole.
+  // `role="img"` with the label, so the card is read as one sentence rather
+  // than as a score, five letters and a count.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
+    <div
+      className="kq-scope kq-card"
+      data-kq-grade={scored ? (grade ?? "C") : undefined}
+      data-unscored={scored ? undefined : ""}
+      role="img"
       aria-label={label}
       title={label}
-      className={cn(
-        shape,
-        // Outside the border rather than inset, now that there is a border to
-        // sit outside of: an inset ring would paint over the grade's edge and
-        // the selected card would lose the colour it was selected for.
-        "transition-all hover:ring-1 hover:ring-foreground/30",
-        active && "ring-2 ring-foreground/70",
-      )}
     >
       {body}
-    </button>
+    </div>
   );
 }

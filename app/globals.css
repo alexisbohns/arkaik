@@ -3,6 +3,7 @@
 @import "./m3/basalt.css";
 @import "./m3/controls.css";
 @import "./m3/panels.css";
+@import "./m3/quality.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

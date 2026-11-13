@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import type { MatrixView } from "@/components/quality/MatrixDomains";
 import { QualityFrame } from "@/components/quality/QualityFrame";
 import { QualityMatrixSections } from "@/components/quality/QualityMatrixSections";
 import { useAddressedBottomPanel } from "@/lib/hooks/useAddressedBottomPanel";
@@ -14,7 +15,7 @@ import { cellPanelKey, isCellEntry } from "@/lib/utils/project-panels";
 import { cellKey, parseCellKey } from "@/lib/utils/quality";
 
 /**
- * The open cell's address, and the one param this page owns.
+ * The open cell's address, one of the two params this page owns.
  *
  * Deliberately outside `useQualityFilters`' `KEYS` — this page has no filter
  * bar, and even on the Findings page, where `?cell=` *is* a filter, "Clear
@@ -25,11 +26,19 @@ import { cellKey, parseCellKey } from "@/lib/utils/quality";
 const CELL_PARAM = "cell";
 
 /**
+ * The domains' layout: `?matrix=worst` for the worst-first bands, absent for
+ * the heatmap. In the URL rather than in state so a link to "the worst cells"
+ * opens on them, and so Back after opening a cell returns to the same view.
+ * Absent is the default, so the plain page's URL never carries it.
+ */
+const VIEW_PARAM = "matrix";
+
+/**
  * The matrix: every domain's standing on every audited surface.
  *
  * The findings that explain a cell are one click away in a panel, not a
  * page-scroll away below the grid. That is the whole reorganisation: the grid
- * stays put while the panel refreshes, so sweeping the cards — which is what
+ * stays put while the panel refreshes, so sweeping the cells — which is what
  * this page is for — costs nothing.
  */
 export default function ProjectQualityMatrixPage() {
@@ -42,6 +51,7 @@ export default function ProjectQualityMatrixPage() {
   const scope = useEffectiveProduct(id, data.project);
 
   const cellParam = searchParams.get(CELL_PARAM);
+  const view: MatrixView = searchParams.get(VIEW_PARAM) === "worst" ? "worst" : "heatmap";
   // Validated through the parser the cards encode with, so a hand-typed
   // `?cell=SEC` cannot leave a card lit up for a cell nothing can open.
   // Destructured to primitives on purpose: `parseCellKey` returns a fresh
@@ -95,6 +105,17 @@ export default function ProjectQualityMatrixPage() {
     [cellParam, closeAt, openCell, writeQuery],
   );
 
+  // A keyed write that leaves `?cell=` alone: switching layouts keeps the open
+  // cell open, and the lit tile is lit in either.
+  const handleViewChange = useCallback(
+    (next: MatrixView) =>
+      writeQuery((params) => {
+        if (next === "worst") params.set(VIEW_PARAM, "worst");
+        else params.delete(VIEW_PARAM);
+      }),
+    [writeQuery],
+  );
+
   return (
     <QualityFrame
       title="Matrix"
@@ -110,6 +131,8 @@ export default function ProjectQualityMatrixPage() {
         burndownEvents={data.events}
         activeCell={cell ? cellParam : null}
         onSelectCell={handleSelectCell}
+        view={view}
+        onViewChange={handleViewChange}
       />
     </QualityFrame>
   );
