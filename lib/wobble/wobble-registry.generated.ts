@@ -165,6 +165,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "share2", seed: 14 },
   { name: "shield", seed: 4 },
   { name: "shield-check", seed: 1 },
+  { name: "siren", seed: 2 },
   { name: "sliders-horizontal", seed: 12 },
   { name: "sparkles", seed: 18 },
   { name: "split", seed: 11 },

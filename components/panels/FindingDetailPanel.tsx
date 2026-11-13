@@ -1,27 +1,38 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronRightIcon, ExternalLinkIcon, ListChecksIcon } from "lucide-react";
-import type { KritikLibrary, QualitySection } from "@arkaik/schema";
-import { EntityId, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
-import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
-import { AcceptedRiskCallout } from "@/components/quality/AcceptedRiskCallout";
 import {
-  COST_CHIP,
+  CheckIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  ShieldIcon,
+  SirenIcon,
+  XIcon,
+} from "lucide-react";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
+import { PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+import { PanelSection, PANEL_GUTTER } from "@/components/panels/PanelSection";
+import { SpeciesShape } from "@/components/panels/species-shape";
+import { CitedText, FoldTile, QualityHero } from "@/components/quality/QualityPanelParts";
+import { QualityPanelShape } from "@/components/quality/QualityPanelShape";
+import {
   COST_HINT,
   COST_TERM,
   FINDING_STATUS_LABEL,
-  PRIORITY_CHIP,
   PRIORITY_GLOSS,
-  SEVERITY_CHIP,
+  PRIORITY_HINT,
   SEVERITY_HINT,
   SEVERITY_LABEL,
   VERDICT_LABEL,
 } from "@/components/quality/quality-styles";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Node } from "@/lib/data/types";
-import { buildFindingModel, buildSurfaceTitles, surfaceTitleOf, type FindingRow } from "@/lib/utils/quality";
+import {
+  buildFindingModel,
+  buildSurfaceTitles,
+  type FindingModel,
+  type FindingRow,
+} from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
 
 interface FindingDetailPanelProps {
@@ -35,11 +46,11 @@ interface FindingDetailPanelProps {
   /** The audit profile, for naming the surface the way the matrix names it. */
   section?: QualitySection;
   /**
-   * The criteria pack, for the question the Criterion card previews. Optional
-   * the way it is on the criterion and cell panels: a bundle can travel without
-   * its pack, and then there is no question to show and the card shows what the
-   * projection already carries. `FindingDetailPanelHeader` does not take it —
-   * nothing in the header comes from the pack.
+   * The criteria pack, for the criterion's name the pill carries. Optional the
+   * way it is on the criterion and cell panels: a bundle can travel without
+   * its pack, and then the pill shows what the projection already carries.
+   * `FindingDetailPanelHeader` does not take it — nothing in the header comes
+   * from the pack.
    */
   library?: KritikLibrary;
   /** The graph, so a linked node reads as a title rather than as an id. */
@@ -49,21 +60,33 @@ interface FindingDetailPanelProps {
 }
 
 /**
- * What identifies the panel in the stack's header: what kind of thing this is,
- * which one it is, and the surface it was filed on. The close button belongs
- * to `PanelStack`, which owns every panel's frame.
+ * The seal's glyph: the siren while the finding is open, the decision once it
+ * is not. Decorative — the decision is said in words in the body (the status
+ * pill, the accepted-risk tile), never only here.
+ */
+function SealIcon({ model }: { model: FindingModel | null }) {
+  if (model?.acceptedRisk) return <ShieldIcon className="kp-seal-icon" />;
+  if (model?.row.status === "resolved") return <CheckIcon className="kp-seal-icon" />;
+  if (model?.row.status === "refuted") return <XIcon className="kp-seal-icon" />;
+  return <SirenIcon className="kp-seal-icon" />;
+}
+
+/**
+ * What identifies the panel in the stack's header: the alert seal, what kind
+ * of thing this is, which one it is, and the surface it was filed on. The
+ * close button belongs to `PanelStack`, which owns every panel's frame.
  *
  * **A panel header in this app never carries a title.** A node's header is its
- * species badge and its id; a criterion's is its domain and its id. The title
- * is body content — on a node it is an editable field down there, which is
- * exactly why it cannot also be the identity up here — and the stack's own
- * `h2` is `sr-only` for the same reason. This header had the title and no id
- * at all, which read fine and was the one panel out of step with every other.
+ * species seal and its id; a criterion's is its rubric seal, its domain and
+ * its id. The title is body content — on a node it is an editable field down
+ * there, which is exactly why it cannot also be the identity up here — and
+ * the stack's own `h2` is `sr-only` for the same reason.
  *
- * The rail's mark is not here either. It is a status, and no header in the
- * stack carries one: a decision panel's header does not wear its
- * `DecisionStatusBadge`. Recognition is the id's job — and the mark is not in
- * the body now either, since the Risk section states the priority it carried.
+ * Nor does it carry a status in words: no header in the stack does, and a
+ * decision panel's header does not wear its `DecisionStatusBadge`. The seal
+ * takes the finding's TONE instead (`FindingModel.tone`) — its priority's
+ * while it is open, its decision's once it is not — which is colour and
+ * shape, never the only place the fact is said.
  */
 export function FindingDetailPanelHeader({
   findingId,
@@ -71,27 +94,22 @@ export function FindingDetailPanelHeader({
   section,
 }: Pick<FindingDetailPanelProps, "findingId" | "findings" | "section">) {
   const row = findings.find((candidate) => candidate.id === findingId);
+  // No library: nothing in the header comes from the pack.
+  const model = row ? buildFindingModel(row, { surfaceTitles: buildSurfaceTitles(section) }) : null;
 
   return (
-    // `display: contents`: a hook for the panel stylesheet, not a box —
-    // the header row stays `PanelStack`'s.
-    <div className="contents" data-quality-panel-header="finding">
-      {/* Grouped so the two chips never separate when the header row runs out
-          of room; the row itself is `PanelStack`'s. The idiom, and this
-          comment, are `CriterionDetailPanelHeader`'s — the neighbouring panel
-          whose subject is also not a graph node. */}
-      <div className="flex min-w-0 shrink-0 items-center gap-2">
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
-          <ListChecksIcon className="size-3.5" aria-hidden="true" />
-          Finding
-        </span>
+    // `display: contents`: a hook for the panel stylesheet, not a box — the
+    // seal and the chips are items of `PanelStack`'s own header row.
+    <div className="contents" data-quality-panel-header="finding" data-kp-hue={model?.tone}>
+      <span className="kp-seal" aria-hidden="true">
+        <QualityPanelShape shape="alert" className="kp-seal-shape" />
+        <SealIcon model={model} />
+      </span>
+      <span className="kp-head-kind">Finding</span>
+      <span className="kp-head-id">
         <PanelHeaderEntityId id={findingId} />
-      </div>
-      {row && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {surfaceTitleOf(row.surface, buildSurfaceTitles(section))}
-        </span>
-      )}
+      </span>
+      {model && <span className="kp-head-chip">{model.surfaceTitle}</span>}
     </div>
   );
 }
@@ -104,6 +122,10 @@ export function FindingDetailPanelHeader({
  * cost the board its scannability exactly when a reader needed it: detail,
  * evidence, a verification note, the linked nodes and two identifiers is
  * several screens, and the rows under it went off the bottom.
+ *
+ * It wears its priority: the alert seal, the hero and the one loud tile in the
+ * Risk section all take the finding's tone while it is open, and its
+ * decision's once it is not.
  *
  * Addressless in the stack — see the head of `lib/utils/project-panels.ts`. The
  * Findings page owns `?finding=`.
@@ -164,307 +186,396 @@ export function FindingDetailPanel({
   }
 
   // Which status word shows, the accepted-risk note, the detail and the
-  // verification that do not repeat it, the criterion's question: every rule
-  // is `buildFindingModel`'s (lib/utils/quality.ts), tested there.
+  // verification that do not repeat it, the tone, the criterion's name: every
+  // rule is `buildFindingModel`'s (lib/utils/quality.ts), tested there.
   const model = buildFindingModel(row, { surfaceTitles: buildSurfaceTitles(section), library });
-  const { acceptedNote, verification } = model;
-  const question = model.criterionQuestion;
 
   return (
     // No `opacity-70` on a decided finding, unlike the card: dimming says "this
     // row is history" to somebody scanning a board, and there is no board here
     // — the reader asked for this one record, and greying what they asked for
-    // reads as broken rather than as filed away.
+    // reads as broken rather than as filed away. The tone does that work: a
+    // decided finding stops wearing its priority.
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-4" data-quality-panel="finding">
-      {/* The title block. The same shape every other panel's title sits in — a
-          gutter'd `gap-1.5` column at `text-lg font-semibold` (`NodeDetailPanel`,
-          `CriterionDetailPanel`). It used to be `text-sm font-medium`, which
-          made the finding the one record in the stack whose name read as body
-          copy, and put it below its own section headings in the visual
-          hierarchy. */}
-      <div className={cn(PANEL_GUTTER, "flex flex-col gap-1.5")}>
-        {/* No mark before the title. It carried the priority on an open
-            finding, and the Risk section below now states the priority in
-            words with its gloss — a `P0` square beside the title was the same
-            fact, said smaller and worse, and said first. On a decided finding
-            it carried the verdict glyph instead, and that is covered too: the
-            badge on this row names `resolved` and `refuted`, and an accepted
-            risk has its callout. So nothing was lost with it, which is the
-            only reason it could go. */}
-        <div className="flex items-start gap-2">
-          <p className="flex-1 text-lg font-semibold leading-relaxed text-foreground">
-            {row.title}
+      <FindingIntro model={model} />
+      <FindingRisk model={model} />
+      <FindingCriterion model={model} onOpenCriterion={onOpenCriterion} />
+      <FindingDetail model={model} />
+      <FindingNodes model={model} nodesById={nodesById} onOpenNode={onOpenNode} />
+    </div>
+  );
+}
+
+/* ───────────────────────────── intro ───────────────────────────── */
+
+/**
+ * An accepted risk is a decision, so it reads as one — a tile in the amber
+ * its status owns, the shield on the rubric's badge shape, the words
+ * "Accepted risk" and the rationale, first thing under the title. Somebody
+ * already weighed this and said "not now", and burying that invites the next
+ * reader to re-litigate it.
+ *
+ * It states the status whatever the note holds: `acceptedNote` is `""` when no
+ * rationale was recorded, and that is said as a visible gap, never a reason
+ * for the decision to vanish (the rule `AcceptedRiskCallout` keeps on the
+ * card).
+ */
+function AcceptedDecision({ model }: { model: FindingModel }) {
+  if (!model.acceptedRisk) return null;
+  const note = model.acceptedNote?.trim() ?? "";
+  return (
+    <div className="kp-decision" data-kp-hue="accepted">
+      <span className="kp-decision-mark" aria-hidden="true">
+        <QualityPanelShape shape="rubric" className="kp-decision-shape" />
+        <ShieldIcon className="kp-decision-icon" />
+      </span>
+      <div className="kp-decision-text">
+        <p className="kp-decision-word">{FINDING_STATUS_LABEL["accepted-risk"]}</p>
+        {note !== "" ? (
+          <p className="kp-decision-note">{note}</p>
+        ) : (
+          <p className="kp-gap">
+            <span className="kp-gap-word">open:</span> no rationale was recorded with this decision.
           </p>
-          {/* The status in a word, and the only copy of it a screen reader
-              meets now the rail's glyph is gone from this panel — inherited
-              from `FindingScales` when the scales left. Green for `resolved`
-              alone, the rule the rail follows. An accepted risk is
-              deliberately absent: its callout below states the status in the
-              treatment that says it is a decision, and a badge up here would
-              say it twice and more quietly. */}
-          {model.showStatus && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "ms-auto mt-1 shrink-0",
-                row.status === "resolved" &&
-                  "border-green-500/40 text-green-700 dark:text-green-400",
-              )}
-            >
-              {FINDING_STATUS_LABEL[row.status]}
-            </Badge>
-          )}
-        </div>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {/* An accepted risk is a decision, so it reads as one — the decision
-          log's bordered row with its status stated, first thing under the
-          identity block. Somebody already weighed this and said "not now", and
-          burying that invites the next reader to re-litigate it. */}
-      <AcceptedRiskCallout note={acceptedNote} className={PANEL_GUTTER} />
-
-      {/* The bill, spelled out. On the board these five numbers are
-          `FindingScales`, a compact line whose figures and glosses live behind
-          a hover — right for a row in a list of twenty, wrong here: the reader
-          asked for this one finding, and "why is this a P0" should not require
-          them to find a chip and keep a pointer on it. So the panel renders
-          what the popover held, unconditionally and as text. Nothing in this
-          section needs a hover.
-
-          Unconditional, unlike every other section below: a row always has an
-          impact, a likelihood, a severity, a priority and a cost — the
-          projection derives all five — so there is no empty state to guard. */}
-      <PanelSection title="Risk">
-        <dl className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-3 py-2.5 text-sm">
-          <BillRow label="Impact" value={<span className="tabular-nums">{row.impact}</span>} />
-          <BillRow
-            label="Likelihood"
-            value={<span className="tabular-nums">× {row.likelihood}</span>}
-          />
-          {/* The rule `SeverityPill`'s popover draws in the same place: what is
-              above it is the two factors, what is below it is what they bought.
-              A separator rather than a second heading, because the bill is one
-              table and not two. */}
-          <div className="my-0.5 border-t" aria-hidden="true" />
-          <BillRow
-            label="Risk"
-            value={<span className="font-semibold tabular-nums">{row.risk}</span>}
-            gloss="Impact × likelihood."
-          />
-          <BillRow
-            label="Severity"
-            value={<Chip className={SEVERITY_CHIP[row.severity]}>{SEVERITY_LABEL[row.severity]}</Chip>}
-            gloss={SEVERITY_HINT[row.severity]}
-          />
-          <BillRow
-            label="Priority"
-            value={<Chip className={PRIORITY_CHIP[row.priority]}>{row.priority}</Chip>}
-            gloss={PRIORITY_GLOSS[row.priority]}
-          />
-          <BillRow
-            label="Remediation cost"
-            value={
-              <>
-                <Chip className={COST_CHIP[row.cost]}>{row.cost}</Chip>
-                <span className="text-muted-foreground">{COST_TERM[row.cost]}</span>
-              </>
-            }
-            gloss={COST_HINT[row.cost]}
-          />
-        </dl>
-      </PanelSection>
-
-      {/* The criterion, as a card that previews it rather than a mono chip in
-          a meta line. It is the thing a reader most often follows out of a
-          finding — what somebody quotes when they argue it — and the old line
-          gave it ten pixels of monospace between a domain it did not name and
-          five numbers it had to share a row with.
-
-          The whole card is the button, the way a `CriteriaList` row is: a
-          target this size with one destination should not make the reader aim
-          at the id inside it. */}
-      <PanelSection title="Criterion">
-        <button
-          type="button"
-          onClick={() => onOpenCriterion(row.criterionId, row.surface)}
-          className="group flex w-full flex-col gap-1.5 rounded-lg border bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
-        >
-          <div className="flex w-full items-center gap-2">
-            {/* The domain, in the bordered chip `CriterionDetailPanelHeader`
-                wears for the same value, so the card and the panel it opens
-                say it the same way. Absent when the pack does not define the
-                criterion — `buildFindingRows` leaves `domainName` empty then,
-                and an empty chip would read as a domain called nothing. */}
-            {row.domainName !== "" && (
-              <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                {row.domainName}
-              </span>
-            )}
-            <EntityId id={row.criterionId} />
-            {/* The surface this was filed on, pushed to the end of the row.
-                `cross-surface` is a findings-only lens no profile declares, so
-                it is badged rather than left to print its raw slug — see
-                `surfaceTitleOf`, and the reason a reader scoped to one surface
-                cannot mistake it for theirs. */}
-            {model.crossSurface ? (
-              <Badge variant="outline" className="ms-auto shrink-0 font-normal">
-                Cross-surface
-              </Badge>
-            ) : (
-              <span
-                className="ms-auto min-w-0 truncate text-xs text-muted-foreground"
-                title={row.surface}
-              >
-                {model.surfaceTitle}
-              </span>
-            )}
-            <ChevronRightIcon
-              className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
-              aria-hidden="true"
-            />
+/**
+ * The title, at headline scale, on a card in the finding's tone that bleeds
+ * up under the header — the node hero's shape.
+ *
+ * The status in a word under it, once the finding is decided: the only copy
+ * of it a screen reader meets, now the rail's glyph is not in this panel.
+ * `showStatus` leaves out an accepted risk, whose decision tile states it in
+ * the treatment that says it is a decision; a pill up here would say it twice
+ * and more quietly.
+ */
+function FindingIntro({ model }: { model: FindingModel }) {
+  return (
+    <div className="kp-intro">
+      <QualityHero panel="finding" hue={model.tone} shape="alert">
+        <p className="kp-hero-title" data-kp-size="finding">
+          {model.row.title}
+        </p>
+        {model.showStatus && (
+          <div className="kp-hero-chips">
+            <span className="kp-status" data-kp-hue={model.tone}>
+              {model.row.status === "resolved" ? <CheckIcon aria-hidden="true" /> : <XIcon aria-hidden="true" />}
+              {FINDING_STATUS_LABEL[model.row.status]}
+            </span>
           </div>
-          {/* Wrapping rather than truncating: this is the expansive reading of
-              the criterion, and a name cut mid-word is the board's compromise,
-              not this panel's. Skipped when the projection fell back to the id
-              for want of a pack definition — the id is already in the row
-              above, and printing it twice would look like two facts. */}
-          {row.criterionName !== row.criterionId && (
-            <p className="text-sm font-medium">{row.criterionName}</p>
-          )}
-          {question !== "" && (
-            <p className="text-sm leading-relaxed text-muted-foreground">{question}</p>
-          )}
-        </button>
-      </PanelSection>
+        )}
+      </QualityHero>
+      <AcceptedDecision model={model} />
+    </div>
+  );
+}
 
-      {model.detail !== "" && (
-        <PanelSection title="Detail">
-          <p className="text-sm leading-relaxed">{model.detail}</p>
-        </PanelSection>
-      )}
+/* ───────────────────────────── risk ───────────────────────────── */
 
-      {row.evidence !== "" && (
-        <PanelSection title="Evidence">
-          {/* Monospace and preserved line breaks: this field is where
-              `file:line` citations live, and a citation reflowed into prose is
-              a citation nobody can paste into an editor. */}
-          <p className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground">
-            {row.evidence}
+const IMPACT = [1, 2, 3, 4, 5];
+const LIKELIHOOD = [5, 4, 3, 2, 1];
+
+/**
+ * The bill, spelled out: where the finding sits on the 5 × 5 of impact and
+ * likelihood, then what that bought — the severity, the priority, the cost.
+ *
+ * On the board these numbers are the card's `RiskBadge`, one figure whose
+ * bill lives behind a hover — right for a row in a list of twenty, wrong
+ * here: the reader asked for this one finding, and "why is this
+ * a P1" should not require them to find a chip and keep a pointer on it. So
+ * every gloss is printed under the grid, and nothing in this section needs a
+ * hover.
+ *
+ * The priority is the one loud tile while the finding is open; once it is
+ * decided the tile steps back (`data-kp-open` absent), because the priority is
+ * history then. The grid is a picture of one sentence, so it is hidden from
+ * the accessibility tree and the sentence is said instead.
+ *
+ * Unconditional, unlike every other section below: a row always has an
+ * impact, a likelihood, a severity, a priority and a cost — the projection
+ * derives all five — so there is no empty state to guard.
+ */
+function FindingRisk({ model }: { model: FindingModel }) {
+  const { row } = model;
+  return (
+    <PanelSection title="Risk">
+      <div className="kp-grid-wrap" data-kp-hue={model.tone} data-kp-open={row.open ? "" : undefined}>
+        <div className="kp-grid-fig">
+          <p className="sr-only">
+            Impact {row.impact} × likelihood {row.likelihood} = risk {row.risk}.
           </p>
-        </PanelSection>
-      )}
+          <div className="kp-grid" aria-hidden="true">
+            <span className="kp-grid-y">Likelihood</span>
+            <div className="kp-grid-cells">
+              {LIKELIHOOD.map((likelihood) =>
+                IMPACT.map((impact) => {
+                  const lit = impact === row.impact && likelihood === row.likelihood;
+                  return (
+                    <span
+                      key={`${impact}-${likelihood}`}
+                      data-lit={lit ? "" : undefined}
+                      style={{ ["--kp-heat" as string]: (impact * likelihood) / 25 }}
+                    >
+                      {lit ? row.risk : ""}
+                    </span>
+                  );
+                }),
+              )}
+            </div>
+            <span className="kp-grid-x">Impact</span>
+          </div>
+        </div>
+        <dl className="kp-grid-side">
+          <div className="kp-side-tile" data-kp-hue={`sev-${row.severity}`} data-tinted="">
+            <dt>Severity</dt>
+            <dd>{SEVERITY_LABEL[row.severity]}</dd>
+          </div>
+          <div className="kp-side-tile" data-loud="">
+            <dt>Priority</dt>
+            <dd>
+              {row.priority} <span className="kp-side-sub">{PRIORITY_HINT[row.priority]}</span>
+            </dd>
+          </div>
+          <div className="kp-side-tile">
+            <dt>Cost</dt>
+            <dd>{COST_TERM[row.cost]}</dd>
+          </div>
+        </dl>
+      </div>
+      <dl className="kp-glosses">
+        <div>
+          <dt>{SEVERITY_LABEL[row.severity]}</dt>
+          <dd>{SEVERITY_HINT[row.severity]}</dd>
+        </div>
+        <div>
+          <dt>{row.priority}</dt>
+          <dd>{PRIORITY_GLOSS[row.priority]}</dd>
+        </div>
+        <div>
+          <dt>{row.cost}</dt>
+          <dd>{COST_HINT[row.cost]}</dd>
+        </div>
+      </dl>
+    </PanelSection>
+  );
+}
 
-      {verification && (
-        <PanelSection title="Verification">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {/* The verdict word, unless it only repeats the status badge in the
-                title block (a refuted finding's REFUTED). */}
-            {!verification.repeatsStatus && (
-              <>
-                <span className="font-medium text-foreground">{VERDICT_LABEL[verification.verdict]}</span> —{" "}
-              </>
-            )}
-            {verification.note}
+/* ───────────────────────────── criterion ───────────────────────────── */
+
+/**
+ * The criterion, as one connected pill — the rubric mark and the id, the
+ * name, the way in. It is the thing a reader most often follows out of a
+ * finding, and the pill wears the criterion panel's teal and seal so it
+ * previews where it leads.
+ *
+ * The whole pill is the button, the way a `CriteriaList` row is: a target this
+ * size with one destination should not make the reader aim at the id inside
+ * it. The name is the pack's; when the projection fell back to the id for
+ * want of a pack definition (`hasCriterionName`), the domain stands in, and
+ * failing that the verb — the id is already in the pill, and printing it
+ * twice would look like two facts.
+ *
+ * `cross-surface` is a findings-only lens no profile declares, so a finding
+ * filed there says so under the pill: a reader scoped to one surface must not
+ * mistake it for theirs.
+ */
+function FindingCriterion({
+  model,
+  onOpenCriterion,
+}: {
+  model: FindingModel;
+  onOpenCriterion: (criterionId: string, surface: string) => void;
+}) {
+  const { row } = model;
+  return (
+    <PanelSection title="Criterion">
+      <button
+        type="button"
+        className="kp-fcpill"
+        data-kp-hue="rubric"
+        onClick={() => onOpenCriterion(row.criterionId, row.surface)}
+      >
+        <span className="kp-fcpill-id">
+          <QualityPanelShape shape="rubric" className="kp-fcpill-mark" />
+          {row.criterionId}
+        </span>
+        <span className="kp-fcpill-name">
+          {model.hasCriterionName ? row.criterionName : row.domainName || "Open the criterion"}
+        </span>
+        <span className="kp-fcpill-go" aria-hidden="true">
+          <ChevronRightIcon />
+        </span>
+      </button>
+      {model.crossSurface && <p className="kp-fc-note">Filed across surfaces, not against one.</p>}
+    </PanelSection>
+  );
+}
+
+/* ───────────────────────────── detail ───────────────────────────── */
+
+const firstWords = (text: string, n = 64) => (text.length > n ? `${text.slice(0, n).trimEnd()}…` : text);
+
+interface DetailTile {
+  key: string;
+  title: string;
+  peek: ReactNode;
+  body: ReactNode;
+}
+
+/**
+ * The prose somebody wrote — detail, evidence, verification — as one
+ * connected deck: the first tile open, the rest a line each with a peek at
+ * what is inside, so a long detail no longer pushes the linked nodes off the
+ * first screen.
+ *
+ * The evidence keeps its preserved line breaks and lights its `file:line`
+ * citations: a citation reflowed into prose is a citation nobody can paste
+ * into an editor. The verification's verdict leads it, unless it only repeats
+ * the status pill in the hero (`repeatsStatus`, a refuted finding's REFUTED).
+ */
+function FindingDetail({ model }: { model: FindingModel }) {
+  const tiles: DetailTile[] = [];
+  if (model.detail !== "")
+    tiles.push({
+      key: "detail",
+      title: "Detail",
+      peek: firstWords(model.detail),
+      body: <p className="kp-prose">{model.detail}</p>,
+    });
+  if (model.evidence !== "")
+    tiles.push({
+      key: "evidence",
+      title: "Evidence",
+      peek: firstWords(model.evidence, 48),
+      body: (
+        <p className="kp-mono">
+          <CitedText text={model.evidence} />
+        </p>
+      ),
+    });
+  const { verification } = model;
+  if (verification) {
+    const verdict = verification.repeatsStatus ? null : (
+      <span className="kp-verdict">{VERDICT_LABEL[verification.verdict]}</span>
+    );
+    tiles.push({
+      key: "verification",
+      title: "Verification",
+      peek: verdict ?? firstWords(verification.note, 48),
+      body: (
+        <div className="kp-verify">
+          {verdict}
+          <p className="kp-prose">
+            <CitedText text={verification.note} />
           </p>
-        </PanelSection>
-      )}
+        </div>
+      ),
+    });
+  }
+  if (tiles.length === 0) return null;
+  return (
+    <div className={PANEL_GUTTER}>
+      <ul className="kp-folds">
+        {tiles.map((tile, index) => (
+          <FoldTile key={tile.key} title={tile.title} peek={tile.peek} defaultOpen={index === 0}>
+            {tile.body}
+          </FoldTile>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
-      {row.nodeIds.length > 0 && (
+/* ───────────────────────────── nodes ───────────────────────────── */
+
+/** "#1042" over "owner/repo" from a GitHub issue URL; the host and path otherwise. */
+function issueName(url: string): { main: string; sub: string } {
+  try {
+    const parsed = new URL(url);
+    const github = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/(?:issues|pull)\/(\d+)/);
+    if (github) return { main: `#${github[3]}`, sub: `${github[1]}/${github[2]}` };
+    return { main: parsed.hostname, sub: parsed.pathname };
+  } catch {
+    return { main: url, sub: "" };
+  }
+}
+
+/**
+ * The nodes the finding was filed against, each a relation tile in its
+ * species' shape and tone — the node panel's relation tiles, so a node reads
+ * the same here as everywhere it is linked from — then the issue it was filed
+ * as.
+ *
+ * No id section down here. The header carries it, and clicking it copies —
+ * which was the whole reason this panel once held one, since a `select-all`
+ * span was the only pastable copy of the id the panel had.
+ */
+function FindingNodes({
+  model,
+  nodesById,
+  onOpenNode,
+}: {
+  model: FindingModel;
+  nodesById: ReadonlyMap<string, Node>;
+  onOpenNode: (nodeId: string) => void;
+}) {
+  const { nodeIds, issueUrl } = model.row;
+  const issue = issueUrl ? issueName(issueUrl) : null;
+  return (
+    <>
+      {nodeIds.length > 0 && (
         <PanelSection title="In the graph">
-          <div className="flex flex-wrap gap-1.5">
-            {row.nodeIds.map((nodeId) => {
+          <ul className="kp-ntiles">
+            {nodeIds.map((nodeId) => {
               const node = nodesById.get(nodeId);
               return (
-                <button
-                  key={nodeId}
-                  type="button"
-                  onClick={() => onOpenNode(nodeId)}
-                  // Still a button when the id resolves to nothing: a finding
-                  // filed against a node that has since been deleted is a fact
-                  // about the audit, and a silently dropped chip would hide it.
-                  // The panel it opens says so.
-                  title={node ? nodeId : `${nodeId} — not in this project's graph`}
-                  className={cn(
-                    "max-w-full truncate rounded border px-1.5 py-0.5 text-xs transition-colors hover:bg-muted",
-                    node ? "text-foreground" : "border-dashed font-mono text-muted-foreground",
-                  )}
-                >
-                  {node?.title ?? nodeId}
-                </button>
+                <li key={nodeId}>
+                  {/* Still a button when the id resolves to nothing: a finding
+                      filed against a node that has since been deleted is a
+                      fact about the audit, and a silently dropped tile would
+                      hide it. The tile says so in words; the panel it opens
+                      says so too. */}
+                  <button
+                    type="button"
+                    className="kp-ntile"
+                    data-species={node?.species}
+                    data-missing={node ? undefined : ""}
+                    onClick={() => onOpenNode(nodeId)}
+                  >
+                    {node ? (
+                      <SpeciesShape species={node.species} className="kp-ntile-mark" />
+                    ) : (
+                      <span className="kp-ntile-mark" data-empty="" aria-hidden="true" />
+                    )}
+                    <span className="kp-ntile-text">
+                      <span className="kp-ntile-title">{node?.title ?? nodeId}</span>
+                      <span className="kp-ntile-sub">{node ? nodeId : "not in this project's graph"}</span>
+                    </span>
+                    <ChevronRightIcon className="kp-ntile-go" aria-hidden="true" />
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </PanelSection>
       )}
-
-      {/* No id down here. The header carries it, and clicking it copies —
-          which is the whole reason this section held one, since a `select-all`
-          span was the only pastable copy of the id the panel had. Two of the
-          same identifier, one of them last in the document, is a section that
-          exists to repeat its own header. */}
-      {row.issueUrl && (
+      {issueUrl && issue && (
         <PanelSection title="Issue">
-          {/* `break-all` on the text and `shrink-0` on the icon: a GitHub
-              issue URL is long enough to be cut off mid-path rather than
-              wrapped. */}
-          <a
-            href={row.issueUrl}
-            target="_blank"
-            rel="nofollow noreferrer"
-            className="inline-flex min-w-0 max-w-full items-start gap-1.5 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-          >
-            <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 break-all">{row.issueUrl}</span>
+          {/* Named by its number and repository rather than printed whole: a
+              GitHub issue URL is long enough to be cut off mid-path, and the
+              number is what a reader says out loud. The full URL is the
+              link's title. */}
+          <a href={issueUrl} target="_blank" rel="nofollow noreferrer" className="kp-issue" title={issueUrl}>
+            <ExternalLinkIcon className="kp-issue-icon" aria-hidden="true" />
+            <span className="kp-issue-main">{issue.main}</span>
+            {issue.sub !== "" && <span className="kp-issue-sub">{issue.sub}</span>}
           </a>
         </PanelSection>
       )}
-    </div>
-  );
-}
-
-/**
- * One line of the risk bill: what it is called, what it is, and what that
- * means in a sentence.
- *
- * The gloss lives inside the `<dd>` rather than beside it, because it is part
- * of the same answer — `SEVERITY_HINT` says what `High` claims, and a reader
- * who takes the word without it has the label and not the meaning. It is also
- * why the value column is left-aligned instead of right: a column of
- * right-aligned prose is a column nobody reads.
- *
- * The label column is fixed so the six values line up; `w-28` clears
- * "Remediation cost", the longest of them, at `text-xs`.
- */
-function BillRow({ label, value, gloss }: { label: string; value: ReactNode; gloss?: string }) {
-  return (
-    <div className="flex items-baseline gap-3">
-      <dt className="w-28 shrink-0 text-xs text-muted-foreground">{label}</dt>
-      <dd className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">{value}</span>
-        {gloss && <span className="text-xs leading-relaxed text-muted-foreground">{gloss}</span>}
-      </dd>
-    </div>
-  );
-}
-
-/**
- * A scale's chip in the bill — the shared geometry, with the tint passed in
- * from `quality-styles`.
- *
- * Not `ScaleChip`: that component's whole job is to hang a term and a hint off
- * a hover, and this section exists precisely because nothing in it should
- * require one. What is left once the popover goes is a border, a radius and
- * some padding, which is this.
- */
-function Chip({ className, children }: { className: string; children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-xs font-medium",
-        className,
-      )}
-    >
-      {children}
-    </span>
+    </>
   );
 }
