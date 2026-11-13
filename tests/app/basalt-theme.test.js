@@ -348,7 +348,7 @@ test("nothing in app/, components/, lib/ or hooks/ reads a stone token or class"
     .filter((dir) => fs.existsSync(path.join(ROOT, dir)))
     .flatMap(sources)
     .filter((rel) => !PARKED.has(rel))
-    .filter((rel) => /--stone-|\bstone-(?:primary|secondary|scope)|url\(#stone-icon\)|variant="stone|data-stone-|StoneDefs|stoneBootScript/.test(read(rel)));
+    .filter((rel) => /--stone-|\bstone-(?:primary|secondary|scope)|url\(#stone-icon\)|variant="stone|data-stone-|StoneDefs|stoneBootScript|from "@\/(?:lib\/stones|components\/settings\/StonePicker|components\/stones|lib\/hooks\/useStonePreferences)/.test(read(rel)));
   assert.deepEqual(offenders, []);
 });
 
