@@ -17,14 +17,20 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..", "..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 
-/** The declarations of the first rule whose selector is exactly `selector`. */
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The declarations of the first rule whose selector is exactly `selector`
+ * (alone on its line, outside any comment).
+ */
 function block(css, selector) {
-  const start = css.indexOf(`${selector} {`);
-  assert.ok(start !== -1, `no "${selector} {" rule`);
-  const open = css.indexOf("{", start);
-  const close = css.indexOf("}", open);
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const found = new RegExp(`^${escapeRe(selector)} \\{\\s*$`, "m").exec(code);
+  assert.ok(found, `no "${selector} {" rule`);
+  const open = code.indexOf("{", found.index);
+  const close = code.indexOf("}", open);
   const vars = {};
-  for (const m of css.slice(open + 1, close).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) vars[m[1]] = m[2].trim();
+  for (const m of code.slice(open + 1, close).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) vars[m[1]] = m[2].trim();
   return vars;
 }
 
@@ -63,8 +69,10 @@ console.log("basalt theme — roles and fonts");
 for (const [theme, mine, theirs] of [["light", LIGHT, ARK_LIGHT], ["dark", DARK, ARK_DARK]]) {
   test(`${theme}: every Arkademy Basalt role and shadcn token is copied verbatim`, () => {
     const names = Object.keys(theirs);
-    assert.ok(names.length > 50, `only ${names.length} declarations read from the Arkademy block`);
+    assert.equal(names.length, 57, "the Arkademy block should declare 40 --md-*, --mx-on-inverse-btn and 16 shadcn tokens");
     for (const name of names) assert.equal(mine[name], theirs[name], `${name}`);
+    const roles = (vars) => Object.keys(vars).filter((n) => n.startsWith("--md-")).sort();
+    assert.deepEqual(roles(mine), roles(theirs), "the two copies declare different --md-* roles");
   });
 
   test(`${theme}: the tokens the Arkademy never set are mapped to their roles`, () => {
@@ -96,8 +104,28 @@ test("the sans font is Inclusive Sans; Geist Sans is gone, Geist Mono stays", ()
   const layout = read("app/layout.tsx");
   assert.doesNotMatch(layout, /GeistSans/);
   assert.match(layout, /inclusiveSans\.variable/);
-  assert.match(read("lib/fonts.ts"), /variable:\s*"--font-inclusive-sans"/);
+  assert.match(read("lib/font-sans.ts"), /variable:\s*"--font-inclusive-sans"/);
   assert.doesNotMatch(read("components/arkademy/m3-fonts.ts"), /Inclusive_Sans\(/);
+});
+
+test("the root layout preloads Inclusive Sans and no other face", () => {
+  assert.doesNotMatch(read("lib/fonts.ts"), /Inclusive_Sans/);
+  const layout = read("app/layout.tsx");
+  assert.match(layout, /from "@\/lib\/font-sans"/);
+  assert.doesNotMatch(layout, /from "@\/lib\/fonts"/);
+  assert.doesNotMatch(layout, /m3-fonts/);
+});
+
+test("the Arkademy keeps its own scheme: every rule setting --background outranks :root and .dark", () => {
+  const code = arkademy.replace(/\/\*[\s\S]*?\*\//g, "");
+  let seen = 0;
+  for (const m of code.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/(^|[;\s])--background\s*:/.test(m[2])) continue;
+    seen++;
+    const selector = m[1].trim();
+    assert.match(selector, /^:root(\.dark)?:has\(/, `"${selector}" would not outrank basalt.css`);
+  }
+  assert.ok(seen >= 2, `only ${seen} --background rules found in the Arkademy sheet`);
 });
 
 test("the installed app's title bar follows the Basalt surfaces", () => {

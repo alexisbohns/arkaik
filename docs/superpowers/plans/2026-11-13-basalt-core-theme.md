@@ -30,8 +30,9 @@
 |---|---|---|
 | `app/m3/basalt.css` (new) | Basalt M3 roles, shadcn mapping, status tones, the cookie12 menu badge | 1, 2, 3 |
 | `app/globals.css` | imports `basalt.css`, registers tone colors and the sans font with Tailwind; loses the zinc blocks and the stone imports | 1, 2, 4 |
-| `lib/fonts.ts` | gains `inclusiveSans` (with a CSS variable) | 1 |
-| `components/arkademy/m3-fonts.ts` | imports `inclusiveSans` from `lib/fonts.ts` instead of declaring it | 1 |
+| `lib/font-sans.ts` (new) | declares `inclusiveSans` (with a CSS variable) alone, so the root layout preloads no other face; `lib/fonts.ts` is untouched | 1 |
+| `components/arkademy/m3-fonts.ts` | imports `inclusiveSans` from `lib/font-sans.ts` instead of declaring it | 1 |
+| `app/manifest.ts` | `background_color` / `theme_color` follow the Basalt light surface | 1 |
 | `app/layout.tsx` | Inclusive Sans on `<html>`, Basalt `themeColor`; loses every stone hook | 1, 4 |
 | `tests/app/basalt-theme.test.js` (new) | parity with the Arkademy's Basalt, contrast of tones, the status maps, the badge shape, no stone left in the app | 1–5 |
 | `components/graph/nodes/node-styles.ts` | status / decision maps on `tone-*` classes, minimap hexes | 2 |
@@ -50,7 +51,8 @@
 - Create: `app/m3/basalt.css`
 - Create: `tests/app/basalt-theme.test.js`
 - Modify: `app/globals.css` (lines 1–69 and the `@theme inline` block's `--font-sans`)
-- Modify: `lib/fonts.ts`
+- Create: `lib/font-sans.ts`
+- Modify: `app/manifest.ts`
 - Modify: `components/arkademy/m3-fonts.ts:1-25`
 - Modify: `app/layout.tsx` (font imports, `<html className>`, `viewport.themeColor`)
 - Modify: `package.json` (scripts), `.github/workflows/ci.yml` (one step)

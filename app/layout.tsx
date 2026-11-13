@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { inclusiveSans } from "@/lib/fonts";
+import { inclusiveSans } from "@/lib/font-sans";
 import { GeistMono } from "geist/font/mono";
 import "highlight.js/styles/github.css";
 import "./globals.css";

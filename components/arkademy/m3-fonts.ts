@@ -6,22 +6,23 @@ import {
 } from "next/font/google";
 
 import type { M3FontId } from "@/components/arkademy/m3-font-options";
-import { gochiHand, inclusiveSans } from "@/lib/fonts";
+import { inclusiveSans } from "@/lib/font-sans";
+import { gochiHand } from "@/lib/fonts";
 
-export { inclusiveSans };
-
-/**
- * The cover's faces. Inclusive Sans (declared in lib/fonts.ts, the whole app's reading face) is the plain face (body, label, digits);
- * the brand face (display, headline, title) is DynaPuff by default.
+/*
+ * The cover's faces. Inclusive Sans (lib/font-sans.ts, the whole app's reading
+ * face) is the plain face (body, label, digits); the brand face (display,
+ * headline, title) is DynaPuff by default.
  *
- * PREVIEW ONLY: the four other brand faces (the owner's shortlist) exist so the owner can compare
- * them from the preview panel (`?font=`). Every one is in Next 16.2's Google
- * font list, so all go through next/font (self-hosted, no CSS <link>), each
- * with `preload: false`: their @font-face rules ship with the page, but a
- * file is fetched only when a face is actually shown. (next/font needs each
- * call's options written out as a literal, hence the repetition.) Drop this table, and
- * the panel's font group, once a face is chosen.
+ * PREVIEW ONLY: the four other brand faces (the owner's shortlist) exist so the
+ * owner can compare them from the preview panel (`?font=`). Every one is in
+ * Next 16.2's Google font list, so all go through next/font (self-hosted, no
+ * CSS <link>), each with `preload: false`: their @font-face rules ship with the
+ * page, but a file is fetched only when a face is actually shown. (next/font
+ * needs each call's options written out as a literal, hence the repetition.)
+ * Drop this table, and the panel's font group, once a face is chosen.
  */
+
 /** The default brand face, so the one preloaded. */
 export const dynaPuff = DynaPuff({ subsets: ["latin"], display: "swap", axes: ["wdth"] });
 const bitcountGridSingle = Bitcount_Grid_Single({ subsets: ["latin"], display: "swap", preload: false });
