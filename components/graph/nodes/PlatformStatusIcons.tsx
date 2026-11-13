@@ -46,7 +46,9 @@ export function PlatformStatusIcons({
   if (platforms.length === 0) return null;
 
   return (
-    <div className={cn("flex items-center gap-1.5", className)}>
+    // `data-platform-status-icons`: the hook a container dims or reveals the
+    // row by (the Calm playlist waits for its row to be pointed at).
+    <div data-platform-status-icons className={cn("flex items-center gap-1.5", className)}>
       {PLATFORMS.map((platform) => {
         if (!platforms.includes(platform.id)) return null;
         const Icon = PLATFORM_ICONS[platform.id];

@@ -57,6 +57,7 @@
     "test:panel-stack": "node tests/app/panel-stack.test.js",
     "test:project-panels": "node tests/app/project-panels.test.js",
     "test:panel-semantics": "node tests/app/panel-semantics.test.js",
+    "test:panel-preferences": "node tests/app/panel-preferences.test.js",
     "test:platform-variants-gates": "node tests/app/platform-variants-gates.test.js",
     "test:keyboard-shortcuts": "node tests/app/keyboard-shortcuts.test.js",
     "test:command-palette": "node tests/app/command-palette.test.js",

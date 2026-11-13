@@ -42,7 +42,15 @@ import { FeedRow } from "@/components/journal/FeedRow";
 import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 import type { FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
-import { CopyPlusIcon, SplitIcon, Trash2Icon } from "lucide-react";
+import { CopyPlusIcon, MoreHorizontalIcon, SplitIcon, Trash2Icon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { QuietProduct, QuietStatus } from "@/components/panels/QuietControls";
+import { usePanelPreferences } from "@/lib/hooks/usePanelPreferences";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NodeDetailPanelProps {
@@ -96,6 +104,59 @@ interface NodeDetailPanelProps {
   onOpenFinding?: (findingId: string) => void;
 }
 
+const CLAMP_LINES = 3;
+
+/**
+ * The Calm look's description: it rests at three lines with a quiet "More"
+ * when it runs longer, and focusing it to edit always shows all of it
+ * (panels.css). Whether it overflows is measured against the clamp's own
+ * height, so the answer holds whether the clamp is applied or not, and is
+ * re-measured as the text is edited or the panel resized.
+ */
+function ClampedDescription({ children }: { children: ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const regionId = useId();
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const el = wrap?.querySelector<HTMLElement>("[data-panel-description]");
+    if (!wrap || !el) return;
+    const measure = () => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+      setOverflows(el.scrollHeight > lineHeight * CLAMP_LINES + 2);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    el.addEventListener("input", measure);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("input", measure);
+    };
+  }, []);
+
+  return (
+    <>
+      <div ref={wrapRef} id={regionId} className="np-calm-clamp" data-clamped={overflows && !expanded ? "" : undefined}>
+        {children}
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          className="np-calm-text-button np-calm-clamp-toggle"
+          aria-expanded={expanded}
+          aria-controls={regionId}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      )}
+    </>
+  );
+}
+
 interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
@@ -113,6 +174,7 @@ interface NodeFieldsProps {
 }
 
 function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
+  const { look } = usePanelPreferences();
   const AUTOSAVE_DELAY_MS = 350;
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
@@ -203,6 +265,61 @@ function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
     document.execCommand("insertText", false, text);
   }
 
+  // One title element and one description element, whichever look places
+  // them: they carry the autosave, so a look moves them, never rebuilds them.
+  const titleElement = (
+    <div
+      ref={attachTitle}
+      data-panel-title
+      contentEditable
+      suppressContentEditableWarning
+      onPaste={handleTitlePaste}
+      onInput={(e) => {
+        setTitle(e.currentTarget.textContent || "");
+      }}
+      className="arkaik-keep-font-size text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
+      aria-label="Node title (editable)"
+    />
+  );
+  const descriptionElement = (
+    <div
+      ref={attachDescription}
+      data-panel-description
+      contentEditable
+      suppressContentEditableWarning
+      onPaste={handleDescriptionPaste}
+      onInput={(e) => {
+        setDescription(e.currentTarget.textContent || "");
+      }}
+      className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
+      aria-label="Description (editable)"
+    />
+  );
+
+  if (look === "calm") {
+    return (
+      <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
+        {/* Calm: the title and a description that rests at three lines,
+            with a quiet "More" when it runs longer. */}
+        <div className="np-calm-intro">
+          {titleElement}
+          <ClampedDescription>{descriptionElement}</ClampedDescription>
+        </div>
+        {usesSingleStatusField && (
+          <div className="np-calm-chips">
+            <QuietStatus
+              value={status}
+              onChange={onUpdate ? handleStatusChange : undefined}
+              ariaLabel="Status"
+              className="np-calm-chip"
+            />
+          </div>
+        )}
+        {authored}
+      </div>
+    );
+  }
+
   return (
     <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
       {/* The hero: the record's title at headline scale on a species-tinted
@@ -214,30 +331,8 @@ function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
       <div data-np-intro="bleed" data-species={node.species} className="np-hero">
         <SpeciesShape species={node.species} className="np-hero-shape" />
         <div className="np-hero-text">
-          <div
-            ref={attachTitle}
-            data-panel-title
-            contentEditable
-            suppressContentEditableWarning
-            onPaste={handleTitlePaste}
-            onInput={(e) => {
-              setTitle(e.currentTarget.textContent || "");
-            }}
-            className="arkaik-keep-font-size text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
-            aria-label="Node title (editable)"
-          />
-          <div
-            ref={attachDescription}
-            data-panel-description
-            contentEditable
-            suppressContentEditableWarning
-            onPaste={handleDescriptionPaste}
-            onInput={(e) => {
-              setDescription(e.currentTarget.textContent || "");
-            }}
-            className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
-            aria-label="Description (editable)"
-          />
+          {titleElement}
+          {descriptionElement}
         </div>
       </div>
       {usesSingleStatusField && (
@@ -537,9 +632,13 @@ function ComputedPlatformStatusSection({
 }
 
 /**
- * What identifies the panel, for the stack's per-panel header — the species as
- * a seal (its shape, its glyph, its name), the id as a compact `#` that copies
- * it, the product when there is one worth saying, and the record's own actions.
+ * What identifies the panel, for the stack's per-panel header — the species,
+ * the id as a compact `#` that copies it, the product when there is one worth
+ * saying, and the record's own actions. Drawn in the reader's look
+ * (`usePanelPreferences`): Expressive gives the species as a seal (its shape,
+ * glyph and name), the product as a chip and the actions out in the open; Calm
+ * gives one line of text — the species glyph, "in Pebbles" as a quiet select,
+ * and the actions folded into a `⋯` menu.
  * The close button is NOT here: it belongs to `PanelStack`, which owns every
  * panel's frame, and the actions sit to its left because they belong to the
  * record rather than the frame.
@@ -549,15 +648,15 @@ function ComputedPlatformStatusSection({
  * pushed the product off the row or wrapped onto two.
  *
  * **The product rides here, not in the body.** Membership is rarely changed and
- * says nothing in a one-product project, so it is a small chip beside the id
- * (`ProductChip`) instead of a labelled field, and it is absent when
+ * says nothing in a one-product project, so it sits beside the id instead of
+ * taking a labelled field, and it is absent when
  * `isMembershipSettled` (one product, the node already in it), when the project
  * declares no products, and without a save path.
  *
- * **The actions are out in the open**, one connected group of icon buttons
- * (Duplicate · Split · Delete, Delete in the error tone), each naming itself in
- * a tooltip. **Every one is conditional, and with none there is no group at
- * all**: a read-only surface passes no handlers and gets no actions.
+ * **The actions** (Duplicate · Split · Delete, Delete in the error tone) each
+ * name themselves in a tooltip or a menu row. **Every one is conditional, and
+ * with none there is no group and no `⋯` at all**: a read-only surface passes
+ * no handlers and gets no actions.
  *
  * `onDuplicate` and `onSplit` are callbacks rather than the dialogs themselves.
  * The triggers live here and the dialogs have to live in the document, and
@@ -592,6 +691,7 @@ export function NodeDetailPanelHeader({
   onDelete?: (nodeId: string) => void;
   onSplit?: () => void;
 }) {
+  const { look } = usePanelPreferences();
   const speciesConfig = SPECIES.find((s) => s.id === node.species);
   const speciesLabel = speciesConfig?.label ?? node.species;
   const SpeciesIcon = SPECIES_GRAPH_ICONS[node.species];
@@ -609,6 +709,69 @@ export function NodeDetailPanelHeader({
     // else the deletion takes with one that does not.
     onDelete && { key: "delete", verb: "Delete", label: `Delete ${name}`, Icon: Trash2Icon, run: () => onDelete(node.id), tone: "error" },
   ].filter(Boolean) as { key: string; verb: string; label: string; Icon: typeof Trash2Icon; run: () => void; tone?: string }[];
+  const showProduct = membership && onUpdate && !isMembershipSettled(membership);
+  const changeProduct = (next: string | null) =>
+    // Routed through `withProductMembership`, never assembled here: it owns the
+    // "unassigned means *absent*, never `product: \"\"`" rule and carries the
+    // rest of the metadata through untouched — a patch replaces `metadata`
+    // wholesale.
+    void onUpdate?.(node.id, { metadata: withProductMembership(node.metadata, next) });
+
+  // Calm: the species as its glyph alone (its hover card still names it), the
+  // `#`, the product as a quiet "in Pebbles" line, and the actions folded into
+  // a `⋯` menu — a header that reads as one line of text.
+  if (look === "calm") {
+    return (
+      <span data-node-panel-header data-species={node.species} className="contents">
+        <div className="np-calm-header np-calm-header-bare np-calm-header-line">
+          <SpeciesBadge
+            species={node.species}
+            label={speciesLabel}
+            description={speciesConfig?.description}
+            showLabel={false}
+          />
+          <CopyIdChip id={node.id} />
+          {showProduct && (
+            <span className="np-calm-header-product">
+              <span className="np-calm-header-in" aria-hidden="true">
+                in
+              </span>
+              <QuietProduct membership={membership} onChange={changeProduct} className="np-calm-inline-trigger" />
+            </span>
+          )}
+          {actions.length > 0 && (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="np-calm-header-actions m3-icon-trigger m3-bare ml-auto shrink-0"
+                      aria-label={`Actions for ${name}`}
+                    >
+                      <MoreHorizontalIcon className="size-4" aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">More actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                {actions.map(({ key, verb, Icon, run, tone }) => (
+                  <DropdownMenuItem
+                    key={key}
+                    onSelect={run}
+                    className={tone === "error" ? "text-destructive focus:text-destructive" : undefined}
+                  >
+                    <Icon /> {verb === "Split into several" ? "Split into several…" : verb}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </span>
+    );
+  }
 
   return (
     <span data-node-panel-header data-species={node.species} className="contents">
@@ -625,16 +788,7 @@ export function NodeDetailPanelHeader({
       <span className="np-id">
         <CopyIdChip id={node.id} />
       </span>
-      {membership && onUpdate && !isMembershipSettled(membership) && (
-        <ProductChip
-          membership={membership}
-          // Routed through `withProductMembership`, never assembled here: it
-          // owns the "unassigned means *absent*, never `product: \"\"`" rule
-          // and carries the rest of the metadata through untouched — a patch
-          // replaces `metadata` wholesale.
-          onChange={(next) => void onUpdate(node.id, { metadata: withProductMembership(node.metadata, next) })}
-        />
-      )}
+      {showProduct && <ProductChip membership={membership} onChange={changeProduct} />}
       {actions.length > 0 && (
         // `ml-auto shrink-0`: this sits in a `min-w-0 flex-1` row next to
         // truncating identity chips, and the chips should give way, not the

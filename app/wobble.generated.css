@@ -176,6 +176,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-tags { filter: url(#wob-tags); }
 .lucide-telescope { filter: url(#wob-telescope); }
 .lucide-terminal { filter: url(#wob-terminal); }
+.lucide-text-align-start { filter: url(#wob-text-align-start); }
 .lucide-thumbs-up { filter: url(#wob-thumbs-up); }
 .lucide-ticket { filter: url(#wob-ticket); }
 .lucide-ticket-check { filter: url(#wob-ticket-check); }
