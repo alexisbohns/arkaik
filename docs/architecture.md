@@ -67,10 +67,12 @@ app/
     page.tsx            # /arkademy — the shell: one card per tool in the library
     not-found.tsx       # notFound() under /arkademy, inside the chrome
     business-model-canvas/
-      page.tsx          # The cover: pitch, gallery of examples (paragraph + mini canvas, Play the tour), baseline prompt
+      page.tsx          # The cover, in Material 3 Expressive: hero, pitch, the examples as a gallery, baseline prompt
+      m3-expressive.css # The cover's design system: M3 roles for 4 schemes, type in two faces, shapes, springs, the connected canvas
       tour/
+        m3-tour.css     # The tour's own sheet on top of the cover's: bars, step pips, bubbles, the deck, the end
         [example]/
-          page.tsx      # A tour (?step=1..9): one example's canvas built in nine steps; noindex
+          page.tsx      # A tour, moved by the reader (?step=1..9[&beat=canvas], ?step=end): opening, nine questions, the end; noindex
       yours/
         page.tsx        # Your own canvas (?step=1..9): the nine questions for your product, saved in this browser only; noindex
   api/
@@ -182,11 +184,16 @@ lib/landing/
   journal/                  # describe-event.ts — one event's human sentence, shared by changelog/history
   values/                   # ValueBadge, ValuePicker (Bain value elements)
   arkademy/                 # The Arkademy's pages (/arkademy): server-rendered from the library (lib/services/arkademy.ts)
-    ArkademyChrome.tsx      # Header (arkaik mark, "Arkademy", theme toggle) + main; the page column and title classes
+    ArkademyChrome.tsx      # Header (arkaik mark, "Arkademy", theme toggle) + main; the page column, title and kicker classes
+    ArkademyHeaderSlot.tsx  # Leaves the header out on the tour's screen, which draws its own bar (by route)
     ArkademyBreadcrumb.tsx  # The trail above pages deeper than the shell
     ArkademyMessage.tsx     # What a page shows when the library is unconfigured, empty, invalid or unreadable
     ToolCard.tsx            # One tool on the shell
     ExampleCard.tsx         # One example on the cover: name, Simulation badge, paragraph, mini canvas, note
+    ExampleGallery.tsx      # The cover's examples as a horizontal gallery: snap, a connected arrow group (client)
+    ExpressiveShape.tsx     # M3 Expressive shapes (cookies, clover, burst, flower), decorative; example-accents.ts gives each company one
+    HeroBarWatch.tsx        # Turns the header solid once the cover's hero has scrolled away (client)
+    SchemePicker.tsx        # Review links only (?preview): swaps the M3 scheme and the brand face live (m3-schemes.ts, m3-font-options.ts, m3-fonts.ts)
     ParagraphView.tsx       # A canvas as one paragraph (lib/arkademy/paragraph.ts): sentences, note markers, gap pills
     CanvasGrid.tsx          # The nine blocks, full or mini, laid out by container queries
     CanvasLink.tsx          # Links one example's sentences and blocks on hover and focus (CSS :has(), lib/arkademy/canvas-link.ts)
@@ -194,18 +201,17 @@ lib/landing/
     LibraryPlaceholder.tsx  # The quiet Suspense fallback while a page reads the library
     PromptBlock.tsx         # The baseline prompt with its copy button
     CopyButton.tsx          # Every Arkademy copy action (useCopyId)
-    CanvasWalk.tsx          # The screen a canvas is walked through (mode "tour"): player, paragraph, canvas (client)
-    StepRail.tsx            # The nine steps as links (?step=N), the current one aria-current="step"
-    QuestionCard.tsx        # One question, read-only: its answers arriving, the sentence they become
-    TourControls.tsx        # Back, Play/Pause, Next; a bar fixed to the bottom on phones
-    TourEndCard.tsx         # The last step complete: the next example, the gallery
+    TourStage.tsx           # The tour's screen (lib/arkademy/tour-stage.ts): top bar, opening, conversation, end, bottom bar (client)
+    TourDeck.tsx            # The nine tiles in the canvas's layout, face down until their question turns them
+    TourThemeToggle.tsx     # The theme toggle in the tour's own bar
     YourCanvas.tsx          # Your own canvas's screen: name, steps, question editor, inspirations, paragraph, canvas (useCanvasDraft)
     QuestionSteps.tsx       # The nine questions as numbered buttons: answered, left open, not answered yet
     QuestionEditor.tsx      # The current question in edit mode: answers (reword, reorder, remove), add, open on purpose
     InspirationList.tsx     # The library's entities for the current question, most shared first; one click adds one
     CanvasToolbar.tsx       # Copy the paragraph, Copy as Markdown, Download JSON, Start over
     ConfirmDialog.tsx       # A destructive action and its confirmation: Start over, discarding kept text (the button is the trigger)
-    StartYourOwnButton.tsx  # "Start your own" / "Continue your canvas": the cover and the tour's end card
+    StartYourOwnButton.tsx  # "Start your own" / "Continue your canvas", as a shadcn button
+    StartYourOwnLink.tsx    # The same words, unstyled, for the cover's and the tour's M3 buttons
     StrandedDraft.tsx       # Your own canvas without a library: download the saved draft as it is
   publik/                   # PublishDialog, ImportSnapshotButton
   sync/                     # Synk provider, per-project control, restore dialog, onboarding banner
