@@ -60,7 +60,13 @@ export function FeedRow({ event, nodesById, trailing, onOpen }: FeedRowProps) {
     );
   }
 
-  return <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">{content}</div>;
+  // `data-feed-row`: the hook a container styles its rows by (the node panel's
+  // History hangs them off a timeline rail), rather than by their utilities.
+  return (
+    <div data-feed-row className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
+      {content}
+    </div>
+  );
 }
 
 interface BacklogItemRowProps {

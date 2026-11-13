@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -11,13 +11,12 @@ import {
 } from "@/components/ui/collapsible";
 import { PanelGroupContext } from "@/components/panels/panel-group-context";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
-import { FIELD_LABEL_CLASS } from "@/components/ui/field";
 
 interface PanelGroupProps {
   title: ReactNode;
   /**
    * Right of the title, left of the chevron — **display only**: a chip, a count,
-   * a badge. Never a control. The bar's whole content is the
+   * a badge, a one-line preview. Never a control. The bar's whole content is the
    * `CollapsibleTrigger`, which Radix renders as a real `<button>`, so anything
    * interactive here would be a button inside a button: invalid HTML, undefined
    * AT behaviour, and an inner control whose clicks the outer trigger swallows.
@@ -32,6 +31,13 @@ interface PanelGroupProps {
 
 /**
  * A named, collapsible region of a panel — the level above `PanelSection`.
+ *
+ * **Drawn as a headline, by default.** The bar is a sentence-case title at
+ * headline size with a small species-tinted mark, and the regions are set apart
+ * by breath, not by rules: a panel reads as a sectioned page rather than a
+ * ruled list. A reader can switch the groups to floating cards in Settings →
+ * Display (`data-panel-groups` on the root); the markup is the same, only
+ * `app/m3/panels.css` differs.
  *
  * **The bar is the outline entry and the control at once.** An `h3` whose whole
  * content is the `CollapsibleTrigger`: that is the disclosure pattern, and it is
@@ -51,54 +57,27 @@ interface PanelGroupProps {
  * already flush with the panel's edges. The bar re-applies the gutter to its own
  * contents so the title lines up with the prose above and below it.
  *
- * **The container owns the overlap: `flex flex-col -space-y-px`.** Each bar
- * carries `border-y`, so two collapsed groups stacked plainly would show a
- * two-pixel rule between them; pulling each pair a pixel together collapses it
- * into one hairline, which is what makes a run of shut groups read as a table of
- * contents rather than a ladder of double rules.
- *
- * That overlap is a relationship between siblings, so it belongs to the parent
- * and not to each child: a group carrying its own `-mt-px` would pull itself up
- * into whatever precedes it, would sit a pixel high when used alone, and would
- * leave "the column must have no `gap`" as a rule written only in a comment.
- * `-space-y-px` states the same thing structurally — a container cannot be given
- * a `gap` and the overlap at once — so the constraint enforces itself. The
- * groups need a column of their own regardless: the panel body's `gap-4` would
- * otherwise open a four-unit trench between every pair of bars.
- *
  * **Open/closed is per-mount and not stored.** The panel stack keeps hidden
  * panels mounted, so state does survive a trail being unwound and re-walked —
- * but a panel closed and reopened is a panel in its default shape. Remembering
- * it is a real feature and a plausible follow-up; it is not this one, and
- * storing it would mean first deciding whether the memory is the reader's, the
- * project's or the node's.
+ * but a panel closed and reopened is a panel in its default shape.
  */
 export function PanelGroup({ title, meta, defaultOpen = true, children }: PanelGroupProps) {
   return (
     <PanelGroupContext.Provider value={true}>
-      <Collapsible defaultOpen={defaultOpen}>
-        <h3>
-          <CollapsibleTrigger
-            className={cn(
-              PANEL_GUTTER,
-              "group flex w-full items-center gap-2 border-y border-border py-2.5 text-left transition-colors hover:bg-muted/50",
-            )}
-          >
-            <span className={FIELD_LABEL_CLASS}>{title}</span>
-            <span className="ml-auto flex shrink-0 items-center gap-2">
+      <Collapsible defaultOpen={defaultOpen} data-np-group className="np-group">
+        <h3 className="np-group-h">
+          <CollapsibleTrigger className={cn(PANEL_GUTTER, "np-group-bar")}>
+            <span className="np-group-title">{title}</span>
+            <span className="np-group-meta">
               {meta}
-              <ChevronRightIcon
-                className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-90"
-                aria-hidden="true"
-              />
+              <span className="np-group-chevron" aria-hidden="true">
+                <ChevronDownIcon className="size-4" />
+              </span>
             </span>
           </CollapsibleTrigger>
         </h3>
-        {/* `gap-4` matches the panel body's own spacing between sections, so a
-            group's children sit at the same rhythm as the ungrouped blocks
-            above them. */}
-        <CollapsibleContent className="flex flex-col gap-4 py-4">
-          {children}
+        <CollapsibleContent className="np-group-content">
+          <div className="np-group-inner">{children}</div>
         </CollapsibleContent>
       </Collapsible>
     </PanelGroupContext.Provider>

@@ -2,26 +2,21 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Field } from "@/components/ui/field";
 import { PANEL_GUTTER } from "@/components/panels/PanelSection";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { RelationsGroup } from "@/components/panels/RelationsGroup";
-import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import type { Node, NodeMetadata, Edge } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import { SPECIES } from "@/lib/config/species";
-import { SpeciesBadge, PanelHeaderEntityId } from "@/components/graph/nodes/EntityBadges";
+import { SpeciesBadge, CopyIdChip } from "@/components/graph/nodes/EntityBadges";
+import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
+import { SpeciesShape } from "@/components/panels/species-shape";
+import { StatusTrack } from "@/components/panels/StatusTrack";
+import { ProductChip } from "@/components/panels/ProductChip";
 import { PlatformVariants } from "@/components/panels/PlatformVariants";
-import { PlatformGaugeList } from "@/components/graph/nodes/PlatformGaugeList";
+import { PlatformRollupTiles } from "@/components/panels/PlatformRollupTiles";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
-import { AcceptanceMembershipField } from "@/components/panels/AcceptanceMembershipField";
 import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
 import { DecisionEditor } from "@/components/panels/DecisionEditor";
@@ -35,26 +30,20 @@ import {
   scopedRollupPlatforms,
 } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
-import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
 import { acceptancesCovering } from "@arkaik/schema";
-import { describeProductMembership } from "@/lib/utils/product-membership";
+import { describeProductMembership, isMembershipSettled } from "@/lib/utils/product-membership";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
 import { stalenessRelatedIds } from "@/lib/utils/screenshot-staleness";
 import type { ScreenshotPanelOp } from "@/lib/utils/screenshot-ops";
 import { computeNodeTimeline } from "@/lib/utils/journal";
 import { FeedRow } from "@/components/journal/FeedRow";
+import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
 import type { FindingRow } from "@/lib/utils/quality";
 import { cn } from "@/lib/utils";
-import { CopyPlusIcon, MoreHorizontalIcon, SplitIcon, Trash2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { CopyPlusIcon, SplitIcon, Trash2Icon } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NodeDetailPanelProps {
   node: Node;
@@ -111,28 +100,20 @@ interface NodeFieldsProps {
   node: Node;
   onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   /**
-   * Species-specific intro fields, in the two places a species needs one.
+   * The species' own authored fields (Gherkin, Values), last in the intro
+   * block. They sit there rather than in a group because they are what the
+   * record *is*, not what it is attached to. They render straight into this
+   * component's gutter and `gap-5` column, so they may not carry a gutter of
+   * their own.
    *
-   * They sit in the intro block rather than in a group because they are what the
-   * record *is*, not what it is attached to; they were only ever in a separate
-   * component because that component also held four sections that have since
-   * moved out to Relations and Platforms.
-   *
-   * Both render straight into this component's gutter and `gap-5` column, so
-   * neither may carry a gutter of its own.
+   * There is no membership slot: which product a node belongs to rides in the
+   * panel header (`NodeDetailPanelHeader`), beside the id.
    */
-  /** After Status — the Product picker. */
-  membership?: ReactNode;
-  /** Last — the species' own authored fields (Gherkin, Values). */
   authored?: ReactNode;
 }
 
-function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
   const AUTOSAVE_DELAY_MS = 350;
-  // Per-mount, because the panel stack keeps hidden panels mounted: two nodes
-  // open at once means two "Status" fields in one document, and a hand-written
-  // id would point both labels at the first one's select.
-  const fieldId = useId();
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? "");
   const [status, setStatus] = useState<StatusId>(node.status);
@@ -224,128 +205,52 @@ function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
 
   return (
     <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
-      {/* `gap-1.5`, not flush: the title and the description are two different
-          registers, and with no gap the description read as a second line of the
-          title rather than as prose about it. They stay in one block — closer to
-          each other than to anything below — which is what the outer `gap-5`
-          is for. */}
-      <div className="flex flex-col gap-1.5">
-        <div
-          ref={attachTitle}
-          contentEditable
-          suppressContentEditableWarning
-          onPaste={handleTitlePaste}
-          onInput={(e) => {
-            setTitle(e.currentTarget.textContent || "");
-          }}
-          className="arkaik-keep-font-size text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
-          aria-label="Node title (editable)"
-        />
-        <div
-          ref={attachDescription}
-          contentEditable
-          suppressContentEditableWarning
-          onPaste={handleDescriptionPaste}
-          onInput={(e) => {
-            setDescription(e.currentTarget.textContent || "");
-          }}
-          className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
-          aria-label="Description (editable)"
-        />
+      {/* The hero: the record's title at headline scale on a species-tinted
+          card that bleeds up under the header, so header and title read as one
+          shape — the panel's one loud thing. The species shape in its corner is
+          decorative; the header says the species in words. The title and the
+          description stay one block, closer to each other than to anything
+          below, which is what the outer `gap-5` is for. */}
+      <div data-np-intro="bleed" data-species={node.species} className="np-hero">
+        <SpeciesShape species={node.species} className="np-hero-shape" />
+        <div className="np-hero-text">
+          <div
+            ref={attachTitle}
+            data-panel-title
+            contentEditable
+            suppressContentEditableWarning
+            onPaste={handleTitlePaste}
+            onInput={(e) => {
+              setTitle(e.currentTarget.textContent || "");
+            }}
+            className="arkaik-keep-font-size text-lg font-semibold text-foreground outline-none empty:before:text-muted-foreground empty:before:content-['Node_title'] whitespace-pre-wrap break-words"
+            aria-label="Node title (editable)"
+          />
+          <div
+            ref={attachDescription}
+            data-panel-description
+            contentEditable
+            suppressContentEditableWarning
+            onPaste={handleDescriptionPaste}
+            onInput={(e) => {
+              setDescription(e.currentTarget.textContent || "");
+            }}
+            className="text-sm text-foreground leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-['Add_a_description...'] whitespace-pre-wrap break-words"
+            aria-label="Description (editable)"
+          />
+        </div>
       </div>
       {usesSingleStatusField && (
-        <Field label="Status" htmlFor={`${fieldId}-status`}>
-          {/* Disabled without `onUpdate`, not hidden — the opposite of
-              `ProductSection`, deliberately. A status is a fact the reader of a
-              read-only surface (Design, Changelog, the quality pages) came here
-              to see, so withdrawing it would trade a false affordance for
-              missing information; a product assignment is only ever an
-              affordance, and one that cannot save is worth nothing on screen.
-              So the value stays and the control stops claiming to be editable.
-
-              This panel showed a live-looking, unsaveable select on read-only
-              data models and API endpoints before the acceptance joined them —
-              the same defect, fixed here for all three rather than left to
-              disagree between species. */}
-          <Select
-            value={status}
-            onValueChange={(v) => handleStatusChange(v as StatusId)}
-            disabled={!onUpdate}
-          >
-            <SelectTrigger id={`${fieldId}-status`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <StatusSelectItems />
-            </SelectContent>
-          </Select>
-        </Field>
+        // Disabled without `onUpdate`, not hidden: a status is a fact the
+        // reader of a read-only surface (Design, Changelog, the quality pages)
+        // came here to see, so the track keeps showing where the record sits
+        // and only stops offering the other steps.
+        <div data-np-meta="track" className="np-meta-stack">
+          <StatusTrack value={status} onChange={onUpdate ? handleStatusChange : undefined} />
+        </div>
       )}
-      {membership}
       {authored}
     </div>
-  );
-}
-
-interface ProductSectionProps {
-  node: Node;
-  scope: ProductScope;
-  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
-}
-
-/**
- * Which product this node belongs to — the edit path for the key the read
- * surfaces already scope on.
- *
- * **Renders nothing at all in a project that declares no products.** Not a
- * disabled field, not an empty select, not the word "product": `productsById` is
- * empty exactly when the project has never heard of the concept, and the whole
- * feature's guarantee is that such a project looks byte-identical to how it did
- * before products existed. The guard lives here rather than inside
- * `ProductPicker` because only the call site knows which layout to omit — and it
- * stays here, not in the `membership` slot that renders this, so that all three
- * refusals below are read in one place by anyone asking "when is there no
- * Product field?".
- *
- * **Flows and views only, though `PRODUCT_MEMBERSHIP_SPECIES` also lists
- * acceptances.** An acceptance already gets a picker from
- * `AcceptanceMembershipField`, which is the only place that can say the true
- * thing about it — its membership is derived from its `covers` anchors (§ D5)
- * and this control cannot express that. Testing `PRODUCT_MEMBERSHIP_SPECIES` here, as the plan's sketch did,
- * would put two pickers on the same acceptance panel disagreeing about the same
- * node. Data models and API endpoints derive membership from their consumers and
- * are excluded for the original reason: a stored key on one is a value every read
- * surface ignores and the validator warns about
- * (`product-membership-wrong-species`).
- *
- * Without `onUpdate` there is no save path, so the control does not render —
- * showing an assignment that silently fails to persist is worse than showing
- * none. The species-scoped read-only surfaces (the Library card, the graph node)
- * already report membership for panels opened that way.
- */
-function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
-  if (node.species !== "flow" && node.species !== "view") return null;
-  if (!onUpdate) return null;
-  // Null exactly when the project declares no products, which is the
-  // degenerate-case guarantee: no field, no label, no word "product".
-  const membership = describeProductMembership(node, scope);
-  if (!membership) return null;
-
-  // No gutter of its own: this renders into `NodeFields`' `membership` slot,
-  // which is already inside that component's gutter and `gap-5` column.
-  return (
-    <ProductPicker
-      products={membership.products}
-      value={membership.value}
-      // Routed through `withProductMembership`, never assembled here: it owns
-      // the "unassigned means *absent*, never `product: \"\"`" rule and it
-      // carries the rest of the metadata (platformStatuses, notes,
-      // screenshots) through untouched — a patch replaces `metadata` wholesale.
-      onChange={(nextProduct) =>
-        void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
-      }
-      hint={membership.hint}
-    />
   );
 }
 
@@ -415,9 +320,33 @@ function HistorySection({ node, allNodes }: HistorySectionProps) {
     return null;
   }
 
+  // The group opens shut, so its bar says what happened last: the latest
+  // event, its glyph and its date, previewed beside the title. The node's own
+  // title is the panel's subject, so "Home: iOS screenshot recorded" previews
+  // as "iOS screenshot recorded". Open, the timeline says it all and the
+  // preview steps back (panels.css).
+  const latest = timeline[timeline.length - 1];
+  const described = describeJournalEvent(latest, nodesById);
+  const preview =
+    node.title && described.text.startsWith(`${node.title}: `)
+      ? described.text.slice(node.title.length + 2)
+      : described.text;
+  const LatestIcon = described.icon;
+
   return (
-    <PanelGroup title="History" defaultOpen={false}>
-      <div className={cn(PANEL_GUTTER, "flex flex-col gap-0.5")}>
+    <PanelGroup
+      title="History"
+      defaultOpen={false}
+      meta={
+        <span className="np-history-preview">
+          <LatestIcon className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="np-history-preview-text">{preview}</span>
+          <span className="np-history-preview-date">{formatEventDate(latest.ts)}</span>
+        </span>
+      }
+    >
+      {/* A timeline: the rows hang off one tinted rail (panels.css), newest first. */}
+      <div data-history-feed className={cn(PANEL_GUTTER, "flex flex-col gap-0.5")}>
         {[...timeline].reverse().map((event) => (
           // No `onOpen`: this list is already inside the node's own panel, so a
           // row that navigated would navigate to where the reader is standing.
@@ -547,8 +476,11 @@ function PlatformVariantsSection({
           stale={stale}
           busy={shotPending}
           initialPlatform={initialPlatform}
-          onStatusChange={handleStatusChange}
-          onNotesChange={handleNotesChange}
+          // Only with a save path. Passed unconditionally, these drew a live
+          // status select and notes box on read-only surfaces (Design, the
+          // quality pages) that changed on screen and never saved.
+          onStatusChange={onUpdate ? handleStatusChange : undefined}
+          onNotesChange={onUpdate ? handleNotesChange : undefined}
           onRecordScreenshot={
             onScreenshot
               ? (platform, form, value) => {
@@ -595,10 +527,9 @@ function ComputedPlatformStatusSection({
         {/* Clamped, not replaced: a flow's rollup can count a platform the flow
             never declares (the seed's `F-swap-glyph`), and under All products that
             bar must survive. See `scopedRollupPlatforms`. */}
-        <PlatformGaugeList
+        <PlatformRollupTiles
           rollup={rollup}
           platforms={scopedRollupPlatforms(node.platforms, rollup, scope.platforms)}
-          showLabels
         />
       </div>
     </PanelGroup>
@@ -606,29 +537,52 @@ function ComputedPlatformStatusSection({
 }
 
 /**
- * What identifies the panel, for the stack's per-panel header — species badge,
- * entity id, and the record's own actions. The close button is NOT here: it
- * belongs to `PanelStack`, which owns every panel's frame, and this menu sits
- * to its left because these actions belong to the record rather than the frame.
+ * What identifies the panel, for the stack's per-panel header — the species as
+ * a seal (its shape, its glyph, its name), the id as a compact `#` that copies
+ * it, the product when there is one worth saying, and the record's own actions.
+ * The close button is NOT here: it belongs to `PanelStack`, which owns every
+ * panel's frame, and the actions sit to its left because they belong to the
+ * record rather than the frame.
  *
- * **Every item is conditional, and with none there is no button at all.** A
- * menu that opens onto nothing — or onto three disabled rows — is chrome
- * advertising capabilities the surface does not have; a read-only surface
- * passes no handlers and gets no `⋯`.
+ * **The id is a `#`, at every width.** The full id is in its tooltip and its
+ * accessible name, and one click copies it; spelled out, a long acceptance id
+ * pushed the product off the row or wrapped onto two.
  *
- * `onDuplicate` and `onSplit` are both callbacks rather than the dialogs
- * themselves. The triggers live here and the dialogs have to live in the
- * document, and `PanelStack` renders header and body through two separate
- * render props — so the open state can only be held above both, by
- * `ProjectPanels`, which mounts one of each for the whole stack.
+ * **The product rides here, not in the body.** Membership is rarely changed and
+ * says nothing in a one-product project, so it is a small chip beside the id
+ * (`ProductChip`) instead of a labelled field, and it is absent when
+ * `isMembershipSettled` (one product, the node already in it), when the project
+ * declares no products, and without a save path.
+ *
+ * **The actions are out in the open**, one connected group of icon buttons
+ * (Duplicate · Split · Delete, Delete in the error tone), each naming itself in
+ * a tooltip. **Every one is conditional, and with none there is no group at
+ * all**: a read-only surface passes no handlers and gets no actions.
+ *
+ * `onDuplicate` and `onSplit` are callbacks rather than the dialogs themselves.
+ * The triggers live here and the dialogs have to live in the document, and
+ * `PanelStack` renders header and body through two separate render props — so
+ * the open state can only be held above both, by `ProjectPanels`, which mounts
+ * one of each for the whole stack.
  */
 export function NodeDetailPanelHeader({
   node,
+  scope,
+  onUpdate,
+  allNodes,
+  allEdges,
   onDuplicate,
   onDelete,
   onSplit,
 }: {
   node: Node;
+  /** The surface's product scope: what the product chip offers. */
+  scope?: ProductScope;
+  /** The save path for the product chip; without it, there is no chip. */
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
+  /** The graph an acceptance's product is derived from. */
+  allNodes?: Node[];
+  allEdges?: Edge[];
   /**
    * Open the duplicate dialog for this node. It writes nothing on its own —
    * naming the copy happens in `DuplicateNodeDialog`, which `ProjectPanels`
@@ -640,65 +594,65 @@ export function NodeDetailPanelHeader({
 }) {
   const speciesConfig = SPECIES.find((s) => s.id === node.species);
   const speciesLabel = speciesConfig?.label ?? node.species;
-  const hasMenu = Boolean(onDuplicate || onDelete || onSplit);
+  const SpeciesIcon = SPECIES_GRAPH_ICONS[node.species];
+  // The id when there is no title: an untitled record is reachable — a
+  // duplicate of one is titled just "(copy)", and a new one is titled nothing
+  // at all — and "Duplicate " names nothing.
+  const name = node.title || node.id;
+  const membership = scope && onUpdate ? describeProductMembership(node, scope, allNodes, allEdges) : null;
+  const actions = [
+    onDuplicate && { key: "duplicate", verb: "Duplicate", label: `Duplicate ${name}`, Icon: CopyPlusIcon, run: onDuplicate },
+    onSplit && { key: "split", verb: "Split into several", label: `Split ${name} into several`, Icon: SplitIcon, run: onSplit },
+    // No confirmation of its own: `onDelete` is the surface's existing delete
+    // request, which opens that surface's confirm dialog. A second one here
+    // would either double-prompt or, worse, replace a prompt that knows what
+    // else the deletion takes with one that does not.
+    onDelete && { key: "delete", verb: "Delete", label: `Delete ${name}`, Icon: Trash2Icon, run: () => onDelete(node.id), tone: "error" },
+  ].filter(Boolean) as { key: string; verb: string; label: string; Icon: typeof Trash2Icon; run: () => void; tone?: string }[];
 
   return (
-    <>
+    <span data-node-panel-header data-species={node.species} className="contents">
+      <span className="np-seal" aria-hidden="true">
+        <SpeciesShape species={node.species} className="np-seal-shape" />
+        <SpeciesIcon className="np-seal-icon" />
+      </span>
       <SpeciesBadge
         species={node.species}
         label={speciesLabel}
         description={speciesConfig?.description}
         showLabel
       />
-      <PanelHeaderEntityId id={node.id} />
-      {hasMenu && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              // `shrink-0` for the reason the close button beside it carries
-              // one: this sits in a `min-w-0 flex-1` row next to truncating
-              // identity chips, and a long entity id would otherwise squash the
-              // button instead of truncating itself.
-              className="ml-auto shrink-0 cursor-pointer"
-              // The id when there is no title: an untitled record is reachable
-              // — a duplicate of one is titled just "(copy)", and a new one is
-              // titled nothing at all — and "Actions for " names nothing.
-              aria-label={`Actions for ${node.title || node.id}`}
-            >
-              <MoreHorizontalIcon className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {onDuplicate && (
-              <DropdownMenuItem onSelect={onDuplicate}>
-                <CopyPlusIcon /> Duplicate
-              </DropdownMenuItem>
-            )}
-            {onSplit && (
-              <DropdownMenuItem onSelect={onSplit}>
-                <SplitIcon /> Split into several…
-              </DropdownMenuItem>
-            )}
-            {onDelete && (
-              // No confirmation of its own: `onDelete` is the surface's existing
-              // delete request, which opens that surface's confirm dialog. A
-              // second one here would either double-prompt or, worse, replace a
-              // prompt that knows what else the deletion takes with one that
-              // does not.
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => onDelete(node.id)}
-              >
-                <Trash2Icon /> Delete
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <span className="np-id">
+        <CopyIdChip id={node.id} />
+      </span>
+      {membership && onUpdate && !isMembershipSettled(membership) && (
+        <ProductChip
+          membership={membership}
+          // Routed through `withProductMembership`, never assembled here: it
+          // owns the "unassigned means *absent*, never `product: \"\"`" rule
+          // and carries the rest of the metadata through untouched — a patch
+          // replaces `metadata` wholesale.
+          onChange={(next) => void onUpdate(node.id, { metadata: withProductMembership(node.metadata, next) })}
+        />
       )}
-    </>
+      {actions.length > 0 && (
+        // `ml-auto shrink-0`: this sits in a `min-w-0 flex-1` row next to
+        // truncating identity chips, and the chips should give way, not the
+        // actions.
+        <span role="group" aria-label={`Actions for ${name}`} className="np-action-group ml-auto shrink-0">
+          {actions.map(({ key, verb, label, Icon, run, tone }) => (
+            <Tooltip key={key}>
+              <TooltipTrigger asChild>
+                <button type="button" aria-label={label} data-tone={tone} onClick={run}>
+                  <Icon className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{verb}</TooltipContent>
+            </Tooltip>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -747,8 +701,8 @@ export function NodeDetailPanel({
   // it is the one that owns it.
   //
   // Sharing it today: `DecisionEditor`'s three debounced text fields and its
-  // status transition, and `BlockedByField`. NOT sharing it: `ProductSection`,
-  // `PlatformVariantsSection`, `PlaylistEditor`, `AcceptanceMembershipField`,
+  // status transition, and `BlockedByField`. NOT sharing it: the header's
+  // product chip, `PlatformVariantsSection`, `PlaylistEditor`,
   // `AcceptanceAuthoredFields` and `AcceptancePlatformsSection`, which all still
   // spread `node.metadata`. Those race each other, and did before this ref moved
   // up here; widening the protocol to them is a change of its own and not one
@@ -790,34 +744,18 @@ export function NodeDetailPanel({
     // the header's bottom border, which is the one panel body that read as
     // clipped rather than as laid out. It tracks the gutter's own step down
     // below `lg`.
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6">
+    //
+    // `data-node-panel` and `data-species` are the stylesheet's hooks
+    // (app/m3/panels.css): the species tints the hero, the seal and the marks.
+    <div
+      data-node-panel
+      data-species={node.species}
+      className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6"
+    >
       <NodeFields
         key={node.id}
         node={node}
         onUpdate={onUpdate}
-        // Whichever membership control this species has — the two are
-        // alternatives, not a fallback chain. An acceptance's product is
-        // derived from the anchors it covers (§ D5), which only
-        // `AcceptanceMembershipField` can say; every other species' is the
-        // stored key itself, which is `ProductSection`'s. Neither is asked
-        // whether it should render: each keeps its own refusals, and
-        // `ProductSection` is the one that answers "not on a data model, not
-        // without products, not without a save path".
-        membership={
-          node.species === "acceptance" ? (
-            allNodes && allEdges && onUpdate ? (
-              <AcceptanceMembershipField
-                node={node}
-                scope={scope}
-                allNodes={allNodes}
-                allEdges={allEdges}
-                onUpdate={onUpdate}
-              />
-            ) : undefined
-          ) : (
-            <ProductSection node={node} scope={scope} onUpdate={onUpdate} />
-          )
-        }
         authored={
           node.species === "acceptance" && onUpdate ? (
             <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
@@ -832,11 +770,9 @@ export function NodeDetailPanel({
           metadataRef={metadataRef}
         />
       )}
-      {/* Groups live in a column of their own. `-space-y-px` overlaps each
-          bar's `border-y` with the one above so a run of shut groups reads as
-          one ruled list; the body's `gap-4` would open a four-unit trench
-          between every pair. */}
-      <div className="flex flex-col -space-y-px">
+      {/* Groups live in a column of their own, spaced by the group style
+          (panels.css): the body's `gap-4` is the intro's rhythm, not theirs. */}
+      <div className="flex flex-col">
         {/* The only one of the three platform regions whose bar is opened out
             here rather than by the section itself. `AcceptancePlatformsSection`
             is the `Field` body lifted verbatim out of the old `AcceptanceEditor` and
