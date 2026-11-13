@@ -12,7 +12,7 @@ arkaik is a product graph browser built on Next.js 16 App Router with React Flow
 
 ```
 app/
-  layout.tsx            # Root layout: fonts (Geist), ThemeProvider, global CSS
+  layout.tsx            # Root layout: fonts (Inclusive Sans for text, Geist Mono for code; colours come from app/m3/basalt.css), ThemeProvider, global CSS
   page.tsx              # Landing page — signed-in visitors redirect straight to /projects
   projects/
     page.tsx            # Project list: create, import, seed, restore

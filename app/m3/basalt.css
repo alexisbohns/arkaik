@@ -85,7 +85,7 @@
   --sidebar: hsl(0.0 0.0% 95.3%);
   /* Status tones (spec § 3): M3 tonal palettes on the expressive schemes'
    * hues, chroma capped at 40 so they stay calm beside Basalt. T40 here, T80
-   * under .dark; the minimap's T60 twins live in node-styles.ts. */
+   * under .dark; the minimap reads the same variables. */
   --tone-neutral: #5D5E67;
   --tone-slate: #585E72;
   --tone-indigo: #485B99;

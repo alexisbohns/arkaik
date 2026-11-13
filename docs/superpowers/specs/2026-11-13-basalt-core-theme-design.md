@@ -85,10 +85,12 @@ follows the new surfaces: `#F9F9F9` light, `#131315` dark.
 ### 2. Fonts
 
 - Inclusive Sans moves from `components/arkademy/m3-fonts.ts` to
-  `lib/fonts.ts` (where `gochiHand` already lives), declared once with
-  `variable: "--font-inclusive-sans"`. `m3-fonts.ts` imports it from there, so
-  the face is fetched once and the Arkademy's preview faces stay out of the
-  root layout.
+  `lib/font-sans.ts`, a file of its own, declared once with
+  `variable: "--font-inclusive-sans"`. It is not in `lib/fonts.ts` (where
+  `gochiHand` lives) because importing that file from the root layout would
+  preload Gochi Hand on every route. `m3-fonts.ts` imports it from
+  `lib/font-sans.ts`, so the face is fetched once and the Arkademy's preview
+  faces stay out of the root layout.
 - `app/layout.tsx` puts `inclusiveSans.variable` on `<html>` instead of
   `GeistSans.variable`; `@theme inline` sets
   `--font-sans: var(--font-inclusive-sans)`. Geist Mono is unchanged.
@@ -154,7 +156,9 @@ The style maps then read:
   text-tone-X` (the dark variant comes from the variable, so no `dark:` class).
 - `STATUS_MINIMAP_FILL`: the same `var(--tone-*)` (React Flow paints minimap
   nodes with inline style, which reads the variable); the minimap's background,
-  mask and viewport outline sit on Basalt roles.
+  mask and viewport outline sit on Basalt roles, set through `Minimap.tsx`'s
+  props (React Flow's `*-props` variables win over `Canvas.tsx`'s), and a node
+  with no status falls back to `--md-outline`.
 
 Whole literal class strings, as `node-styles.ts` already requires (Tailwind
 reads source text).

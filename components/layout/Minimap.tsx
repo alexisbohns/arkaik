@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { MiniMap as ReactFlowMinimap, type Node } from "@xyflow/react";
-import { useTheme } from "next-themes";
 import type { MapMinimapColorMode } from "@arkaik/schema";
 import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
@@ -27,16 +26,13 @@ interface MinimapProps {
 }
 
 export function Minimap({ colorBy = "status" }: MinimapProps) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
   /**
    * A function, not a string: React Flow only funnels a string `nodeColor`
    * into the `--xy-minimap-node-background-color-props` CSS variable, which is
    * one fill for the whole map. Per-node color has to come from here.
    */
   const nodeColor = useCallback((node: Node) => {
-    const fallback = isDark ? "#94a3b8" : "#64748b";
+    const fallback = "var(--md-outline)";
 
     if (colorBy === "species") {
       const species = node.type ? NODE_TYPE_TO_SPECIES[node.type] : undefined;
@@ -45,7 +41,7 @@ export function Minimap({ colorBy = "status" }: MinimapProps) {
 
     const status = node.data?.status as StatusId | undefined;
     return (status && STATUS_MINIMAP_FILL[status]) || fallback;
-  }, [colorBy, isDark]);
+  }, [colorBy]);
 
   return (
     <ReactFlowMinimap

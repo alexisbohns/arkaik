@@ -259,6 +259,33 @@ test("the changelog's ship mark is green and the forge tile plum", () => {
   assert.doesNotMatch(timeline + hover, /(?:green|purple)-[456]00/);
 });
 
+test("the destructive button wears its foreground role, and the pair reaches AA in both themes", () => {
+  const button = read("components/ui/button.tsx");
+  const row = button.split("\n").find((line) => line.trimStart().startsWith("destructive:")) ?? "";
+  const cls = button.slice(button.indexOf(row) + row.length, button.indexOf("\n", button.indexOf(row) + row.length + 1));
+  assert.match(cls, /text-destructive-foreground/);
+  assert.doesNotMatch(cls, /text-white/);
+  assert.doesNotMatch(cls, /dark:bg-destructive\/60/);
+  // --destructive pair comes from the M3 error roles; the HSL triplets must still agree with them.
+  const hsl = (triplet) => {
+    const [h, s, l] = triplet.split(/\s+/).map(parseFloat);
+    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      return Math.round(255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+    };
+    return `#${[f(0), f(8), f(4)].map((c) => c.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  };
+  for (const [theme, vars] of [["light", LIGHT], ["dark", DARK]]) {
+    const bg = hsl(vars["--destructive"]);
+    const fg = hsl(vars["--destructive-foreground"]);
+    assert.equal(bg, vars["--md-error"].toUpperCase(), `${theme} --destructive is not --md-error`);
+    assert.equal(fg, vars["--md-on-error"].toUpperCase(), `${theme} --destructive-foreground is not --md-on-error`);
+    const ratio = contrast(fg, bg);
+    assert.ok(ratio >= 4.5, `${theme} destructive pair ${fg} on ${bg}: ${ratio.toFixed(2)}:1`);
+  }
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

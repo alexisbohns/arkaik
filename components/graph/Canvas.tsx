@@ -287,8 +287,6 @@ export function Canvas({
       "--xy-controls-button-color-hover": "hsl(var(--foreground))",
       "--xy-controls-button-border-color": "hsl(var(--border))",
       "--xy-controls-box-shadow": isDark ? "0 10px 24px hsl(0 0% 0% / 0.45)" : "0 6px 16px hsl(240 10% 3.9% / 0.18)",
-      "--xy-minimap-background-color": "hsl(var(--card))",
-      "--xy-minimap-mask-stroke-color": isDark ? "#60a5fa" : "#3b82f6",
       "--xy-minimap-mask-stroke-width": "1.5",
     } as CSSProperties;
   }, [isDark]);
