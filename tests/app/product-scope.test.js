@@ -41,6 +41,8 @@ const {
   setProductScopeId,
   subscribeProductScope,
   resetProductScopeStore,
+  describeProductMembership,
+  isMembershipSettled,
 } = loadProductScope();
 
 let failures = 0;
@@ -982,6 +984,69 @@ assert(
 assert(
   canOverrideProduct(noProducts, null) === false && canOverrideProduct(noProducts, "admin") === false,
   "a project declaring no products shows no new control, whatever the scope",
+);
+
+// --- describeProductMembership — what the node panel says about membership ----
+//
+// The panel lays membership out in more than one shape (a header chip, a
+// field), and all of them read this one answer, so its four rules are asserted
+// here rather than through any one rendering.
+
+const membershipScope = resolveProductScope(bundle, null);
+assert(
+  describeProductMembership(adminView, resolveProductScope(noProducts, null)) === null,
+  "membership: a project that declares no products has no membership to show",
+);
+assert(
+  describeProductMembership(dataModel, membershipScope) === null,
+  "membership: data models derive theirs from consumers — no membership to edit",
+);
+const adminMembership = describeProductMembership(adminView, membershipScope);
+assert(
+  adminMembership.selected?.id === "admin" && adminMembership.derived === false && adminMembership.hint === undefined,
+  "membership: a resolved view says its product and has nothing to explain",
+);
+const orphanMembership = describeProductMembership(unassignedView, membershipScope);
+assert(
+  orphanMembership.displayText === "Unassigned" && /All products only/.test(orphanMembership.hint ?? ""),
+  "membership: unassigned is a real value, with the sentence saying where the node appears",
+);
+const ghostMembership = describeProductMembership(ghostView, membershipScope);
+assert(
+  ghostMembership.displayText === "Unassigned" && ghostMembership.value === "ghost" && /"ghost"/.test(ghostMembership.hint ?? ""),
+  "membership: a stale key degrades to Unassigned but is echoed, never healed",
+);
+const coveringAcceptance = { id: "AC-x", species: "acceptance", platforms: ["web"], metadata: { product: "admin" } };
+const coversEdge = { id: "e1", source_id: "AC-x", target_id: endUserView.id, edge_type: "covers" };
+assert(
+  describeProductMembership(coveringAcceptance, membershipScope) === null,
+  "membership: an acceptance needs the graph to derive its answer",
+);
+const derivedMembership = describeProductMembership(
+  coveringAcceptance,
+  membershipScope,
+  [coveringAcceptance, endUserView],
+  [coversEdge],
+);
+assert(
+  derivedMembership.derived === true && derivedMembership.value === "admin" && derivedMembership.displayText !== "Unassigned",
+  "membership: a covering acceptance shows the DERIVED product while the stored key stays the fallback",
+);
+const loneAcceptance = describeProductMembership(coveringAcceptance, membershipScope, [coveringAcceptance], []);
+assert(
+  loneAcceptance.derived === false && loneAcceptance.selected?.id === "admin",
+  "membership: an acceptance that covers nothing is whatever was stored",
+);
+const singleBundle = { project: { id: "P4", metadata: { products: [ENDUSER] } } };
+const singleScope = resolveProductScope(singleBundle, null);
+assert(
+  isMembershipSettled(describeProductMembership(endUserView, singleScope)) === true,
+  "membership: one product with the node in it is settled — nothing worth showing",
+);
+assert(
+  isMembershipSettled(describeProductMembership(unassignedView, singleScope)) === false &&
+    isMembershipSettled(adminMembership) === false,
+  "membership: unassigned is never settled, and two products are never settled",
 );
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
