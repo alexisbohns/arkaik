@@ -1,37 +1,66 @@
 "use client";
 
 /**
- * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — which variant each section shows.
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — which variant each section shows, and which shipped axes are set.
  *
- * Picks live in localStorage. `?tw=meta:bold-2,header:calm-1` in the URL
- * overrides them on load (that is how screenshots pin a composition), and
+ * Picks live in localStorage. `?tw=matrix-card:bold-pages-1,look:calm` in the
+ * URL overrides them on load (that is how screenshots pin a composition), and
  * `?tw=base` clears everything. Every pick is mirrored on <html> as
- * `data-tw-<section>="<id>"` for CSS-only variants.
+ * `data-tw-<section>="<id>"` for CSS-only variants; an axis pick writes the
+ * shipped attribute itself (`data-panel-look="calm"`).
+ *
+ * Also tracks which sections are MOUNTED right now, so the tweaker can show
+ * the current page's and open panels' sections first.
  */
 import { useSyncExternalStore } from "react";
-import { TWEAK_SECTIONS, type SectionId } from "./contract";
+import { TWEAK_AXES, TWEAK_SECTIONS, type AxisId, type SectionId } from "./contract";
 
 export type Picks = Partial<Record<SectionId, string>>;
+export type Axes = Partial<Record<AxisId, string | null>>;
+interface State {
+  picks: Picks;
+  axes: Axes;
+}
 
-const KEY = "arkaik.tweaks"; // one key per exploration is fine; picks are throwaway
+const KEY = "arkaik.tweaks.<surface>"; // ADAPT: one key per exploration
 const SECTION_IDS = new Set<string>(TWEAK_SECTIONS.map((s) => s.id));
-const EMPTY: Picks = {};
+const AXIS_IDS = new Set<string>(TWEAK_AXES.map((a) => a.id));
+const EMPTY: State = { picks: {}, axes: {} };
 
-let picks: Picks = EMPTY;
+let state: State = EMPTY;
 let loaded = false;
 const listeners = new Set<() => void>();
 
-export function parseRecipe(recipe: string): Picks {
-  const out: Picks = {};
+/** Presets, registered by `registry.ts` at import (the store must not import it: cycle). */
+let knownPresets: { id: string; picks: Picks; axes?: Axes }[] = [];
+export function registerPresets(list: { id: string; picks: Picks; axes?: Axes }[]) {
+  knownPresets = list;
+}
+
+/** `preset:<id>` expands in place; later parts override it (`preset:lead-calm,matrix-card:…`). */
+export function parseRecipe(recipe: string): State {
+  const out: State = { picks: {}, axes: {} };
   for (const part of recipe.split(",")) {
-    const [section, id] = part.split(":").map((s) => s?.trim());
-    if (section && id && SECTION_IDS.has(section) && id !== "base") out[section as SectionId] = id;
+    const [key, id] = part.split(":").map((s) => s?.trim());
+    if (!key || !id) continue;
+    if (key === "preset") {
+      const p = knownPresets.find((x) => x.id === id);
+      if (p) {
+        Object.assign(out.picks, p.picks);
+        Object.assign(out.axes, p.axes ?? {});
+      }
+    } else if (SECTION_IDS.has(key) && id !== "base") out.picks[key as SectionId] = id;
+    else if (AXIS_IDS.has(key)) out.axes[key as AxisId] = id === "default" ? null : id;
   }
   return out;
 }
 
-export function toRecipe(p: Picks): string {
-  return TWEAK_SECTIONS.flatMap((s) => (p[s.id] ? [`${s.id}:${p[s.id]}`] : [])).join(",") || "base";
+export function toRecipe(s: State): string {
+  const parts = [
+    ...TWEAK_AXES.flatMap((a) => (s.axes[a.id] !== undefined ? [`${a.id}:${s.axes[a.id] ?? "default"}`] : [])),
+    ...TWEAK_SECTIONS.flatMap((x) => (s.picks[x.id] ? [`${x.id}:${s.picks[x.id]}`] : [])),
+  ];
+  return parts.join(",") || "base";
 }
 
 function mirror() {
@@ -39,9 +68,17 @@ function mirror() {
   const root = document.documentElement;
   for (const s of TWEAK_SECTIONS) {
     const attr = `data-tw-${s.id}`;
-    const v = picks[s.id];
+    const v = state.picks[s.id];
     if (v) root.setAttribute(attr, v);
     else root.removeAttribute(attr);
+  }
+  // Axes: only touch an attribute the tweaker was told about, so the reader's
+  // own Settings → Display choice stands until the tweaker overrides it.
+  for (const a of TWEAK_AXES) {
+    if (!(a.id in state.axes)) continue;
+    const v = state.axes[a.id];
+    if (v) root.setAttribute(a.attr, v);
+    else root.removeAttribute(a.attr);
   }
 }
 
@@ -50,18 +87,21 @@ function load() {
   loaded = true;
   try {
     const stored = window.localStorage.getItem(KEY);
-    if (stored) picks = JSON.parse(stored) as Picks;
+    if (stored) state = { ...EMPTY, ...(JSON.parse(stored) as State) };
   } catch {
     /* private mode — picks stay in memory */
   }
   const fromUrl = new URLSearchParams(window.location.search).get("tw");
-  if (fromUrl !== null) picks = parseRecipe(fromUrl);
+  if (fromUrl !== null) state = parseRecipe(fromUrl);
   mirror();
+  // The app re-applies its own panel preference on hydration; re-assert ours after it.
+  setTimeout(mirror, 0);
+  setTimeout(mirror, 500);
 }
 
 function emit() {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(picks));
+    window.localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
     /* ignore */
   }
@@ -71,16 +111,28 @@ function emit() {
 
 export function setPick(section: SectionId, id: string | null) {
   load();
-  const next = { ...picks };
-  if (!id || id === "base") delete next[section];
-  else next[section] = id;
-  picks = next;
+  const picks = { ...state.picks };
+  if (!id || id === "base") delete picks[section];
+  else picks[section] = id;
+  state = { ...state, picks };
   emit();
 }
 
-export function setPicks(next: Picks) {
+export function setAxis(axis: AxisId, value: string | null) {
   load();
-  picks = { ...next };
+  state = { ...state, axes: { ...state.axes, [axis]: value } };
+  emit();
+}
+
+export function setState(next: { picks?: Picks; axes?: Axes }) {
+  load();
+  state = { picks: { ...(next.picks ?? {}) }, axes: { ...state.axes, ...(next.axes ?? {}) } };
+  emit();
+}
+
+export function resetAll() {
+  load();
+  state = { picks: {}, axes: {} };
   emit();
 }
 
@@ -92,13 +144,44 @@ function subscribe(l: () => void) {
 
 function snapshot() {
   load();
-  return picks;
+  return state;
+}
+
+export function useTweakState(): State {
+  return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
 }
 
 export function usePicks(): Picks {
-  return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
+  return useTweakState().picks;
 }
 
 export function usePick(section: SectionId): string {
   return usePicks()[section] ?? "base";
+}
+
+/* ── mounted sections ── */
+const mounted = new Map<SectionId, number>();
+let mountedSnapshot: ReadonlySet<SectionId> = new Set();
+const mountListeners = new Set<() => void>();
+function mountEmit() {
+  mountedSnapshot = new Set([...mounted.entries()].filter(([, n]) => n > 0).map(([s]) => s));
+  for (const l of mountListeners) l();
+}
+export function markMounted(section: SectionId): () => void {
+  mounted.set(section, (mounted.get(section) ?? 0) + 1);
+  queueMicrotask(mountEmit);
+  return () => {
+    mounted.set(section, (mounted.get(section) ?? 1) - 1);
+    queueMicrotask(mountEmit);
+  };
+}
+export function useMountedSections(): ReadonlySet<SectionId> {
+  return useSyncExternalStore(
+    (l) => {
+      mountListeners.add(l);
+      return () => mountListeners.delete(l);
+    },
+    () => mountedSnapshot,
+    () => mountedSnapshot,
+  );
 }

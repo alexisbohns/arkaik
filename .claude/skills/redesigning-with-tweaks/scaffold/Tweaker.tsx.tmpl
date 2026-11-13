@@ -2,93 +2,150 @@
 
 /**
  * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — the floating tweaker. Pick a variant per section; the
- * picks compose. "Copy recipe" yields the `?tw=` string that reproduces the
- * composition (paste it back to Claude to say what you picked).
+ * picks compose. Sections on screen (this page + open panels) list first;
+ * the rest fold under "Elsewhere". "Copy recipe" yields the `?tw=` string
+ * that reproduces the composition, axes included.
  */
 import { useState } from "react";
-import { TWEAK_SECTIONS } from "./contract";
+import { AUTHORS, TWEAK_AXES, TWEAK_SECTIONS, TWEAK_SURFACES, type AuthorId, type SectionId } from "./contract";
 import { PRESETS, variantsFor } from "./registry";
-import { setPick, setPicks, toRecipe, usePicks } from "./store";
+import { resetAll, setAxis, setPick, setState, toRecipe, useMountedSections, useTweakState } from "./store";
 
-const AUTHOR_DOT = {
-  bold: "bg-[#E5552F]",
+const DIRECTION_DOT = {
+  expressive: "bg-[#E5552F]",
   calm: "bg-[#5B7FA6]",
+  lead: "bg-[#C9A227]",
 } as const;
+const dotOf = (author: AuthorId) => DIRECTION_DOT[AUTHORS.find((a) => a.id === author)?.direction ?? "lead"];
+
+function SectionPicker({ id, label, hint, current }: { id: SectionId; label: string; hint: string; current: string }) {
+  const variants = variantsFor(id);
+  const currentNote = variants.find((v) => v.id === current)?.note;
+  return (
+    <section className="mb-2.5">
+      <h5 className="mb-1 flex items-baseline gap-2">
+        <span className="text-[11px] font-semibold text-neutral-700">{label}</span>
+        <span className="truncate text-[10px] text-neutral-400">{hint}</span>
+      </h5>
+      <div className="flex flex-wrap gap-1">
+        {[{ id: "base", label: "Current", author: null as AuthorId | null, note: "What ships today" }, ...variants].map((v) => {
+          const on = current === v.id;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              title={`${v.id}${v.note ? ` — ${v.note}` : ""}`}
+              onClick={() => setPick(id, v.id)}
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 ${on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"}`}
+            >
+              {v.author && <i className={`size-2 rounded-full ${dotOf(v.author)}`} />}
+              {v.label}
+            </button>
+          );
+        })}
+      </div>
+      {currentNote && current !== "base" && <p className="mt-1 text-[11px] text-neutral-500">{currentNote}</p>}
+    </section>
+  );
+}
 
 export function Tweaker() {
-  const picks = usePicks();
+  const state = useTweakState();
+  const mounted = useMountedSections();
   const [open, setOpen] = useState(false);
+  const [showElsewhere, setShowElsewhere] = useState(false);
   const [copied, setCopied] = useState(false);
-  const recipe = toRecipe(picks);
-  const active = Object.keys(picks).length;
+  const recipe = toRecipe(state);
+  const active = Object.keys(state.picks).length;
+
+  const surfaces = TWEAK_SURFACES.map((surface) => {
+    const sections = TWEAK_SECTIONS.filter((s) => s.surface === surface.id);
+    return { ...surface, sections, here: sections.some((s) => mounted.has(s.id)) };
+  });
+  const here = surfaces.filter((s) => s.here);
+  const elsewhere = surfaces.filter((s) => !s.here);
+
+  const renderSurface = (surface: (typeof surfaces)[number]) => (
+    <div key={surface.id} className="mb-3">
+      <h4 className="mb-1.5 border-b border-black/5 pb-1 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">
+        {surface.label}
+      </h4>
+      {surface.sections.map((s) => (
+        <SectionPicker key={s.id} id={s.id} label={s.label} hint={s.hint} current={state.picks[s.id] ?? "base"} />
+      ))}
+    </div>
+  );
 
   return (
     <div className="fixed bottom-4 left-20 z-[200] font-sans text-[12px] text-neutral-900" data-tweaker>
       {open ? (
-        <div className="flex max-h-[78vh] w-[380px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
+        <div className="flex max-h-[82vh] w-[400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
           <div className="flex items-center gap-2 border-b border-black/10 px-3 py-2">
             <strong className="text-[13px]">Tweaks</strong>
             <span className="flex items-center gap-1 text-neutral-500">
-              <i className={`size-2 rounded-full ${AUTHOR_DOT.bold}`} /> bold
-              <i className={`ml-2 size-2 rounded-full ${AUTHOR_DOT.calm}`} /> calm
+              <i className={`size-2 rounded-full ${DIRECTION_DOT.expressive}`} /> expressive
+              <i className={`ml-2 size-2 rounded-full ${DIRECTION_DOT.calm}`} /> calm
+              <i className={`ml-2 size-2 rounded-full ${DIRECTION_DOT.lead}`} /> ★
             </span>
             <button type="button" className="ml-auto rounded px-2 py-0.5 hover:bg-black/5" onClick={() => setOpen(false)}>
               Close
             </button>
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+            <section className="mb-3 flex flex-col gap-1">
+              {TWEAK_AXES.map((axis) => {
+                const current = state.axes[axis.id];
+                return (
+                  <div key={axis.id} className="flex items-center gap-2">
+                    <span className="w-20 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">{axis.label}</span>
+                    {axis.values.map((value, i) => {
+                      const on = current === undefined ? false : current === value;
+                      return (
+                        <button
+                          key={String(value)}
+                          type="button"
+                          onClick={() => setAxis(axis.id, value)}
+                          className={`rounded-full px-2 py-0.5 ${on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"}`}
+                        >
+                          {axis.names[i]}
+                        </button>
+                      );
+                    })}
+                    {current === undefined && <span className="text-[10px] text-neutral-400">(your setting)</span>}
+                  </div>
+                );
+              })}
+            </section>
             {PRESETS.length > 0 && (
               <section className="mb-3">
-                <h4 className="mb-1 font-semibold text-neutral-500 uppercase tracking-wide text-[10px]">Presets</h4>
+                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">Presets</h4>
                 <div className="flex flex-wrap gap-1">
                   {PRESETS.map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       title={p.note}
-                      onClick={() => setPicks(p.picks)}
+                      onClick={() => setState({ picks: p.picks, axes: p.axes })}
                       className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1 hover:bg-neutral-200"
                     >
-                      <i className={`size-2 rounded-full ${AUTHOR_DOT[p.author]}`} />
+                      <i className={`size-2 rounded-full ${dotOf(p.author)}`} />
                       {p.label}
                     </button>
                   ))}
                 </div>
               </section>
             )}
-            {TWEAK_SECTIONS.map((section) => {
-              const variants = variantsFor(section.id);
-              const current = picks[section.id] ?? "base";
-              const currentNote = variants.find((v) => v.id === current)?.note;
-              return (
-                <section key={section.id} className="mb-3">
-                  <h4 className="mb-1 flex items-baseline gap-2">
-                    <span className="font-semibold text-neutral-500 uppercase tracking-wide text-[10px]">{section.label}</span>
-                    <span className="truncate text-[10px] text-neutral-400">{section.hint}</span>
-                  </h4>
-                  <div className="flex flex-wrap gap-1">
-                    {[{ id: "base", label: "Current", author: null as null | "bold" | "calm", note: "What ships today" }, ...variants].map((v) => {
-                      const on = current === v.id;
-                      return (
-                        <button
-                          key={v.id}
-                          type="button"
-                          title={`${v.id}${v.note ? ` — ${v.note}` : ""}`}
-                          onClick={() => setPick(section.id, v.id)}
-                          className={`flex items-center gap-1 rounded-full px-2 py-1 ${
-                            on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"
-                          }`}
-                        >
-                          {v.author && <i className={`size-2 rounded-full ${AUTHOR_DOT[v.author]}`} />}
-                          {v.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {currentNote && current !== "base" && <p className="mt-1 text-[11px] text-neutral-500">{currentNote}</p>}
-                </section>
-              );
-            })}
+            {here.map(renderSurface)}
+            {elsewhere.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowElsewhere((v) => !v)}
+                className="mb-2 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase hover:text-neutral-900"
+              >
+                {showElsewhere ? "▾" : "▸"} Elsewhere ({elsewhere.map((s) => s.label).join(", ")})
+              </button>
+            )}
+            {showElsewhere && elsewhere.map(renderSurface)}
           </div>
           <div className="flex items-center gap-2 border-t border-black/10 px-3 py-2">
             <code className="min-w-0 flex-1 truncate text-[11px] text-neutral-600" title={recipe}>
@@ -105,7 +162,7 @@ export function Tweaker() {
             >
               {copied ? "Copied" : "Copy recipe"}
             </button>
-            <button type="button" className="rounded-full px-2 py-1 hover:bg-black/5" onClick={() => setPicks({})}>
+            <button type="button" className="rounded-full px-2 py-1 hover:bg-black/5" onClick={resetAll}>
               Reset
             </button>
           </div>

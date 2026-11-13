@@ -1,8 +1,8 @@
-// <AUTHOR> author's registry — copy to tweaks/<author>/index.tsx for each author
-// before anything imports the registry (registry.ts imports every author's index).
-// Owned by that author once the work starts.
+// <author>'s registry — copy to tweaks/<author>/index.tsx for EVERY author in
+// `contract.ts`'s AUTHORS (lead included), plus an empty `<author>.css`, before
+// anything imports the registry. Owned by that author once the work starts.
 import type { TweakPreset, VariantRegistry } from "../contract";
 import "./<author>.css";
 
-export const <author>Variants: VariantRegistry = {};
-export const <author>Presets: TweakPreset[] = [];
+export const variants: VariantRegistry = {};
+export const presets: TweakPreset[] = [];
