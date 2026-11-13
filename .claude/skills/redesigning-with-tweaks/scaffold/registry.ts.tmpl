@@ -1,0 +1,19 @@
+/**
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — merges both authors' variants. Authors edit ONLY their
+ * own `bold/` or `calm/` folder; this file never needs touching.
+ */
+import type { SectionId, TweakPreset, TweakVariant, VariantRegistry } from "./contract";
+import { boldVariants, boldPresets } from "./bold";
+import { calmVariants, calmPresets } from "./calm";
+
+export function variantsFor<S extends SectionId>(section: S): TweakVariant<S>[] {
+  return [...((boldVariants[section] ?? []) as TweakVariant<S>[]), ...((calmVariants[section] ?? []) as TweakVariant<S>[])];
+}
+
+export function findVariant<S extends SectionId>(section: S, id: string): TweakVariant<S> | undefined {
+  return variantsFor(section).find((v) => v.id === id);
+}
+
+export const PRESETS: TweakPreset[] = [...boldPresets, ...calmPresets];
+
+export type { VariantRegistry };

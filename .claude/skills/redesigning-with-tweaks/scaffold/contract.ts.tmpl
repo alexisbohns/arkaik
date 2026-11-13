@@ -1,0 +1,67 @@
+/**
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — the contract.
+ *
+ * Every tweakable region of the surface is a SECTION. A section renders the
+ * shipped UI ("base") unless the tweaker picks a variant for it. A variant is
+ * either:
+ *   - a `Component`, which receives the section's props below plus
+ *     `renderOriginal()` (the shipped UI, so a variant may wrap or restyle it), or
+ *   - CSS only (no `Component`): the tweaker writes `data-tw-<section>="<id>"`
+ *     on <html>, and the author's stylesheet targets it, scoped to a hook the
+ *     surface carries (e.g. `[data-node-panel]`).
+ *
+ * Variant ids are prefixed by author (`bold-…`, `calm-…`), unique per section.
+ *
+ * ADAPT: list the surface's sections, then give each one the props a variant
+ * needs to render it WITHOUT re-deriving rules: pass models (data + handlers),
+ * not raw records, wherever the shipped UI encodes a subtle rule (see the
+ * panels redesign's `ProductModel`). Pass live, autosaving elements as nodes to
+ * place, never to rebuild.
+ */
+import type { ComponentType, ReactNode } from "react";
+
+export const TWEAK_SECTIONS = [
+  // ADAPT: one entry per region. `hint` is shown in the tweaker.
+  { id: "header", label: "Header", hint: "identity and actions" },
+  { id: "body", label: "Body", hint: "overall rhythm, surfaces, spacing (usually CSS-only)" },
+] as const;
+
+export type SectionId = (typeof TWEAK_SECTIONS)[number]["id"];
+
+interface WithOriginal {
+  /** The shipped UI for this section, exactly as it renders today. */
+  renderOriginal: () => ReactNode;
+}
+
+/** ADAPT: what every section can see (the record, the scope, the save path). */
+export interface SurfaceCtx {
+  readOnly: boolean;
+}
+
+export interface SectionProps {
+  header: WithOriginal & { ctx: SurfaceCtx };
+  body: WithOriginal & { ctx: SurfaceCtx };
+}
+
+export interface TweakVariant<S extends SectionId = SectionId> {
+  /** `bold-…` or `calm-…`, unique within the section. */
+  id: string;
+  /** 1–3 words, shown in the tweaker. */
+  label: string;
+  /** One line: what it does and why. */
+  note?: string;
+  author: "bold" | "calm";
+  /** Absent = CSS-only variant (targets `data-tw-<section>`). */
+  Component?: ComponentType<SectionProps[S]>;
+}
+
+export type VariantRegistry = { [S in SectionId]?: TweakVariant<S>[] };
+
+/** A named pick across several sections — an author's "full look". */
+export interface TweakPreset {
+  id: string;
+  label: string;
+  author: "bold" | "calm";
+  note?: string;
+  picks: Partial<Record<SectionId, string>>;
+}
