@@ -1,6 +1,6 @@
 "use client";
 
-import type { FindingRow } from "@/lib/utils/quality";
+import { verdictRepeatsStatus, type FindingRow } from "@/lib/utils/quality";
 import { Badge } from "@/components/ui/badge";
 import {
   COST_CHIP,
@@ -67,7 +67,9 @@ export function FindingScales({ row, className }: { row: FindingRow; className?:
       >
         {row.cost}
       </ScaleChip>
-      {verdict && <span>· {VERDICT_LABEL[verdict]}</span>}
+      {/* Not when it only repeats the status badge below: a refuted finding's
+          REFUTED verdict is the same decision, said twice. */}
+      {verdict && !verdictRepeatsStatus(row) && <span>· {VERDICT_LABEL[verdict]}</span>}
       {/* The accepted-risk callout below states the status in its own badge,
           in the treatment that says it is a decision; a second badge up here
           would say it twice and more quietly. */}

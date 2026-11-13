@@ -22,7 +22,7 @@ const pack = JSON.parse(
 );
 const section = fixture.section;
 
-const { buildFindingRows, severityOf, priorityOf, resolveKritikLibrary } = loadQuality();
+const { buildFindingRows, severityOf, priorityOf, resolveKritikLibrary, verdictRepeatsStatus } = loadQuality();
 
 let failures = 0;
 function assert(cond, message) {
@@ -1353,4 +1353,20 @@ const { worstOpenFindingFor } = loadQuality();
 }
 
 console.log(failures === 0 ? "\nAll quality projections OK" : `\n${failures} failure(s)`);
+// ========================= verdictRepeatsStatus ==============================
+
+assert(
+  verdictRepeatsStatus({ status: "refuted", verification: { verdict: "REFUTED", note: "n" } }),
+  "a refuted finding's REFUTED verdict repeats its status",
+);
+assert(
+  !verdictRepeatsStatus({ status: "resolved", verification: { verdict: "CONFIRMED", note: "n" } }),
+  "a resolved finding's CONFIRMED verdict is evidence, not a repeat",
+);
+assert(
+  !verdictRepeatsStatus({ status: "open", verification: { verdict: "DOWNGRADED", note: "n" } }),
+  "an open finding's DOWNGRADED verdict says something the status does not",
+);
+assert(!verdictRepeatsStatus({ status: "refuted" }), "no verdict, nothing to repeat");
+
 process.exit(failures === 0 ? 0 : 1);
