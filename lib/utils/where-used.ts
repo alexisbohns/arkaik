@@ -37,7 +37,7 @@ export function findWhereUsed(nodeId: string, allNodes: readonly Node[]): Node[]
 
 /**
  * The views and flows an acceptance covers, resolved to nodes — the rows
- * `CoversSection` lists, and the anchors `AcceptanceMembershipField` counts for
+ * `CoversSection` lists, and the anchors `describeProductMembership` counts for
  * its Product hint (and `AcceptanceAuthoredFields` for the split dialog's).
  *
  * Shared rather than written out again in each because all three are the same

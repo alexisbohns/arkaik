@@ -47,7 +47,7 @@ interface BlockedByFieldProps {
    * Required, not optional. It was optional once, on the grounds that "this is
    * the only metadata writer on screen" — which the decision panel now
    * falsifies outright, and which was already generous elsewhere, where
-   * `ProductSection` and the platform sections patch `metadata` too. Those do
+   * The header's product chip and the platform sections patch `metadata` too. Those do
    * not share this base yet; see `NodeDetailPanel` for what does.
    */
   metadataRef: React.MutableRefObject<NodeMetadata | undefined>;

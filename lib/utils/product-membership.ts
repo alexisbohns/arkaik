@@ -13,12 +13,12 @@ import { coveredAnchorsOf } from "@/lib/utils/where-used";
  * Which product a node belongs to, as data: what to show, what to explain, and
  * whether it is worth showing at all.
  *
- * The node panel says this in more than one place and more than one shape (a
- * chip in a header, a line under a title, a picker in a form), and every one of
- * them has to agree on the same four subtleties. They were written out inside
- * two components (`ProductSection` for flows and views, `AcceptanceMembershipField`
- * for acceptances); a third rendering would have been a third copy, and the copy
- * most likely to get one of them wrong. So they live here once:
+ * The node panel says this in more than one shape (a chip in the Expressive
+ * header, a quiet "in Pebbles" line in the Calm one), and every rendering has to
+ * agree on the same four subtleties. They were once written out inside two
+ * panel components, one per species family; each new rendering would have been
+ * another copy, and the copy most likely to get one of them wrong. So they
+ * live here once:
  *
  * 1. **No products, no membership.** A project that declares no products never
  *    hears the word: the answer is `null`, and the caller renders nothing.
