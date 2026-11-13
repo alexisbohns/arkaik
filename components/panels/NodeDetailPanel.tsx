@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Select,
@@ -37,7 +37,8 @@ import {
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { acceptancesCovering, productOf } from "@arkaik/schema";
+import { acceptancesCovering } from "@arkaik/schema";
+import { describeProductMembership } from "@/lib/utils/product-membership";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
 import { stalenessRelatedIds } from "@/lib/utils/screenshot-staleness";
@@ -137,13 +138,30 @@ function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
   const [status, setStatus] = useState<StatusId>(node.status);
   const lastSavedTitleRef = useRef(node.title);
   const lastSavedDescriptionRef = useRef(node.description ?? "");
-  const titleEditRef = useRef<HTMLDivElement>(null);
-  const descriptionEditRef = useRef<HTMLDivElement>(null);
 
+  // The editable title and description are uncontrolled (contentEditable owns
+  // the caret), so their text is seeded once, when each element attaches —
+  // through a callback ref rather than a mount effect, because the element can
+  // attach after mount: a layout that places the title in a different wrapper
+  // (the panel looks do) mounts a fresh element, which a mount-once effect
+  // would leave empty. `seeded` marks an element already filled, so a re-render
+  // never overwrites what is being typed. The text it seeds from is the latest
+  // committed value, read through a ref.
+  const latestText = useRef({ title: node.title, description: node.description ?? "" });
   useEffect(() => {
-    if (titleEditRef.current) titleEditRef.current.textContent = node.title;
-    if (descriptionEditRef.current) descriptionEditRef.current.textContent = node.description ?? "";
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    latestText.current = { title, description };
+  });
+  const attachTitle = useCallback((el: HTMLDivElement | null) => {
+    if (el && el.dataset.seeded !== "1") {
+      el.textContent = latestText.current.title;
+      el.dataset.seeded = "1";
+    }
+  }, []);
+  const attachDescription = useCallback((el: HTMLDivElement | null) => {
+    if (el && el.dataset.seeded !== "1") {
+      el.textContent = latestText.current.description;
+      el.dataset.seeded = "1";
+    }
   }, []);
   // Views and flows are absent on purpose: they have no single status. Theirs is
   // per-platform and lives in the Platforms group, and a select here would be a
@@ -213,7 +231,7 @@ function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
           is for. */}
       <div className="flex flex-col gap-1.5">
         <div
-          ref={titleEditRef}
+          ref={attachTitle}
           contentEditable
           suppressContentEditableWarning
           onPaste={handleTitlePaste}
@@ -224,7 +242,7 @@ function NodeFields({ node, onUpdate, membership, authored }: NodeFieldsProps) {
           aria-label="Node title (editable)"
         />
         <div
-          ref={descriptionEditRef}
+          ref={attachDescription}
           contentEditable
           suppressContentEditableWarning
           onPaste={handleDescriptionPaste}
@@ -306,41 +324,19 @@ interface ProductSectionProps {
  * already report membership for panels opened that way.
  */
 function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
-  if (scope.productsById.size === 0) return null;
   if (node.species !== "flow" && node.species !== "view") return null;
   if (!onUpdate) return null;
-
-  const stored = productOf(node);
-  // Whether the membership RESOLVES, not merely whether one is stored. A key
-  // naming a product the project no longer declares degrades to "Unassigned" in
-  // the trigger (`ProductPicker` displays it, deliberately, rather than healing
-  // it), so keying the hint off `stored === null` would suppress the explanation
-  // in exactly the case that needs one most: the trigger says Unassigned and
-  // nothing on screen says why.
-  const resolved = stored !== null && scope.productsById.has(stored);
-  // The two unresolved cases get different sentences because they are different
-  // situations and have different fixes. Never-assigned is a normal state — the
-  // node is in triage and the hint just says where to find it. A stale key is a
-  // fault: something named a product that no longer exists, the id is the only
-  // trace of it left, and echoing it back is what lets a reader recognise a
-  // rename or a deletion they can undo. Collapsing both into one sentence would
-  // throw that id away, and it is unrecoverable from the UI once the select is
-  // touched.
-  const hint = resolved
-    ? undefined
-    : stored === null
-      ? "Unassigned nodes appear under All products only."
-      : `Assigned to "${stored}", which this project no longer declares — it appears under All products only.`;
+  // Null exactly when the project declares no products, which is the
+  // degenerate-case guarantee: no field, no label, no word "product".
+  const membership = describeProductMembership(node, scope);
+  if (!membership) return null;
 
   // No gutter of its own: this renders into `NodeFields`' `membership` slot,
-  // which is already inside that component's gutter and `gap-5` column. The
-  // `PANEL_GUTTER` wrapper it used to carry — from when it was a standalone
-  // block in the panel body — would double-indent it against every field
-  // around it.
+  // which is already inside that component's gutter and `gap-5` column.
   return (
     <ProductPicker
-      products={[...scope.productsById.values()]}
-      value={stored}
+      products={membership.products}
+      value={membership.value}
       // Routed through `withProductMembership`, never assembled here: it owns
       // the "unassigned means *absent*, never `product: \"\"`" rule and it
       // carries the rest of the metadata (platformStatuses, notes,
@@ -348,7 +344,7 @@ function ProductSection({ node, scope, onUpdate }: ProductSectionProps) {
       onChange={(nextProduct) =>
         void onUpdate(node.id, { metadata: withProductMembership(node.metadata, nextProduct) })
       }
-      hint={hint}
+      hint={membership.hint}
     />
   );
 }

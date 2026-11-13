@@ -35,6 +35,10 @@ const MODULES = [
   ["lib/utils/platform-status.ts", "platform-status"],
   ["lib/utils/product-scope.ts", "product-scope"],
   ["lib/utils/product-scope-store.ts", "product-scope-store"],
+  // The membership the node panel lays out (`describeProductMembership`):
+  // built on product-scope and where-used, both real requires.
+  ["lib/utils/where-used.ts", "where-used"],
+  ["lib/utils/product-membership.ts", "product-membership"],
 ];
 
 function loadProductScope() {
@@ -60,7 +64,9 @@ function loadProductScope() {
       .replace(/require\((['"])@arkaik\/schema\1\)/g, `require(${JSON.stringify(schemaIndex)})`)
       .replace(/require\((['"])@\/lib\/config\/platforms\1\)/g, `require("./platforms.js")`)
       .replace(/require\((['"])@\/lib\/config\/statuses\1\)/g, `require("./statuses.js")`)
-      .replace(/require\((['"])@\/lib\/utils\/blocked\1\)/g, `require("./blocked.js")`);
+      .replace(/require\((['"])@\/lib\/utils\/blocked\1\)/g, `require("./blocked.js")`)
+      .replace(/require\((['"])@\/lib\/utils\/product-scope\1\)/g, `require("./product-scope.js")`)
+      .replace(/require\((['"])@\/lib\/utils\/where-used\1\)/g, `require("./where-used.js")`);
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
   }
 
@@ -70,6 +76,7 @@ function loadProductScope() {
   return {
     ...require(path.join(BUILD_DIR, "product-scope.js")),
     ...require(path.join(BUILD_DIR, "product-scope-store.js")),
+    ...require(path.join(BUILD_DIR, "product-membership.js")),
     // Picked, not spread: platform-status exports a `getRollupPlatforms` and a
     // pile of status helpers that have no business shadowing anything here.
     scopedRollupPlatforms: require(path.join(BUILD_DIR, "platform-status.js")).scopedRollupPlatforms,
