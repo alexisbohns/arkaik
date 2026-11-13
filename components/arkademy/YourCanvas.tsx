@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { ChevronDownIcon, DownloadIcon, InfoIcon, RotateCwIcon } from "lucide-react";
 
-import { ARKADEMY_SECTION_TITLE } from "@/components/arkademy/ArkademyChrome";
+import { ARKADEMY_KICKER, ARKADEMY_SECTION_TITLE } from "@/components/arkademy/ArkademyChrome";
 import { CanvasGrid } from "@/components/arkademy/CanvasGrid";
 import { CanvasLink } from "@/components/arkademy/CanvasLink";
 import { CanvasToolbar } from "@/components/arkademy/CanvasToolbar";
@@ -14,7 +14,6 @@ import { ConfirmDialog } from "@/components/arkademy/ConfirmDialog";
 import { InspirationList } from "@/components/arkademy/InspirationList";
 import { ParagraphView } from "@/components/arkademy/ParagraphView";
 import { ADD_ANSWER_ID, isEnter, QUESTION_TITLE_ID, QuestionEditor, type AddResult } from "@/components/arkademy/QuestionEditor";
-import { ARKADEMY_KICKER } from "@/components/arkademy/QuestionCard";
 import { QuestionSteps } from "@/components/arkademy/QuestionSteps";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
