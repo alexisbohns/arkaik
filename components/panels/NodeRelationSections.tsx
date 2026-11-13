@@ -376,7 +376,7 @@ interface CoversSectionProps {
  * costs one line.
  */
 export function CoversSection({ node, nodesById, allNodes, allEdges, hasProducts, onNavigate, intake }: CoversSectionProps) {
-  // `coveredAnchorsOf`, not a walk of its own: `AcceptanceMembershipField` asks
+  // `coveredAnchorsOf`, not a walk of its own: `describeProductMembership` asks
   // the same question for its Product hint's anchor count, and the two answers have to be
   // the same list or the hint counts anchors this section does not show. The
   // The id map the attach config resolves against comes from the group, built

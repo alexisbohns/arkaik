@@ -16,12 +16,14 @@ import {
 import { Field } from "@/components/ui/field";
 
 /**
- * The one control that assigns a node to a product.
+ * The control that assigns a new node to a product, in the create forms
+ * (`NewNodeForm`, `NewAcceptanceForm`).
  *
- * One component, three forms (the create form, the node detail panel, the
- * acceptance editor), for the same reason `ProductScopeSelector` is one
- * control: the rules about what "unassigned" means are subtle enough that three
- * copies would diverge, and the third copy would be the one that stored `""`.
+ * One component for both, for the same reason `ProductScopeSelector` is one
+ * control: the rules about what "unassigned" means are subtle enough that two
+ * copies would diverge, and the second copy would be the one that stored `""`.
+ * An existing node's product is changed from the node panel's header instead
+ * (`ProductChip`, `QuietProduct`), which reads `describeProductMembership`.
  *
  * **The caller decides whether to render it at all.** This component does not
  * check whether the project declares products — its callers do, because a form
@@ -41,31 +43,10 @@ interface ProductPickerProps {
   products: readonly ProductDefinition[];
   value: string | null;
   onChange: (productId: string | null) => void;
-  /** Defaults to "Product". The acceptance editor overrides it. */
+  /** Defaults to "Product". */
   label?: string;
   /** Secondary line under the control — the caller's explanation, if any. */
   hint?: string;
-  /**
-   * Render `text` in the trigger **instead of** the selected option's label,
-   * while the menu keeps selecting and reporting `value` unchanged.
-   *
-   * It exists for exactly one caller: the acceptance editor (§ D5). An
-   * acceptance's membership is derived from its `covers` anchors, so when it has
-   * any, the live answer is the derived product(s) while `value` is the stored
-   * fallback that only applies if the acceptance stops covering anything. Without
-   * this the trigger would render the fallback as though it were the answer —
-   * which is the precise confusion `productsOfAcceptance` was written to prevent.
-   *
-   * *Rejected:* a separate read-only "derived product" line above an ordinary
-   * picker, which puts two different answers to "what product is this?" on
-   * screen at once and leaves the reader to guess which one the app believes.
-   * *Rejected:* forking a `DerivedProductPicker`, which would duplicate the
-   * `UNASSIGNED` sentinel and the stale-key degradation — the two rules this
-   * component exists to keep in one place.
-   *
-   * The stored value is still fully editable; only its *display* is deferred.
-   */
-  displayOverride?: { text: string };
   disabled?: boolean;
 }
 
@@ -75,12 +56,10 @@ export function ProductPicker({
   onChange,
   label = "Product",
   hint,
-  displayOverride,
   disabled,
 }: ProductPickerProps) {
-  // Per-mount, because three forms render this control and the panel stack can
-  // hold two of them open at once — a fixed id would make the second picker's
-  // label focus the first picker's select.
+  // Per-mount: a fixed id would make a second picker's label focus the first
+  // picker's select.
   const triggerId = useId();
   // A stored membership naming a product this project no longer declares
   // degrades to Unassigned in the trigger, matching `ProductScopeSelector`. It
@@ -96,10 +75,7 @@ export function ProductPicker({
         disabled={disabled}
       >
         <SelectTrigger id={triggerId}>
-          {/* `SelectValue` renders the *selected* option, which is the stored
-              value. When a caller has a different live answer it supplies the
-              text itself — see `displayOverride`. */}
-          {displayOverride ? <span>{displayOverride.text}</span> : <SelectValue />}
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>

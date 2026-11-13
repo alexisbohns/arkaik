@@ -169,14 +169,19 @@ lib/landing/
     InsertBetweenDialog.tsx # Dialog for insert-between actions: choose view/flow, search existing, or create inline
     PanelStack.tsx          # Content-agnostic push-panel grid: the surface is cell 0; keyboard, focus, breadcrumb, window
     ProjectPanels.tsx       # Binds the stack to panel kind: node detail (id → node), or the raw bundle
-    NodeDetailPanel.tsx     # One panel's body: edit node fields, platform-specific statuses, computed rollups, and flow playlists
+    NodeDetailPanel.tsx     # One panel's header and body, in the reader's look (Expressive or Calm): fields, statuses, platforms, relations, playlist, history
     PlaylistEditor.tsx      # Flow-only playlist editor: add/remove/reorder and branch editing
     PlaylistEntryRow.tsx    # Recursive playlist row renderer for condition/junction branches
     NodeSearchCombobox.tsx  # Search-or-create selector for flow/view references
-    PlatformVariants.tsx    # Platform tab switcher with per-platform status and notes
+    PlatformVariants.tsx    # The status deck: one tile per platform, every status in reach, one tile open for its shot and notes
+    PlatformRollupTiles.tsx # A flow's per-platform status, rolled up from its steps as stacked gauges
+    PanelGroup.tsx          # A panel's collapsible region: headline bars by default, floating cards by preference
+    ProductChip.tsx         # Expressive header: the node's product as a chip menu (describeProductMembership)
+    StatusTrack.tsx         # Expressive: a record's status as a lifecycle track (a connected radio group)
+    QuietControls.tsx       # Calm: status and product selects that read as text until reached
+    species-shape.tsx       # One M3 Expressive shape per species, and a status's tone
     RawBundlePanel.tsx      # Raw JSON/YAML bundle viewer/editor — a stack column (guarded edit + save-back)
-    AcceptanceMembershipField.tsx # An acceptance's Product picker, derived from what it covers (D5)
-    AcceptanceAuthoredFields.tsx  # An acceptance's own fields in the intro block: gherkin, values, decompose
+    AcceptanceAuthoredFields.tsx  # An acceptance's own fields in the intro block: Gherkin (lit, or read-then-edit) and values
     DecisionEditor.tsx      # A decision's body: context, decision, consequences, decision status
   acceptances/              # AcceptanceMatrix + its filter bar
   decisions/                # DecisionLog
