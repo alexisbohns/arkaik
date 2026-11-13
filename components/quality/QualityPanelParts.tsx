@@ -14,9 +14,14 @@
  *   ramp (`data-kp-level="l0"…"l4"`), and only where the level is the subject.
  * - a finding wears `FindingModel.tone`: its priority while it is open, its
  *   decision once it is not, so a resolved P0 stops shouting.
+ *
+ * The Calm look's pieces (`kp-calm-*`) close the file: the Calm node panel's
+ * idioms (`np-calm-*` in `panels.css`) — a clamp that rests at N lines with a
+ * quiet "More", a quiet disclosure row, a label/value props grid, a chip.
  */
-import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronDownIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { QualityPanelShape, type QualityPanelShapeName } from "@/components/quality/QualityPanelShape";
 
 export type LevelTone = "l0" | "l1" | "l2" | "l3" | "l4";
@@ -220,5 +225,101 @@ export function QualityHero({
       <QualityPanelShape shape={shape} className="kp-hero-shape" />
       <div className="kp-hero-text">{children}</div>
     </div>
+  );
+}
+
+/* ───────────────────────── Calm ───────────────────────── */
+
+/**
+ * Rests at `lines` lines and offers "More" only when the text actually runs
+ * longer — measured against the clamp, and re-measured on resize. The Calm
+ * node description's clamp, generalised. Measured rather than decided by
+ * length (`ClampedText`) because a Calm block is short and a "More" under
+ * text that already fits reads as a bug in a look whose whole point is
+ * quiet. Nothing inside it is focusable, so the clipped part never traps a
+ * tab stop.
+ */
+export function MeasuredClamp({ lines, children, className }: { lines: number; children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const id = useId();
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || expanded) return;
+    const measure = () => setOverflows(element.scrollHeight > element.clientHeight + 2);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [expanded]);
+
+  return (
+    <>
+      <div
+        ref={ref}
+        id={id}
+        className={className ? `kp-calm-clamp ${className}` : "kp-calm-clamp"}
+        style={{ ["--kp-calm-lines" as string]: lines }}
+        data-clamped={expanded ? undefined : ""}
+      >
+        {children}
+      </div>
+      {(overflows || expanded) && (
+        <button
+          type="button"
+          className="kp-calm-text-button kp-calm-clamp-toggle"
+          aria-expanded={expanded}
+          aria-controls={id}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      )}
+    </>
+  );
+}
+
+/**
+ * A folded row inside a section: the heading IS the disclosure (an `h4`,
+ * one rung under the section's `h3`, whose content is the trigger — the
+ * `PanelGroup` pattern), with a chevron that turns. Closed by default — what
+ * it holds is read on demand.
+ */
+export function CalmFold({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return (
+    <Collapsible className="kp-calm-fold">
+      <h4>
+        <CollapsibleTrigger className="kp-calm-fold-bar">
+          <ChevronRightIcon className="kp-calm-fold-chevron size-4" aria-hidden="true" />
+          <span>{title}</span>
+        </CollapsibleTrigger>
+      </h4>
+      <CollapsibleContent className="kp-calm-fold-body">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** The Calm props grid: a quiet label column, a value column. */
+export function CalmProps({ children }: { children: ReactNode }) {
+  return <dl className="kp-calm-props">{children}</dl>;
+}
+
+export function CalmProp({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="kp-calm-prop kp-calm-prop-top">
+      <dt className="kp-calm-prop-label">{label}</dt>
+      <dd className="kp-calm-prop-value">{children}</dd>
+    </div>
+  );
+}
+
+/** A static Calm chip — the node panel's status chip, read-only. `tone` tints it. */
+export function CalmChip({ children, tone }: { children: ReactNode; tone?: string }) {
+  return (
+    <span className="kp-calm-chip" data-tone={tone}>
+      {children}
+    </span>
   );
 }

@@ -1,7 +1,9 @@
 /*
- * The criterion and finding panels, Expressive: the node panel's grammar for
- * the two panels whose subject is not a graph species.
+ * The criterion and finding panels, in the two looks a reader picks for every
+ * panel in Settings → Display.
  *
+ * Expressive (the default) is the node panel's grammar for the two panels
+ * whose subject is not a graph species:
  * - A criterion wears a rubric seal in a teal no species owns, a hero that
  *   bleeds up under the header, its scored level as a track of L0–L4, the
  *   evidence as a quote with its citations lit, the guidance as one folded
@@ -11,8 +13,19 @@
  *   criterion as a pill, its prose as a folded deck, its nodes as relation
  *   tiles.
  *
- * Scoping. Every rule holds for both panel looks and sits on `:root`, or on a
- * `kp-` class only these two panels render.
+ * Calm keeps both headers, the anchors track, the evidence quote, the
+ *   guidance deck, the criterion pill, the node tiles and the headlines, and
+ *   quiets the rest: no hero (the title on the panel at the Calm node's
+ *   scale), the findings counted in their heading, a decided finding's status
+ *   as a chip and an accepted risk as a ruled note, the risk as one equation
+ *   under its priority, and the detail deck's tiles clamped under "Show all".
+ *
+ * Scoping. A rule that holds for both looks sits on `:root`. An Expressive-only
+ * rule sits on `:root:not([data-panel-look="calm"])`, so Expressive is the
+ * look with no attribute at all, and a Calm-only rule on
+ * `:root[data-panel-look="calm"]` or on a `kp-calm-` class only the Calm
+ * markup renders. The attribute is the reader's panel look (Settings →
+ * Display), the one the node panels follow.
  *
  * Hooks. Rules key on data attributes the components carry for this file —
  * `[data-quality-panel="criterion|finding"]` (the body),
@@ -20,10 +33,11 @@
  * through which `section:has(> header …)` reaches `PanelStack`'s frame, the
  * way `panels.css` reaches a node's), `[data-kp-hue]` (a tone: `rubric`,
  * `p0`–`p3`, `resolved`, `refuted`, `accepted`, `sev-*`), `[data-kp-level]`
- * (the L0–L4 ramp), `[data-kp-bleed]` (the hero) — and on `kp-` classes. The
- * section headlines are the one shape this file reads: `PanelSection`'s
- * `section > h3` (or `section > div > h3` with an action), directly under the
- * body hook.
+ * (the L0–L4 ramp), `[data-kp-bleed]` (the hero), `[data-criterion-intro]` /
+ * `-name` / `-question` / `-definition` (the Calm criterion intro) — and on
+ * `kp-` classes. The section headlines are the one shape this file reads: a
+ * `section > h3` (`PanelSection`'s, or `section > div > h3` with an action),
+ * directly under the body hook.
  *
  * Tones become `--kp-tint` / `--kp-tint-2` / `--kp-ink` / `--kp-on-ink`, the
  * `--np-*` trio `panels.css` gives a species.
@@ -228,17 +242,17 @@
 :root
   section:has(> header [data-quality-panel-header="finding"])
   > header,
-:root
+:root:not([data-panel-look="calm"])
   section:has(> article [data-kp-bleed="criterion"])
   > header,
-:root
+:root:not([data-panel-look="calm"])
   section:has(> article [data-kp-bleed="finding"])
   > header {
   background: var(--kp-tint);
 }
-:root
+:root:not([data-panel-look="calm"])
   [data-quality-panel="criterion"]:has(> [data-kp-bleed]),
-:root
+:root:not([data-panel-look="calm"])
   [data-quality-panel="finding"]:has(> .kp-intro > [data-kp-bleed]) {
   padding-top: 0;
 }
@@ -1355,4 +1369,362 @@ a.kp-ref:focus-visible {
     > :is(h3:first-child, div:first-child > h3)::before {
     background: CanvasText;
   }
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="red"] {
+  --calm-panels-hue: var(--tone-red);
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="ember"] {
+  --calm-panels-hue: var(--tone-ember);
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="amber"] {
+  --calm-panels-hue: var(--tone-amber);
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="indigo"] {
+  --calm-panels-hue: var(--tone-indigo);
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="green"] {
+  --calm-panels-hue: var(--tone-green);
+}
+:is(.kp-calm-chip, .kp-calm-prio, .kp-calm-term)[data-tone="neutral"] {
+  --calm-panels-hue: var(--tone-neutral);
+}
+.kp-calm-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.kp-calm-title {
+  font-size: 1.1875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--md-on-surface);
+  overflow-wrap: anywhere;
+}
+.kp-calm-prose {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--md-on-surface);
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .kp-calm-prose {
+    font-size: 15px;
+  }
+}
+.kp-calm-muted {
+  color: var(--md-on-surface-variant);
+}
+.kp-calm-clamp {
+  flex-shrink: 0;
+  min-width: 0;
+}
+.kp-calm-clamp[data-clamped] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--calm-panels-lines, 3);
+  line-clamp: var(--calm-panels-lines, 3);
+  overflow: hidden;
+}
+.kp-calm-text-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  width: fit-content;
+  height: 1.75rem;
+  margin-inline-start: -0.5rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--md-shape-sm);
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+}
+.kp-calm-clamp-toggle {
+  margin-top: -0.25rem;
+}
+.kp-calm-text-button:hover {
+  background: var(--m3-hover);
+  color: var(--md-on-surface);
+}
+.kp-calm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.kp-calm-h {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--md-on-surface-variant);
+}
+.kp-calm-h-meta {
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.kp-calm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+.kp-calm-chip,
+.kp-calm-prio {
+  width: fit-content;
+}
+.kp-calm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  max-width: 100%;
+  min-width: 0;
+  padding-inline: 0.625rem;
+  border-radius: 14px;
+  background: var(--m3-control);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--md-on-surface);
+}
+.kp-calm-chip[data-tone] {
+  background: color-mix(in oklab, var(--calm-panels-hue) 14%, var(--m3-control));
+  color: color-mix(in oklab, var(--calm-panels-hue) 80%, var(--md-on-surface));
+}
+.kp-calm-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--calm-panels-hue, currentColor);
+  opacity: 0.8;
+}
+.kp-calm-props {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kp-calm-prop {
+  display: grid;
+  grid-template-columns: clamp(4.5rem, 28%, 6.5rem) minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: center;
+  min-height: 2rem;
+}
+.kp-calm-prop-top {
+  align-items: start;
+}
+.kp-calm-prop-label {
+  font-size: 13px;
+  line-height: 1.25rem;
+  color: var(--md-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+.kp-calm-prop-top > .kp-calm-prop-label {
+  padding-top: 0.375rem;
+}
+.kp-calm-prop-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-width: 0;
+  padding-block: 0.25rem;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--md-on-surface);
+}
+.kp-calm-prop-top > .kp-calm-prop-value {
+  padding-top: 0.375rem;
+}
+.kp-calm-props > .kp-calm-prop-top + .kp-calm-prop,
+.kp-calm-props > .kp-calm-prop + .kp-calm-prop-top {
+  margin-top: 0.375rem;
+}
+.kp-calm-fold {
+  display: flex;
+  flex-direction: column;
+}
+.kp-calm-fold-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: calc(100% + 1rem);
+  min-height: 2rem;
+  margin-inline: -0.5rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--md-shape-sm);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  cursor: pointer;
+}
+.kp-calm-fold-bar:hover {
+  background: var(--m3-hover);
+}
+.kp-calm-fold-chevron {
+  flex-shrink: 0;
+  color: var(--md-on-surface-variant);
+}
+[data-state="open"] > .kp-calm-fold-chevron {
+  rotate: 90deg;
+}
+.kp-calm-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.25rem 0 0.625rem 1.375rem;
+}
+.kp-calm-prio {
+  --calm-panels-hue: var(--tone-neutral);
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  min-width: 2.25rem;
+  height: 1.625rem;
+  padding-inline: 0.5rem;
+  border-radius: 13px;
+  background: color-mix(in oklab, var(--calm-panels-hue) 16%, var(--md-surface-container-lowest));
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--calm-panels-hue) 82%, var(--md-on-surface));
+}
+.kp-calm-prio[data-size="l"] {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1rem;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+:root.dark .kp-calm-prio {
+  background: color-mix(in oklab, var(--calm-panels-hue) 22%, var(--md-surface-container));
+  color: var(--calm-panels-hue);
+}
+.kp-calm-risk {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+}
+.kp-calm-risk-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.kp-calm-risk-gloss {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--md-on-surface);
+}
+.kp-calm-eq {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.25rem 0.5rem;
+}
+.kp-calm-term {
+  display: inline-flex;
+  flex-direction: column;
+}
+.kp-calm-term-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
+}
+.kp-calm-term-l {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--md-on-surface-variant);
+}
+.kp-calm-term[data-tone] > .kp-calm-term-v::before {
+  content: "";
+  display: inline-block;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--calm-panels-hue);
+}
+.kp-calm-op {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--md-on-surface-variant);
+}
+.kp-calm-op-gap {
+  margin-inline: 0.125rem;
+}
+.kp-calm-accepted {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  padding-block: 0.125rem;
+  padding-inline-start: 0.875rem;
+  border-inline-start: 2px solid color-mix(in oklab, var(--tone-amber) 55%, transparent);
+}
+.kp-calm-accepted-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--tone-amber);
+}
+:is(.kp-calm-text-button, .kp-calm-fold-bar):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .kp-calm-fold-chevron {
+    transition: rotate var(--mx-spring-fast-dur, 440ms) var(--mx-spring-fast, ease-out);
+  }
+  :is(.kp-calm-text-button, .kp-calm-fold-bar) {
+    transition:
+      background-color 200ms var(--mx-effects, ease),
+      color 200ms var(--mx-effects, ease);
+  }
+}
+@media (forced-colors: active) {
+  .kp-calm-chip,
+  .kp-calm-prio {
+    border: 1px solid CanvasText;
+  }
+  .kp-calm-dot,
+  .kp-calm-term[data-tone] > .kp-calm-term-v::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
+:root[data-panel-look="calm"] [data-criterion-intro] {
+  gap: 0.5rem;
+}
+:root[data-panel-look="calm"] [data-criterion-intro] > [data-criterion-name] {
+  font-size: 1.1875rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+:root[data-panel-look="calm"] [data-criterion-intro] > [data-criterion-question] {
+  max-width: 68ch;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--md-on-surface-variant);
+}
+:root[data-panel-look="calm"] [data-criterion-definition] {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--md-on-surface-variant);
 }
