@@ -335,19 +335,10 @@ function sources(dir) {
   return out;
 }
 
-// The stone library itself, parked by the kit move (Task 5); until then it sits
-// in the app unimported, and the kit test below proves it has left.
-const PARKED = new Set([
-  "components/settings/StonePicker.tsx", "components/stones/StoneDefs.tsx",
-  "lib/stones/preferences.ts", "lib/stones/stones-registry.generated.ts",
-  "lib/hooks/useStonePreferences.ts", "app/stones.css", "app/stones.generated.css",
-]);
-
 test("nothing in app/, components/, lib/ or hooks/ reads a stone token or class", () => {
   const offenders = ["app", "components", "lib", "hooks"]
     .filter((dir) => fs.existsSync(path.join(ROOT, dir)))
     .flatMap(sources)
-    .filter((rel) => !PARKED.has(rel))
     .filter((rel) => /--stone-|\bstone-(?:primary|secondary|scope)|url\(#stone-icon\)|variant="stone|data-stone-|StoneDefs|stoneBootScript|from "@\/(?:lib\/stones|components\/settings\/StonePicker|components\/stones|lib\/hooks\/useStonePreferences)/.test(read(rel)));
   assert.deepEqual(offenders, []);
 });
