@@ -188,7 +188,7 @@ export function ProjectSwitcher({
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-64 rounded-lg"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-64"
             align="start"
             side={isMobile ? "bottom" : "right"}
             sideOffset={6}
@@ -211,7 +211,7 @@ export function ProjectSwitcher({
                     onClick={() => handleProjectSelect(projectBundle.project.id)}
                     className="cursor-pointer gap-2 p-2"
                   >
-                    <div className="flex size-6 items-center justify-center rounded-sm border bg-background">
+                    <div className="flex size-7 items-center justify-center rounded-full bg-(--md-surface-container-high)">
                       <FolderOpenIcon className="size-3.5" />
                     </div>
                     <div className="grid flex-1 text-left leading-tight">

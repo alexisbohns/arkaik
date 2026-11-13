@@ -26,12 +26,18 @@ interface ToolbarProps {
  * Stacking two of these — a filter bar with a selection bar beneath it — is the
  * intended way to grow a toolbar, not nesting rows inside one band: each bar is
  * its own segment, and the whole stack pins as one via {@link PageSurface}.
+ *
+ * `data-slot="toolbar"` is the scope app/m3/controls.css skins: inside it the
+ * outline and ghost buttons and the search field become 40px tonal pills (no
+ * stroke), and a pressed toggle settles into a squircle. 16px between
+ * clusters, 8px inside one: the controls grew, the gaps between them did not.
  */
 export function Toolbar({ children, className }: ToolbarProps) {
   return (
     <div
+      data-slot="toolbar"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 rounded-sm bg-card p-3",
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-sm bg-card p-3",
         className,
       )}
     >
@@ -45,6 +51,11 @@ export function Toolbar({ children, className }: ToolbarProps) {
  * `justify-between` distributes. Wrapping is on: a toolbar narrowed by two open
  * panels has to fold rather than clip, and folding inside the groups keeps
  * related controls together as it does.
+ *
+ * A search cluster should grow from a real basis (`flex-[1_1_16rem]`), not
+ * `flex-1`'s zero: from zero it never forces the bar to wrap, so on a phone it
+ * gets squeezed to nothing and stacks its own icon over its field. From 16rem
+ * the bar wraps first, and search keeps a full row of its own.
  */
 export function ToolbarGroup({ children, className }: ToolbarProps) {
   return (

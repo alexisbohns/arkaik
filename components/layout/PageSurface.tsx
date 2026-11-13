@@ -12,9 +12,9 @@ interface PageSurfaceProps {
 /**
  * How far below the scrollport's top edge a pinned toolbar ends.
  *
- * `Toolbar` is `p-3` around a row whose tallest control is the 36px icon
- * button, plus the 4px gap that separates it from the content:
- * `1.5rem + 2.25rem + 4px`. Published as `--surface-sticky-top` so anything
+ * `Toolbar` is `p-3` around a row whose tallest control is a 40px M3 pill
+ * (app/m3/controls.css), plus the 4px gap that separates it from the content:
+ * `1.5rem + 2.5rem + 4px`. Published as `--surface-sticky-top` so anything
  * else that wants to pin inside this scrollport — a section heading, a table
  * header — clears the toolbar without each one hard-coding the same number.
  * One place to fix, here, beside the toolbar slot that causes it.
@@ -24,7 +24,7 @@ interface PageSurfaceProps {
  * is taller than this, and anything pinned against the variable will tuck
  * under it until the stack shrinks back.
  */
-const TOOLBAR_STICKY_TOP = "calc(3.75rem + 4px)";
+const TOOLBAR_STICKY_TOP = "calc(4rem + 4px)";
 
 /**
  * The toolbar slot: its bars stacked 4px apart, the first one rounded on top

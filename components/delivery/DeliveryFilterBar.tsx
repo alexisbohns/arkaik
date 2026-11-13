@@ -192,8 +192,9 @@ export function DeliveryFilterBar({
 
       <ToolbarGroup>
         {/* How the cards draw, not what they show — so it sits with search on
-            the right, apart from the filters. Border-only like the Decisions
-            detail toggle: it sets no filter, and the glyph says which view is on. */}
+            the right, apart from the filters. A plain tonal toggle like the
+            Decisions detail toggle: it sets no filter, so it never wears the
+            "set" cookie, and the glyph says which view is on. */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -203,7 +204,7 @@ export function DeliveryFilterBar({
               aria-pressed={compact}
               aria-label={compact ? "Show detailed cards" : "Show compact cards"}
               onClick={() => onCompactChange(!compact)}
-              className="cursor-pointer bg-transparent text-muted-foreground dark:bg-transparent"
+              className="cursor-pointer"
             >
               {compact ? <Rows4Icon className="size-4" /> : <Rows2Icon className="size-4" />}
             </Button>

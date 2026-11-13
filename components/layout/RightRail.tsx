@@ -8,19 +8,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 /**
  * The skin every control on the rail wears — a plain button or a menu trigger.
  *
- * Ported from Krabs' `chromeItemClass`. "On" is a filled tonal surface, the
- * Material rail's active indicator; idle is a bare glyph that tints on hover.
- * The fill is a tint of the foreground rather than `bg-secondary`, which sits
- * a hair off white on the `bg-card` pill and was easy to miss; a tint follows
- * the theme, light or dark.
+ * Ported from Krabs' `chromeItemClass`, then made M3 Expressive: idle is a bare
+ * glyph with a round state layer on hover; "on" is the 12-point cookie on the
+ * tonal "on" container that a set filter wears in the bands
+ * (app/m3/controls.css `.m3-icon-trigger.m3-set`) — one sign for "set" across
+ * the bands, the rail and the sidebar's active row.
  * Exported so `FilterSelectTrigger`'s `rail` variant can wear the same skin.
  */
 export function railItemClass(active = false, className?: string): string {
   return cn(
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4",
-    active
-      ? "bg-foreground/10 text-foreground"
-      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+    "m3-icon-trigger m3-bare inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full outline-none disabled:cursor-not-allowed [&_svg:not([class*='size-'])]:size-4",
+    active && "m3-set",
     className,
   );
 }
@@ -52,16 +50,16 @@ export function RightRail({ label, children }: { label: string; children: ReactN
 }
 
 /**
- * One cluster of related rail controls — the rounded pills of the Material
- * rail. A rail of several groups reads as several questions ("when?", "how
- * much?"), not one long column of buttons.
+ * One cluster of related rail controls — a full pill standing on end, the
+ * Material rail's group. A rail of several groups reads as several questions
+ * ("when?", "how much?"), not one long column of buttons.
  */
 export function RailGroup({ label, children }: { label?: string; children: ReactNode }) {
   return (
     <div
       role={label ? "group" : undefined}
       aria-label={label}
-      className="flex flex-col items-center gap-1 rounded-2xl bg-card p-1.5"
+      className="flex flex-col items-center gap-1.5 rounded-full bg-card p-1.5"
     >
       {children}
     </div>

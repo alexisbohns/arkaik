@@ -3,7 +3,6 @@
 import { CircleCheckBigIcon, CircleDashedIcon, LayersIcon, type LucideIcon } from "lucide-react";
 import { FilterSelectTrigger } from "@/components/layout/FilterSelectTrigger";
 import { Select, SelectContent, SelectItem } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 /** Which slice of the 30 elements to show. Most are unserved most of the time. */
 export type PyramidFilterStep = "empty" | "all" | "addressed";
@@ -18,8 +17,8 @@ const FILTER_STEPS: readonly { id: PyramidFilterStep; label: string; icon: Lucid
 
 interface PyramidFilterSelectProps {
   /**
-   * A smaller, borderless trigger for a card header — it takes its border only
-   * once it holds a non-default value, which is the one state worth a glance.
+   * A smaller, bare trigger for a card header — it takes its fill (the "set"
+   * cookie) only once it holds a non-default value, the one state worth a glance.
    */
   compact?: boolean;
   value: PyramidFilterStep;
@@ -43,7 +42,7 @@ export function PyramidFilterSelect({ value, onChange, counts, compact = false }
         icon={<CurrentIcon />}
         label="Value elements"
         active={value !== "all"}
-        className={compact ? cn("size-7 shadow-none", !(value !== "all") && "border-transparent hover:bg-muted") : undefined}
+        className={compact ? "m3-bare size-7" : undefined}
         valueLabel={current.label}
       />
       <SelectContent align={compact ? "end" : "start"}>

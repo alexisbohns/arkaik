@@ -340,7 +340,7 @@ export function SystemMap({ projectId, definition }: SystemMapProps) {
         />
         <MapCanvasControls>
           <Select value={layoutMode} onValueChange={handleLayoutModeChange}>
-            <SelectTrigger className="h-8 w-[120px] bg-background" aria-label="Layout algorithm">
+            <SelectTrigger className="w-[132px]" aria-label="Layout algorithm">
               <SelectValue placeholder="Layout" />
             </SelectTrigger>
             <SelectContent>

@@ -128,7 +128,7 @@ export function LibrarySelectionBar({
           disabled={busy || movable === 0}
           onValueChange={(next) => onMove(next === UNASSIGNED ? null : next)}
         >
-          <SelectTrigger aria-label="Move to product" className="h-8 w-56">
+          <SelectTrigger aria-label="Move to product" className="w-56">
             <SelectValue placeholder="Move to product…" />
           </SelectTrigger>
           <SelectContent>
@@ -148,7 +148,7 @@ export function LibrarySelectionBar({
 
       <Button
         variant="ghost"
-        className="ml-auto h-8 cursor-pointer"
+        className="ml-auto cursor-pointer"
         onClick={onClear}
         disabled={busy}
       >

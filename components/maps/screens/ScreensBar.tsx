@@ -92,7 +92,7 @@ export function ScreensBar({
         <div
           role="status"
           data-no-gaps=""
-          className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs shadow-sm"
+          className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full bg-(--md-surface-container) px-3 py-1.5 text-xs shadow-(--m3-elev-1)"
         >
           <CircleCheckIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span>{noGapsLine(lens)}</span>
@@ -102,7 +102,10 @@ export function ScreensBar({
         role="toolbar"
         aria-label="Screens display"
         ref={toolbarRef}
-        className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-card p-1.5 whitespace-nowrap shadow-md @max-[33rem]:w-full"
+        // A floating M3 bar: no stroke, a full pill at elevation 2, its
+        // controls (app/m3/controls.css, `role="toolbar"`) a step denser than
+        // a page band's, 36px, so the bar stays as wide as it was.
+        className="pointer-events-auto flex items-center gap-2 rounded-full bg-(--md-surface-container) p-1.5 whitespace-nowrap shadow-(--m3-elev-2) [--m3-ctl-h:2.25rem] @max-[33rem]:w-full"
       >
         {platforms.length >= 2 && (
           <SegmentedControl<WallLens>
@@ -130,7 +133,7 @@ export function ScreensBar({
             data-gap-count=""
             className={cn(
               "min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold tabular-nums",
-              gapCount > 0 ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground",
+              gapCount > 0 ? "bg-tone-amber/15 text-tone-amber" : "bg-(--md-surface-container-highest) text-(--md-on-surface-variant)",
             )}
           >
             {gapCount}
