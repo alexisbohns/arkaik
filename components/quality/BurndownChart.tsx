@@ -85,6 +85,21 @@ export function ClosedSinceLine({
 }
 
 /**
+ * The closed-since line's breakdown, said as a sentence: `19 resolved, 0
+ * accepted as risks, 0 opened since the 2026-09 audit.`
+ *
+ * For a hero whose numeral already says "N open": the closed-since sentence
+ * would end on that same number, so the hero says what the number is made of
+ * instead — `describeBurndownDetail`, the closed-since line's own tooltip,
+ * said once and in the open.
+ */
+export function BurndownDetail({ burndown }: { burndown: FindingsBurndown }) {
+  const text = describeBurndownDetail(burndown);
+  if (text === null) return null;
+  return <p className="kq-hero-since">{text.charAt(0).toUpperCase() + text.slice(1)}.</p>;
+}
+
+/**
  * Open findings over time, stacked by severity — the project-wide burndown.
  *
  * - **Stacked worst-first from the baseline**, so the red is what the eye

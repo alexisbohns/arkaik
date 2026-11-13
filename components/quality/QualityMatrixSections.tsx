@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { LayersIcon } from "lucide-react";
 import {
   isOpenFinding,
@@ -11,19 +11,13 @@ import {
   type QualitySection,
   type QualityTrend,
 } from "@arkaik/schema";
-import { SectionHeading } from "@/components/layout/SectionHeading";
-import { BurndownChart, BurndownSparkline, ClosedSinceLine } from "@/components/quality/BurndownChart";
-import { QualityGallery } from "@/components/quality/QualityGallery";
+import { ExpressiveShape } from "@/components/arkademy/ExpressiveShape";
+import { BurndownChart, BurndownDetail, BurndownSparkline } from "@/components/quality/BurndownChart";
+import { MatrixDomains, type MatrixView } from "@/components/quality/MatrixDomains";
 import { QualityLegend } from "@/components/quality/QualityLegend";
-import { SurfaceScoreCard, cellLabel } from "@/components/quality/SurfaceScoreCard";
-import { domainIcon } from "@/lib/config/quality-domain-icons";
-import {
-  buildDomainSections,
-  buildSurfaceBurndowns,
-  buildSurfaceGauges,
-  cellKey,
-  describeDelta,
-} from "@/lib/utils/quality";
+import { plural } from "@/components/quality/QualitySeal";
+import { SurfaceScoreCard } from "@/components/quality/SurfaceScoreCard";
+import { buildDomainSections, buildSurfaceBurndowns, buildSurfaceGauges, describeDelta } from "@/lib/utils/quality";
 
 interface QualityMatrixSectionsProps {
   matrix: QualityMatrix;
@@ -45,11 +39,15 @@ interface QualityMatrixSectionsProps {
   /** The open cell as `cellKey` encodes it, or `null`. Owned by the URL. */
   activeCell: string | null;
   onSelectCell: (domain: string, surface: string) => void;
+  /** The domains' layout, owned by the URL (`?matrix=worst`). Absent = the heatmap. */
+  view?: MatrixView;
+  /** Absent where the layout is not the reader's to change: no switch is drawn. */
+  onViewChange?: (view: MatrixView) => void;
 }
 
 /**
- * The comparative matrix: one stacked section per domain, each a heading above
- * a gallery of surface cards, preceded by the surface roll-up.
+ * The comparative matrix: what is still open and the surface roll-up first,
+ * then every domain on every surface (`MatrixDomains`), then the key.
  *
  * Nothing here scores anything. `deriveQualityMatrix` produced every number,
  * `gradeOf` bands the roll-up, and the caps were applied before this component
@@ -65,6 +63,8 @@ export function QualityMatrixSections({
   burndownEvents,
   activeCell,
   onSelectCell,
+  view = "heatmap",
+  onViewChange,
 }: QualityMatrixSectionsProps) {
   // The pilot's section is 338 assessments and 246 findings, and both of these
   // walk the whole of it. Split rather than chained for the reason the pages
@@ -81,6 +81,7 @@ export function QualityMatrixSections({
   // surface the profile no longer lists is on no card, but it is on the line
   // the burndown draws, and the sentence must close on the chart's number.
   const openNow = useMemo(() => (findings ?? []).filter(isOpenFinding).length, [findings]);
+  const titleId = useId();
 
   return (
     <div className="flex flex-col" data-quality-page="matrix">
@@ -91,23 +92,29 @@ export function QualityMatrixSections({
         no caps re-applied — `deriveQualityMatrix` deliberately declined to
         fold them in here, since a cap shapes the cell you act on and folding
         it into the roll-up too would punish one finding twice.
+
+        Under it, as the page's one loud number: what is still open. The
+        scores only move on a re-audit; the open count moves the day a finding
+        closes (issue #441), so it is the figure a reader comes back to see
+        change. The sentence under it is the breakdown — what was resolved,
+        accepted and opened since the audit — rather than the closed-since
+        line, which would end on the number the hero has just said.
       */}
-      <section className="flex flex-col gap-3 p-4">
-        <SectionHeading
-          title="Overall"
-          icon={LayersIcon}
-          description="Every domain weighed together, surface by surface."
-          subtitle={
-            <>
-              {`${matrix.surfaces.length} surface${matrix.surfaces.length === 1 ? "" : "s"}`}
-              {/* What was *done* since the audit, beside what the code *is*:
-                  the scores above only move on a re-audit, and without this
-                  a week of closed findings reads as nothing (issue #441). */}
-              {burndown && <ClosedSinceLine burndown={burndown} openNow={openNow} className="before:content-['_·_']" />}
-            </>
-          }
-        />
-        <QualityGallery className="-mx-4 px-4">
+      <section className="kq-scope kq-hero" aria-labelledby={titleId}>
+        <ExpressiveShape shape="sunny" className="kq-hero-shape" />
+        <div className="kq-hero-head">
+          <span className="kq-hero-kicker">
+            <LayersIcon className="size-4" aria-hidden="true" />
+            <h2 id={titleId}>Overall</h2>
+            <span>· {plural(matrix.surfaces.length, "surface", "surfaces")}, every domain weighed together</span>
+          </span>
+          <p className="kq-hero-number">
+            <span className="kq-hero-numeral">{openNow}</span>
+            <span className="kq-hero-unit">open findings</span>
+          </p>
+          {burndown && <BurndownDetail burndown={burndown} />}
+        </div>
+        <div className="kq-gauges">
           {gauges.map((gauge) => {
             const surfaceBurndown = surfaceBurndowns?.get(gauge.surface);
             return (
@@ -129,66 +136,19 @@ export function QualityMatrixSections({
               />
             );
           })}
-        </QualityGallery>
-        {burndown && <BurndownChart burndown={burndown} className="max-w-3xl" />}
+        </div>
+        {burndown && <BurndownChart burndown={burndown} className="kq-hero-chart" />}
       </section>
 
-      {sections.map((domain) => (
-        <section key={domain.domain} className="flex flex-col gap-3 p-4">
-          {/*
-            Heading above the gallery, never beside it. `SectionRow`'s
-            two-column shape would leave the gallery a `1fr` remainder of an
-            already narrow column the moment a panel opens, and every gallery
-            would scroll two cards at a time. Full width means the scrollport
-            is the surface's width and narrows gracefully instead.
-          */}
-          <SectionHeading
-            title={domain.name}
-            icon={domainIcon(domain.domain)}
-              description={domain.description}
-            subtitle={
-              domain.average === null
-                ? "not scored"
-                : `avg ${domain.average} · ${domain.scored} scored`
-            }
-          />
-          <QualityGallery className="-mx-4 px-4">
-            {domain.cards.map((card) => {
-              const key = cellKey(domain.domain, card.surface);
-              return (
-                <SurfaceScoreCard
-                  key={card.surface}
-                  title={card.title}
-                  score={card.cell?.score ?? null}
-                  grade={card.cell?.grade ?? null}
-                  capped={card.cell?.capped}
-                  findings={card.cell?.findings}
-                  delta={card.delta}
-                  meta={
-                    card.cell
-                      ? `${card.cell.criteria} criteri${card.cell.criteria === 1 ? "on" : "a"}`
-                      : undefined
-                  }
-                  label={
-                    card.cell
-                      ? cellLabel(domain.name, card.title, card.cell, card.delta)
-                      : `${domain.name} on ${card.title} — nothing scored`
-                  }
-                  active={activeCell === key}
-                  // An unscored cell gets no handler, so `SurfaceScoreCard`
-                  // renders it as inert rather than as a button that opens a
-                  // panel with nothing in it.
-                  onClick={card.cell ? () => onSelectCell(domain.domain, card.surface) : undefined}
-                />
-              );
-            })}
-          </QualityGallery>
-        </section>
-      ))}
+      <MatrixDomains
+        sections={sections}
+        activeCell={activeCell}
+        onSelectCell={onSelectCell}
+        view={view}
+        onViewChange={onViewChange}
+      />
 
-      <div className="border-t p-4">
-        <QualityLegend library={library} />
-      </div>
+      <QualityLegend library={library} />
     </div>
   );
 }
