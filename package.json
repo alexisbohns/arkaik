@@ -66,8 +66,6 @@
     "test:playlist-utils": "node tests/app/playlist-utils.test.js",
     "test:relation-lines": "node tests/app/relation-lines.test.js",
     "test:search-score": "node tests/app/search-score.test.js",
-    "test:stones": "node tests/app/stones.test.js",
-    "test:stone-preferences": "node tests/app/stone-preferences.test.js",
     "test:basalt-theme": "node tests/app/basalt-theme.test.js",
     "test:coverage": "node tests/app/coverage.test.js",
     "test:docs-visibility": "node tests/app/docs-visibility.test.js",

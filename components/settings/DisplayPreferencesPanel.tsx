@@ -2,7 +2,6 @@
 
 import { LayoutGridIcon, ListIcon } from "lucide-react";
 
-import { StonePicker } from "@/components/settings/StonePicker";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   useDisplayPreferences,
@@ -23,9 +22,6 @@ const ACCEPTANCE_DISPLAY_OPTIONS = [
  * something here changes only what *they* see. The preferences live in this
  * browser (`useDisplayPreferences`), so there is nothing to save and nothing to
  * export — which is why this panel has no buttons and no dirty state.
- *
- * The Stones section is the exception to "per project": the stones are Arkaik's
- * own material, so that choice applies to every project in this browser.
  */
 export function DisplayPreferencesPanel({ projectId }: { projectId: string }) {
   const [preferences, update] = useDisplayPreferences(projectId);
@@ -48,9 +44,6 @@ export function DisplayPreferencesPanel({ projectId }: { projectId: string }) {
           value={preferences.acceptanceDisplay}
           onChange={(next) => update({ acceptanceDisplay: next })}
         />
-      </div>
-      <div className="border-t pt-3">
-        <StonePicker />
       </div>
     </div>
   );

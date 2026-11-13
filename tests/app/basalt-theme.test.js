@@ -322,6 +322,46 @@ test("sidebar rows no longer read the stone radius", () => {
   assert.doesNotMatch(read("components/ui/sidebar.tsx"), /--stone-radius/);
 });
 
+console.log("basalt theme — no stone left in the app");
+
+/** Every .ts/.tsx/.css file under the app's source roots. */
+function sources(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    const rel = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sources(rel));
+    else if (/\.(tsx?|css)$/.test(entry.name)) out.push(rel);
+  }
+  return out;
+}
+
+// The stone library itself, parked by the kit move (Task 5); until then it sits
+// in the app unimported, and the kit test below proves it has left.
+const PARKED = new Set([
+  "components/settings/StonePicker.tsx", "components/stones/StoneDefs.tsx",
+  "lib/stones/preferences.ts", "lib/stones/stones-registry.generated.ts",
+  "lib/hooks/useStonePreferences.ts", "app/stones.css", "app/stones.generated.css",
+]);
+
+test("nothing in app/, components/, lib/ or hooks/ reads a stone token or class", () => {
+  const offenders = ["app", "components", "lib", "hooks"]
+    .filter((dir) => fs.existsSync(path.join(ROOT, dir)))
+    .flatMap(sources)
+    .filter((rel) => !PARKED.has(rel))
+    .filter((rel) => /--stone-|\bstone-(?:primary|secondary|scope)|url\(#stone-icon\)|variant="stone|data-stone-|StoneDefs|stoneBootScript/.test(read(rel)));
+  assert.deepEqual(offenders, []);
+});
+
+test("the stone sheets are no longer imported and the generator no longer runs", () => {
+  assert.doesNotMatch(globals, /stones(?:\.generated)?\.css/);
+  assert.doesNotMatch(read("scripts/generate/index.js"), /generate-stones/);
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(pkg.scripts["test:stones"], undefined);
+  assert.equal(pkg.scripts["test:stone-preferences"], undefined);
+  const ci = read(".github/workflows/ci.yml");
+  assert.doesNotMatch(ci, /test:stone|public\/stones|stones\.generated|stones-registry/);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);

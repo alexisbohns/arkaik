@@ -249,7 +249,7 @@ export function PublishDialog({ open, onOpenChange, projectId, projectTitle }: P
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={publishing}>
                 Cancel
               </Button>
-              <Button variant="stone" onClick={() => void handlePublish()} disabled={publishing} className="cursor-pointer">
+              <Button onClick={() => void handlePublish()} disabled={publishing} className="cursor-pointer">
                 {publishing ? "Publishing..." : "Publish"}
               </Button>
             </DialogFooter>

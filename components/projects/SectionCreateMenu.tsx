@@ -67,7 +67,6 @@ export function SectionCreateMenu({
           ring along the seam where the two meet. */}
       <Button
         size="sm"
-        variant="stone"
         className="cursor-pointer rounded-r-none focus-visible:relative focus-visible:z-10"
         disabled={disabled}
         onClick={onCreate}
@@ -78,8 +77,7 @@ export function SectionCreateMenu({
         <DropdownMenuTrigger asChild>
           <Button
             size="sm"
-            variant="stone"
-            className="cursor-pointer rounded-l-none border-l border-[color-mix(in_srgb,var(--stone-primary-ink)_20%,transparent)] px-2 focus-visible:relative focus-visible:z-10"
+            className="cursor-pointer rounded-l-none border-l border-primary-foreground/20 px-2 focus-visible:relative focus-visible:z-10"
             disabled={disabled}
             aria-label={`${primaryLabel}: more ways to add a ${label} project`}
           >

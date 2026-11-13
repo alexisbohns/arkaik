@@ -20,11 +20,6 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
-        // Special actions (docs/superpowers/specs/2026-11-08-stone-skins-design.md):
-        // the primary role is the dark stone on light surfaces and the light
-        // stone on dark ones; secondary is the other. Colours live in app/stones.css.
-        stone: "stone stone-primary",
-        "stone-secondary": "stone stone-secondary",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -33,13 +28,6 @@ const buttonVariants = cva(
         icon: "size-9",
       },
     },
-    // tailwind-merge (in `cn`) drops the size's `rounded-md` in favour of this
-    // later class in the same group — CSS order alone would not — while a
-    // caller's own `rounded-*` (e.g. a split button's `rounded-r-none`) comes
-    // last and still wins.
-    compoundVariants: [
-      { variant: ["stone", "stone-secondary"], className: "rounded-[var(--stone-radius)]" },
-    ],
     defaultVariants: {
       variant: "default",
       size: "default",
