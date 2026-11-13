@@ -11,8 +11,7 @@ import { cn } from "@/lib/utils";
  * the same control — `accent-primary`, `accent-foreground`, fully unstyled
  * native, and `rounded border-input` — none of which had the focus-visible ring
  * every other interactive primitive here carries. Checked and indeterminate
- * boxes fill with the primary stone (app/stones.css), so a ticked box reads as
- * the same material as the special actions.
+ * boxes fill with the primary role, like the filled button.
  *
  * The indicator is the one addition over upstream, and it is why NodeTable's
  * select-all can drop its ref + effect: `checked="indeterminate"` is a plain
@@ -35,7 +34,7 @@ function Checkbox({
       data-slot="checkbox"
       checked={checked}
       className={cn(
-        "peer border-input dark:data-[state=unchecked]:bg-input/30 data-[state=checked]:[background:var(--stone-primary-fill)] data-[state=checked]:text-[var(--stone-primary-ink)] data-[state=checked]:border-transparent data-[state=checked]:shadow-[inset_0_0_0_1px_rgb(0_0_0/0.18)] data-[state=indeterminate]:[background:var(--stone-primary-fill)] data-[state=indeterminate]:text-[var(--stone-primary-ink)] data-[state=indeterminate]:border-transparent data-[state=indeterminate]:shadow-[inset_0_0_0_1px_rgb(0_0_0/0.18)] forced-colors:data-[state=checked]:[background:Highlight] forced-colors:data-[state=indeterminate]:[background:Highlight] focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+        "peer border-input dark:data-[state=unchecked]:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground data-[state=indeterminate]:border-primary forced-colors:data-[state=checked]:bg-[Highlight] forced-colors:data-[state=checked]:text-[HighlightText] forced-colors:data-[state=checked]:border-[Highlight] forced-colors:data-[state=indeterminate]:bg-[Highlight] forced-colors:data-[state=indeterminate]:text-[HighlightText] forced-colors:data-[state=indeterminate]:border-[Highlight] focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}

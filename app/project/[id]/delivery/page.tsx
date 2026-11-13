@@ -281,7 +281,7 @@ export default function ProjectDeliveryPage() {
                   : "No delivery items match. Pick a species, try another product, or create a node."
               }
               action={
-                <Button size="sm" variant="stone" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
+                <Button size="sm" className="cursor-pointer" onClick={() => setNewNodeOpen(true)}>
                   <PlusIcon className="size-4" />
                   Create node
                 </Button>

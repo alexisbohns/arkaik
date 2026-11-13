@@ -42,7 +42,7 @@ export function PromptOutput({ prompt, tokenCount, compact }: PromptOutputProps)
             <Download className="size-3.5 mr-1" />
             .txt
           </Button>
-          <Button size="sm" variant="stone" onClick={handleCopy} disabled={!prompt}>
+          <Button size="sm" onClick={handleCopy} disabled={!prompt}>
             {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
             {copied ? "Copied!" : "Copy prompt"}
           </Button>
@@ -67,7 +67,7 @@ export function PromptOutput({ prompt, tokenCount, compact }: PromptOutputProps)
             <Download className="size-3.5 mr-1" />
             .txt
           </Button>
-          <Button size="sm" variant="stone" onClick={handleCopy} disabled={!prompt}>
+          <Button size="sm" onClick={handleCopy} disabled={!prompt}>
             {copied ? <Check className="size-3.5 mr-1" /> : <Copy className="size-3.5 mr-1" />}
             {copied ? "Copied!" : "Copy prompt"}
           </Button>

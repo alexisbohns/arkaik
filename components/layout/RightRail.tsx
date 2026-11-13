@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
  * Material rail's active indicator; idle is a bare glyph that tints on hover.
  * The fill is a tint of the foreground rather than `bg-secondary`, which sits
  * a hair off white on the `bg-card` pill and was easy to miss; a tint follows
- * every stone skin, light or dark.
+ * the theme, light or dark.
  * Exported so `FilterSelectTrigger`'s `rail` variant can wear the same skin.
  */
 export function railItemClass(active = false, className?: string): string {

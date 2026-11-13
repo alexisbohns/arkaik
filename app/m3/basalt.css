@@ -173,3 +173,56 @@
   --tone-amber: #F5BC7D;
   --tone-red: #FFB4AB;
 }
+
+/*
+ * The active sidebar row: an expressive badge behind the leading icon only —
+ * M3 Expressive's cookie12 (components/arkademy/ExpressiveShape.tsx,
+ * EXPRESSIVE_SHAPES.cookie12, copied as a mask; the test holds them equal) in
+ * secondary-container, the icon in on-secondary-container. The label stays on
+ * the bare sidebar.
+ *
+ * Geometry: every row pads its leading 16px icon by 8px (`p-2` / `px-2`, and
+ * `!p-2` on the collapsed rail), so a 24px badge at `left: 4px` centres on the
+ * icon in both the expanded and the icon-only sidebar. A row without a leading
+ * icon gets no badge: there is nothing for it to hold.
+ */
+:root {
+  --menu-badge-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50.0 0.0L51.6 0.2L53.2 0.8L54.7 1.8L56.2 2.9L57.6 4.1L58.9 5.1L60.3 6.0L61.6 6.5L63.1 6.8L64.7 6.7L66.4 6.4L68.2 6.1L70.0 5.9L71.8 5.8L73.5 6.1L75.0 6.7L76.3 7.7L77.4 9.0L78.2 10.6L78.9 12.3L79.5 14.0L80.2 15.6L80.9 17.0L81.8 18.2L83.0 19.1L84.4 19.8L86.0 20.5L87.7 21.1L89.4 21.8L91.0 22.6L92.3 23.7L93.3 25.0L93.9 26.5L94.2 28.2L94.1 30.0L93.9 31.8L93.6 33.6L93.3 35.3L93.2 36.9L93.5 38.4L94.0 39.7L94.9 41.1L95.9 42.4L97.1 43.8L98.2 45.3L99.2 46.8L99.8 48.4L100.0 50.0L99.8 51.6L99.2 53.2L98.2 54.7L97.1 56.2L95.9 57.6L94.9 58.9L94.0 60.3L93.5 61.6L93.2 63.1L93.3 64.7L93.6 66.4L93.9 68.2L94.1 70.0L94.2 71.8L93.9 73.5L93.3 75.0L92.3 76.3L91.0 77.4L89.4 78.2L87.7 78.9L86.0 79.5L84.4 80.2L83.0 80.9L81.8 81.8L80.9 83.0L80.2 84.4L79.5 86.0L78.9 87.7L78.2 89.4L77.4 91.0L76.3 92.3L75.0 93.3L73.5 93.9L71.8 94.2L70.0 94.1L68.2 93.9L66.4 93.6L64.7 93.3L63.1 93.2L61.6 93.5L60.3 94.0L58.9 94.9L57.6 95.9L56.2 97.1L54.7 98.2L53.2 99.2L51.6 99.8L50.0 100.0L48.4 99.8L46.8 99.2L45.3 98.2L43.8 97.1L42.4 95.9L41.1 94.9L39.7 94.0L38.4 93.5L36.9 93.2L35.3 93.3L33.6 93.6L31.8 93.9L30.0 94.1L28.2 94.2L26.5 93.9L25.0 93.3L23.7 92.3L22.6 91.0L21.8 89.4L21.1 87.7L20.5 86.0L19.8 84.4L19.1 83.0L18.2 81.8L17.0 80.9L15.6 80.2L14.0 79.5L12.3 78.9L10.6 78.2L9.0 77.4L7.7 76.3L6.7 75.0L6.1 73.5L5.8 71.8L5.9 70.0L6.1 68.2L6.4 66.4L6.7 64.7L6.8 63.1L6.5 61.6L6.0 60.3L5.1 58.9L4.1 57.6L2.9 56.2L1.8 54.7L0.8 53.2L0.2 51.6L0.0 50.0L0.2 48.4L0.8 46.8L1.8 45.3L2.9 43.8L4.1 42.4L5.1 41.1L6.0 39.7L6.5 38.4L6.8 36.9L6.7 35.3L6.4 33.6L6.1 31.8L5.9 30.0L5.8 28.2L6.1 26.5L6.7 25.0L7.7 23.7L9.0 22.6L10.6 21.8L12.3 21.1L14.0 20.5L15.6 19.8L17.0 19.1L18.2 18.2L19.1 17.0L19.8 15.6L20.5 14.0L21.1 12.3L21.8 10.6L22.6 9.0L23.7 7.7L25.0 6.7L26.5 6.1L28.2 5.8L30.0 5.9L31.8 6.1L33.6 6.4L35.3 6.7L36.9 6.8L38.4 6.5L39.7 6.0L41.1 5.1L42.4 4.1L43.8 2.9L45.3 1.8L46.8 0.8L48.4 0.2Z'/%3E%3C/svg%3E");
+}
+[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child),
+[data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child) {
+  position: relative;
+  isolation: isolate;
+}
+[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before,
+[data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  translate: 0 -50%;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--md-secondary-container);
+  -webkit-mask: var(--menu-badge-mask) center / contain no-repeat;
+  mask: var(--menu-badge-mask) center / contain no-repeat;
+}
+[data-sidebar="menu-button"][data-active="true"] > svg,
+[data-sidebar="menu-sub-button"][data-active="true"] > svg {
+  stroke: var(--md-on-secondary-container);
+}
+/* Windows High Contrast: no mask, a system-colour tile, and the icon in the system text colour, so it stays legible. */
+@media (forced-colors: active) {
+  [data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before,
+  [data-sidebar="menu-sub-button"][data-active="true"]:has(> svg:first-child)::before {
+    background: ButtonFace;
+    -webkit-mask: none;
+    mask: none;
+  }
+  [data-sidebar="menu-button"][data-active="true"] > svg,
+  [data-sidebar="menu-sub-button"][data-active="true"] > svg {
+    stroke: ButtonText;
+  }
+}

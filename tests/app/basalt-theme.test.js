@@ -286,6 +286,82 @@ test("the destructive button wears its foreground role, and the pair reaches AA 
   }
 });
 
+console.log("basalt theme — the menu badge");
+
+test("the active row's badge is the cookie12 shape, on secondary-container", () => {
+  const shapes = read("components/arkademy/ExpressiveShape.tsx");
+  const cookie12 = shapes.match(/cookie12:\s*"([^"]+)"/)[1];
+  assert.ok(basalt.includes(`d='${cookie12}'`), "basalt.css's mask is not EXPRESSIVE_SHAPES.cookie12");
+  const start = basalt.indexOf('[data-sidebar="menu-button"][data-active="true"]:has(> svg:first-child)::before');
+  assert.ok(start >= 0, "no badge ::before rule");
+  const rule = basalt.slice(start, basalt.indexOf("}", start));
+  assert.match(rule, /background:\s*var\(--md-secondary-container\)/);
+  assert.match(rule, /^\s*-webkit-mask:/m);
+  assert.match(rule, /^\s*mask:/m);
+  assert.match(basalt, /stroke:\s*var\(--md-on-secondary-container\)/);
+  assert.doesNotMatch(basalt, /#stone-icon/);
+});
+
+test("the forced-colors fallback outranks the badge rule and recolours the icon", () => {
+  const start = basalt.indexOf("@media (forced-colors: active)");
+  assert.ok(start >= 0, "no forced-colors block");
+  const media = basalt.slice(start);
+  const pseudo = media.slice(0, media.indexOf("{", media.indexOf("::before")));
+  for (const kind of ["menu-button", "menu-sub-button"]) {
+    assert.ok(
+      pseudo.includes(`[data-sidebar="${kind}"][data-active="true"]:has(> svg:first-child)::before`),
+      `${kind} ::before selector lacks :has(> svg:first-child)`,
+    );
+  }
+  assert.match(media, /background:\s*ButtonFace/);
+  assert.match(media, /^\s*mask:\s*none/m);
+  assert.match(media, /stroke:\s*ButtonText/);
+});
+
+test("sidebar rows no longer read the stone radius", () => {
+  assert.doesNotMatch(read("components/ui/sidebar.tsx"), /--stone-radius/);
+});
+
+console.log("basalt theme — no stone left in the app");
+
+/** Every .ts/.tsx/.css file under the app's source roots. */
+function sources(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    const rel = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sources(rel));
+    else if (/\.(tsx?|css)$/.test(entry.name)) out.push(rel);
+  }
+  return out;
+}
+
+// The stone library itself, parked by the kit move (Task 5); until then it sits
+// in the app unimported, and the kit test below proves it has left.
+const PARKED = new Set([
+  "components/settings/StonePicker.tsx", "components/stones/StoneDefs.tsx",
+  "lib/stones/preferences.ts", "lib/stones/stones-registry.generated.ts",
+  "lib/hooks/useStonePreferences.ts", "app/stones.css", "app/stones.generated.css",
+]);
+
+test("nothing in app/, components/, lib/ or hooks/ reads a stone token or class", () => {
+  const offenders = ["app", "components", "lib", "hooks"]
+    .filter((dir) => fs.existsSync(path.join(ROOT, dir)))
+    .flatMap(sources)
+    .filter((rel) => !PARKED.has(rel))
+    .filter((rel) => /--stone-|\bstone-(?:primary|secondary|scope)|url\(#stone-icon\)|variant="stone|data-stone-|StoneDefs|stoneBootScript|from "@\/(?:lib\/stones|components\/settings\/StonePicker|components\/stones|lib\/hooks\/useStonePreferences)/.test(read(rel)));
+  assert.deepEqual(offenders, []);
+});
+
+test("the stone sheets are no longer imported and the generator no longer runs", () => {
+  assert.doesNotMatch(globals, /stones(?:\.generated)?\.css/);
+  assert.doesNotMatch(read("scripts/generate/index.js"), /generate-stones/);
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(pkg.scripts["test:stones"], undefined);
+  assert.equal(pkg.scripts["test:stone-preferences"], undefined);
+  const ci = read(".github/workflows/ci.yml");
+  assert.doesNotMatch(ci, /test:stone|public\/stones|stones\.generated|stones-registry/);
+});
+
 if (failures) {
   console.error(`\n${failures} failing`);
   process.exit(1);
