@@ -64,19 +64,6 @@ export const SEVERITY_CHIP: Record<FindingSeverity, string> = {
   info: "border-gray-400/40 bg-gray-400/10 text-gray-700 dark:text-gray-400",
 };
 
-/**
- * The severity families again, one step more saturated — the score half of the
- * {@link SEVERITY_CHIP} pill. Two tints of one family rather than two colours:
- * the halves are one fact split at a hairline, not two facts sat side by side.
- */
-export const SEVERITY_SCORE: Record<FindingSeverity, string> = {
-  critical: "bg-red-500/20",
-  high: "bg-orange-500/20",
-  medium: "bg-amber-500/20",
-  low: "bg-blue-400/20",
-  info: "bg-gray-400/20",
-};
-
 export const SEVERITY_LABEL: Record<FindingSeverity, string> = {
   critical: "Critical",
   high: "High",

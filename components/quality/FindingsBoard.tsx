@@ -1,10 +1,14 @@
 "use client";
 
-import type { FindingRow } from "@/lib/utils/quality";
+import { useMemo, type ReactNode } from "react";
+import { LayersIcon } from "lucide-react";
+import type { FindingPriority } from "@arkaik/schema";
+import { groupFindingRuns, surfaceTitleOf, type FindingGroupKey, type FindingRow } from "@/lib/utils/quality";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FindingCard } from "@/components/quality/FindingCard";
 import { FindingMark } from "@/components/quality/FindingMark";
-import { cn } from "@/lib/utils";
+import { DomainGlyph, QualitySeal } from "@/components/quality/QualitySeal";
+import { PRIORITY_HINT, SEVERITY_HINT, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 
 interface FindingsBoardProps {
   /** Every finding to show, already filtered and sorted — worst first. */
@@ -22,24 +26,80 @@ interface FindingsBoardProps {
 }
 
 /**
- * The findings, as one timeline — the Changelog's rail, applied to work that
- * has not been done rather than work that shipped.
- *
- * There are no priority sections any more. Four pinned headings cut a list that
- * is already sorted worst-first into four lists that each had to re-announce
- * where you were, and three of them were usually the same answer: a lane
- * heading tells you nothing the marks down the rail do not. The rail carries
- * the priority instead — one square per finding, the lane's number in the
- * lane's colour — so a run of P0s reads as a run of red squares and the reader
- * scans the rail rather than the headings.
+ * A lane's heading: a seal (the priority in its tone, the severity's dot, the
+ * surface's layers, the domain's mark), the name, what it means, the count.
+ * Sticky, so a reader thirty findings down still knows which lane they are in.
+ */
+function LaneHead({
+  groupKey,
+  value,
+  sample,
+  count,
+  surfaceTitles,
+}: {
+  groupKey: FindingGroupKey;
+  value: string;
+  sample: FindingRow;
+  count: number;
+  surfaceTitles: ReadonlyMap<string, string>;
+}) {
+  let seal: ReactNode;
+  let title: string;
+  let hint: string | undefined;
+  if (groupKey === "priority") {
+    seal = <QualitySeal priority={value}>{value}</QualitySeal>;
+    title = value;
+    hint = PRIORITY_HINT[value as FindingPriority];
+  } else if (groupKey === "severity") {
+    seal = (
+      <QualitySeal shape="cookie9">
+        <span data-kq-severity={value} className="kq-sevdot" />
+      </QualitySeal>
+    );
+    title = SEVERITY_LABEL[sample.severity];
+    hint = SEVERITY_HINT[sample.severity];
+  } else if (groupKey === "surface") {
+    seal = (
+      <QualitySeal>
+        <LayersIcon className="size-4" />
+      </QualitySeal>
+    );
+    title = surfaceTitleOf(sample.surface, surfaceTitles);
+  } else {
+    seal = (
+      <QualitySeal>
+        <DomainGlyph code={sample.domain} className="size-4" />
+      </QualitySeal>
+    );
+    title = sample.domainName;
+  }
+  return (
+    <h3 className="kq-lane-head" data-kq-priority={groupKey === "priority" ? value : undefined}>
+      {seal}
+      <span className="kq-lane-title">{title}</span>
+      {hint && <span className="kq-lane-hint">{hint}</span>}
+      <span className="kq-lane-count">{count}</span>
+    </h3>
+  );
+}
+
+/**
+ * The findings, in lanes: the rows exactly as sorted, cut where the sort key
+ * changes (`groupFindingRuns`), each run under a sticky seal and its rows a
+ * connected deck of tiles.
  *
  * The order is whatever `filterFindings` sorted, which is the filter bar's
- * Sort. That was true inside a lane before; now it is true of the whole page.
+ * Sort; the lanes are a reading of that order, never a second one — no row
+ * moves, nothing is filtered here. Sorted by priority (the default reads the
+ * same), a lane is a priority and its seal says so in the lane's tone, so an
+ * open finding needs no mark of its own: only a decided one keeps its
+ * `FindingMark` (the tick, the cross, the shield), because "P1" over a fix
+ * that shipped would read as work still owed. Sorted by anything else, every
+ * tile keeps its mark, since the lane no longer says the priority.
  *
- * A row opens the finding's own panel. It used to expand in place, which is
- * the gesture this rail was built to replace everywhere else on the page —
- * which is also why the board no longer needs the graph: the linked-node chips
- * went to the panel with everything else behind the disclosure.
+ * A row opens the finding's own panel; the board is the same component on the
+ * Findings page, in the cell panel and in the criterion panel, so the three can
+ * never disagree about what a finding looks like.
  */
 export function FindingsBoard({
   rows,
@@ -47,6 +107,8 @@ export function FindingsBoard({
   onOpenFinding,
   onOpenCriterion,
 }: FindingsBoardProps) {
+  const { key, runs } = useMemo(() => groupFindingRuns(rows), [rows]);
+
   if (rows.length === 0) {
     return (
       <div className="p-4">
@@ -56,33 +118,35 @@ export function FindingsBoard({
   }
 
   return (
-    <ol className="flex flex-col p-4">
-      {rows.map((row, index) => {
-        const last = index === rows.length - 1;
-        return (
-          <li key={row.id} className="grid grid-cols-[auto_1fr] gap-x-3">
-            {/* The rail, built the way the Changelog builds it: the connector
-                is `flex-1` in a stretched grid cell, so it runs the full height
-                of an entry however far it expands, and is absent on the last
-                one. The breathing room below belongs to the content column, not
-                to the `<li>` — padding on the row would end the connector above
-                the gap and leave the squares unlinked. */}
-            <div className="flex flex-col items-center">
-              <FindingMark row={row} />
-              {!last && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
-            </div>
-
-            <div className={cn("min-w-0", !last && "pb-4")}>
-              <FindingCard
-                row={row}
-                surfaceTitles={surfaceTitles}
-                onOpenFinding={onOpenFinding}
-                onOpenCriterion={onOpenCriterion}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+    <div className="kq-scope kq-lanes">
+      {runs.map((run, index) => (
+        <section key={`${run.value}-${index}`} className="kq-lane">
+          {key && (
+            <LaneHead
+              groupKey={key}
+              value={run.value}
+              sample={run.rows[0]}
+              count={run.rows.length}
+              surfaceTitles={surfaceTitles}
+            />
+          )}
+          <ol className="kq-deck-list">
+            {run.rows.map((row) => (
+              <li key={row.id} className="kq-deck-tile">
+                {(key !== "priority" || !row.open) && <FindingMark row={row} className="kq-deck-mark" />}
+                <div className="min-w-0 flex-1">
+                  <FindingCard
+                    row={row}
+                    surfaceTitles={surfaceTitles}
+                    onOpenFinding={onOpenFinding}
+                    onOpenCriterion={onOpenCriterion}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
   );
 }
