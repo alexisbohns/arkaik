@@ -4,9 +4,9 @@ import { useId, useRef, type CSSProperties } from "react";
 import { PyramidIcon, RouteIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useStonePreferences } from "@/lib/hooks/useStonePreferences";
-import { RADIUS_MAX, RADIUS_MIN, isDefaultStonePreferences } from "@/lib/stones/preferences";
-import { STONES, type StoneEntry, type StoneSide } from "@/lib/stones/stones-registry.generated";
+import { useStonePreferences } from "./useStonePreferences";
+import { RADIUS_MAX, RADIUS_MIN, isDefaultStonePreferences } from "./preferences";
+import { STONES, type StoneEntry, type StoneSide } from "../dist/stones-registry.generated";
 import { cn } from "@/lib/utils";
 
 const swatch = (s: StoneEntry): CSSProperties => ({
@@ -63,11 +63,11 @@ function PreviewPane({ mode }: { mode: "light" | "dark" }) {
         </linearGradient>
       </svg>
       <span className="w-full font-mono text-[10px] uppercase tracking-wider opacity-60">{mode}</span>
-      <Button type="button" size="sm" variant="default">
+      <Button type="button" size="sm" variant="default" className="stone stone-primary rounded-[var(--stone-radius)]">
         <SparklesIcon />
         Primary
       </Button>
-      <Button type="button" size="sm" variant="secondary">
+      <Button type="button" size="sm" variant="secondary" className="stone stone-secondary rounded-[var(--stone-radius)]">
         <RouteIcon />
         Secondary
       </Button>

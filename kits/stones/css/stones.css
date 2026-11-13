@@ -1,7 +1,7 @@
 /*
  * Stone skins — roles (docs/superpowers/specs/2026-11-08-stone-skins-design.md).
  *
- * Per-stone tokens come from stones.generated.css (--stone-light-* for the
+ * Per-stone tokens come from dist/stones.generated.css (--stone-light-* for the
  * chosen light stone, --stone-dark-* for the dark one). Here they become roles:
  * the primary role (special-action button, checkbox) takes the dark stone in
  * the light theme and the light stone in the dark theme, because that is where

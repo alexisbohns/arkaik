@@ -8,7 +8,7 @@
  * nothing here matches.
  *
  * Color: an M3 "vibrant" scheme from one seed, #E5552F — the ember of the
- * Travertine, Pumice and Lava stones (scripts/generate/lib/stones.js, their
+ * Travertine, Pumice and Lava stones (now kits/stones/data/stones.js, their
  * icon tone). HCT hue 33, chroma 72.6, tone 55.4. Palettes: primary (h, 200:
  * as much chroma as the gamut holds), secondary (h + 18, 24), tertiary
  * (h + 35, 32), neutral (h, 10), neutral variant (h, 12); computed once with a

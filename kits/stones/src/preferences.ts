@@ -1,4 +1,4 @@
-import { DEFAULT_STONES, STONES, type StoneSide } from "./stones-registry.generated";
+import { DEFAULT_STONES, STONES, type StoneSide } from "../dist/stones-registry.generated";
 
 /**
  * The reader's stone skin: one light stone, one dark stone, and the radius of
@@ -60,7 +60,7 @@ export function isDefaultStonePreferences(p: StonePreferences): boolean {
   );
 }
 
-/** What app/stones.css and stones.generated.css read: two attributes and one custom property on <html>. */
+/** What css/stones.css and dist/stones.generated.css read: two attributes and one custom property on <html>. */
 export function applyStonePreferences(
   root: Pick<HTMLElement, "setAttribute"> & { style: Pick<CSSStyleDeclaration, "setProperty"> },
   p: StonePreferences,

@@ -19,6 +19,9 @@ const eslintConfig = defineConfig([
     // The Arkademy's library content and its working scripts: gitignored, never
     // part of the app (docs/arkademy.md).
     "arkademy-content/**",
+    // Parked libraries waiting for a new home (kits/<name>/README.md): never
+    // part of the app, and their app-relative imports are not resolved here.
+    "kits/**",
     // Standalone Node migration runner (db/migrate.mjs) + plain-SQL migrations.
     "db/**",
     // Claude Code plugin: a byte-identical generated copy of
