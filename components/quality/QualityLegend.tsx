@@ -1,26 +1,8 @@
-import { gradeOf, type KritikLibrary, type QualityGrade } from "@arkaik/schema";
+import type { KritikLibrary } from "@arkaik/schema";
+import { gradeBands } from "@/lib/utils/quality";
 import { CELL_SEVERITIES, MAX_DOTS } from "@/components/quality/FindingDots";
 import { GRADE_TINT, SEVERITY_DOT, SEVERITY_LABEL } from "@/components/quality/quality-styles";
 import { cn } from "@/lib/utils";
-
-/**
- * The grade bands in force, read off `gradeOf` rather than off
- * `DEFAULT_GRADE_BANDS`.
- *
- * A pack may move a band through `scales.grades`, and a legend quoting the
- * defaults would then explain the matrix with numbers the matrix does not use.
- * Walking 0–100 through the very function the cells were graded by makes that
- * impossible: the legend is a readout of the scale in force, not a second copy
- * of it.
- */
-function gradeBands(library?: KritikLibrary): { grade: QualityGrade; min: number }[] {
-  const lowest = new Map<QualityGrade, number>();
-  for (let score = 0; score <= 100; score++) {
-    const grade = gradeOf(score, library);
-    if (!lowest.has(grade)) lowest.set(grade, score);
-  }
-  return [...lowest.entries()].map(([grade, min]) => ({ grade, min })).sort((a, b) => b.min - a.min);
-}
 
 /**
  * What the cards' colours and marks mean.

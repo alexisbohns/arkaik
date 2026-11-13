@@ -7,22 +7,8 @@ import { PanelSection, PANEL_GUTTER, PANEL_GUTTER_BLEED } from "@/components/pan
 import { cn } from "@/lib/utils";
 import { FindingsBoard } from "@/components/quality/FindingsBoard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  CROSS_SURFACE_ID,
-  MATURITY_LEVELS,
-  type KritikCriterion,
-  type KritikLibrary,
-  type MaturityLevel,
-  type QualityAssessment,
-  type QualitySection,
-} from "@arkaik/schema";
-import {
-  buildSurfaceTitles,
-  criterionOf,
-  filterFindings,
-  EMPTY_QUALITY_FILTERS,
-  type FindingRow,
-} from "@/lib/utils/quality";
+import type { KritikLibrary, QualitySection } from "@arkaik/schema";
+import { buildCriterionModel, buildSurfaceTitles, type FindingRow } from "@/lib/utils/quality";
 
 interface CriterionDetailPanelProps {
   criterionId: string;
@@ -39,162 +25,11 @@ interface CriterionDetailPanelProps {
   onOpenFinding: (findingId: string) => void;
 }
 
-/** The domain's display name, falling back to its code, then to nothing. */
-function domainLabelOf(criterion: KritikCriterion | undefined, library?: KritikLibrary): string {
-  const code = typeof criterion?.domain === "string" ? criterion.domain : "";
-  if (code === "") return "";
-  return library?.domains?.find((domain) => domain?.code === code)?.name ?? code;
-}
-
-/** A surface id as the profile titles it; the raw id when the profile has moved on. */
-function surfaceTitleOf(surface: string | undefined, section?: QualitySection): string {
-  if (!surface) return "";
-  return section?.profile?.surfaces?.find((candidate) => candidate?.id === surface)?.title ?? surface;
-}
-
 function formatDate(iso: string | undefined): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-/** The anchors that exist, in level order. A pack may write some and skip others. */
-function anchorRowsOf(criterion: KritikCriterion | undefined): { level: MaturityLevel; text: string }[] {
-  const anchors = criterion?.level_anchors;
-  if (!anchors) return [];
-
-  const rows: { level: MaturityLevel; text: string }[] = [];
-  for (const level of MATURITY_LEVELS) {
-    // `noUncheckedIndexedAccess` is off, so this lookup types as `string` even
-    // when the key is absent — the guard is what makes that type true.
-    const text = anchors[`l${level}`];
-    if (typeof text === "string" && text.trim() !== "") rows.push({ level, text });
-  }
-  return rows;
-}
-
-/** Strings from a pack field that may be absent, non-array, or padded with blanks. */
-function textListOf(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
-}
-
-interface ReferenceRow {
-  label: string;
-  anchor: string;
-  url: string;
-}
-
-/**
- * The criterion's external anchors, reduced to what a row needs.
- *
- * A reference with neither a title nor a url is dropped rather than rendered as
- * a blank line, which is the same rule the sections follow one level up: the
- * panel shows what exists, and nothing stands in for what does not.
- */
-function referenceRowsOf(criterion: KritikCriterion | undefined): ReferenceRow[] {
-  if (!Array.isArray(criterion?.references)) return [];
-
-  return criterion.references
-    .map((reference) => ({
-      label: reference?.title ?? reference?.url ?? "",
-      anchor: reference?.anchor ?? "",
-      url: reference?.url ?? "",
-    }))
-    .filter((row) => row.label !== "");
-}
-
-/**
- * The surface this panel is narrowed to, or `undefined` for "every surface".
- *
- * An empty string collapses to `undefined` because the stack already treats the
- * two as one panel — `criterionPanelKey(id, "")` and `criterionPanelKey(id)`
- * are the same key. Left alone it would narrow every list below to a surface no
- * assessment names, and the panel would render as if the audit had skipped this
- * criterion, which is the one thing an empty `?csurface=` does not mean.
- */
-function surfaceScope(surface?: string): string | undefined {
-  return surface === "" ? undefined : surface;
-}
-
-/** Milliseconds behind an assessment's `ts`, or `NaN` when there is none to read. */
-function timeOf(assessment: QualityAssessment): number {
-  return typeof assessment.ts === "string" ? new Date(assessment.ts).getTime() : NaN;
-}
-
-/**
- * This criterion's assessments — latest per surface, narrowed to one surface
- * when the panel names one.
- *
- * Collapsed to one row per cell rather than listed as stored, because
- * `quality-duplicate-assessment` is a *warning*: a bundle carrying two scores
- * for one (criterion × surface) contradicts what the section says it is —
- * `QualitySection.assessments` is documented "latest per cell", and
- * `upsertAssessment` replaces in place so the sanctioned writer cannot produce
- * one — and yet it validates and arrives here. Three things below assume one
- * row per cell: the React key, the `Evidence` / `Evidence by surface` heading,
- * and `scoredLevel`, which marks an anchor only when there is exactly one level
- * to mark. Collapsing fixes all three at the source, and shows the reader the
- * score the section claims to hold; rendering both would make this panel the
- * one place in the codebase that treats a cell as having two answers.
- *
- * Latest by `ts`, the field that exists to say when. A tie, or a `ts` that does
- * not parse, keeps the later row: appending is how a second score gets in at
- * all, so the one written last is the one meant to win.
- */
-function assessmentsOn(
-  criterionId: string,
-  surface?: string,
-  section?: QualitySection,
-): QualityAssessment[] {
-  const scope = surfaceScope(surface);
-  const latest = new Map<string, QualityAssessment>();
-
-  for (const assessment of section?.assessments ?? []) {
-    if (assessment?.criterion_id !== criterionId) continue;
-    if (scope !== undefined && assessment.surface !== scope) continue;
-
-    // `>` and not `>=`: every comparison against `NaN` is false, so an equal or
-    // unreadable timestamp falls through to "the later row wins".
-    const held = latest.get(assessment.surface);
-    if (held !== undefined && timeOf(held) > timeOf(assessment)) continue;
-    latest.set(assessment.surface, assessment);
-  }
-
-  return [...latest.values()];
-}
-
-/**
- * This criterion's findings among the section's, worst first.
- *
- * The rows arrive already denormalized — see the memo note in the component —
- * but the sort still comes from `filterFindings`, so this panel and the board
- * agree about which finding is worst. Both narrowings happen after that sort,
- * which a filter cannot disturb: the filter set has no criterion axis, because
- * the board never needs one, and no room for the cross-surface rule either.
- *
- * A scoped panel keeps `cross-surface` alongside its own surface's rows.
- * `CROSS_SURFACE_ID` is a findings-only lens — it holds no assessments and so
- * never becomes a matrix column, which makes this panel the only place a reader
- * meets one. Dropping it when the panel is scoped would hide exactly the defect
- * that belongs to no single surface, and so to nobody in particular.
- * `FindingCard` badges those rows "Cross-surface" so they cannot be read as the
- * scoped surface's own — a marking the board gained from this panel, and now
- * shows on the Findings page too.
- *
- * At module scope, like `assessmentsOn` above: the panel is a pure read, so
- * everything it derives is a function of its props, and pulling those functions
- * out of the component leaves the component itself nothing but layout.
- */
-function findingsOn(rows: FindingRow[], criterionId: string, surface?: string): FindingRow[] {
-  const scope = surfaceScope(surface);
-
-  return filterFindings(rows, EMPTY_QUALITY_FILTERS).filter(
-    (row) =>
-      row.criterionId === criterionId &&
-      (scope === undefined || row.surface === scope || row.surface === CROSS_SURFACE_ID),
-  );
 }
 
 /**
@@ -208,12 +43,13 @@ export function CriterionDetailPanelHeader({
   library,
   section,
 }: Omit<CriterionDetailPanelProps, "onOpenFinding" | "findings">) {
-  const criterion = criterionOf(criterionId, library);
-  const domainLabel = domainLabelOf(criterion, library);
-  const surfaceTitle = surfaceTitleOf(surface, section);
+  // No rows: the header reads the criterion's identity, never its findings.
+  const { domainLabel, surfaceTitle } = buildCriterionModel(criterionId, surface, library, section, []);
 
   return (
-    <>
+    // `display: contents`: a hook for the panel stylesheet, not a box —
+    // the header row stays `PanelStack`'s.
+    <div className="contents" data-quality-panel-header="criterion">
       {/* Grouped so the two chips never separate when the header row runs out
           of room; the row itself is `PanelStack`'s. */}
       <div className="flex min-w-0 shrink-0 items-center gap-2">
@@ -227,7 +63,7 @@ export function CriterionDetailPanelHeader({
       {surfaceTitle !== "" && (
         <span className="shrink-0 text-xs text-muted-foreground">{surfaceTitle}</span>
       )}
-    </>
+    </div>
   );
 }
 
@@ -256,73 +92,36 @@ export function CriterionDetailPanel({
   findings,
   onOpenFinding,
 }: CriterionDetailPanelProps) {
-  const criterion = criterionOf(criterionId, library);
-  const name = typeof criterion?.name === "string" ? criterion.name : "";
-  const question = typeof criterion?.question === "string" ? criterion.question : "";
-  const definition = typeof criterion?.definition === "string" ? criterion.definition : "";
-  const remediation = typeof criterion?.remediation === "string" ? criterion.remediation : "";
-  const anchors = anchorRowsOf(criterion);
-  const checklist = textListOf(criterion?.checklist);
-  const signals = textListOf(criterion?.signals);
-  const references = referenceRowsOf(criterion);
-
-  // The tell for a library `resolveKritikLibrary` invented: it can recover ids,
-  // domains and weights from the assessments alone, but nothing it synthesizes
-  // has prose. So the test is "no prose at all" rather than a flag — which
-  // keeps it honest for the third case too, a real pack that simply does not
-  // define this criterion — and it has to be all of them, because every prose
-  // field on `KritikCriterion` is optional. A pack criterion written as a
-  // definition and a checklist, with no question and no anchors, is a real one,
-  // and a narrower test would print "this bundle does not carry the criteria
-  // pack" directly above that criterion's own pack prose.
-  const packEmbedded =
-    question !== "" ||
-    definition !== "" ||
-    remediation !== "" ||
-    anchors.length > 0 ||
-    checklist.length > 0 ||
-    signals.length > 0 ||
-    references.length > 0;
-
-  // Memoized by hand because nothing memoizes for us: this app does not run the
-  // React Compiler — `next.config.ts` sets no `reactCompiler` and
-  // `babel-plugin-react-compiler` is not installed — so the compiler reaches
-  // the repo only as the lint rules in `eslint-plugin-react-hooks`, where
-  // `preserve-manual-memoization` is an *error* and CI gates on lint.
+  // Every rule — what the pack says, the latest assessment per surface, the
+  // scored level, the anchor to open on, the findings in scope — is
+  // `buildCriterionModel`'s (lib/utils/quality.ts), tested there.
   //
-  // That rule is also why the rows arrive as a prop. One `useMemo` around the
-  // whole derivation — building every row in the section, then narrowing — is a
-  // memo the rule refuses; bisected, the same memo around `assessmentsOn` is
-  // clean and adding the `findings` one is the error. Recomputing instead would
-  // rebuild every row in the section on every render this panel's parent has,
-  // so the section-wide half moved up to `ProjectPanels`, which derives it once
-  // for the whole stack, and what is left here is a narrowing over a prop.
-  const assessments = useMemo(
-    () => assessmentsOn(criterionId, surface, section),
-    [criterionId, surface, section],
+  // The rows arrive as a prop because building every row in the section is
+  // the expensive half, and `ProjectPanels` derives it once for the whole
+  // stack; what is left here is a narrowing over that prop.
+  const model = useMemo(
+    () => buildCriterionModel(criterionId, surface, library, section, findings),
+    [criterionId, surface, library, section, findings],
   );
-  const criterionFindings = useMemo(
-    () => findingsOn(findings, criterionId, surface),
-    [findings, criterionId, surface],
-  );
+  const {
+    name,
+    question,
+    definition,
+    remediation,
+    anchors,
+    checklist,
+    signals,
+    references,
+    packEmbedded,
+    assessments,
+    scoredLevel,
+    defaultAnchorLevel,
+    findings: criterionFindings,
+  } = model;
   const surfaceTitles = useMemo(() => buildSurfaceTitles(section), [section]);
 
-  // Marked only when there is exactly one: opened without a surface, a criterion
-  // carries one level per surface, and highlighting five anchors at once would
-  // say nothing about any of them.
-  const scoredLevel = assessments.length === 1 ? assessments[0].level : undefined;
-
-  // The tab that opens. The scored level when the pack wrote an anchor for it,
-  // and otherwise the lowest anchor there is — a strip has to open on
-  // something, and "the first one that exists" is the only neutral choice both
-  // when the panel is not narrowed to a single scored cell and when the pack
-  // skipped the level this project was scored at.
-  const defaultAnchorLevel = anchors.some((anchor) => anchor.level === scoredLevel)
-    ? scoredLevel
-    : anchors[0]?.level;
-
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 py-5 lg:py-6">
+    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-6 py-5 lg:py-6" data-quality-panel="criterion">
       {/* The name is the panel's title, in the body — where a node panel puts
           its own — rather than a third chip in the header. It was in the header
           because a criterion has no editable title block to sit in, but that
@@ -412,20 +211,20 @@ export function CriterionDetailPanel({
               <div
                 // Unique because `assessmentsOn` collapses the list to one row
                 // per cell — the bundle itself only warns about a second.
-                key={`${assessment.criterion_id}@${assessment.surface}`}
+                key={assessment.key}
                 className="flex flex-col gap-1.5 rounded-md border p-3"
               >
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                   <span className="font-medium text-foreground">Level {assessment.level}</span>
                   {/* The surface is repeated here even when the panel is scoped to
                       one, because this block is the thing a reader quotes. */}
-                  <span>{surfaceTitleOf(assessment.surface, section)}</span>
-                  {assessment.audit_id && <span>· {assessment.audit_id}</span>}
+                  <span>{assessment.surfaceTitle}</span>
+                  {assessment.auditId && <span>· {assessment.auditId}</span>}
                   {assessment.ts && (
                     <time dateTime={assessment.ts}>· {formatDate(assessment.ts)}</time>
                   )}
                 </div>
-                {typeof assessment.evidence === "string" && assessment.evidence.trim() !== "" && (
+                {assessment.evidence !== "" && (
                   <p className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground">
                     {assessment.evidence}
                   </p>

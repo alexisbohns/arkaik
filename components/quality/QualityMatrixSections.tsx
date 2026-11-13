@@ -83,7 +83,7 @@ export function QualityMatrixSections({
   const openNow = useMemo(() => (findings ?? []).filter(isOpenFinding).length, [findings]);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" data-quality-page="matrix">
       {/*
         The surface roll-up, promoted from the old table's `tfoot` to the top
         of the page: a summary read *before* the detail is a summary, read

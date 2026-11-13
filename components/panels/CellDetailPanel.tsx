@@ -15,6 +15,7 @@ import {
   EMPTY_QUALITY_FILTERS,
   buildCellCriteria,
   buildCellHistory,
+  cellHistoryStep,
   buildSurfaceTitles,
   cellKey,
   describeDelta,
@@ -70,13 +71,15 @@ export function CellDetailPanelHeader({
   section,
 }: Pick<CellDetailPanelProps, "domain" | "surface" | "library" | "section">) {
   return (
-    <>
+    // `display: contents`: a hook for the panel stylesheet, not a box —
+    // the header row stays `PanelStack`'s.
+    <div className="contents" data-quality-panel-header="cell">
       <span className="inline-flex shrink-0 items-center rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
         {domain}
       </span>
       <span className="truncate text-sm font-medium">{domainNameOf(domain, library)}</span>
       <span className="shrink-0 text-xs text-muted-foreground">{surfaceTitleOf(surface, section)}</span>
-    </>
+    </div>
   );
 }
 
@@ -136,7 +139,7 @@ export function CellDetailPanel({
   const openFindings = narrowed.filter((row) => row.open).length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-quality-panel="cell">
       <div className="flex items-center gap-4 border-b px-4 py-4">
         {cell && (
           // The card the reader clicked, restated: same border-and-scale
@@ -193,11 +196,7 @@ export function CellDetailPanel({
           <h3 className={cn(FIELD_LABEL_CLASS, "px-4")}>History</h3>
           <ol className="flex flex-col gap-1 px-4">
             {history.map((row, index) => {
-              const before = index > 0 ? history[index - 1] : null;
-              const step =
-                row.comparable && row.score !== null && before?.score != null
-                  ? { previous: before.score, delta: row.score - before.score }
-                  : undefined;
+              const step = cellHistoryStep(history, index);
               return (
                 <li key={`${row.auditId}-${row.ts}`} className="flex items-baseline gap-2 text-xs">
                   <span className="w-12 shrink-0 text-right font-semibold tabular-nums">

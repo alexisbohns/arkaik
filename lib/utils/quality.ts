@@ -15,7 +15,9 @@
  */
 
 import {
+  CROSS_SURFACE_ID,
   FINDING_SEVERITIES,
+  MATURITY_LEVELS,
   acceptedDetail,
   gradeOf,
   isOpenFinding,
@@ -1210,3 +1212,281 @@ export function describeBurndownCause(point: Pick<BurndownPoint, "cause">): stri
   if (type === "accepted") return `${id} accepted as a risk`;
   return `${id} ${type}`;
 }
+
+/**
+ * The grade bands in force, read off `gradeOf` rather than off
+ * `DEFAULT_GRADE_BANDS`.
+ *
+ * A pack may move a band through `scales.grades`, and a legend quoting the
+ * defaults would then explain the matrix with numbers the matrix does not use.
+ * Walking 0–100 through the very function the cells were graded by makes that
+ * impossible: the legend is a readout of the scale in force, not a second copy
+ * of it.
+ */
+export function gradeBands(library?: KritikLibrary): { grade: QualityGrade; min: number }[] {
+  const lowest = new Map<QualityGrade, number>();
+  for (let score = 0; score <= 100; score++) {
+    const grade = gradeOf(score, library);
+    if (!lowest.has(grade)) lowest.set(grade, score);
+  }
+  return [...lowest.entries()].map(([grade, min]) => ({ grade, min })).sort((a, b) => b.min - a.min);
+}
+
+// ============================ panel models ===================================
+//
+// Every "should this show?" rule the criterion panel, the finding panel and the
+// finding card apply, computed once as data. The surfaces render a model; none
+// of them re-derives a rule. A redesign that needed to restate one of these in
+// two places is what moved them here.
+
+/** One step of a cell's history: the move from the reading before, when the two can be compared. */
+export function cellHistoryStep(history: readonly CellHistoryRow[], index: number): ScoreDelta | undefined {
+  const row = history[index];
+  const before = index > 0 ? history[index - 1] : null;
+  if (!row?.comparable || row.score === null || before?.score == null) return undefined;
+  return { previous: before.score, delta: row.score - before.score };
+}
+
+export interface AssessmentModel {
+  key: string;
+  level: MaturityLevel;
+  surface: string;
+  surfaceTitle: string;
+  auditId?: string;
+  ts?: string;
+  /** Carries `file:line` citations — keep it pastable. "" when none. */
+  evidence: string;
+}
+
+export interface CriterionModel {
+  criterionId: string;
+  /** The surface the panel was opened on; `undefined` reads every surface. */
+  surface?: string;
+  surfaceTitle: string;
+  domainCode: string;
+  /** The domain's name, falling back to its code, then "". */
+  domainLabel: string;
+  name: string;
+  question: string;
+  definition: string;
+  remediation: string;
+  anchors: { level: MaturityLevel; text: string }[];
+  checklist: string[];
+  signals: string[];
+  references: { label: string; anchor: string; url: string }[];
+  /**
+   * False when the bundle carries no pack text for this criterion: only scores
+   * and findings are known. The tell for a library `resolveKritikLibrary`
+   * invented is "no prose at all" rather than a flag — it recovers ids,
+   * domains and weights but synthesizes no prose — and it has to be all of
+   * the fields, because each is optional: a pack criterion written as a
+   * definition and a checklist alone is a real one.
+   */
+  packEmbedded: boolean;
+  /** The latest assessment per surface, narrowed to `surface` when one is given. */
+  assessments: AssessmentModel[];
+  /**
+   * The level, only when exactly one assessment is in view: opened without a
+   * surface, a criterion carries one level per surface, and marking five
+   * anchors at once would say nothing about any of them.
+   */
+  scoredLevel?: MaturityLevel;
+  /** The anchor to open on: the scored level when the pack wrote one for it, else the lowest written. */
+  defaultAnchorLevel?: MaturityLevel;
+  /** The first written anchor above the scored level — what the next step asks. */
+  nextAnchorLevel?: MaturityLevel;
+  /** Findings against this criterion, on this surface or across surfaces, worst first. */
+  findings: FindingRow[];
+}
+
+/** A surface id as the profile titles it; "Cross-surface" for the findings-only lens; the raw id otherwise. */
+export function surfaceTitleOf(
+  surface: string | undefined,
+  titles: ReadonlyMap<string, string> | undefined,
+): string {
+  if (!surface) return "";
+  if (surface === CROSS_SURFACE_ID) return "Cross-surface";
+  return titles?.get(surface) ?? surface;
+}
+
+function textListOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
+}
+
+function timeOf(assessment: QualityAssessment): number {
+  return typeof assessment.ts === "string" ? new Date(assessment.ts).getTime() : NaN;
+}
+
+/**
+ * A criterion as its panel reads it: the pack's text, the latest assessment
+ * per surface in view, and the findings raised against it.
+ *
+ * A pack may be absent, partial or padded — every field reads defensively, and
+ * `packEmbedded` says whether there was anything to read at all.
+ */
+export function buildCriterionModel(
+  criterionId: string,
+  surface: string | undefined,
+  library: KritikLibrary | undefined,
+  section: QualitySection | undefined,
+  rows: FindingRow[],
+): CriterionModel {
+  const criterion = criterionOf(criterionId, library);
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const titles = buildSurfaceTitles(section);
+  const domainCode = text(criterion?.domain);
+  const domainLabel =
+    domainCode === "" ? "" : (library?.domains?.find((domain) => domain?.code === domainCode)?.name ?? domainCode);
+
+  const anchors: CriterionModel["anchors"] = [];
+  for (const level of MATURITY_LEVELS) {
+    const anchor = criterion?.level_anchors?.[`l${level}`];
+    if (typeof anchor === "string" && anchor.trim() !== "") anchors.push({ level, text: anchor });
+  }
+
+  const references = Array.isArray(criterion?.references)
+    ? criterion.references
+        .map((reference) => ({
+          label: reference?.title ?? reference?.url ?? "",
+          anchor: reference?.anchor ?? "",
+          url: reference?.url ?? "",
+        }))
+        .filter((reference) => reference.label !== "")
+    : [];
+
+  // An empty surface is the unscoped panel, never a surface called "".
+  const scope = surface === "" ? undefined : surface;
+  const latest = new Map<string, QualityAssessment>();
+  for (const assessment of section?.assessments ?? []) {
+    if (assessment?.criterion_id !== criterionId) continue;
+    if (scope !== undefined && assessment.surface !== scope) continue;
+    const held = latest.get(assessment.surface);
+    if (held !== undefined && timeOf(held) > timeOf(assessment)) continue;
+    latest.set(assessment.surface, assessment);
+  }
+  const assessments: AssessmentModel[] = [...latest.values()].map((assessment) => ({
+    key: `${assessment.criterion_id}@${assessment.surface}`,
+    level: assessment.level,
+    surface: assessment.surface,
+    surfaceTitle: surfaceTitleOf(assessment.surface, titles),
+    ...(assessment.audit_id !== undefined ? { auditId: assessment.audit_id } : {}),
+    ...(typeof assessment.ts === "string" ? { ts: assessment.ts } : {}),
+    evidence: typeof assessment.evidence === "string" ? assessment.evidence.trim() : "",
+  }));
+
+  const name = text(criterion?.name);
+  const question = text(criterion?.question);
+  const definition = text(criterion?.definition);
+  const remediation = text(criterion?.remediation);
+  const checklist = textListOf(criterion?.checklist);
+  const signals = textListOf(criterion?.signals);
+  const scoredLevel = assessments.length === 1 ? assessments[0].level : undefined;
+  const next = scoredLevel === undefined ? undefined : anchors.find((anchor) => anchor.level > scoredLevel);
+
+  return {
+    criterionId,
+    ...(scope !== undefined ? { surface: scope } : {}),
+    surfaceTitle: surfaceTitleOf(scope, titles),
+    domainCode,
+    domainLabel,
+    name,
+    question,
+    definition,
+    remediation,
+    anchors,
+    checklist,
+    signals,
+    references,
+    packEmbedded:
+      question !== "" ||
+      definition !== "" ||
+      remediation !== "" ||
+      anchors.length > 0 ||
+      checklist.length > 0 ||
+      signals.length > 0 ||
+      references.length > 0,
+    assessments,
+    ...(scoredLevel !== undefined ? { scoredLevel } : {}),
+    ...(anchors.some((anchor) => anchor.level === scoredLevel)
+      ? { defaultAnchorLevel: scoredLevel }
+      : anchors[0]
+        ? { defaultAnchorLevel: anchors[0].level }
+        : {}),
+    ...(next ? { nextAnchorLevel: next.level } : {}),
+    findings: filterFindings(rows, EMPTY_QUALITY_FILTERS).filter(
+      (row) =>
+        row.criterionId === criterionId &&
+        (scope === undefined || row.surface === scope || row.surface === CROSS_SURFACE_ID),
+    ),
+  };
+}
+
+/**
+ * The tone a finding wears: its priority while it is open, its decision once
+ * it is not — so a closed P0 stops shouting.
+ */
+export type FindingTone = "p0" | "p1" | "p2" | "p3" | "resolved" | "refuted" | "accepted";
+
+export interface FindingModel {
+  row: FindingRow;
+  surfaceTitle: string;
+  crossSurface: boolean;
+  tone: FindingTone;
+  /** Whether the status is said as a word: not while open, and not for an accepted risk (its callout says it). */
+  showStatus: boolean;
+  acceptedRisk: boolean;
+  /**
+   * The accepted-risk callout's text: the verification note, else the detail.
+   * `undefined` when the finding is not an accepted risk; `""` when it is one
+   * with no rationale recorded — a gap to show, not a reason to hide the status.
+   */
+  acceptedNote?: string;
+  /** The criterion's question, "" without a pack. */
+  criterionQuestion: string;
+  /** False when the name fell back to the id (no pack): the id is already printed. */
+  hasCriterionName: boolean;
+  /** The detail, unless empty or already said by the accepted-risk callout. */
+  detail: string;
+  evidence: string;
+  /** The verification, unless absent, note-less, or already the accepted-risk note. */
+  verification: { verdict: NonNullable<FindingRow["verification"]>["verdict"]; note: string; repeatsStatus: boolean } | null;
+}
+
+/** See {@link FindingModel}. `surfaceTitles` from {@link buildSurfaceTitles}. */
+export function buildFindingModel(
+  row: FindingRow,
+  context: { surfaceTitles?: ReadonlyMap<string, string>; library?: KritikLibrary } = {},
+): FindingModel {
+  const acceptedRisk = row.status === "accepted-risk";
+  const acceptedNote = acceptedRisk ? row.verification?.note || row.detail : undefined;
+  const verdict = row.verification?.verdict;
+  const note = row.verification?.note;
+  const criterion = criterionOf(row.criterionId, context.library);
+  const tone: FindingTone =
+    row.status === "resolved"
+      ? "resolved"
+      : row.status === "refuted"
+        ? "refuted"
+        : acceptedRisk
+          ? "accepted"
+          : (row.priority.toLowerCase() as FindingTone);
+  return {
+    row,
+    surfaceTitle: surfaceTitleOf(row.surface, context.surfaceTitles),
+    crossSurface: row.surface === CROSS_SURFACE_ID,
+    tone,
+    showStatus: !row.open && !acceptedRisk,
+    acceptedRisk,
+    ...(acceptedNote !== undefined ? { acceptedNote } : {}),
+    criterionQuestion: typeof criterion?.question === "string" ? criterion.question : "",
+    hasCriterionName: row.criterionName !== row.criterionId,
+    detail: row.detail !== "" && row.detail !== acceptedNote ? row.detail : "",
+    evidence: row.evidence,
+    verification:
+      verdict && note && note !== acceptedNote
+        ? { verdict, note, repeatsStatus: verdictRepeatsStatus(row) }
+        : null,
+  };
+}
+
