@@ -50,7 +50,7 @@ export function DeliverableTimeline({
               green the `live` status already uses, because what the rail plots
               is delivery: each node is one thing that reached users. It is
               deliberately not a link. The pull request has its own mark under
-              the row, in the forge's purple, and one glyph that both stood for
+              the row, in the forge's plum, and one glyph that both stood for
               "shipped" and navigated to GitHub was doing two jobs badly.
 
               What the rail mark does carry is the preview: hovering it opens
