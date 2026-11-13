@@ -30,7 +30,8 @@ function HoverCardContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-50 w-72 rounded-md border p-4 shadow-md outline-hidden",
+          // A floating surface (app/m3/controls.css `.m3-float`).
+          "m3-float z-50 w-72 origin-(--radix-hover-card-content-transform-origin) rounded-(--md-shape-xl) p-5 outline-hidden",
           className,
         )}
         {...props}

@@ -31,7 +31,18 @@ interface SegmentedControlProps<T extends string> {
   className?: string;
 }
 
-/** The repo's segmented toggle: a bordered strip of mutually exclusive options. */
+/**
+ * The repo's segmented toggle: an M3 Expressive connected button group of
+ * mutually exclusive options.
+ *
+ * Each option is its own tonal shape, 3px from the next; the group's outer
+ * corners are the pill's and the joints 5px, so the strip reads as one
+ * object. The chosen option leaves it — rounds up into a full pill, widens,
+ * and takes the group's one solid fill — on the fast spring, while the one it
+ * replaces settles back into the joint. All of it lives in
+ * app/m3/controls.css under `data-slot="segmented-control"`; this file only
+ * says which option is chosen (`aria-pressed`).
+ */
 export function SegmentedControl<T extends string>({
   options,
   value,
@@ -44,7 +55,8 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={cn("inline-flex items-center rounded-md border bg-background p-1", className)}
+      data-slot="segmented-control"
+      className={cn("inline-flex items-center", className)}
     >
       {options.map((option) => {
         const Icon = option.icon;
@@ -58,14 +70,9 @@ export function SegmentedControl<T extends string>({
             // Explicit, because a collapsed option has no text left to name it.
             aria-label={option.label}
             onClick={() => onChange(option.id)}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap outline-none"
           >
-            {Icon && <Icon className="size-3.5" />}
+            {Icon && <Icon className="size-4" />}
             {collapseLabels && Icon ? (
               <span className="hidden md:inline">{option.label}</span>
             ) : (

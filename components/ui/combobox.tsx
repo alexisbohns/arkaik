@@ -91,7 +91,7 @@ export function Combobox<T>({
   disabled,
   search = false,
   placement = "popover",
-  listClassName = "max-h-60 overflow-y-auto p-1",
+  listClassName = "max-h-60 overflow-y-auto p-2",
   className,
 }: ComboboxProps<T>) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -284,7 +284,9 @@ export function Combobox<T>({
       )}
       {placement === "popover"
         ? list && (
-            <div className="absolute z-30 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+            // A floating surface (app/m3/controls.css `.m3-float`), static:
+            // it has no open/closed state to animate on, it simply mounts.
+            <div className="m3-float absolute z-30 mt-1.5 w-full overflow-hidden rounded-(--md-shape-xl)">
               {list}
             </div>
           )

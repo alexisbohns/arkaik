@@ -19,6 +19,13 @@ import { cn } from "@/lib/utils";
  * variant) and separators (`bg-border`, where this app uses `bg-muted`).
  * Adopting those would repaint every menu in the app, which a vintage re-sync
  * is not allowed to do.
+ *
+ * The repaint came later, on purpose, as M3 Expressive (app/m3/controls.css):
+ * the menu is a floating surface (`.m3-float`: tone + elevation, no stroke,
+ * 28px corners, a spring entrance from the trigger), rows are 40px pills with
+ * a state layer, 2px apart, and a checked row is a full pill on
+ * tertiary-container. Groups are set apart by a gap, not a rule.
+ * The 8px inset plus the rows' 20px radius sit concentric in the 28px corner.
  */
 
 function DropdownMenu({
@@ -83,8 +90,8 @@ function DropdownMenuSubTrigger({
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-        inset && "pl-8",
+        "relative flex min-h-10 cursor-pointer select-none items-center gap-3 rounded-full px-4 py-2 text-sm outline-none data-[highlighted]:bg-(--m3-hover) data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 data-[state=open]:bg-(--m3-hover)",
+        inset && "pl-11",
         className,
       )}
       {...props}
@@ -103,7 +110,7 @@ function DropdownMenuSubContent({
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]",
+        "m3-float z-50 min-w-[10rem] overflow-hidden rounded-(--md-shape-xl) p-2 origin-(--radix-dropdown-menu-content-transform-origin)",
         className,
       )}
       {...props}
@@ -113,7 +120,7 @@ function DropdownMenuSubContent({
 
 function DropdownMenuContent({
   className,
-  sideOffset = 4,
+  sideOffset = 6,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -122,7 +129,7 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]",
+          "m3-float z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-(--md-shape-xl) p-2 origin-(--radix-dropdown-menu-content-transform-origin)",
           className,
         )}
         {...props}
@@ -142,8 +149,8 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-        inset && "pl-8",
+        "relative flex min-h-10 cursor-pointer select-none items-center gap-3 rounded-full px-4 py-2 text-sm outline-none data-[highlighted]:bg-(--m3-hover) data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        inset && "pl-11",
         className,
       )}
       {...props}
@@ -161,15 +168,15 @@ function DropdownMenuCheckboxItem({
     <DropdownMenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex min-h-10 cursor-pointer select-none items-center rounded-full py-2 pl-11 pr-4 text-sm outline-none data-[highlighted]:bg-(--m3-hover) data-[state=checked]:bg-(--m3-row-on) data-[state=checked]:font-medium data-[state=checked]:text-(--m3-on-row-on) data-[state=checked]:data-[highlighted]:bg-(--m3-row-on-hover) data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
         className,
       )}
       checked={checked}
       {...props}
     >
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className="absolute left-4 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon className="h-4 w-4" />
+          <CheckIcon className="size-4" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -186,12 +193,12 @@ function DropdownMenuRadioItem({
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex min-h-10 cursor-pointer select-none items-center rounded-full py-2 pl-11 pr-4 text-sm outline-none data-[highlighted]:bg-(--m3-hover) data-[state=checked]:bg-(--m3-row-on) data-[state=checked]:font-medium data-[state=checked]:text-(--m3-on-row-on) data-[state=checked]:data-[highlighted]:bg-(--m3-row-on-hover) data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
         className,
       )}
       {...props}
     >
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className="absolute left-4 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           <CircleIcon className="h-2 w-2 fill-current" />
         </DropdownMenuPrimitive.ItemIndicator>
@@ -212,8 +219,8 @@ function DropdownMenuLabel({
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
       className={cn(
-        "px-2 py-1.5 text-sm font-semibold",
-        inset && "pl-8",
+        "px-4 pt-2 pb-1 text-xs font-medium text-(--md-on-surface-variant)",
+        inset && "pl-11",
         className,
       )}
       {...props}
@@ -228,7 +235,8 @@ function DropdownMenuSeparator({
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-muted", className)}
+      // M3 Expressive sets groups apart with a gap, not a rule.
+      className={cn("h-2", className)}
       {...props}
     />
   );

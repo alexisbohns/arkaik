@@ -1,0 +1,259 @@
+/*
+ * The core app's controls in Material 3 Expressive — selects, filter
+ * triggers, toolbar buttons, connected button groups and the floating surfaces
+ * (popover, select content, menu, hover card).
+ *
+ * The owner's rule: solid and no border, breath and expression. Controls are
+ * tonal fills from the --md-* roles (app/m3/basalt.css), never a hairline;
+ * floating surfaces part from the page by tone and elevation; everything is
+ * a step roomier than shadcn's density; shapes morph and spring.
+ *
+ * Shapes say state, so colour never has to say it alone:
+ *   - a control at rest is a pill (an icon trigger, a circle);
+ *   - pressing tightens the corners (a circle presses into a squircle);
+ *   - a filter that holds a value becomes a 12-point cookie, the same badge
+ *     the sidebar's active row wears;
+ *   - a toggle that is on settles into a squircle;
+ *   - the chosen segment of a connected group rounds up into a full pill and
+ *     widens, leaving the connected shape (docs/arkademy-design.md § 2, 4–5).
+ *
+ * The springs, the shape scale and the elevation are copied from the
+ * Arkademy's sheet (app/arkademy/business-model-canvas/m3-expressive.css),
+ * not imported: that sheet is scoped to its own pages. On those pages its
+ * `:root:has([data-m3="expressive"])` tokens outrank these.
+ *
+ * All motion sits behind `prefers-reduced-motion: no-preference`; with reduced
+ * motion, shapes swap at once and floating surfaces fade in over 160ms.
+ */
+
+:root {
+  /* Shape scale (M3). */
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-lg-inc: 20px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 9999px;
+  /* Connected shapes: the joint between two pieces of one thing, and its gap. */
+  --mx-joint: 5px;
+  --mx-gap: 3px;
+
+  /* Springs as linear(), sampled from M3 Expressive's tokens (Arkademy sheet). */
+  --mx-spring: linear(0, 0.123 5.7%, 0.345 11.2%, 0.564 16.7%, 0.74 22.2%, 0.863 27.8%, 0.941 33.3%, 0.984 38.8%, 1.005 44.3%, 1.013 49.8%, 1.014 55.3%, 1.011 60.8%, 1.008 66.3%, 1.005 71.9%, 1.003 77.4%, 1.001 82.9%, 1);
+  --mx-spring-dur: 510ms;
+  --mx-spring-fast: linear(0, 0.193 5.6%, 0.525 11.1%, 0.815 16.5%, 0.999 21.9%, 1.079 27.3%, 1.09 32.7%, 1.067 38.1%, 1.037 43.6%, 1.012 49%, 0.998 54.4%, 0.992 59.8%, 0.992 65.2%, 0.994 70.7%, 0.997 76.1%, 0.999 81.5%, 1);
+  --mx-spring-fast-dur: 440ms;
+  --mx-effects: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Elevation (M3 level 1), and the floating surfaces' shadow: softer and
+     finer than M3 level 2 (the owner found level 2 heavy) — a tight contact
+     shadow plus a wide, faint ambient one. */
+  --m3-elev-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --m3-elev-float: 0 0 0 0.5px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 16px -4px rgb(0 0 0 / 0.1);
+
+  /* The control height in a bar: 40px, a step up from shadcn's 36. */
+  --m3-ctl-h: 2.5rem;
+  /* A pill's corner, as a finite length. Never 9999px on anything that
+     morphs: a spring from 9999px down to 12px overshoots below zero and the
+     control flashes square for a frame. 20px is half of a 40px control and
+     still reads as a full pill on the 32 and 36px ones (radii clamp). */
+  --m3-pill: 20px;
+
+  /* A control at rest, on a bar or a card. */
+  --m3-control: var(--md-surface-container-high);
+  --m3-on-control: var(--md-on-surface-variant);
+  /* State layers: on-surface at 8% (hover) and 12% (press) over the fill. */
+  --m3-control-hover: color-mix(in srgb, var(--md-on-surface) 8%, var(--m3-control));
+  --m3-hover: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+  /* "On": a filter holding a value, a toggle that is on, a chosen row. */
+  --m3-on: var(--md-secondary-container);
+  --m3-on-on: var(--md-on-secondary-container);
+  --m3-on-hover: color-mix(in srgb, var(--md-on-secondary-container) 8%, var(--md-secondary-container));
+  /* A filter holding a value (the cookie): the "on" container with its own
+     content colour laid over at 16%, one state-layer step deeper. In Basalt's
+     light scheme secondary-container sits a hair from the rest fill, and the
+     cookie must read at a glance without turning solid. */
+  --m3-set: color-mix(in srgb, var(--md-on-secondary-container) 16%, var(--md-secondary-container));
+  --m3-set-hover: color-mix(in srgb, var(--md-on-secondary-container) 24%, var(--md-secondary-container));
+  /* The chosen segment of a connected group: the "on"
+     container deepened 15% toward secondary in light, where Basalt's
+     secondary-container sits too close to the rest fill; plain in dark. */
+  --m3-chosen: color-mix(in oklab, var(--md-secondary-container) 85%, var(--md-secondary));
+  --m3-on-chosen: var(--md-on-secondary-container);
+  /* The chosen row of a menu or a select: tertiary-container,
+     Basalt's one blue-leaning tone, so the current choice reads at a glance. */
+  --m3-row-on: var(--md-tertiary-container);
+  --m3-on-row-on: var(--md-on-tertiary-container);
+  --m3-row-on-hover: color-mix(in srgb, var(--md-on-tertiary-container) 8%, var(--md-tertiary-container));
+
+  /* Floating surfaces: the soft raised surface (lowest in light, high in dark). */
+  --m3-float: var(--md-surface-container-lowest);
+}
+
+.dark {
+  --m3-elev-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 3px 1px rgb(0 0 0 / 0.3);
+  --m3-elev-float: 0 0 0 0.5px rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -4px rgb(0 0 0 / 0.35);
+  --m3-chosen: var(--md-secondary-container);
+  --m3-float: var(--md-surface-container-high);
+}
+
+/* Inside a floating surface the rest fill steps up one tone, or a dark
+   popover (container-high) would swallow its own controls. Re-declared, not
+   inherited: a custom property resolves its var()s where it is declared. */
+.dark .m3-float {
+  --m3-control: var(--md-surface-container-highest);
+  --m3-control-hover: color-mix(in srgb, var(--md-on-surface) 8%, var(--md-surface-container-highest));
+}
+
+/* ── Focus ──────────────────────────────────────────────────────────────────
+   The M3 focus indicator, replacing shadcn's soft box-shadow ring on every
+   control this sheet skins. */
+:is(
+  [data-slot="select-trigger"],
+  [data-slot="segmented-control"] > button
+):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+/* ── Pills: the select trigger ─────────────────────────────────────────────── */
+
+/* A press tightens the pill (M3 Expressive: shape morph on press). */
+[data-slot="select-trigger"]:active {
+  border-radius: var(--md-shape-md);
+}
+
+/* ── Connected button groups ───────────────────────────────────────────────
+   SegmentedControl and PlatformToggleGroup. Each option is its own shape,
+   3px apart; the outer corners are the pill's, the joints 5px. The chosen
+   option leaves the connected shape: it rounds up into a full pill, widens,
+   and takes the group's one solid fill. With several chosen (a multi-select)
+   each one lifts out on its own. */
+[data-slot="segmented-control"] {
+  --m3-seg-h: var(--m3-ctl-h);
+  gap: var(--mx-gap);
+}
+[data-slot="segmented-control"] > button {
+  height: var(--m3-seg-h);
+  padding-inline: 0.875rem;
+  border: 0;
+  border-radius: var(--mx-joint);
+  background: var(--m3-control);
+  color: var(--m3-on-control);
+}
+[data-slot="segmented-control"] > button:first-child {
+  border-start-start-radius: calc(var(--m3-seg-h) / 2);
+  border-end-start-radius: calc(var(--m3-seg-h) / 2);
+}
+[data-slot="segmented-control"] > button:last-child {
+  border-start-end-radius: calc(var(--m3-seg-h) / 2);
+  border-end-end-radius: calc(var(--m3-seg-h) / 2);
+}
+[data-slot="segmented-control"] > button:hover {
+  background: var(--m3-control-hover);
+  color: var(--md-on-surface);
+}
+[data-slot="segmented-control"] > button:active {
+  padding-inline: 1.125rem;
+}
+[data-slot="segmented-control"] > button[aria-pressed="true"] {
+  position: relative;
+  z-index: 1;
+  padding-inline: 1.25rem;
+  flex-grow: 1.35;
+  border-radius: calc(var(--m3-seg-h) / 2);
+  background: var(--m3-chosen);
+  color: var(--m3-on-chosen);
+}
+[data-slot="segmented-control"] > button[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--m3-on-chosen) 8%, var(--m3-chosen));
+}
+[data-slot="segmented-control"] > button[aria-pressed="true"]:active {
+  border-radius: var(--md-shape-md);
+}
+
+/* ── Floating surfaces ─────────────────────────────────────────────────────
+   Popover, select content, menu, hover card: the soft raised surface at
+   level 2, 28px corners, and an entrance that grows from the trigger
+   (each component sets `transform-origin` from Radix's variable). */
+.m3-float {
+  background: var(--m3-float);
+  color: var(--md-on-surface);
+  box-shadow: var(--m3-elev-float);
+}
+
+/* Rows in a floating list stand 2px apart, so a chosen or hovered
+   pill never touches its neighbour. */
+:is([data-slot="select-item"], [data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-checkbox-item"], [data-slot="dropdown-menu-radio-item"], [data-slot="dropdown-menu-sub-trigger"])
+  + :is([data-slot="select-item"], [data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-checkbox-item"], [data-slot="dropdown-menu-radio-item"], [data-slot="dropdown-menu-sub-trigger"]),
+[data-slot="combobox-list"] > [role="option"] + [role="option"] {
+  margin-top: 2px;
+}
+
+@keyframes m3-float-in {
+  from { transform: scale(0.9, 0.7); }
+  to { transform: none; }
+}
+@keyframes m3-fade-in {
+  from { opacity: 0; }
+}
+@keyframes m3-float-out {
+  to { opacity: 0; transform: scale(0.96); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .m3-float:is([data-state="open"], [data-state="delayed-open"], [data-state="instant-open"]) {
+    animation:
+      m3-float-in var(--mx-spring-fast-dur) var(--mx-spring-fast) both,
+      m3-fade-in 150ms var(--mx-effects) both;
+  }
+  .m3-float[data-state="closed"] {
+    animation: m3-float-out 120ms var(--mx-effects) both;
+  }
+
+  [data-slot="select-trigger"],
+  [data-slot="segmented-control"] > button {
+    transition:
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      padding var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      flex-grow var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      background-color 200ms var(--mx-effects),
+      color 200ms var(--mx-effects);
+  }
+  [data-slot="select-trigger"] > svg:last-child {
+    transition: rotate var(--mx-spring-fast-dur) var(--mx-spring-fast);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m3-float:is([data-state="open"], [data-state="delayed-open"], [data-state="instant-open"]) {
+    animation: m3-fade-in 160ms var(--mx-effects) both;
+  }
+}
+
+/* The select's chevron turns over while its list is open. */
+[data-slot="select-trigger"][aria-expanded="true"] > svg:last-child {
+  rotate: 180deg;
+}
+
+/* ── Windows High Contrast ─────────────────────────────────────────────────
+   With the strokes gone, forced colours would leave tone-only controls and
+   surfaces edgeless. Give them back a system-colour edge, and draw "on" in
+   Highlight so it survives without the tones. The `:is()` lists repeat the
+   rules above so the fallback wins on specificity. */
+@media (forced-colors: active) {
+  [data-slot="select-trigger"],
+  [data-slot="segmented-control"] > button {
+    border: 1px solid ButtonText;
+  }
+  .m3-float,
+  [data-slot="combobox"] > div:last-child {
+    border: 1px solid CanvasText;
+  }
+  [data-slot="segmented-control"] > button[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}
