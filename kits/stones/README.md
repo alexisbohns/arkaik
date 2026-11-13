@@ -33,6 +33,13 @@ move to its next home (probably Ariko) as a standalone kit.
 
 ## Dependencies on the host
 
-`src/StonePicker.tsx` expects the host's shadcn/ui `Button` (with `default` and
-`secondary` variants), `cn` from `@/lib/utils`, and lucide-react. The rest is
-plain TypeScript, CSS and Node.
+`src/` expects the host to provide:
+
+- React (all of `src/`);
+- the shadcn/ui `Button`, with `default` and `secondary` variants and `size="sm"`;
+- `cn` from `@/lib/utils`, and lucide-react;
+- Tailwind with the host's theme tokens: the picker uses utilities like
+  `text-muted-foreground`, so the host must have Tailwind scan `src/`.
+
+`data/`, `generate.js` and `tests/` are plain Node; `css/` and `dist/` are plain
+CSS and SVG.

@@ -17,12 +17,12 @@ import {
  * Your own canvas's draft: the only code that reads or writes its key
  * (`arkaik:arkademy:bmc`, spec § "Browser storage").
  *
- * A module store read through `useSyncExternalStore`, like
- * useOverviewLayout, so nothing calls setState in an
- * effect and the server and the first client render agree: both see
- * `{ phase: "loading" }` (the page draws a skeleton), and the draft is read
- * from storage when the first component subscribes — after mount — so a
- * stored canvas never causes a hydration mismatch and never flashes empty.
+ * A module store read through `useSyncExternalStore`, like useOverviewLayout,
+ * so nothing calls setState in an effect and the server and the first client
+ * render agree: both see `{ phase: "loading" }` (the page draws a skeleton),
+ * and the draft is read from storage when the first component subscribes —
+ * after mount — so a stored canvas never causes a hydration mismatch and never
+ * flashes empty.
  *
  * A change is written at most 300 ms later; a pending one is written at once
  * on `pagehide` and when the last component unsubscribes (a client

@@ -63,11 +63,11 @@ function PreviewPane({ mode }: { mode: "light" | "dark" }) {
         </linearGradient>
       </svg>
       <span className="w-full font-mono text-[10px] uppercase tracking-wider opacity-60">{mode}</span>
-      <Button type="button" size="sm" variant="default">
+      <Button type="button" size="sm" variant="default" className="stone stone-primary rounded-[var(--stone-radius)]">
         <SparklesIcon />
         Primary
       </Button>
-      <Button type="button" size="sm" variant="secondary">
+      <Button type="button" size="sm" variant="secondary" className="stone stone-secondary rounded-[var(--stone-radius)]">
         <RouteIcon />
         Secondary
       </Button>
