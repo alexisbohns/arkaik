@@ -1,67 +1,94 @@
 /**
  * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — the contract.
  *
- * Every tweakable region of the surface is a SECTION. A section renders the
- * shipped UI ("base") unless the tweaker picks a variant for it. A variant is
- * either:
- *   - a `Component`, which receives the section's props below plus
- *     `renderOriginal()` (the shipped UI, so a variant may wrap or restyle it), or
+ * Every tweakable region is a SECTION, and every section belongs to a SURFACE
+ * (a page or a panel — one exploration may span several). A section renders
+ * the shipped UI ("base") unless the tweaker picks a variant:
+ *   - a `Component` receives the section's props below plus `renderOriginal()`
+ *     (the shipped UI, so a variant may wrap or restyle it), or
  *   - CSS only (no `Component`): the tweaker writes `data-tw-<section>="<id>"`
  *     on <html>, and the author's stylesheet targets it, scoped to a hook the
- *     surface carries (e.g. `[data-node-panel]`).
+ *     surface carries.
  *
- * Variant ids are prefixed by author (`bold-…`, `calm-…`), unique per section.
+ * Section ids are kebab-case (`matrix-card`, never `matrix.card`: a dot in a
+ * `data-tw-*` attribute name needs escaping in every selector). A section must
+ * wrap CONTIGUOUS JSX — cut along source order, not along topic.
  *
- * ADAPT: list the surface's sections, then give each one the props a variant
- * needs to render it WITHOUT re-deriving rules: pass models (data + handlers),
- * not raw records, wherever the shipped UI encodes a subtle rule (see the
- * panels redesign's `ProductModel`). Pass live, autosaving elements as nodes to
- * place, never to rebuild.
+ * AUTHORS. Any number, each with a direction. Every id, class, custom property
+ * and keyframe an author writes starts with the FULL author id
+ * (`bold-pages-…`), so two authors of one direction never collide.
+ *
+ * AXES. A shipped preference the new design must sit beside (or will join)
+ * — e.g. `data-panel-look` — is an axis: the tweaker flips it, a recipe
+ * carries it (`look:calm`, `look:default`), a preset may set it.
+ *
+ * ADAPT: surfaces, sections, axes, authors, and each section's props. Pass
+ * models (data + handlers), not raw records, wherever the shipped UI encodes a
+ * subtle rule. Pass live, autosaving elements as nodes to place, never to
+ * rebuild. List the hooks the shipped markup carries for CSS-only variants.
  */
 import type { ComponentType, ReactNode } from "react";
 
+export const TWEAK_SURFACES = [
+  // ADAPT
+  { id: "page", label: "The page" },
+] as const;
+export type SurfaceId = (typeof TWEAK_SURFACES)[number]["id"];
+
 export const TWEAK_SECTIONS = [
   // ADAPT: one entry per region. `hint` is shown in the tweaker.
-  { id: "header", label: "Header", hint: "identity and actions" },
-  { id: "body", label: "Body", hint: "overall rhythm, surfaces, spacing (usually CSS-only)" },
-] as const;
-
+  { id: "page-header", surface: "page", label: "Header", hint: "identity and actions" },
+  { id: "page-body", surface: "page", label: "Body", hint: "rhythm, surfaces, spacing (CSS-only)" },
+] as const satisfies readonly { id: string; surface: SurfaceId; label: string; hint: string }[];
 export type SectionId = (typeof TWEAK_SECTIONS)[number]["id"];
+
+/** Shipped preferences the tweaker can flip. `null` = the attribute is absent (the default). */
+export const TWEAK_AXES = [
+  // ADAPT (or leave empty): { id, attr, label, values: [null, …], names: [default name, …] }
+  { id: "look", attr: "data-panel-look", label: "Panel look", values: [null, "calm"], names: ["Expressive", "Calm"] },
+] as const;
+export type AxisId = (typeof TWEAK_AXES)[number]["id"];
+
+export const AUTHORS = [
+  // ADAPT: one per sub-agent; folder = id. Keep `lead` for the ★ composed variants.
+  { id: "bold", direction: "expressive" },
+  { id: "calm", direction: "calm" },
+  { id: "lead", direction: "lead" },
+] as const;
+export type AuthorId = (typeof AUTHORS)[number]["id"];
 
 interface WithOriginal {
   /** The shipped UI for this section, exactly as it renders today. */
   renderOriginal: () => ReactNode;
 }
 
-/** ADAPT: what every section can see (the record, the scope, the save path). */
-export interface SurfaceCtx {
-  readOnly: boolean;
-}
-
+/** ADAPT: what each section's variant receives. */
 export interface SectionProps {
-  header: WithOriginal & { ctx: SurfaceCtx };
-  body: WithOriginal & { ctx: SurfaceCtx };
+  "page-header": WithOriginal & { readOnly: boolean };
+  "page-body": WithOriginal;
 }
 
 export interface TweakVariant<S extends SectionId = SectionId> {
-  /** `bold-…` or `calm-…`, unique within the section. */
+  /** Starts with the author id, unique within the section. */
   id: string;
   /** 1–3 words, shown in the tweaker. */
   label: string;
   /** One line: what it does and why. */
   note?: string;
-  author: "bold" | "calm";
+  author: AuthorId;
   /** Absent = CSS-only variant (targets `data-tw-<section>`). */
   Component?: ComponentType<SectionProps[S]>;
 }
 
 export type VariantRegistry = { [S in SectionId]?: TweakVariant<S>[] };
 
-/** A named pick across several sections — an author's "full look". */
+/** A named pick across several sections — an author's "full look". `preset:<id>` in a recipe. */
 export interface TweakPreset {
   id: string;
   label: string;
-  author: "bold" | "calm";
+  author: AuthorId;
   note?: string;
   picks: Partial<Record<SectionId, string>>;
+  /** Shipped axes this look is meant to sit beside (e.g. `{ look: "calm" }`). */
+  axes?: Partial<Record<AxisId, string | null>>;
 }

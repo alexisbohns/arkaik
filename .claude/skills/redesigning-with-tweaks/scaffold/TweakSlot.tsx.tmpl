@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — renders the picked variant of a section, or the
- * shipped UI (`children`) when the pick is "base", unknown, or CSS-only.
+ * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — renders the picked variant of a section, or the shipped
+ * UI (`children`) when the pick is "base", unknown, or CSS-only. Registers the
+ * section as mounted so the tweaker can list what is on screen first.
  */
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { SectionId, SectionProps } from "./contract";
 import { findVariant } from "./registry";
-import { usePick } from "./store";
+import { markMounted, usePick } from "./store";
 
 type Props<S extends SectionId> = {
   section: S;
@@ -16,6 +17,7 @@ type Props<S extends SectionId> = {
 };
 
 export function TweakSlot<S extends SectionId>({ section, props, children }: Props<S>) {
+  useEffect(() => markMounted(section), [section]);
   const id = usePick(section);
   const variant = id === "base" ? undefined : findVariant(section, id);
   const Component = variant?.Component;
@@ -23,4 +25,10 @@ export function TweakSlot<S extends SectionId>({ section, props, children }: Pro
   const full = { ...props, renderOriginal: () => children } as SectionProps[S];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return <Component {...(full as any)} />;
+}
+
+/** For a CSS-only section that has no wrapping JSX of its own: just registers it. */
+export function TweakMark({ section }: { section: SectionId }) {
+  useEffect(() => markMounted(section), [section]);
+  return null;
 }

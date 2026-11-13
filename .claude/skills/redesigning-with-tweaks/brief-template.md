@@ -39,15 +39,19 @@ shipped version or another author's variant of the neighbouring sections.
 - <models, e.g. `product-model.ts`> — <subtle rules as data; render them, never
   re-derive them>.
 - `TweakSlot.tsx`, `store.ts`, `Tweaker.tsx`, `registry.ts` — plumbing. **Do not edit.**
-- Picking: `?tw=section:id,…` (or `?tw=base`) overrides on load. The tweaker writes
+- Picking: `?tw=section:id,…` (or `?tw=base`, `preset:<id>`, `<axis>:<value>`)
+  overrides on load. The tweaker writes
   `data-tw-<section>="<id>"` on `<html>` for **CSS-only variants**. The surface
   carries `<hooks>` for scoping.
 - Live, autosaving elements (<which>) arrive as nodes: place them, never rebuild them.
 
 ## Your folder — the ONLY place you write
 
-- `<scaffold dir>/<author>/**` — registry `index.tsx`, stylesheet `<author>.css`, ids
-  all start with `<author>-`.
+- `<scaffold dir>/<author>/**` — registry `index.tsx` (`variants`, `presets`),
+  stylesheet `<author>.css`. **Every id, class, custom property and keyframe starts
+  with the full author id** (`<author>-…`) — another author may share your direction.
+- An ownership table (author → direction → surfaces → sections) when there are more
+  than two authors.
 - **Never edit a file outside your folder.** To change a shipped subcomponent, **fork
   it into your folder**, keeping its write behaviour exactly (same handlers, same patch
   shapes). A missing slot or prop you cannot work around goes in your report.
@@ -56,8 +60,8 @@ shipped version or another author's variant of the neighbouring sections.
 ## Deliver
 
 At least **<k> variants per section**, at least **<k+2>** for <the section the owner
-complained about>. Each variant: a 1–3 word `label`, a one-line `note`. Plus **1–2
-presets** (your full look). For <the complaint>, explore where it should live and how
+complained about>. Each variant: a 1–3 word `label`, a one-line `note`. Plus **1–2 presets** (your full look), carrying the
+axes they belong with (`axes: { look: "calm" }`). For <the complaint>, explore where it should live and how
 much room it gets, including disappearing when it says nothing.
 
 Keep every behaviour: autosave, keyboard, labels, screen-reader names, light **and**
@@ -66,8 +70,10 @@ borderless surface, `prefers-reduced-motion` on every spring.
 
 ## Verify
 
-Playwright lives in `<dir>`. Copy `probe.mjs` (or the shoot script) under your own
-name, with **your own profile dir** — two Chromiums cannot share one. Data: `<how to
+Playwright lives in `<dir>`, with **your own profile dir** — two Chromiums cannot
+share one: `node import.mjs profiles/<author> <bundle>` once, then
+`node shoot.mjs profiles/<author> <shots>/<author>/<name> "<recipe>" [--only …] [--dark] [--width 400]`
+shoots every surface and edge record at full height; `probe.mjs` for scroll/radius/stack. Data: `<how to
 get it>`; edge data: `<one-product / empty / read-only fixtures>`. Shots go under
 `<shots dir>/<author>/`. Look at your own shots and iterate before reporting.
 

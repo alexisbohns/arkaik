@@ -63,8 +63,8 @@ def pick(combo, section):
 
 # ── Condition evaluation ───────────────────────────────────────────────────────
 
-ATTR = re.compile(r'\[data-tw-([a-z]+)(\^?)="([^"]*)"\]')
-ROOT = re.compile(r':root(\.dark)?((?:\[data-tw-[a-z]+\^?="[^"]*"\]|:is\((?:\s*\[data-tw-[a-z]+\^?="[^"]*"\]\s*,?)+\))+)')
+ATTR = re.compile(r'\[data-tw-([a-z][a-z0-9-]*)(\^?)="([^"]*)"\]')
+ROOT = re.compile(r':root(\.dark)?((?:\[data-tw-[a-z][a-z0-9-]*\^?="[^"]*"\]|:is\((?:\s*\[data-tw-[a-z][a-z0-9-]*\^?="[^"]*"\]\s*,?)+\))+)')
 
 
 def attr_true(combo, m):
@@ -73,7 +73,7 @@ def attr_true(combo, m):
 
 
 def chain_truth(chain):
-    parts = re.findall(r'\[data-tw-[a-z]+\^?="[^"]*"\]|:is\([^)]*\)', chain)
+    parts = re.findall(r'\[data-tw-[a-z][a-z0-9-]*\^?="[^"]*"\]|:is\([^)]*\)', chain)
     out = set()
     for combo in COMBOS:
         ok = True
