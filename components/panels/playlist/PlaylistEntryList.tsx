@@ -569,7 +569,9 @@ export function PlaylistEntryList({
   const body = (
     <>
       {entries.length > 0 && (
-        <ol className="flex flex-col">
+        // `data-playlist-steps`: the node panel draws its steps from this hook
+        // (panels.css) — numbered circles on a rail — at every depth.
+        <ol data-playlist-steps className="flex flex-col">
           {entries.map((entry, index) => (
             <PlaylistEntryRow
               key={`${entry.type}-${index}`}

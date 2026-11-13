@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type CSSProperties } from "react";
+import { ChevronDownIcon, ImagePlusIcon, Maximize2Icon, XIcon } from "lucide-react";
 import type { PlatformId } from "@/lib/config/platforms";
 import { PLATFORMS } from "@/lib/config/platforms";
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/components/graph/nodes/node-styles";
@@ -8,20 +9,12 @@ import type { PlatformStatusMap } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { platformAvailabilityShape } from "@/lib/utils/product-scope";
 import { formatShotDate } from "@/lib/utils/screenshot-ops";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ImagePlus, X } from "lucide-react";
+import { ExpressiveShape } from "@/components/arkademy/ExpressiveShape";
+import { statusTone } from "@/components/panels/species-shape";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 /** The one form the URL field records; `decideScreenshot` checks it again server-side. */
@@ -47,17 +40,19 @@ export interface PlatformVariantsProps {
    * this feature exists to close.
    *
    * Deliberately the menu and **not** `scopedPlatforms(node, scope)`: how many
-   * platform columns a surface shows is a *shape* decision, and shape decisions
+   * platform rows a surface shows is a *shape* decision, and shape decisions
    * belong to the scope — the same input the Acceptances matrix reads for its
    * status columns and the Pyramid for its rings. The per-node answer would
    * degrade to `node.platforms` whenever no product is declared, collapsing a
-   * web-only view's strip in a project that has never heard of products.
+   * web-only view's deck in a project that has never heard of products.
    * `scopedPlatforms` is for per-node *facts*, like the chips in `PlatformList`.
    */
   platforms: PlatformId[];
-  /** Tab opened on mount (e.g. the platform of the clicked Delivery item). */
+  /** Platform opened on mount (e.g. the platform of the clicked Delivery item). */
   initialPlatform?: PlatformId;
+  /** Absent on a read-only surface: the status then reads, it does not offer a choice. */
   onStatusChange?: (platform: PlatformId, value: StatusId | undefined) => void;
+  /** Absent on a read-only surface: a note then reads as text, and no empty box is drawn. */
   onNotesChange?: (platform: PlatformId, value: string) => void;
   /**
    * Record a shot: the drop zone sends `form: "data"`, the URL field `form: "url"`.
@@ -80,19 +75,30 @@ export interface PlatformVariantsProps {
 }
 
 /**
- * The per-platform editor — one tab strip over status, notes, and a screenshot.
+ * The per-platform editor — a **status deck**: one tile per platform, every
+ * platform's status in reach at once, one tile open for its screenshot and
+ * notes.
  *
- * **The arity rule decides whether there is a strip at all**, read off
+ * It replaced a tab strip over a single status select, which answered "is iOS
+ * done?" only after a click. The deck answers it for every platform in one
+ * look and keeps the heavy part (a screenshot, a note) to the one platform
+ * being worked on. The open tile is a soft neutral step, not a species tint:
+ * it marks where you are, it is not something to notice.
+ *
+ * **The arity rule decides whether there is a deck at all**, read off
  * `platformAvailabilityShape` so this cannot drift from the Pyramid's rings or
  * the Acceptances matrix's status columns: two or more platforms in the scope's
- * menu get tabs, one or zero get a single unlabelled status and no platform
- * chrome — the same collapse, now on a third surface.
+ * menu get a tile each, one or zero get a single unlabelled status and no
+ * platform chrome — the same collapse, on a third surface.
+ *
+ * **It opens on the platform you came for**: `initialPlatform` when the surface
+ * says so, otherwise the first platform holding a screenshot, so a view never
+ * lands on an empty drop zone while its other platforms have shots.
  *
  * **Per-platform notes, statuses, and screenshots for a platform outside the
- * menu are neither rendered nor deleted.** They sit untouched in
- * `metadata`, and every handler here patches by spreading the stored map, so a
- * node edited under a web-only scope round-trips its iOS note intact. Nothing
- * is lost; it is simply not shown.
+ * menu are neither rendered nor deleted.** They sit untouched in `metadata`,
+ * and every handler patches by spreading the stored map, so a node edited under
+ * a web-only scope round-trips its iOS note intact.
  */
 export function PlatformVariants({
   statuses = {},
@@ -109,262 +115,279 @@ export function PlatformVariants({
   busy = false,
   onZoomShot,
 }: PlatformVariantsProps) {
-  const showTabs = platformAvailabilityShape(platforms) === "rings";
-  // At arity 0 there is no platform to bind an editor to — editing and
-  // validation at arity 0 are P3 (§ Decision 3) — so the fields fall back to
-  // the first configured platform rather than disappearing and stranding
-  // whatever notes or screenshot the node already carries. Arity 0 and 1 still
-  // render identically, because neither draws a tab or a platform name.
-  const [selectedTab, setActiveTab] = useState<PlatformId>(() => {
+  const multi = platformAvailabilityShape(platforms) === "rings";
+  const [selected, setSelected] = useState<PlatformId>(() => {
     if (initialPlatform && platforms.includes(initialPlatform)) return initialPlatform;
-    return platforms[0] ?? PLATFORMS[0].id;
+    return platforms.find((platform) => screenshots[platform]) ?? platforms[0] ?? PLATFORMS[0].id;
   });
-  // Derived rather than synced by an effect: the scope can change under a mounted
-  // panel, and a selection left pointing at a platform that just left the menu
-  // would edit a field nothing renders. Falling back in render means there is no
-  // frame where the two disagree.
-  const activeTab = platforms.includes(selectedTab) ? selectedTab : platforms[0] ?? PLATFORMS[0].id;
+  // Derived rather than synced by an effect: the scope can change under a
+  // mounted panel, and a selection left pointing at a platform that just left
+  // the menu would edit a field nothing renders.
+  const active = platforms.includes(selected) ? selected : platforms[0] ?? PLATFORMS[0].id;
   const [dragOver, setDragOver] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Per-mount, not `platform-notes-${activeTab}` as before: the panel stack keeps
-  // hidden panels mounted, so two of these editors can share a document and a
-  // hand-written id would point both labels at whichever textarea mounted first.
+  // Per-mount: the panel stack keeps hidden panels mounted, so two of these
+  // editors can share a document and a hand-written id would collide.
   const fieldId = useId();
-  const currentStatus = statuses[activeTab];
-  const currentNotes = notes[activeTab] ?? "";
-  const currentScreenshot = screenshots[activeTab];
-  const currentMeta = screenshotMeta?.[activeTab];
-  const currentStale = stale?.[activeTab] === true;
   const urlDraftValid = HTTPS_URL.test(urlDraft.trim());
-  // Guarded: `ts` crosses a surface boundary and a malformed one renders
-  // "Invalid Date" unless checked.
-  const shotDate = currentMeta?.ts ? formatShotDate(currentMeta.ts) : undefined;
+  const shown = PLATFORMS.filter((platform) => platforms.includes(platform.id)).map((platform) => platform.id);
+
   // No platform name at arity ≤ 1: the scope selector already says "Admin — Web
-  // only", so repeating it on every label is chrome that earns nothing — and
-  // dropping it is what makes arity 0 and arity 1 literally identical.
-  const platformSuffix = showTabs ? ` for ${PLATFORM_LABELS[activeTab]}` : "";
+  // only", so repeating it on every label is chrome that earns nothing.
+  const suffix = (platform: PlatformId) => (multi ? ` for ${PLATFORM_LABELS[platform]}` : "");
 
   async function handleFile(file: File) {
-    // A file dialog opened before an op started and confirmed during it
-    // would otherwise fire a second op.
+    // A file dialog opened before an op started and confirmed during it would
+    // otherwise fire a second op.
     if (busy) return;
     if (!file.type.startsWith("image/")) return;
     if (file.size > MAX_FILE_SIZE) return;
     const dataUrl = await readFileAsDataUrl(file);
-    onRecordScreenshot?.(activeTab, "data", dataUrl);
+    onRecordScreenshot?.(active, "data", dataUrl);
   }
 
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-    if (busy) return;
-    const file = e.dataTransfer.files[0];
-    if (file) void handleFile(file);
+  function statusSelect(platform: PlatformId, compact: boolean) {
+    const current = statuses[platform];
+    return (
+      <Select
+        value={current ?? ""}
+        disabled={busy || !onStatusChange}
+        onValueChange={(value) => onStatusChange?.(platform, value === "unset" ? undefined : (value as StatusId))}
+      >
+        <SelectTrigger
+          id={`${fieldId}-${platform}-status`}
+          aria-label={`Status${suffix(platform)}`}
+          data-np-status
+          data-compact={compact || undefined}
+          data-empty={!current || undefined}
+          style={{ "--np-status-tone": statusTone(current) } as CSSProperties}
+          className="w-auto"
+        >
+          <SelectValue placeholder="No status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="unset">
+            <span className="text-muted-foreground">No status</span>
+          </SelectItem>
+          <StatusSelectItems />
+        </SelectContent>
+      </Select>
+    );
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) void handleFile(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function caption(platform: PlatformId) {
+    const meta = screenshotMeta?.[platform];
+    // Guarded: `ts` crosses a surface boundary and a malformed one renders
+    // "Invalid Date" unless checked.
+    const date = meta?.ts ? formatShotDate(meta.ts) : undefined;
+    const source = meta?.source === "ci" ? "From CI" : meta?.source === "manual" ? "Recorded by hand" : "Legacy shot";
+    return (
+      <span className="np-pv-caption" data-stale={stale?.[platform] === true || undefined}>
+        {source}
+        {date ? ` · ${date}` : ""}
+        {stale?.[platform] === true ? " · may be stale" : ""}
+      </span>
+    );
   }
 
-  const fields = (
-    <>
-      <Field label="Status" htmlFor={`${fieldId}-status`}>
-        <Select
-          value={currentStatus ?? ""}
-          disabled={busy}
-          onValueChange={(value) => {
-            if (value === "unset") {
-              onStatusChange?.(activeTab, undefined);
-            } else {
-              onStatusChange?.(activeTab, value as StatusId);
+  function screenshot(platform: PlatformId) {
+    const shot = screenshots[platform];
+    return shot ? (
+      <figure className="np-pv-shot" data-size="compact">
+        {/* The zoom is a real button when the surface can zoom; otherwise a plain image. */}
+        {onZoomShot ? (
+          <button
+            type="button"
+            className="np-pv-shot-frame"
+            onClick={() => onZoomShot(platform)}
+            aria-label={`Open the screenshot${suffix(platform)} larger`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={shot} alt={`Screenshot${suffix(platform)}`} />
+            <span className="np-pv-zoom" aria-hidden="true">
+              <Maximize2Icon className="size-4" />
+            </span>
+          </button>
+        ) : (
+          <span className="np-pv-shot-frame">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={shot} alt={`Screenshot${suffix(platform)}`} />
+          </span>
+        )}
+        {onRemoveScreenshot && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="np-pv-remove"
+            aria-label="Remove screenshot"
+            disabled={busy}
+            onClick={() => onRemoveScreenshot(platform)}
+          >
+            <XIcon className="size-4" />
+          </Button>
+        )}
+        <figcaption>{caption(platform)}</figcaption>
+      </figure>
+    ) : !onRecordScreenshot ? (
+      <p className="np-pv-noshot">No screenshot</p>
+    ) : (
+      <div className="np-pv-record" data-size="compact">
+        <div
+          role="button"
+          tabIndex={busy ? -1 : 0}
+          aria-disabled={busy || undefined}
+          aria-label={`Upload a screenshot${suffix(platform)}`}
+          data-drag={dragOver || undefined}
+          className="np-pv-drop"
+          onClick={() => {
+            if (!busy) fileInputRef.current?.click();
+          }}
+          onKeyDown={(event) => {
+            if (busy) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              fileInputRef.current?.click();
             }
           }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!busy) setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragOver(false);
+            if (busy) return;
+            const file = event.dataTransfer.files[0];
+            if (file) void handleFile(file);
+          }}
         >
-          {/* The `aria-label` stays even though the field now has a real label,
-              and deliberately outranks it: every tab shows a control called
-              "Status", and only the suffix says which platform this one edits. */}
-          <SelectTrigger id={`${fieldId}-status`} aria-label={`Status${platformSuffix}`}>
-            <SelectValue placeholder="No status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="unset">
-              <span className="text-muted-foreground">No status</span>
-            </SelectItem>
-            <StatusSelectItems />
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="Notes" htmlFor={`${fieldId}-notes`}>
-        <Textarea
-          id={`${fieldId}-notes`}
-          value={currentNotes}
-          onChange={(e) => onNotesChange?.(activeTab, e.target.value)}
-          placeholder={showTabs ? `Notes for ${PLATFORM_LABELS[activeTab]}…` : "Notes…"}
-          rows={3}
-          disabled={busy}
-          className="leading-relaxed resize-none"
-        />
-      </Field>
-      {/* No `htmlFor`: the control is a drop zone (or the image that replaced
-          it), and the only element that could take an id is the hidden file
-          input nobody can reach. An honest <span> rather than a label pointing
-          at something invisible. */}
-      <Field label="Screenshot">
-        {currentScreenshot ? (
-          <div className="relative group">
-            <img
-              src={currentScreenshot}
-              alt={`Screenshot${platformSuffix}`}
-              className={`max-h-40 w-full object-contain rounded-md border border-border ${onZoomShot ? "cursor-zoom-in" : ""}`}
-              onClick={onZoomShot ? () => onZoomShot(activeTab) : undefined}
-            />
-            {onRemoveScreenshot && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1 size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity bg-background/80 cursor-pointer"
-                aria-label="Remove screenshot"
-                disabled={busy}
-                onClick={() => onRemoveScreenshot(activeTab)}
-              >
-                <X className="size-3.5" />
-              </Button>
-            )}
-            {/* Always captioned while a shot is up: a slot with no provenance is
-                a legacy one written before the op existed, and saying so is the
-                caption's job. */}
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              {currentMeta?.source === "ci"
-                ? "From CI"
-                : currentMeta?.source === "manual"
-                  ? "Recorded by hand"
-                  : "Legacy shot"}
-              {shotDate ? ` · ${shotDate}` : ""}
-              {currentStale ? " · may be stale" : ""}
-            </p>
-          </div>
-        ) : !onRecordScreenshot ? (
-          // Read-only: no way to record, so say there is nothing rather than
-          // offer a drop zone and a URL field that would drop what they get.
-          <p className="text-xs text-muted-foreground">No screenshot</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <div
-              role="button"
-              tabIndex={busy ? -1 : 0}
-              aria-disabled={busy || undefined}
-              onClick={() => {
-                if (!busy) fileInputRef.current?.click();
-              }}
-              onKeyDown={(e) => {
-                if (busy) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (!busy) setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              className={`flex flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-4 text-xs text-muted-foreground transition-colors ${
-                busy ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              } ${
-                dragOver
-                  ? "border-foreground bg-muted"
-                  : "border-border hover:border-muted-foreground"
-              }`}
-            >
-              <ImagePlus className="size-5" />
-              <span>Drop an image or click to upload</span>
-              <span className="text-[10px]">Max 2 MB</span>
-            </div>
-            <form
-              className="flex items-center gap-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const value = urlDraft.trim();
-                if (!HTTPS_URL.test(value)) return;
-                onRecordScreenshot(activeTab, "url", value);
-                setUrlDraft("");
-              }}
-            >
-              <Input
-                id={`${fieldId}-shot-url`}
-                aria-label={`Screenshot URL${platformSuffix}`}
-                value={urlDraft}
-                onChange={(e) => setUrlDraft(e.target.value)}
-                placeholder="https://…/screenshot.png"
-                className="h-8 text-xs"
-                disabled={busy}
-              />
-              <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                title="https:// URLs only"
-                disabled={busy || !urlDraftValid}
-              >
-                Record
-              </Button>
-            </form>
-          </div>
-        )}
-        {onRecordScreenshot && (
+          <span className="np-pv-drop-badge" aria-hidden="true">
+            <ExpressiveShape shape="cookie12" className="np-pv-drop-shape" />
+            <ImagePlusIcon className="np-pv-drop-icon" />
+          </span>
+          <span className="np-pv-drop-text">
+            <span className="np-pv-drop-title">Drop a screenshot</span>
+            <span className="np-pv-drop-sub">or click to upload · 2 MB max</span>
+          </span>
+        </div>
+        <form
+          className="np-pv-url"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const value = urlDraft.trim();
+            if (!HTTPS_URL.test(value)) return;
+            onRecordScreenshot(platform, "url", value);
+            setUrlDraft("");
+          }}
+        >
           <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileInput}
+            id={`${fieldId}-${platform}-shot-url`}
+            aria-label={`Screenshot URL${suffix(platform)}`}
+            value={urlDraft}
+            onChange={(event) => setUrlDraft(event.target.value)}
+            placeholder="or paste https://…/screenshot.png"
+            disabled={busy}
           />
-        )}
-      </Field>
-    </>
-  );
-
-  if (!showTabs) {
-    return <div className="flex flex-col gap-3">{fields}</div>;
+          <button type="submit" title="https:// URLs only" disabled={busy || !urlDraftValid}>
+            Record
+          </button>
+        </form>
+      </div>
+    );
   }
 
-  return (
-    // Radix rather than the `role="tablist"` div this replaces: the roles were
-    // there, the WAI-ARIA keyboard contract behind them was not (audit
-    // `shadcn-2`). `underline` is the strip's existing look, promoted into the
-    // primitive so the two panel strips share one.
-    <Tabs
-      variant="underline"
-      value={activeTab}
-      onValueChange={(value) => setActiveTab(value as PlatformId)}
-      className="gap-3"
-    >
-      <TabsList>
-        {/* PLATFORMS drives the order (web, iOS, Android); the effective set is
-            a membership test, so the strip never reorders itself when the
-            scope changes. */}
-        {PLATFORMS.filter((p) => platforms.includes(p.id)).map((p) => {
-          const PlatformIcon = PLATFORM_ICONS[p.id];
+  function notesField(platform: PlatformId) {
+    // Read-only: a note is a fact worth showing; an empty box is a dead control.
+    if (!onNotesChange) {
+      const note = (notes[platform] ?? "").trim();
+      return note ? <p className="np-pv-notes-read">{note}</p> : null;
+    }
+    return (
+      <div className="np-pv-notes">
+        <label htmlFor={`${fieldId}-${platform}-notes`} className="sr-only">
+          Notes{suffix(platform)}
+        </label>
+        <Textarea
+          id={`${fieldId}-${platform}-notes`}
+          value={notes[platform] ?? ""}
+          onChange={(event) => onNotesChange(platform, event.target.value)}
+          placeholder={multi ? `Notes for ${PLATFORM_LABELS[platform]}…` : "Notes…"}
+          rows={2}
+          disabled={busy}
+        />
+      </div>
+    );
+  }
 
+  const fileInput = onRecordScreenshot && (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) void handleFile(file);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }}
+    />
+  );
+
+  return (
+    <div className="np-deck" data-single={!multi || undefined}>
+      {multi ? (
+        shown.map((platform) => {
+          const Icon = PLATFORM_ICONS[platform];
+          const open = platform === active;
+          const shot = screenshots[platform];
+          const note = (notes[platform] ?? "").trim();
           return (
-            <TabsTrigger key={p.id} value={p.id}>
-              <PlatformIcon className="size-3.5" />
-              {PLATFORM_LABELS[p.id]}
-            </TabsTrigger>
+            <div key={platform} className="np-deck-tile" data-open={open || undefined}>
+              <div className="np-deck-row">
+                <button
+                  type="button"
+                  className="np-deck-toggle"
+                  aria-expanded={open}
+                  aria-controls={`${fieldId}-${platform}-body`}
+                  onClick={() => setSelected(platform)}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="np-deck-name">{PLATFORM_LABELS[platform]}</span>
+                  {/* What a shut tile holds, so a reader knows which one to open. */}
+                  {!open && (shot || note) && (
+                    <span className="np-deck-peek">
+                      {[shot && "Screenshot", note && "Notes"].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                  <ChevronDownIcon className="np-deck-chevron size-4 shrink-0" aria-hidden="true" />
+                </button>
+                {statusSelect(platform, true)}
+              </div>
+              {open && (
+                <div id={`${fieldId}-${platform}-body`} className="np-deck-body">
+                  {screenshot(platform)}
+                  {notesField(platform)}
+                </div>
+              )}
+            </div>
           );
-        })}
-      </TabsList>
-      {/* One panel, always the selected one, rather than a `TabsContent` per
-          platform: every tab edits the same three controls against `activeTab`,
-          so a panel each would be three copies of identical markup — and
-          switching tabs would remount the fields instead of re-pointing them. */}
-      <TabsContent value={activeTab} className="flex flex-col gap-3">
-        {fields}
-      </TabsContent>
-    </Tabs>
+        })
+      ) : (
+        <div className="np-deck-tile" data-open>
+          <div className="np-deck-row">
+            <span className="np-deck-name">Status</span>
+            {statusSelect(active, false)}
+          </div>
+          <div className="np-deck-body">
+            {screenshot(active)}
+            {notesField(active)}
+          </div>
+        </div>
+      )}
+      {fileInput}
+    </div>
   );
 }

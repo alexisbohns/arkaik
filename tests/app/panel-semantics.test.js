@@ -312,10 +312,17 @@ assert(
   "PanelStack builds no menu — the frame owns the close button, not the record's actions",
 );
 
+// The record's actions are no longer a menu (the header lays them out as one
+// connected group), so the claim is pinned on what they are — Duplicate,
+// Split, Delete — and on who builds them: the node panel, never the frame.
 const nodePanelSource = fs.readFileSync(path.join(PANELS_DIR, "NodeDetailPanel.tsx"), "utf8");
 assert(
-  /DropdownMenu/.test(nodePanelSource),
-  "the node panel builds the header menu — the record's actions are the record's",
+  /onDuplicate/.test(nodePanelSource) && /onSplit/.test(nodePanelSource) && /onDelete/.test(nodePanelSource),
+  "the node panel builds the header's actions — the record's actions are the record's",
+);
+assert(
+  !/onDuplicate|onSplit/.test(stackSource),
+  "PanelStack offers no record action — Duplicate and Split are the node panel's",
 );
 
 // --- 5: History opens shut --------------------------------------------------

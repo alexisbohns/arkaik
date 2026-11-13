@@ -262,63 +262,68 @@ export function RelationsGroup({
           rest of it reads. It is also the one line here that is not an edge —
           `metadata.blocked_by`, which is why it takes `onUpdate` and not
           `relations`. */}
-      {hasBlockedBy && (
-        <BlockedByField
-          node={node}
-          onUpdate={onUpdate}
-          metadataRef={metadataRef}
-          allNodes={allNodes}
-          onNavigate={onNavigate}
-        />
-      )}
-      {hasCovers && allNodes && allEdges && (
-        <CoversSection
-          node={node}
-          nodesById={nodesById}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          hasProducts={scope.productsById.size > 0}
-          onNavigate={onNavigate}
-          intake={intake}
-        />
-      )}
-      {hasAcceptances && allNodes && allEdges && (
-        <AcceptancesSection
-          node={node}
-          nodesById={nodesById}
-          scope={scope}
-          allNodes={allNodes}
-          allEdges={allEdges}
-          onNavigate={onNavigate}
-          onCreate={onCreateAcceptanceForAnchor}
-          intake={intake}
-        />
-      )}
-      {hasInvocation && allNodes && onNavigate && (
-        <InvocationSection node={node} allNodes={allNodes} onNavigate={onNavigate} />
-      )}
-      {/* In `relationLinesFor`'s order, which is `RELATION_LINE_ORDER`'s —
-          cross-layer first, then the decision links. One component per line,
-          keyed on the line id rather than the index so a line that drops out on
-          a read-only surface does not hand its state to its neighbour. */}
-      {allNodes &&
-        allEdges &&
-        resolvedEdgeLines.map((line) => (
-          <EdgeRelationLine
-            key={line.id}
+      {/* One container for every line: the stylesheet draws filled lines as
+          tiles and folds empty ones into a row of "+ Blocked by" chips at the
+          end (panels.css), keyed on this hook rather than on the markup's shape. */}
+      <div data-relation-lines className="flex flex-col gap-4">
+        {hasBlockedBy && (
+          <BlockedByField
             node={node}
-            line={line}
+            onUpdate={onUpdate}
+            metadataRef={metadataRef}
+            allNodes={allNodes}
+            onNavigate={onNavigate}
+          />
+        )}
+        {hasCovers && allNodes && allEdges && (
+          <CoversSection
+            node={node}
             nodesById={nodesById}
             allNodes={allNodes}
             allEdges={allEdges}
+            hasProducts={scope.productsById.size > 0}
             onNavigate={onNavigate}
-            relations={relations}
+            intake={intake}
           />
-        ))}
-      {hasRefs && <RefsSection node={node} />}
-      {hasFindings && findings && onOpenFinding && (
-        <FindingsSection node={node} findings={findings} onOpenFinding={onOpenFinding} />
-      )}
+        )}
+        {hasAcceptances && allNodes && allEdges && (
+          <AcceptancesSection
+            node={node}
+            nodesById={nodesById}
+            scope={scope}
+            allNodes={allNodes}
+            allEdges={allEdges}
+            onNavigate={onNavigate}
+            onCreate={onCreateAcceptanceForAnchor}
+            intake={intake}
+          />
+        )}
+        {hasInvocation && allNodes && onNavigate && (
+          <InvocationSection node={node} allNodes={allNodes} onNavigate={onNavigate} />
+        )}
+        {/* In `relationLinesFor`'s order, which is `RELATION_LINE_ORDER`'s —
+            cross-layer first, then the decision links. One component per line,
+            keyed on the line id rather than the index so a line that drops out on
+            a read-only surface does not hand its state to its neighbour. */}
+        {allNodes &&
+          allEdges &&
+          resolvedEdgeLines.map((line) => (
+            <EdgeRelationLine
+              key={line.id}
+              node={node}
+              line={line}
+              nodesById={nodesById}
+              allNodes={allNodes}
+              allEdges={allEdges}
+              onNavigate={onNavigate}
+              relations={relations}
+            />
+          ))}
+        {hasRefs && <RefsSection node={node} />}
+        {hasFindings && findings && onOpenFinding && (
+          <FindingsSection node={node} findings={findings} onOpenFinding={onOpenFinding} />
+        )}
+      </div>
     </PanelGroup>
   );
 }

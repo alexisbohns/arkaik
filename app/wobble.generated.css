@@ -118,6 +118,7 @@ svg.lucide.no-wobble { filter: none; }
 .lucide-log-out { filter: url(#wob-log-out); }
 .lucide-map { filter: url(#wob-map); }
 .lucide-map-pinned { filter: url(#wob-map-pinned); }
+.lucide-maximize2 { filter: url(#wob-maximize2); }
 .lucide-message-square-text { filter: url(#wob-message-square-text); }
 .lucide-milestone { filter: url(#wob-milestone); }
 .lucide-minus { filter: url(#wob-minus); }

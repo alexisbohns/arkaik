@@ -121,6 +121,7 @@ export const WOBBLE_ICONS: WobbleIcon[] = [
   { name: "log-out", seed: 12 },
   { name: "map", seed: 1 },
   { name: "map-pinned", seed: 18 },
+  { name: "maximize2", seed: 15 },
   { name: "message-square-text", seed: 8 },
   { name: "milestone", seed: 13 },
   { name: "minus", seed: 3 },

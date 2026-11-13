@@ -2,6 +2,7 @@
 @import "./wobble.generated.css";
 @import "./m3/basalt.css";
 @import "./m3/controls.css";
+@import "./m3/panels.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

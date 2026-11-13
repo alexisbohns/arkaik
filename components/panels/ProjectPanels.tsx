@@ -332,6 +332,12 @@ export function ProjectPanels({
           return node ? (
             <NodeDetailPanelHeader
               node={node}
+              // What the header's product chip needs: the scope's menu, the
+              // save path, and the graph an acceptance's product derives from.
+              scope={scope}
+              onUpdate={onUpdate}
+              allNodes={allNodes}
+              allEdges={allEdges}
               // Opens the dialog; it does not write. Gated on `onUpdate` — the
             // same say the surface has over every other edit in the panel.
             onDuplicate={onUpdate ? () => setDuplicateTarget(node) : undefined}
