@@ -1,13 +1,14 @@
 /**
- * Loads lib/utils/decision-log.ts (the Decision Log model) into a plain Node
+ * Loads lib/utils/decision-log.ts (the Decision Log model) and
+ * lib/utils/decision-panel.ts (the decision panel's model) into a plain Node
  * process, following the tests/app/load-*.js idiom: transpile each module to
  * CommonJS, rewrite its `@/` imports to the sibling builds, and point
  * `@arkaik/schema` at the schema package's own test build.
  *
- * The model's value imports are `lib/utils/decision.ts` (decisionStatusOf) and
- * `lib/config/decision-statuses.ts` (the vocabulary); everything else it
- * imports is type-only and elided. A new `@/` value import in any of these
- * three files must be added to ALIASES below, or it fails to resolve here.
+ * Their value imports are `lib/utils/decision.ts` (decisionStatusOf),
+ * `lib/config/decision-statuses.ts` (the vocabulary) and each other;
+ * everything else is type-only and elided. A new `@/` value import in any of
+ * these files must be added to ALIASES below, or loading throws naming it.
  */
 
 const fs = require("fs");
@@ -20,10 +21,12 @@ const BUILD_DIR = path.join(__dirname, ".test-build-decision-log");
 
 const MODULES = [
   ["lib/utils/decision-log.ts", "decision-log"],
+  ["lib/utils/decision-panel.ts", "decision-panel"],
   ["lib/utils/decision.ts", "decision"],
   ["lib/config/decision-statuses.ts", "decision-statuses"],
 ];
 const ALIASES = {
+  "@/lib/utils/decision-log": "./decision-log.js",
   "@/lib/utils/decision": "./decision.js",
   "@/lib/config/decision-statuses": "./decision-statuses.js",
 };
@@ -50,7 +53,10 @@ function loadDecisionLog() {
     fs.writeFileSync(path.join(BUILD_DIR, `${outName}.js`), rewritten);
     delete require.cache[path.join(BUILD_DIR, `${outName}.js`)];
   }
-  return require(path.join(BUILD_DIR, "decision-log.js"));
+  return {
+    ...require(path.join(BUILD_DIR, "decision-log.js")),
+    ...require(path.join(BUILD_DIR, "decision-panel.js")),
+  };
 }
 
 module.exports = { loadDecisionLog, BUILD_DIR };
