@@ -68,7 +68,6 @@ export function AuthButton() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full"
           aria-label={`Account menu for ${label}`}
         >
           {initials(user) ? (

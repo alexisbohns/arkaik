@@ -751,7 +751,7 @@ export function ScreensMap({ projectId, definition }: ScreensMapProps) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 cursor-pointer rounded-full px-2 text-xs"
+                    className="h-6 cursor-pointer px-2 text-xs"
                     onClick={() => void reloadJournal()}
                   >
                     Retry
