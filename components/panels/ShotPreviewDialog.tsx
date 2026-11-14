@@ -223,7 +223,7 @@ export function ShotPreviewDialog({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute left-2 top-1/2 -translate-y-1/2 size-8 rounded-full bg-background/80 backdrop-blur-sm cursor-pointer"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 size-8 bg-background/80 backdrop-blur-sm cursor-pointer"
                   onClick={goToPrev}
                   aria-label="Previous platform"
                 >
@@ -232,7 +232,7 @@ export function ShotPreviewDialog({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 size-8 rounded-full bg-background/80 backdrop-blur-sm cursor-pointer"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 size-8 bg-background/80 backdrop-blur-sm cursor-pointer"
                   onClick={goToNext}
                   aria-label="Next platform"
                 >

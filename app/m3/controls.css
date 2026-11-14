@@ -149,7 +149,7 @@
   [data-slot="select-trigger"],
   .m3-icon-trigger,
   [data-slot="segmented-control"] > button,
-  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
+  [data-variant][data-size],
   [data-slot="select-item"],
   [data-slot^="dropdown-menu-"][role^="menuitem"]
 ):focus-visible {
@@ -164,9 +164,15 @@
 
 /* ── Pills: the select trigger and every button in a bar ───────────────────── */
 
-/* A press tightens the pill (M3 Expressive: shape morph on press). */
-[data-slot="select-trigger"]:not(.m3-icon-trigger):active {
+/* Under the pointer the pill tightens into a rounded square, and tighter
+   still on press (M3 Expressive: shape morph). Every pill in the app — a
+   Button (components/ui/button.tsx), a select, a bar's button, the panel
+   header's `#` — speaks this one grammar. */
+[data-slot="select-trigger"]:not(.m3-icon-trigger):hover {
   border-radius: var(--md-shape-md);
+}
+[data-slot="select-trigger"]:not(.m3-icon-trigger):active {
+  border-radius: var(--md-shape-sm);
 }
 
 :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size] {
@@ -195,8 +201,11 @@
   background: var(--m3-hover);
   color: var(--md-on-surface);
 }
-:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:active {
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:is(:hover, [aria-expanded="true"]) {
   border-radius: var(--md-shape-md);
+}
+:is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size]:active {
+  border-radius: var(--md-shape-sm);
 }
 
 /* A toggle that is on settles into a squircle on the tonal "on" fill. */
@@ -424,7 +433,7 @@
   }
 
   [data-slot="select-trigger"],
-  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
+  [data-variant][data-size],
   [data-slot="segmented-control"] > button {
     transition:
       border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
@@ -465,7 +474,7 @@
   [data-slot="select-trigger"],
   .m3-icon-trigger,
   [data-slot="segmented-control"] > button,
-  :is([data-slot="toolbar"], [role="toolbar"]) [data-variant][data-size],
+  [data-variant][data-size]:not([data-variant="link"]),
   :is([data-slot="toolbar"], [role="toolbar"], .m3-float) [data-slot="search-input"] input {
     border: 1px solid ButtonText;
   }

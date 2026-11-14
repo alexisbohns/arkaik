@@ -60,14 +60,16 @@ export function SectionCreateMenu({
   const label = TARGET_LABEL[target];
 
   return (
-    <div className="flex items-center">
-      {/* Both halves raise themselves while focused. The focus ring is painted
-          3px OUTSIDE the element, and the chevron — a later sibling with an
-          opaque background — would otherwise paint over the primary button's
-          ring along the seam where the two meet. */}
+    <div className="flex items-center gap-0.5">
+      {/* An M3 Expressive split button: two shapes 2px apart, pill ends
+          outside and a tight joint between them. Each half tightens into a
+          rounded square under the pointer (the Button's own morph), and the
+          chevron rounds up into a circle while its menu is out.
+          Both halves raise themselves while focused: the ring is painted 3px
+          OUTSIDE the element and the neighbour would paint over it. */}
       <Button
         size="sm"
-        className="cursor-pointer rounded-r-none focus-visible:relative focus-visible:z-10"
+        className="cursor-pointer rounded-r-(--mx-joint) focus-visible:relative focus-visible:z-10"
         disabled={disabled}
         onClick={onCreate}
       >
@@ -77,7 +79,7 @@ export function SectionCreateMenu({
         <DropdownMenuTrigger asChild>
           <Button
             size="sm"
-            className="cursor-pointer rounded-l-none border-l border-primary-foreground/20 px-2 focus-visible:relative focus-visible:z-10"
+            className="w-9 cursor-pointer rounded-l-(--mx-joint) px-0 focus-visible:relative focus-visible:z-10 aria-expanded:rounded-[1rem] [&_svg]:transition-transform aria-expanded:[&_svg]:rotate-180"
             disabled={disabled}
             aria-label={`${primaryLabel}: more ways to add a ${label} project`}
           >
