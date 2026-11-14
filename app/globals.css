@@ -5,6 +5,7 @@
 @import "./m3/panels.css";
 @import "./m3/quality.css";
 @import "./m3/quality-panels.css";
+@import "./m3/decisions.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

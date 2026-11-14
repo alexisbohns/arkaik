@@ -11,14 +11,19 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useJournal } from "@/lib/hooks/useJournal";
 import { useEffectiveProduct } from "@/lib/hooks/useProductScope";
+import { useDisplayPreferences } from "@/lib/hooks/useDisplayPreferences";
 import { DecisionFilterBar, type DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
 import { DecisionLog } from "@/components/decisions/DecisionLog";
+import { DecisionsHero } from "@/components/decisions/DecisionsHero";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { generateNodeId } from "@/lib/utils/id";
-import { decisionStatusCounts, withDecisionStatus } from "@/lib/utils/decision";
+import { withDecisionStatus } from "@/lib/utils/decision";
+import { buildDecisionLog } from "@/lib/utils/decision-log";
+import { dynaPuff } from "@/lib/font-display";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,7 +31,7 @@ import { lifecycleStatusForDecision } from "@arkaik/schema";
 
 /**
  * Only `node.created`: the log reads it for each decision's "recorded on" date
- * (`DecisionLog`'s `createdTs`) and nothing else from the journal.
+ * (the log model's `createdTsFrom`) and nothing else from the journal.
  */
 const DECISION_EVENT_TYPES = ["node.created"] as const;
 
@@ -52,13 +57,27 @@ export default function ProjectDecisionsPage() {
   // reason the record exists, so the fold is for scanning back through a long
   // log rather than the state you arrive in.
   const [detailed, setDetailed] = useState(true);
+  // Quarter or status: remembered per project, like the Delivery board's card
+  // display — a way this reader likes to read the log, not a filter.
+  const [{ decisionGrouping }, setDisplay] = useDisplayPreferences(id);
 
   const decisions = useMemo(
     () => dataNodes.filter((node) => node.species === "decision"),
     [dataNodes],
   );
-  const statusCounts = useMemo(() => decisionStatusCounts(decisions), [decisions]);
   const nodesById = useMemo(() => new Map(dataNodes.map((n) => [n.id, n])), [dataNodes]);
+
+  // The hero and the toolbar read the page-level facts (counts, open calls,
+  // latest, chains) from the same model the log renders.
+  const log = buildDecisionLog({
+    decisions,
+    allEdges: dataEdges,
+    allNodes: dataNodes,
+    journal,
+    statusFilter,
+    search,
+    detailed,
+  });
 
   function handleSelectNode(node: DataNode) {
     openNode({ nodeId: node.id });
@@ -131,20 +150,29 @@ export default function ProjectDecisionsPage() {
         }}
       >
         <PageSurface
-          contentClassName="flex flex-col gap-4"
+          // `--font-display` for the Expressive jumbo figures (app/m3/decisions.css).
+          contentClassName={cn("flex flex-col gap-4", dynaPuff.variable)}
           toolbar={
             <DecisionFilterBar
               search={search}
               onSearchChange={setSearch}
               status={statusFilter}
               onStatusChange={setStatusFilter}
-              total={decisions.length}
-              counts={statusCounts}
+              total={log.total}
+              counts={log.counts}
               detailed={detailed}
               onDetailedChange={setDetailed}
+              grouping={decisionGrouping}
+              onGroupingChange={(grouping) => setDisplay({ decisionGrouping: grouping })}
             />
           }
         >
+          <DecisionsHero
+            log={log}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            onNew={() => setNewOpen(true)}
+          />
           <DecisionLog
             decisions={decisions}
             allEdges={dataEdges}
@@ -154,6 +182,7 @@ export default function ProjectDecisionsPage() {
             statusFilter={statusFilter}
             search={search}
             detailed={detailed}
+            grouping={decisionGrouping}
           />
         </PageSurface>
       </PageShell>
