@@ -10,7 +10,8 @@ import { cva, type VariantProps } from "class-variance-authority";
  * had each already been cloned: a 24px `ICON_TILE` declared in
  * `components/journal/DeliverableHoverCard.tsx` and imported by six unrelated
  * modules, copied verbatim into `FindingsBoard` as `MARK_CLASS`; and a 20px
- * bordered plate written out longhand in both `EntityBadges` and `EntityRow`.
+ * plate written out longhand in both `EntityBadges` and `EntityRow` (now the
+ * borderless `halo`).
  *
  * **A class builder, not a component.** These twelve call sites are a `<span>`,
  * a `<button>`, an `<a>`, a `DropdownMenuTrigger asChild` and a
@@ -46,8 +47,14 @@ export const iconChipVariants = cva(
          * and reads worse doing it.
          */
         plain: "bg-muted text-muted-foreground",
-        /** The bordered plate: a chip that sits *in* a row rather than leading one. */
-        outline: "border border-border bg-muted/50 text-muted-foreground",
+        /**
+         * The copy chip's: no box at rest, the glyph alone; under the pointer a
+         * circular wash of the chip's hue springs in behind it
+         * (`app/m3/marks.css`, which also draws the species seal a relations
+         * row wears on Expressive). Replaced a bordered plate — the Expressive
+         * look draws no borders around marks.
+         */
+        halo: "mark-halo",
         /** Not filled in yet — the "add one here" tiles. Caller supplies the hue. */
         dashed: "border border-dashed",
         /** Tint supplied entirely by the caller (a status colour, a species accent). */
