@@ -90,13 +90,19 @@ export function PageSurface({
   // gap below them: content scrolling up must vanish at the gap, not show
   // through it. `min-h-full` + `flex-1` stretch the content card to the bottom
   // of the cell when the content is short.
+  //
+  // `shrink-0` is what keeps the toolbar pinned. This box is a flex item of the
+  // scroller, and `min-h-full` replaces a flex item's automatic minimum (its
+  // content) with the scroller's height — so without it, the box shrank to one
+  // screen while its content overflowed it. A sticky element only sticks inside
+  // its parent: the toolbar rode away with this box after one screen of scroll.
   return (
     <div
       data-surface-segments=""
       className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       style={{ "--surface-sticky-top": TOOLBAR_STICKY_TOP } as CSSProperties}
     >
-      <div className={cn("mx-auto flex min-h-full w-full flex-col", maxWidth)}>
+      <div className={cn("mx-auto flex min-h-full w-full shrink-0 flex-col", maxWidth)}>
         <div className={cn("sticky top-0 z-10 bg-background pb-1", TOOLBAR_STACK)}>{toolbar}</div>
         <div className={cn("flex-1 p-4 md:p-6", CONTENT_SEGMENT, contentClassName)}>{children}</div>
       </div>
