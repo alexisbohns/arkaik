@@ -28,7 +28,6 @@ components/
     ProjectPanels.tsx   # Binds the stack to panel kind: node detail, or the raw bundle
   docs/                 # The /docs space's shell: article frame, markdown renderer, ⌘K search, space switcher, mobile FAB
   ui/                   # shadcn/ui primitives (do not edit directly — use CLI)
-  wobble/               # The hand-drawn icon effect (docs/icon-wobble.md)
 lib/
   config/               # Labels + display order for the ids in @arkaik/schema (§ Config / Taxonomies)
   data/                 # DataProvider interface + local, remote, seed and routing implementations

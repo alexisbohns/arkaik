@@ -4,7 +4,7 @@
  * Home page ASCII "ridged mountains" background (issue #280) — a port of
  * ComputerK's CodePen (https://codepen.io/ComputerK/pen/jENaeKp) from p5.js
  * to a hand-rolled Canvas2D loop, matching how the rest of the app's
- * continuous animation (`ArkaikLogoBoil`, the wobble system) avoids
+ * continuous animation (`ArkaikLogoBoil`) avoids
  * creative-coding/animation library dependencies.
  *
  * A grid of monospace ASCII characters is shaded by 4-octave ridged Perlin

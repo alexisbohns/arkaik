@@ -4,6 +4,13 @@ icon: sparkles
 
 # Icon Wobble
 
+> **Retired in November 2026.** arkaik no longer wobbles its icons: the
+> Expressive look outgrew the hand-drawn effect. Icons now pop under the pointer
+> on Expressive and stay still on Calm (`app/m3/icons.css`), and the generator,
+> filters and boil driver described below are gone from the codebase. This page
+> stays as the record of what shipped and as a portable recipe — the technique
+> works as written in any other codebase.
+
 A subtle hand-drawn "wobble" applied to every lucide icon: a fixed distortion at
 rest, animating ("boil") while an icon — or the interactive item containing it — is
 hovered or keyboard-focused. Shipped in issue #271 / PR #272.
