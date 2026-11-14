@@ -7,6 +7,7 @@
 @import "./m3/decisions.css";
 @import "./m3/marks.css";
 @import "./m3/icons.css";
+@import "./m3/sidebar.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));
