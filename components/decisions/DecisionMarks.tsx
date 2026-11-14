@@ -32,6 +32,11 @@ const SEAL: Record<DecisionStatusId, { shape: ExpressiveShapeName; fill: "open" 
   superseded: { shape: "clover4", fill: "tint" },
 };
 
+/** The shape a status is drawn in — its seal's, and the corner of a decision's hero. */
+export function sealShapeOf(status: DecisionStatusId): ExpressiveShapeName {
+  return (SEAL[status] ?? SEAL.proposed).shape;
+}
+
 export type SealSize = "xs" | "s" | "m" | "l" | "xl";
 
 /** A status seal. Decorative: the status is always also said in words, beside it or in the caller's sr text. */

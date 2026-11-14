@@ -19,7 +19,11 @@ import { PlatformRollupTiles } from "@/components/panels/PlatformRollupTiles";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
-import { DecisionEditor } from "@/components/panels/DecisionEditor";
+import { DecisionEditor, DecisionReasoning, DecisionVerdict, useDecisionEditor } from "@/components/panels/DecisionEditor";
+import { DecisionLineage } from "@/components/panels/DecisionLineage";
+import { Shape, StatusPill, sealShapeOf } from "@/components/decisions/DecisionMarks";
+import { decisionStatusOf, type DecisionStatusId } from "@/lib/utils/decision";
+import { committedDecisionPanel } from "@/lib/utils/decision-panel";
 import type { AcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import type { NodeRelations } from "@/lib/hooks/useNodeRelations";
 import { useJournal } from "@/lib/hooks/useJournal";
@@ -171,9 +175,16 @@ interface NodeFieldsProps {
    * panel header (`NodeDetailPanelHeader`), beside the id.
    */
   authored?: ReactNode;
+  /**
+   * A decision on the Expressive look: the hero holds the title and the
+   * verdict sentence (`DecisionVerdict`), and the description leaves it to
+   * become the decision's What — the first of What · Why · How, drawn like the
+   * other two (`DecisionReasoning`, right below this block).
+   */
+  decision?: { verdict: ReactNode; status: DecisionStatusId; readOnly: boolean };
 }
 
-function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
+function NodeFields({ node, onUpdate, authored, decision }: NodeFieldsProps) {
   const { look } = usePanelPreferences();
   const AUTOSAVE_DELAY_MS = 350;
   const [title, setTitle] = useState(node.title);
@@ -320,6 +331,39 @@ function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
     );
   }
 
+  if (decision) {
+    return (
+      <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
+        {/* The decision's hero: tinted by its status rather than its species
+            (app/m3/decisions.css), the status's seal shape in its corner, and
+            under the title where the decision stands — the one fact a reader
+            opens a decision for. */}
+        <div
+          data-np-intro="bleed"
+          data-species={node.species}
+          data-dc-intro="verdict"
+          data-dc-status={decision.status}
+          className="np-hero dc-intro"
+        >
+          <Shape name={sealShapeOf(decision.status)} className="np-hero-shape" />
+          <div className="np-hero-text dc-intro-text">
+            {titleElement}
+            <div data-dc-verdict-host="">{decision.verdict}</div>
+          </div>
+        </div>
+        <div className="dc-what" data-dc-status={decision.status} data-readonly={decision.readOnly ? "" : undefined}>
+          <div className="dc-what-head">
+            <Shape name="cookie12" className="dc-what-mark" />
+            <span className="dc-what-word">What</span>
+            <span className="dc-what-name">Description</span>
+          </div>
+          {descriptionElement}
+        </div>
+        {authored}
+      </div>
+    );
+  }
+
   return (
     <div className={cn(PANEL_GUTTER, "flex flex-col gap-5")}>
       {/* The hero: the record's title at headline scale on a species-tinted
@@ -346,6 +390,39 @@ function NodeFields({ node, onUpdate, authored }: NodeFieldsProps) {
       )}
       {authored}
     </div>
+  );
+}
+
+/**
+ * A decision's intro on the Expressive look: the hero with its verdict, the
+ * What under it, then Why and How. One component because the verdict's state
+ * (the optimistic status, the debounced date) is the editor's, and the hero
+ * that shows it is `NodeFields`' — so the editor's hook lives here, above
+ * both, and hands each its piece. The call site keys it on the node id.
+ */
+function DecisionFields({
+  node,
+  onUpdate,
+  metadataRef,
+  allNodes,
+  allEdges,
+}: {
+  node: Node;
+  onUpdate?: NodeFieldsProps["onUpdate"];
+  metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
+  allNodes?: Node[];
+  allEdges?: Edge[];
+}) {
+  const editor = useDecisionEditor({ node, onUpdate, metadataRef, allNodes, allEdges });
+  return (
+    <>
+      <NodeFields
+        node={node}
+        onUpdate={onUpdate}
+        decision={{ verdict: <DecisionVerdict editor={editor} />, status: editor.model.status, readOnly: editor.model.readOnly }}
+      />
+      <DecisionReasoning editor={editor} />
+    </>
   );
 }
 
@@ -773,8 +850,17 @@ export function NodeDetailPanelHeader({
     );
   }
 
+  // A decision says where it stands beside its id: the committed status, a
+  // read-only chip — the control is the verdict in the body.
+  const decisionStatus = node.species === "decision" ? decisionStatusOf(node) : null;
+
   return (
-    <span data-node-panel-header data-species={node.species} className="contents">
+    <span
+      data-node-panel-header
+      data-species={node.species}
+      data-dc-header={decisionStatus ? "chip" : undefined}
+      className="contents"
+    >
       <span className="np-seal" aria-hidden="true">
         <SpeciesShape species={node.species} className="np-seal-shape" />
         <SpeciesIcon className="np-seal-icon" />
@@ -788,6 +874,7 @@ export function NodeDetailPanelHeader({
       <span className="np-id">
         <CopyIdChip id={node.id} />
       </span>
+      {decisionStatus && <StatusPill status={decisionStatus} className="dc-header-mark" />}
       {showProduct && <ProductChip membership={membership} onChange={changeProduct} />}
       {actions.length > 0 && (
         // `ml-auto shrink-0`: this sits in a `min-w-0 flex-1` row next to
@@ -883,6 +970,12 @@ export function NodeDetailPanel({
   // the same question the Screens map does (`stalenessRelatedIds`). Only for a
   // view, and only with the whole graph: `acceptancesCovering` reads every
   // `covers` edge, and a surface that passes no graph keeps today's caption.
+  const { look } = usePanelPreferences();
+  // A decision on the Expressive look gets its own intro (`DecisionFields`)
+  // and the replacement line through it, from the committed record.
+  const expressiveDecision = node.species === "decision" && look !== "calm";
+  const decisionPanel = expressiveDecision ? committedDecisionPanel(node, allNodes, allEdges, !onUpdate) : null;
+
   const staleRelatedIds = useMemo(() => {
     if (node.species !== "view" || !allNodes || !allEdges) return undefined;
     const covering = acceptancesCovering(node.id, allNodes, allEdges);
@@ -906,17 +999,29 @@ export function NodeDetailPanel({
       data-species={node.species}
       className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4 py-5 lg:py-6"
     >
-      <NodeFields
-        key={node.id}
-        node={node}
-        onUpdate={onUpdate}
-        authored={
-          node.species === "acceptance" && onUpdate ? (
-            <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
-          ) : undefined
-        }
-      />
-      {node.species === "decision" && onUpdate && (
+      {expressiveDecision ? (
+        <DecisionFields
+          key={node.id}
+          node={node}
+          onUpdate={onUpdate}
+          metadataRef={metadataRef}
+          allNodes={allNodes}
+          allEdges={allEdges}
+        />
+      ) : (
+        <NodeFields
+          key={node.id}
+          node={node}
+          onUpdate={onUpdate}
+          authored={
+            node.species === "acceptance" && onUpdate ? (
+              <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
+            ) : undefined
+          }
+        />
+      )}
+      {/* Calm keeps the decision's labelled form, and only with a save path. */}
+      {node.species === "decision" && !expressiveDecision && onUpdate && (
         <DecisionEditor
           key={`decision-${node.id}`}
           node={node}
@@ -969,6 +1074,9 @@ export function NodeDetailPanel({
             allNodes={allNodes}
             allEdges={allEdges}
           />
+        )}
+        {decisionPanel && decisionPanel.lineage.length > 1 && (
+          <DecisionLineage key={`lineage-${node.id}`} model={decisionPanel} onNavigate={onNavigate} />
         )}
         <RelationsGroup
           key={`relations-${node.id}`}
