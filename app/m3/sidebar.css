@@ -273,7 +273,7 @@
 :root:not([data-panel-look="calm"]) [data-sidebar="menu-button"].ps-tile {
   background: var(--md-surface-container-low);
   height: 68px;
-  color: var(--md-on-surface);
+  color: var(--color-sidebar-foreground);
   text-align: center;
   border-radius: 22px;
   flex-direction: column;
@@ -286,7 +286,6 @@
   position: relative;
 }
 :root:not([data-panel-look="calm"]) [data-sidebar="menu-button"].ps-tile > svg {
-  opacity: .8;
   width: 22px;
   height: 22px;
 }
@@ -377,7 +376,7 @@
 :root:not([data-panel-look="calm"]) .ps-mosaic-wide > [data-sidebar="menu-button"].ps-mosaic-tile {
   background: var(--md-surface-container-low);
   height: 44px;
-  color: var(--md-on-surface);
+  color: var(--color-sidebar-foreground);
   flex-direction: row;
   justify-content: flex-start;
   align-items: center;
@@ -479,7 +478,7 @@
   font-variation-settings: "wdth" 90;
   letter-spacing: -.01em;
   font-synthesis: none;
-  color: var(--md-on-surface);
+  color: color-mix(in oklab, var(--md-on-surface-variant) 60%, var(--md-outline));
   padding-inline: 12px;
   font-size: 17px;
   font-weight: 600;
@@ -1029,17 +1028,12 @@ html:root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])
   display: none;
 }
 :root:not([data-panel-look="calm"]) [data-state="collapsed"] .ps-l-tiles > li > [data-sidebar="menu-button"][data-nav-item] > svg.lucide {
-  opacity: 1;
   width: 18px;
   height: 18px;
   margin: -1px;
 }
 :root:not([data-panel-look="calm"]) [data-state="collapsed"] .ps-l-tiles > li > [data-sidebar="menu-button"].ps-tile:not([data-species]) > svg.lucide {
   stroke: currentColor;
-  opacity: .6;
-}
-:root:not([data-panel-look="calm"]) [data-state="collapsed"] .ps-l-tiles > li > [data-sidebar="menu-button"].ps-tile:not([data-species]):is(:hover, [data-active="true"]) > svg.lucide {
-  opacity: 1;
 }
 @media (forced-colors: active) {
   :root:not([data-panel-look="calm"]) .ps-l-tiles > li > [data-sidebar="menu-button"][data-nav-item] {
@@ -1076,4 +1070,15 @@ html:root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])
 /* The Expressive dock is an icon button: no chord chip beside it. */
 :root:not([data-panel-look="calm"]) .ps-search-dock [data-ps-c-kbd] {
   display: none;
+}
+
+/* ── Glyphs rest faded ────────────────────────────────────────────────────────
+   Every nav glyph (rows, launch tiles, All nodes, the rail) rests at 45% and
+   comes up under the pointer, on keyboard focus and on the active row. The
+   species tiles keep their hued glyphs: the hue is what they say. */
+:root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])) [data-sidebar="menu-button"][data-nav-item]:not(.ps-mosaic-tile[data-species]) > svg {
+  opacity: .45;
+}
+:root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])) [data-sidebar="menu-button"][data-nav-item]:not(.ps-mosaic-tile[data-species]):is(:hover, :focus-visible, [data-active="true"]) > svg {
+  opacity: 1;
 }
