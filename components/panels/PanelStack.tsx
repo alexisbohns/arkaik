@@ -288,6 +288,9 @@ export function PanelStack<T>({
                         variant="ghost"
                         size="icon"
                         className="shrink-0 cursor-pointer"
+                        // Read by app/m3/panels.css, which tones the close
+                        // button with the header it sits on.
+                        data-panel-close
                         aria-label={`Close ${labelOf(entry)}`}
                         // The section, not the article: the button sits in the
                         // header, which is the article's sibling, so `closest` walks
