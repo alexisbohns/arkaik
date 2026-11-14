@@ -141,6 +141,7 @@ export function AcceptancesSection({ node, nodesById, allNodes, allEdges, scope,
               <div className="flex flex-col gap-1 rounded-md border p-2 transition-colors hover:bg-muted/40">
                 <EntityRow
                   node={acc}
+                  seal
                   onOpen={onNavigate && (() => onNavigate(acc))}
                   className="px-0 py-0"
                 >
@@ -162,7 +163,7 @@ export function AcceptancesSection({ node, nodesById, allNodes, allEdges, scope,
         <ul className="flex flex-col gap-0.5">
           {covering.map((acc) => (
             <li key={acc.id}>
-              <EntityRow node={acc} onOpen={onNavigate && (() => onNavigate(acc))}>
+              <EntityRow node={acc} seal onOpen={onNavigate && (() => onNavigate(acc))}>
                 {hasParityGap(acc) && (
                   <TriangleAlertIcon className="size-3.5 shrink-0 text-amber-500" aria-label="Parity gap" />
                 )}

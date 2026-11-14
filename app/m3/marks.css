@@ -1,0 +1,114 @@
+/*
+ * Marks — the small glyph chips that copy an id (`iconChipVariants` `halo`):
+ * the species chip on every cross-reference row (EntityChip) and the `#` /
+ * copy chip on playlist rows, the library table and the Decision log
+ * (CopyIdChip).
+ *
+ * - Every look, everywhere: the halo. No box at rest — the glyph alone, in a
+ *   quiet step of the chip's hue — and under the pointer or keyboard focus a
+ *   circular wash of that hue springs in behind it.
+ * - Expressive relations rows (`EntityRow seal`): the species seal, the
+ *   header's own shape at chip size, a wash of the hue at rest; it turns and
+ *   fills with the ink under the pointer, the glyph flipping to on-ink.
+ *
+ * A panel header's `#` is a header control (`app/m3/panels.css`) and wears
+ * neither. Hue: the species for an EntityChip; for a CopyIdChip, the panel's
+ * hue when it sits in one, else neutral.
+ */
+:root .mark-halo {
+  --mark-hue: var(--np-hue, var(--tone-neutral));
+  --mark-ink: color-mix(in oklab, var(--mark-hue) 80%, var(--md-on-surface));
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  color: color-mix(in oklab, var(--mark-ink) 70%, var(--md-on-surface-variant));
+}
+:root .mark-halo[data-species="view"] { --mark-hue: var(--tone-indigo); }
+:root .mark-halo[data-species="flow"] { --mark-hue: var(--tone-plum); }
+:root .mark-halo[data-species="acceptance"] { --mark-hue: var(--tone-green); }
+:root .mark-halo[data-species="data-model"] { --mark-hue: var(--tone-slate); }
+:root .mark-halo[data-species="api-endpoint"] { --mark-hue: var(--tone-ember); }
+:root .mark-halo[data-species="decision"] { --mark-hue: var(--tone-amber); }
+:root .mark-halo::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--mark-hue) 18%, transparent);
+  scale: 0.3;
+  opacity: 0;
+}
+:root .mark-halo:is(:hover, :focus-visible) {
+  color: var(--mark-ink);
+}
+:root .mark-halo:is(:hover, :focus-visible)::before {
+  scale: 1;
+  opacity: 1;
+}
+:root .mark-halo[data-copied] {
+  color: var(--tone-green);
+}
+
+/* The seal: drawn on Expressive only; Calm keeps the halo. */
+:root .mark-seal {
+  display: none;
+}
+:root:not([data-panel-look="calm"]) .mark-halo .mark-seal {
+  display: block;
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  width: calc(100% + 6px);
+  height: calc(100% + 6px);
+  color: color-mix(in oklab, var(--mark-hue) 20%, transparent);
+}
+:root:not([data-panel-look="calm"]) .mark-halo:has(> .mark-seal) {
+  color: var(--mark-ink);
+}
+:root:not([data-panel-look="calm"]) .mark-halo:has(> .mark-seal)::before {
+  display: none;
+}
+:root:not([data-panel-look="calm"]) .mark-halo:has(> .mark-seal):is(:hover, :focus-visible) {
+  color: var(--md-surface-container-lowest);
+}
+:root:not([data-panel-look="calm"]) .mark-halo:is(:hover, :focus-visible) > .mark-seal {
+  color: var(--mark-hue);
+  rotate: 45deg;
+  scale: 1.08;
+}
+:root:not([data-panel-look="calm"]) .mark-halo[data-copied]:has(> .mark-seal) {
+  color: var(--md-surface-container-lowest);
+}
+:root:not([data-panel-look="calm"]) .mark-halo[data-copied] > .mark-seal {
+  color: var(--tone-green);
+}
+
+/* A panel header's `#` is a header control, not a mark. */
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header .mark-halo::before {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root .mark-halo {
+    transition:
+      color 200ms var(--mx-effects),
+      opacity 150ms;
+  }
+  :root .mark-halo::before {
+    transition:
+      scale var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      opacity 150ms var(--mx-effects);
+  }
+  :root .mark-halo > .mark-seal {
+    transition:
+      rotate var(--mx-spring-dur) var(--mx-spring),
+      scale var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      color 200ms var(--mx-effects);
+  }
+}
+@media (forced-colors: active) {
+  :root .mark-halo {
+    border: 1px solid ButtonText;
+  }
+}

@@ -374,7 +374,7 @@ export function RelationRowItem({
 }) {
   return (
     <li className={cn(RELATION_ROW_GROUP, "flex items-center gap-1")}>
-      <EntityRow node={node} onOpen={onNavigate && (() => onNavigate(node))} className="min-w-0 flex-1">
+      <EntityRow node={node} seal onOpen={onNavigate && (() => onNavigate(node))} className="min-w-0 flex-1">
         <span className="min-w-0 flex-1 truncate">{node.title}</span>
         {children}
       </EntityRow>
