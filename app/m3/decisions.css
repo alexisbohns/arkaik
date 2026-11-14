@@ -258,6 +258,10 @@
 }
 :root .dc-decided-input:hover {
   background: var(--m3-control-hover);
+  border-radius: var(--md-shape-md);
+}
+:root .dc-decided-input:active {
+  border-radius: var(--md-shape-sm);
 }
 :root .dc-decided-input:focus-visible {
   outline: 3px solid var(--md-secondary);
@@ -337,8 +341,11 @@
 :root .dc-btn[data-tone="filled"]:hover {
   background: color-mix(in srgb, var(--md-on-primary) 8%, var(--md-primary));
 }
-:root .dc-btn:active {
+:root .dc-btn:hover {
   border-radius: var(--md-shape-md);
+}
+:root .dc-btn:active {
+  border-radius: var(--md-shape-sm);
 }
 :root .dc-btn:focus-visible {
   outline: 3px solid var(--md-secondary);
@@ -569,8 +576,11 @@
   font-weight: 650;
   position: relative;
 }
-:root .dc-connected > button:active {
+:root .dc-connected > button:hover {
   border-radius: var(--md-shape-md);
+}
+:root .dc-connected > button:active {
+  border-radius: var(--md-shape-sm);
 }
 :root .dc-connected > button:focus-visible {
   z-index: 2;
@@ -1256,6 +1266,10 @@
   }
   :root .dc-key:hover .dc-seal-shape {
     rotate: 45deg;
+  }
+  :root .dc-decided-input {
+    transition: border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+        background-color .2s var(--mx-effects);
   }
   :root .dc-connected > button {
     transition: border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),

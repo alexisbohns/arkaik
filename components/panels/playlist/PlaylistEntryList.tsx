@@ -506,6 +506,7 @@ function PlaylistEntryRow({
                     iconChipVariants({ variant: "dashed", interactive: true }),
                     "border-blue-500/40 text-blue-600/70 dark:text-blue-400/70",
                     "hover:border-solid hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400",
+                    "m3-morph rounded-[0.75rem] hover:rounded-(--md-shape-sm) active:rounded-(--md-shape-xs)",
                   )}
                 >
                   <PlusIcon className="size-3.5" aria-hidden="true" />

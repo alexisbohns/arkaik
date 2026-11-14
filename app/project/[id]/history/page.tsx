@@ -55,8 +55,13 @@ function FamilyPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-full border px-3 py-1 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] ${
-        active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+      // An M3 Expressive filter chip (app/m3/controls.css): a tonal pill that
+      // tightens into a rounded square under the pointer; once on, it holds
+      // the rounded square on the tonal "on" fill.
+      className={`m3-morph h-8 cursor-pointer rounded-[1rem] px-3.5 text-xs font-medium outline-none hover:rounded-(--md-shape-md) active:rounded-(--md-shape-sm) focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-(color:--md-secondary) forced-colors:border forced-colors:border-[ButtonText] ${
+        active
+          ? "rounded-(--md-shape-md) bg-(--m3-on) text-(--m3-on-on) hover:bg-(--m3-on-hover)"
+          : "bg-(--m3-control) text-(--m3-on-control) hover:bg-(--m3-control-hover) hover:text-(--md-on-surface)"
       }`}
     >
       {children}
