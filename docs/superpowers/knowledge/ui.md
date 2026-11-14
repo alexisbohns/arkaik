@@ -22,4 +22,8 @@ Scrolling-column (default) — the surface is the scrollport, the toolbar is `st
 
 `h-full` resolves against the panel cell, and the cell is a grid item that auto-sizes to its content — so a tall list grew the cell, the scroller matched the grown cell, and nothing ever scrolled. (`PanelStack` now pins the row to the viewport height, which is the other half of that fix.) `min-h-0 flex-1` asks for "whatever is left" instead of a percentage of something that moves, and cannot regress the same way.
 
+## Why the inner box is `shrink-0`
+
+In the scrolling mode the toolbar is sticky inside an inner `min-h-full` column, and a sticky element only sticks inside its parent. That column is a flex item of the scroller, and `min-h-full` replaces a flex item's automatic minimum (its content) with the scroller's height — so it shrank to one screen while the content overflowed it, and the toolbar rode away after one screen of scroll on every page. `shrink-0` lets the column grow with its content. Anything else pinned in the page (a section heading, a group mark) sticks against `--surface-sticky-top`, never a bare `top-0`, or it tucks under the bar.
+
 Overflow is `y`-only in the scrolling mode: a toolbar that scrolls sideways out of its own surface is unusable, and every bar here wraps rather than growing wider.
