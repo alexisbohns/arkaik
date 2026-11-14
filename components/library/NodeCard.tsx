@@ -135,7 +135,7 @@ export function NodeCard({
   return (
     <article
       tabIndex={0}
-      data-wobble-group
+      data-icon-group
       className="w-full cursor-pointer"
       onClick={onClick}
       onKeyDown={(event) => {

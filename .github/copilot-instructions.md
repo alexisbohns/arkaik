@@ -33,5 +33,5 @@ When reviewing or making changes:
 
 - Before considering any code change complete, always run `npm run lint`.
 - Before considering any code change complete, always run `npx next build`.
-- After touching `packages/schema`, the agent skill, the plugin, or the wobble registry, run `npm run generate` — CI fails the PR on any drift in the generated artifacts, and the generator is the only way to close it.
+- After touching `packages/schema`, the agent skill, or the plugin, run `npm run generate` — CI fails the PR on any drift in the generated artifacts, and the generator is the only way to close it.
 - If any of these fails, fix regressions before finalizing.

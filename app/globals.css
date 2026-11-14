@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./wobble.generated.css";
 @import "./m3/basalt.css";
 @import "./m3/controls.css";
 @import "./m3/panels.css";
@@ -7,6 +6,7 @@
 @import "./m3/quality-panels.css";
 @import "./m3/decisions.css";
 @import "./m3/marks.css";
+@import "./m3/icons.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

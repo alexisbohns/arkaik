@@ -8,7 +8,7 @@ import { LOGO_VIEWBOX, LogoPaths } from "./logo-paths";
 
 /**
  * The Arkaik wordmark with a continuous hand-drawn "boil" — the same
- * `feTurbulence → feDisplacementMap` trick used for the lucide icons
+ * `feTurbulence → feDisplacementMap` trick the lucide icons once used
  * (`docs/icon-wobble.md`), but tuned for the logo's large `viewBox="0 0 1080
  * 216"` fill glyphs instead of a 24-unit stroke icon.
  *
