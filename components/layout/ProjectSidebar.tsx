@@ -1,24 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SearchIcon } from "lucide-react";
 import { buildSidebarNav, type SidebarNavModel } from "@/components/layout/sidebar-nav-model";
 import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
+import { SidebarIdentity, SidebarScope, SidebarSearch } from "@/components/layout/sidebar/SidebarHeaderParts";
+import { SidebarNavTiles, SidebarNavTree } from "@/components/layout/sidebar/SidebarNav";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
-import { SeedSandboxNotice } from "@/components/projects/SeedSandboxNotice";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
+import { dynaPuff } from "@/lib/font-display";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
 import { useOptionHeld } from "@/lib/hooks/useOptionHeld";
@@ -136,65 +126,33 @@ export function ProjectSidebar({
     renderHint: (item) =>
       item.shortcutId ? <ShortcutHint id={item.shortcutId} visible={optionHeld} modKey={modKey} /> : null,
   };
-  const sandbox = isSeedProjectId(projectId);
   const chord = modKey ? formatChord(getShortcut("command-palette").keys, modKey) : null;
-  const productSelector = <ProductScopeSelector projectId={projectId} project={project} />;
-  const sandboxNotice = sandbox ? <SeedSandboxNotice /> : null;
 
   return (
     <Sidebar collapsible="icon" data-project-sidebar="">
       <SidebarHeader data-sb-header="">
-        <ProjectSwitcher
-          currentProjectId={projectId}
-          currentProjectTitle={project?.project.title}
-          currentProjectFailed={projectFailed}
-          currentView={currentView}
-          currentQueryString={currentQueryString}
-          onOpenPublish={onOpenPublish}
-          onOpenRaw={onOpenRaw}
+        <SidebarIdentity projectTitle={project?.project.title}>
+          <ProjectSwitcher
+            currentProjectId={projectId}
+            currentProjectTitle={project?.project.title}
+            currentProjectFailed={projectFailed}
+            currentView={currentView}
+            currentQueryString={currentQueryString}
+            onOpenPublish={onOpenPublish}
+            onOpenRaw={onOpenRaw}
+          />
+        </SidebarIdentity>
+        <SidebarScope
+          selector={<ProductScopeSelector projectId={projectId} project={project} />}
+          sandbox={isSeedProjectId(projectId)}
         />
-        {productSelector}
-        {sandboxNotice}
-        <SidebarMenu data-sb-search="">
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Search and jump"
-              onClick={onOpenCommandPalette}
-              className="cursor-pointer text-sidebar-foreground/70"
-            >
-              <SearchIcon />
-              <span>Search</span>
-              {chord ? <kbd className={SIDEBAR_KBD_CLASS}>{chord}</kbd> : null}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <SidebarSearch onOpen={onOpenCommandPalette} chord={chord} />
       </SidebarHeader>
 
-      <SidebarContent data-sb-content="">
-        {navModel.groups.map((group) => (
-          <SidebarGroup key={group.id} data-sb-group={group.id}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-            <SidebarMenu>
-              {group.items.map((item) => (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={item.active}
-                    tooltip={item.tooltip}
-                    data-nav-item={item.id}
-                    data-species={item.species}
-                  >
-                    <Link href={item.href} onClick={navModel.onItemClick(item)}>
-                      <item.Icon />
-                      <span>{item.label}</span>
-                      {navModel.renderHint(item)}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
-        ))}
+      {/* Both looks' navigations; app/m3/sidebar.css shows the one `data-panel-look` asks for (see SidebarNav). */}
+      <SidebarContent data-sb-content="" className={dynaPuff.variable}>
+        <SidebarNavTiles model={navModel} />
+        <SidebarNavTree model={navModel} />
       </SidebarContent>
 
       <SidebarRail />
