@@ -2084,3 +2084,100 @@
     transition: opacity 200ms var(--mx-effects, ease);
   }
 }
+
+/*
+ * Header controls, toned by the header they sit on.
+ *
+ * Every panel header — a node's, a decision's, a criterion's, a finding's, a
+ * cell's — resolves ONE hue (its species, status or grade), and its controls
+ * derive from it, never from the neutral control tokens: a grey button on a
+ * plum header reads as borrowed from another surface. The decision verdict and
+ * the Decisions toolbar follow the same rule.
+ *
+ * - Expressive: a translucent wash of the hue, glyphs in the hue's ink — the
+ *   actions, the `#` id, the product chip and close. Delete keeps its error
+ *   tone, as a wash of its own.
+ * - Calm: ghost — nothing at rest, the glyph in the hue's ink, and a wash of
+ *   the hue under the pointer (the `⋯`, the `#`, close).
+ *
+ * Translucent rather than mixed into the tint, so one rule holds on every
+ * header whatever its own background is.
+ */
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) {
+  --np-hc-hue: var(--np-hue, var(--kp-hue, var(--kq-hue, var(--md-secondary))));
+  --np-hc-ink: color-mix(in oklab, var(--np-hc-hue) 78%, var(--md-on-surface));
+  --np-hc-rest: color-mix(in oklab, var(--np-hc-hue) 11%, transparent);
+  --np-hc-hover: color-mix(in oklab, var(--np-hc-hue) 20%, transparent);
+}
+:root.dark section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) {
+  --np-hc-rest: color-mix(in oklab, var(--np-hc-hue) 16%, transparent);
+  --np-hc-hover: color-mix(in oklab, var(--np-hc-hue) 27%, transparent);
+}
+:root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) {
+  --np-hc-hover: color-mix(in oklab, var(--np-hc-hue) 14%, transparent);
+}
+:root.dark[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) {
+  --np-hc-hover: color-mix(in oklab, var(--np-hc-hue) 22%, transparent);
+}
+:root:not([data-panel-look="calm"]) section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header {
+  --m3-control: var(--np-hc-rest);
+  --m3-control-hover: var(--np-hc-hover);
+  --m3-on-control: var(--np-hc-ink);
+}
+:root:not([data-panel-look="calm"]) section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is(.np-action-group > button, .np-chip, .np-id > button[data-copy-id], .kp-head-id > button) {
+  background: var(--np-hc-rest);
+  color: var(--np-hc-ink);
+}
+:root:not([data-panel-look="calm"]) section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is(.np-action-group > button, .np-chip, .np-id > button[data-copy-id], .kp-head-id > button):hover {
+  background: var(--np-hc-hover);
+  color: var(--np-hc-ink);
+}
+:root:not([data-panel-look="calm"]) section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header .np-action-group > button[data-tone="error"] {
+  background: color-mix(in oklab, var(--md-error) 9%, transparent);
+  color: var(--md-error);
+}
+:root:not([data-panel-look="calm"]) section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header .np-action-group > button[data-tone="error"]:hover {
+  background: color-mix(in oklab, var(--md-error) 18%, transparent);
+  color: var(--md-error);
+}
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close] {
+  border-radius: 1.125rem;
+  background: transparent;
+  color: var(--np-hc-ink, currentColor);
+}
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close]:hover {
+  background: var(--np-hc-hover, var(--np-veil-hover));
+  color: var(--np-hc-ink, currentColor);
+}
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close]:active {
+  border-radius: var(--md-shape-md);
+}
+:root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is(.np-calm-header-actions, [data-copy-id]) {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--np-hc-ink);
+}
+:root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header .np-calm-header-actions {
+  border-radius: 1.125rem;
+}
+:root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-copy-id] {
+  border-radius: 0.625rem;
+}
+:root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is(.np-calm-header-actions, [data-copy-id]):is(:hover, :focus-visible, [data-state="open"]) {
+  background: var(--np-hc-hover);
+  color: var(--np-hc-ink);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is([data-panel-close], .np-calm-header-actions, [data-copy-id]) {
+    transition:
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      background-color 200ms var(--mx-effects),
+      color 200ms var(--mx-effects);
+  }
+}
+@media (forced-colors: active) {
+  :root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is([data-panel-close], .np-calm-header-actions, .np-action-group > button) {
+    border: 1px solid ButtonText;
+  }
+}
