@@ -2,22 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  BookOpenIcon,
-  GalleryHorizontalEndIcon,
-  GemIcon,
-  LayoutDashboardIcon,
-  ListChecksIcon,
-  MapIcon,
-  MapPinnedIcon,
-  NetworkIcon,
-  PencilRulerIcon,
-  PyramidIcon,
-  RouteIcon,
-  ScrollTextIcon,
-  SearchIcon,
-  SquareKanbanIcon,
-} from "lucide-react";
+import { SearchIcon } from "lucide-react";
+import { buildSidebarNav, type SidebarNavModel } from "@/components/layout/sidebar-nav-model";
 import { ProductScopeSelector } from "@/components/layout/ProductScopeSelector";
 import { ProjectSwitcher, type ProjectView } from "@/components/layout/ProjectSwitcher";
 import { SeedSandboxNotice } from "@/components/projects/SeedSandboxNotice";
@@ -32,8 +18,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { SPECIES_NAV_ICONS, SPECIES_PLURALS } from "@/lib/config/species-icons";
-import type { SpeciesId } from "@/lib/config/species";
 import { isSeedProjectId } from "@/lib/data/seed-project-id";
 import type { ProjectBundle } from "@/lib/data/types";
 import { useModKeyLabel } from "@/lib/hooks/useModKeyLabel";
@@ -72,17 +56,6 @@ interface ProjectSidebarProps {
   /** Pushes the raw bundle onto the panel stack — project-scoped, like Publish. */
   onOpenRaw: () => void;
 }
-
-// One `?species=` library page per species, driven from here — the sidebar is
-// the only species selector (vision.md § Core Product, Information
-// Architecture). Just the ids: the glyph and the plural come from the shared
-// navigation vocabulary, which the command palette and the Inventory card read
-// too, so the three cannot say "Flows" with three different icons.
-//
-// Acceptances and Decisions are absent on purpose — they have pages of their
-// own rather than a `?species=` filter — but they take their glyphs from the
-// same map below.
-const LIBRARY_SPECIES = ["view", "flow", "data-model", "api-endpoint"] as const satisfies readonly SpeciesId[];
 
 // An open modal owns the keyboard: ⌥D inside Delivery's new-node dialog must
 // not navigate away and drop the draft. Matched by `data-slot`, not by
@@ -156,20 +129,21 @@ export function ProjectSidebar({
       router.push(href);
     }
   };
-  const overviewHref = `/project/${projectId}/overview`;
-  const mapsHref = `/project/${projectId}/maps`;
-  const libraryHref = `/project/${projectId}/library`;
-  const deliveryHref = `/project/${projectId}/delivery`;
-  const designHref = `/project/${projectId}/design`;
-  const changelogHref = `/project/${projectId}/changelog`;
-  const qualityHref = `/project/${projectId}/quality`;
-  const pyramidHref = `/project/${projectId}/pyramid`;
-  const AcceptanceIcon = SPECIES_NAV_ICONS.acceptance;
-  const DecisionIcon = SPECIES_NAV_ICONS.decision;
+
+  const navModel: SidebarNavModel = {
+    groups: buildSidebarNav({ projectId, currentView, currentSpecies, currentQualityView, currentMapId, customMaps }),
+    onItemClick: (item) => followOptionClick(item.href),
+    renderHint: (item) =>
+      item.shortcutId ? <ShortcutHint id={item.shortcutId} visible={optionHeld} modKey={modKey} /> : null,
+  };
+  const sandbox = isSeedProjectId(projectId);
+  const chord = modKey ? formatChord(getShortcut("command-palette").keys, modKey) : null;
+  const productSelector = <ProductScopeSelector projectId={projectId} project={project} />;
+  const sandboxNotice = sandbox ? <SeedSandboxNotice /> : null;
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
+    <Sidebar collapsible="icon" data-project-sidebar="">
+      <SidebarHeader data-sb-header="">
         <ProjectSwitcher
           currentProjectId={projectId}
           currentProjectTitle={project?.project.title}
@@ -179,9 +153,9 @@ export function ProjectSidebar({
           onOpenPublish={onOpenPublish}
           onOpenRaw={onOpenRaw}
         />
-        <ProductScopeSelector projectId={projectId} project={project} />
-        {isSeedProjectId(projectId) && <SeedSandboxNotice />}
-        <SidebarMenu>
+        {productSelector}
+        {sandboxNotice}
+        <SidebarMenu data-sb-search="">
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Search and jump"
@@ -190,228 +164,37 @@ export function ProjectSidebar({
             >
               <SearchIcon />
               <span>Search</span>
-              {modKey ? (
-                <kbd className={SIDEBAR_KBD_CLASS}>{formatChord(getShortcut("command-palette").keys, modKey)}</kbd>
-              ) : null}
+              {chord ? <kbd className={SIDEBAR_KBD_CLASS}>{chord}</kbd> : null}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
-        {/* Project first — Overview is the landing page of a project. */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Project</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "overview"} tooltip="Overview">
-                <Link href={overviewHref} onClick={followOptionClick(overviewHref)}>
-                  <LayoutDashboardIcon />
-                  <span>Overview</span>
-                  <ShortcutHint id="nav-overview" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "pyramid"} tooltip="Value pyramid">
-                <Link href={pyramidHref} onClick={followOptionClick(pyramidHref)}>
-                  <PyramidIcon />
-                  <span>Pyramid</span>
-                  <ShortcutHint id="nav-pyramid" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "delivery"} tooltip="Delivery board">
-                <Link href={deliveryHref} onClick={followOptionClick(deliveryHref)}>
-                  <SquareKanbanIcon />
-                  <span>Delivery</span>
-                  <ShortcutHint id="nav-delivery" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "design"} tooltip="Design funnel">
-                <Link href={designHref}>
-                  <PencilRulerIcon />
-                  <span>Design</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "changelog"} tooltip="Changelog">
-                <Link href={changelogHref} onClick={followOptionClick(changelogHref)}>
-                  <ScrollTextIcon />
-                  <span>Changelog</span>
-                  <ShortcutHint id="nav-changelog" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        {/* Quality is a section rather than a page: the matrix you sweep and the
-            findings you work are two jobs, and stacking them in one scrollport
-            meant the grid scrolled away exactly when you clicked a cell. */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Quality</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "quality" && currentQualityView !== "findings"}
-                tooltip="Audit matrix"
-              >
-                <Link href={`${qualityHref}/matrix`} onClick={followOptionClick(`${qualityHref}/matrix`)}>
-                  <GemIcon />
-                  <span>Matrix</span>
-                  <ShortcutHint id="nav-matrix" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "quality" && currentQualityView === "findings"}
-                tooltip="Findings"
-              >
-                <Link href={`${qualityHref}/findings`} onClick={followOptionClick(`${qualityHref}/findings`)}>
-                  <ListChecksIcon />
-                  <span>Findings</span>
-                  <ShortcutHint id="nav-findings" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Maps</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "maps" && currentMapId === null}
-                tooltip="All maps"
-              >
-                <Link href={mapsHref} onClick={followOptionClick(mapsHref)}>
-                  <MapIcon />
-                  <span>All maps</span>
-                  <ShortcutHint id="nav-maps" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "maps" && currentMapId === "journey"}
-                tooltip="Journey map"
-              >
-                <Link href={`${mapsHref}/journey`} onClick={followOptionClick(`${mapsHref}/journey`)}>
-                  <RouteIcon />
-                  <span>Journey</span>
-                  <ShortcutHint id="nav-journey" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "maps" && currentMapId === "system"}
-                tooltip="System map"
-              >
-                <Link href={`${mapsHref}/system`}>
-                  <NetworkIcon />
-                  <span>System</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "maps" && currentMapId === "screens"}
-                tooltip="Screens map"
-              >
-                <Link href={`${mapsHref}/screens`}>
-                  <GalleryHorizontalEndIcon />
-                  <span>Screens</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {customMaps.map((map) => (
-              <SidebarMenuItem key={map.id}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={currentView === "maps" && currentMapId === map.id}
-                  tooltip={map.title}
-                >
-                  <Link href={`${mapsHref}/${map.id}`}>
-                    <MapPinnedIcon />
-                    <span>{map.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Library</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={currentView === "library" && currentSpecies === null}
-                tooltip="All nodes"
-              >
-                <Link href={libraryHref} onClick={followOptionClick(libraryHref)}>
-                  <BookOpenIcon />
-                  <span>All nodes</span>
-                  <ShortcutHint id="nav-library" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "acceptances"} tooltip="Acceptances">
-                <Link
-                  href={`/project/${projectId}/acceptances`}
-                  onClick={followOptionClick(`/project/${projectId}/acceptances`)}
-                >
-                  <AcceptanceIcon />
-                  <span>Acceptances</span>
-                  <ShortcutHint id="nav-acceptances" visible={optionHeld} modKey={modKey} />
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={currentView === "decisions"} tooltip="Decisions">
-                <Link href={`/project/${projectId}/decisions`}>
-                  <DecisionIcon />
-                  <span>Decisions</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {LIBRARY_SPECIES.map((species) => {
-              const Icon = SPECIES_NAV_ICONS[species];
-              const label = SPECIES_PLURALS[species];
-
-              return (
-                <SidebarMenuItem key={species}>
+      <SidebarContent data-sb-content="">
+        {navModel.groups.map((group) => (
+          <SidebarGroup key={group.id} data-sb-group={group.id}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarMenu>
+              {group.items.map((item) => (
+                <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     asChild
-                    isActive={currentView === "library" && currentSpecies === species}
-                    tooltip={label}
+                    isActive={item.active}
+                    tooltip={item.tooltip}
+                    data-nav-item={item.id}
+                    data-species={item.species}
                   >
-                    <Link href={`${libraryHref}?species=${species}`}>
-                      <Icon />
-                      <span>{label}</span>
+                    <Link href={item.href} onClick={navModel.onItemClick(item)}>
+                      <item.Icon />
+                      <span>{item.label}</span>
+                      {navModel.renderHint(item)}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarRail />
