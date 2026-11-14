@@ -52,6 +52,9 @@ Adapt `contract.ts`:
   callback refs, not a mount-once effect, or a re-parented element comes up empty).
 - Add data hooks on the surface root/header (`data-<surface>`, `data-species`…).
 - Smoke-test one throwaway variant through `?tw=` before dispatching.
+- The tweaker docks to any corner (the header's corner pad, or drag the header and let
+  go), so it never covers the surface being tweaked; `?tw-dock=tl|tr|bl|br` pins it for
+  a shot. Mount it where the surface mounts, and dock it away from it.
 
 **2. One worktree, disjoint folders.** A detached worktree, one dev server, each author
 writes ONLY `tweaks/<author>/**` (registry, stylesheet, forks). They see each other's
@@ -100,8 +103,18 @@ which is the CSS porter's source until the stack merges. Plan parts: shared fixe
   **flat** rules only: run every nested author stylesheet through
   `scripts/flatten.mjs` first and port the flattened copies. It prunes dead
   *classes*, not dead data attributes: an unpicked variant's `[data-x]` rules need a
-  patch. A part that ships a different slice of picks needs its own config (the
-  `sections` map is not per part).
+  patch — or a `dead_attrs` regex in the config. A part that ships a different slice
+  of picks needs its own config (the `sections` map is not per part).
+- **When the looks differ in STRUCTURE** (Expressive tiles, a Calm tree), render both
+  and let the stylesheet show one per preference attribute: the attribute is set
+  before first paint, a look read in React is not, and the wrong structure flashes in.
+  Where they differ only in skin, render ONE markup carrying both looks' hooks. Either
+  way a Component variant's class-styled rules carry no pick condition (its classes
+  only existed while picked), so both looks' rules would apply at once: list them as
+  `markers` in the config and the porter keys each on its pick before re-keying.
+- Verify the port by shooting the exploration's preset and the shipped build in every
+  state and diffing them pixel by pixel; anything beyond the dev badge and motion
+  timing is a porting bug (the sidebar run caught a rail rule gated to one look).
 - Many surfaces port in **parallel**: one porting author per surface group, each in its
   own worktree off the shared lower parts, each with its own stylesheet and prefix
   (the quality run: `quality.css`/`kq-` for pages, `quality-panels.css`/`kp-` for
@@ -133,6 +146,10 @@ which is the CSS porter's source until the stack merges. Plan parts: shared fixe
 | Author re-implements a shipped rule | the section got the record, not the model | pass the model to every section rendering it |
 | `probe scroll` reports BLOCKED on a page | the hook element is not the scroller, its parent is | point `--scroller` at the element with `overflow-y: auto` |
 | A preset can't be shot from a URL | recipes only named sections | `preset:<id>` (registry registers presets in the store) |
+| The tweaker panel will not scroll | an `overflow:hidden` card in the flex-column body shrinks to fit, so the body never overflows | `shrink-0` + `overflow-clip` on the cards, `min-h-0` on the body (the template has it) |
+| Ported CSS still says `[data-tw-…]` | the author wrote the look before the pick: `:root[data-panel-look="calm"][data-tw-…]` | the porter now moves it behind; `grep -c data-tw` the output, expect 0 |
+| A ★ override silently loses | the registry imports `lead` first, so `lead.css` loads before the authors' sheets | out-specify (`html:root…`), never rely on source order |
+| A shared rule gated to one look | a `markers` regex also matched a class the rule only lists beside shared ones | keep markers to the variant's own root classes; `:not(.x)` matches are ignored |
 
 ## Related
 

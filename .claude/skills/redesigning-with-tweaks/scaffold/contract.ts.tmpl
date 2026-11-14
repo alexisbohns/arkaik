@@ -56,6 +56,8 @@ export const AUTHORS = [
   { id: "lead", direction: "lead" },
 ] as const;
 export type AuthorId = (typeof AUTHORS)[number]["id"];
+/** Shown in the tweaker's legend, one colour per author. */
+export const AUTHOR_LABELS: Record<AuthorId, string> = { bold: "bold", calm: "calm", lead: "★ lead" };
 
 interface WithOriginal {
   /** The shipped UI for this section, exactly as it renders today. */
