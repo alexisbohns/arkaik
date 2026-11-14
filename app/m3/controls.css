@@ -422,6 +422,20 @@
   to { opacity: 0; transform: scale(0.96); }
 }
 
+/* ── Morph: the same grammar for a control that is not a Button ──────────────
+   A custom pill (the History filters, the "add one here" tiles) opts in with
+   `m3-morph` and sets its rest and hover radii itself; this carries the
+   spring, so every pill moves the same way. */
+@media (prefers-reduced-motion: no-preference) {
+  .m3-morph {
+    transition:
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      background-color 200ms var(--mx-effects),
+      border-color 200ms var(--mx-effects),
+      color 200ms var(--mx-effects);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .m3-float:is([data-state="open"], [data-state="delayed-open"], [data-state="instant-open"]) {
     animation:

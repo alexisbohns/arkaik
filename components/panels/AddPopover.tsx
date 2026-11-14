@@ -75,6 +75,9 @@ export function AddPopover({ label, open, onOpenChange, children }: AddPopoverPr
             iconChipVariants({ variant: "dashed", interactive: true }),
             "border-border text-muted-foreground",
             "hover:border-solid hover:bg-muted hover:text-foreground",
+            // Expressive: a pill at rest that tightens into a rounded square
+            // under the pointer, like every pill (app/m3/controls.css).
+            "m3-morph rounded-[0.75rem] hover:rounded-(--md-shape-sm) active:rounded-(--md-shape-xs) aria-expanded:rounded-(--md-shape-sm)",
           )}
         >
           <PlusIcon className="size-3.5" aria-hidden="true" />

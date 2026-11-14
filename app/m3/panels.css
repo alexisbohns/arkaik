@@ -164,8 +164,11 @@
   background: var(--md-error-container);
   color: var(--md-on-error-container);
 }
-:root:not([data-panel-look="calm"]) .np-action-group > button:active {
+:root:not([data-panel-look="calm"]) .np-action-group > button:is(:hover, [aria-expanded="true"]) {
   border-radius: var(--md-shape-md);
+}
+:root:not([data-panel-look="calm"]) .np-action-group > button:active {
+  border-radius: var(--md-shape-sm);
 }
 :root:not([data-panel-look="calm"]) .np-action-group > button:focus-visible {
   outline: 3px solid var(--md-secondary);
@@ -282,6 +285,15 @@
     var(--np-status-tone) 24%,
     var(--md-surface-container-lowest)
   );
+}
+:root [data-np-status][data-slot="select-trigger"]:is(:hover, [aria-expanded="true"]) {
+  border-radius: var(--md-shape-md);
+}
+:root [data-np-status][data-slot="select-trigger"]:active {
+  border-radius: var(--md-shape-sm);
+}
+:root [data-np-status][data-compact][data-slot="select-trigger"]:is(:hover, [aria-expanded="true"]) {
+  border-radius: 0.625rem;
 }
 :root [data-np-status][data-empty] {
   background: transparent;
@@ -1133,6 +1145,10 @@
 :root [data-relation-lines] > section:has(> div:only-child) > div:hover {
   background: var(--np-veil);
   outline-color: var(--md-outline);
+  border-radius: var(--md-shape-sm);
+}
+:root [data-relation-lines] > section:has(> div:only-child) > div:active {
+  border-radius: var(--md-shape-xs);
 }
 :root [data-relation-lines] > section:has(> div:only-child) > div > h4 {
   padding: 0;
@@ -1172,8 +1188,26 @@
   width: 1.75rem;
   height: 1.75rem;
   border: 0;
-  border-radius: 999px;
+  /* Half its size, never 999px: the spring to the hover square would
+     overshoot below zero and flash the corners square. */
+  border-radius: 0.875rem;
   background: var(--m3-control);
+}
+:root
+  [data-relation-lines]
+  > section:not(:has(> div:only-child))
+  > div
+  > button:is(:hover, [aria-expanded="true"]) {
+  border-radius: var(--md-shape-sm);
+  background: var(--m3-control-hover);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root [data-relation-lines] > section:has(> div:only-child) > div {
+    transition:
+      border-radius var(--mx-spring-fast-dur) var(--mx-spring-fast),
+      background-color 200ms var(--mx-effects),
+      outline-color 200ms var(--mx-effects);
+  }
 }
 :root:not([data-panel-look="calm"])
   [data-node-panel]
@@ -2149,8 +2183,11 @@
   background: var(--np-hc-hover, var(--np-veil-hover));
   color: var(--np-hc-ink, currentColor);
 }
-:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close]:active {
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close]:hover {
   border-radius: var(--md-shape-md);
+}
+:root section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header [data-panel-close]:active {
+  border-radius: var(--md-shape-sm);
 }
 :root[data-panel-look="calm"] section:has(> header :is([data-node-panel-header], [data-quality-panel-header])) > header :is(.np-calm-header-actions, [data-copy-id]) {
   border: 0;
