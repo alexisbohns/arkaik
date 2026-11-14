@@ -118,15 +118,12 @@ export function CopyIdChip({ id, className }: CopyIdChipProps) {
           // the only place a screen reader hears what the chip copies — and
           // where the id is not written out, the only place it exists at all.
           aria-label={`Copy ${id}`}
-          // The hook app/m3/panels.css tones a header's `#` by.
+          // The hook app/m3/panels.css tones a header's `#` by; `data-copied`
+          // is what app/m3/marks.css turns green.
           data-copy-id
+          data-copied={copied || undefined}
           onClick={copy}
-          className={cn(
-            iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
-            "group hover:bg-muted hover:text-foreground",
-            copied && "text-green-500",
-            className,
-          )}
+          className={cn(iconChipVariants({ size: "sm", variant: "halo", interactive: true }), "group", className)}
         >
           <CopyIdGlyph copied={copied} />
         </button>

@@ -8,6 +8,7 @@ import { SPECIES } from "@/lib/config/species";
 import { SPECIES_GRAPH_ICONS } from "@/lib/config/species-icons";
 import type { Node } from "@/lib/data/types";
 import { iconChipVariants } from "@/components/layout/IconChip";
+import { SpeciesShape } from "@/components/panels/species-shape";
 import { useCopyId } from "@/lib/hooks/useCopyId";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,13 @@ const HOVER_CARD_OPEN_DELAY_MS = 250;
 
 interface EntityChipProps {
   node: Node;
+  /**
+   * Wear the species' seal behind the glyph — the header's seal, at chip size.
+   * Set by the relations rows only: there the species is the thing a reader
+   * scans for. The Expressive look draws it (`app/m3/marks.css`); Calm keeps
+   * the halo every other chip wears.
+   */
+  seal?: boolean;
   className?: string;
 }
 
@@ -43,7 +51,7 @@ interface EntityChipProps {
  * nesting them is invalid HTML and the inner click would never reach the chip.
  * {@link EntityRow} is that pairing, and every list in a panel uses it.
  */
-export function EntityChip({ node, className }: EntityChipProps) {
+export function EntityChip({ node, seal, className }: EntityChipProps) {
   const [chipActive, setChipActive] = useState(false);
   const { copied, copy } = useCopyId(node.id);
 
@@ -70,6 +78,11 @@ export function EntityChip({ node, className }: EntityChipProps) {
           // The id, spelled out: the hover card is visual-only, so this label is
           // the only place a screen reader hears what the chip copies.
           aria-label={`Copy ${node.id}`}
+          // Read by app/m3/marks.css: the species picks the halo's (and the
+          // seal's) hue, `data-copied` turns the chip green.
+          data-entity-chip
+          data-species={node.species}
+          data-copied={copied || undefined}
           onClick={copy}
           // Tracked here rather than left to `:hover` because the swap must also
           // happen on keyboard focus, and must NOT undo itself while `copied`.
@@ -77,13 +90,9 @@ export function EntityChip({ node, className }: EntityChipProps) {
           onPointerLeave={() => setChipActive(false)}
           onFocus={() => setChipActive(true)}
           onBlur={() => setChipActive(false)}
-          className={cn(
-            iconChipVariants({ size: "sm", variant: "outline", interactive: true }),
-            "hover:bg-muted hover:text-foreground",
-            copied && "text-green-500",
-            className,
-          )}
+          className={cn(iconChipVariants({ size: "sm", variant: "halo", interactive: true }), className)}
         >
+          {seal && <SpeciesShape species={node.species} className="mark-seal" />}
           <Icon />
         </button>
       </HoverCardTrigger>
@@ -105,6 +114,8 @@ export function EntityChip({ node, className }: EntityChipProps) {
 
 interface EntityRowProps {
   node: Node;
+  /** Hand the chip its species seal — see {@link EntityChip}'s `seal`. */
+  seal?: boolean;
   /** Opens this entity's panel. Omitted on a read-only list; the chip still copies. */
   onOpen?: () => void;
   /** The row's own content, right of the chip. */
@@ -125,7 +136,7 @@ interface EntityRowProps {
  * It holds no state of its own: the hover card belongs to the chip and opens on
  * the chip alone, so the row is pure layout.
  */
-export function EntityRow({ node, onOpen, children, className }: EntityRowProps) {
+export function EntityRow({ node, seal, onOpen, children, className }: EntityRowProps) {
   return (
     <div
       className={cn(
@@ -134,7 +145,7 @@ export function EntityRow({ node, onOpen, children, className }: EntityRowProps)
         className,
       )}
     >
-      <EntityChip node={node} />
+      <EntityChip node={node} seal={seal} />
       {onOpen ? (
         <button
           type="button"
