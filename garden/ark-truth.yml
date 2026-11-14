@@ -216,3 +216,162 @@ sprouts:
     description:
       en: "Deliverables now record what a pull request touched and where it shipped."
       fr: "Les livrables notent désormais ce qu'une pull request a touché et où elle a été livrée."
+  - slug: ark-decisions-redesign
+    kind: essay
+    date: 2026-11-14
+    about: [ark-decisions]
+    name: { en: "Giving the decision log a face", fr: "Donner un visage au journal des décisions" }
+    description:
+      en: "How the Decisions page and its panel got the Expressive treatment, composed live on real data rather than drawn in advance."
+      fr: "Comment la page Décisions et son panneau ont pris le style Expressif, composés en direct sur de vraies données plutôt que dessinés à l'avance."
+    content:
+      en: |
+        Arkaik keeps a log of the decisions behind a product: what we chose, why, and what it cost us. It still wore the old look, and it showed. This is the story of how it changed, what we tried along the way, and the few things I only noticed because we worked on real records.
+
+        ## What I asked for
+
+        The node panels and the quality pages had already been redesigned in the bold, rounded Material 3 "Expressive" style, with a quieter "Calm" alternative for anyone who prefers it in Settings. The Decisions page was next, together with the panel that opens when you click a decision.
+
+        Before any design started, I made three choices to keep things simple. First, one Expressive designer: no Calm direction this time, and no two authors competing for the same page. Second, all four sore spots were fair game. Those were the panel's form fields (a status dropdown, a date field and two bordered text boxes), the log's rows and timeline rail, the chains of decisions that replace one another, and the page itself, which had no hero and only a plain toolbar. Third, the status of a decision was allowed to leave its dropdown. If it read better as something else, so be it.
+
+        ## Designing inside the running app
+
+        I did not want mock-ups. A mock-up shows the best day of a design, with the shortest title and the tidiest data. So the exploration lived inside the running app, in what we call a tweaker: a small panel where each part of the page can be switched between proposals while you look at the real thing.
+
+        There were ten parts. On the page: the hero, the toolbar, the log, the row and the chain. In the panel: the header, the intro, the status and date, the reasoning and the relations. I composed by picking one proposal per part, live, and any combination could be copied out as a recipe and reproduced later.
+
+        The data was a copy of a real production project, Pebbles, with a few edge cases planted on top: one decision for every status, a replacement chain three decisions deep, and a decision with nothing written in it at all. If a design was going to break, I wanted it to break in front of me.
+
+        ## Forty-six ways to say it
+
+        Claude's design agent came back with 46 variants across those ten parts, plus two complete looks. One was loud, with status colour everywhere. The other was restrained, keeping colour only on the panel's top card.
+
+        The options were generous. For the hero there was a row of status keys, an "open calls" version, and a "latest decision" version. The log could be grouped by month, by quarter, as shelves per status, or as a deck of cards. Rows could be seals, cards, colour bands, a dense ledger or a single quiet line. Chains could appear as a strip, a folded pill, stacked cards or "versions". In the panel, the status could be a connected track, a road map, a big seal, a set of chips, or simply a sentence. The reasoning could stay as fields, become side-by-side tiles, quotes, a folded deck or one card.
+
+        Claude also suggested a starting combination, which fixed two redundancies it had spotted in the loud look. The status filter appeared twice, once in the hero and once in the toolbar, and the count tiles repeated the relation lines just below them. That gave me somewhere to start, and then I began picking for myself.
+
+        ## Two things the real data told us
+
+        Working on real records surfaced two problems that no mock-up would have shown.
+
+        The first was about reading. Open a decision from the read-only Changelog and the old panel showed its title, its description and its relations, and nothing of its reasoning. The why and the how simply were not there. For a log whose whole purpose is to keep the reasoning, that was a quiet failure. The redesign shows both as plain text when you can't edit.
+
+        The second was a contradiction sitting in the data. One decision had been replaced by another, yet was still marked as enacted. A tidier design would have hidden that. Ours says it out loud: a short note names the decision that replaced it, states that this one is still marked enacted, and offers a single button, *Mark superseded*, to put the record straight.
+
+        ## What I picked
+
+        Here is the composition I settled on. The hero is the row of status keys, which double as filters. The toolbar carries the same connected keys. The log is grouped by quarter, with a big cookie-shaped mark for each quarter sitting on a spine. Each row is the dense ledger, with the date as a little calendar stamp on the rail. A decision that replaced others shows a folded pill, *Replaced 2 earlier decisions*, that opens when you want the history.
+
+        In the panel, a status chip sits in the header. The status itself became a sentence you can edit: this decision is, then a status you can change, since, then a date. Why and How became borderless fields, and a Lineage card now sits above the relations.
+
+        ## Adjusting the composition
+
+        Picking is one thing; looking at the whole is another. A handful of changes came once I saw my picks together.
+
+        I wanted to switch the log between by quarter and by status. The status groups borrow the quarters' look: a title beside a cookie mark that holds the status icon, with none of the coloured shelf backgrounds I had tried and didn't want. One detail mattered here. In the status view, every decision sits under its own status, so replacement chains unfold there. Without that, a group's count disagreed with its key: the group said 37 enacted while its key said 39.
+
+        The ledger was very cool, but the status pill in front of each title pushed the titles inward, so they no longer lined up. I moved the chip down to the line of small chips under the prose, and now every title starts on the same edge. I also wanted the hero to run the full width of the page, like the hero of any panel, instead of sitting inset.
+
+        The next change was my own idea, and none of the 46 proposals had it. The decision's description moved down into the panel body, as What, beside Why and How. The verdict sentence moved up into the top card, right under the title. Now the top card says where the decision stands, and the body holds the prose.
+
+        Finally, with a panel open the page gets narrow, so the toolbar compacts: the search becomes an icon, and the status keys become a dropdown with counts.
+
+        ## Two fixes I didn't expect
+
+        Polishing turned up an old bug. The sticky toolbar stopped being sticky after about a screen of scrolling. It was not something the redesign had introduced; it had been happening on every page. Fixing it revealed a second problem: the sticky quarter marks slid under the toolbar. They now stop just below it.
+
+        Then came contrast. Once the toolbar took the colour of the hero, its buttons looked muddy on top of it. I saw three ways out: keep the toolbar in its original colour, re-tone the buttons, or re-tone the buttons and give the toolbar back its own colour once the hero scrolls out of view. Claude built the third, and kept the plain bar available as an alternative. I found the re-toned contrast perfect. The same fix then went to the status dropdown and the date field inside the panel's coloured top card.
+
+        ## One last touch: type that shows off
+
+        Late in the work, I made a small decision about type. On the Expressive look, the big featured figures, the counts in the hero tiles and the Q1 to Q4 marks, use DynaPuff, the rounded display face the Arkademy already uses. On Calm, they stay in the regular reading face. Same page, different voice.
+
+        ## How it shipped
+
+        We did not ship the prototype. The pieces I chose were rebuilt into the real components, and the work went out as four small changes that could each be reviewed on their own. First, the sticky-toolbar fix, which helps every page. Second, the log's rules (which decision replaced which, what a filter shows, which date a row carries), moved into a single tested place. Third, the new Decisions page. Fourth, the new decision panel. The Calm look keeps today's panel for now.
+
+        ## What I take from it
+
+        What I'd keep from this is the method. Composing live, on a copy of a real project with awkward cases planted in it, showed me problems a drawing would never have shown: reasoning that was invisible in one view, a record that contradicted itself, a sticky bar that had quietly been broken for a while. The result is a decision log that looks like it belongs with the rest of the app, and that tells the truth about the decisions inside it.
+      fr: |
+        Arkaik garde une trace des décisions derrière un produit : ce qu'on a choisi, pourquoi, et ce que ça nous a coûté. Cette page portait encore l'ancien style, et ça se voyait. Voici comment elle a changé, ce qu'on a essayé en route, et les quelques choses que je n'ai remarquées que parce qu'on travaillait sur de vrais enregistrements.
+
+        ## Ce que j'ai demandé
+
+        Les panneaux et les pages qualité avaient déjà été repensés dans le style Material 3 « Expressif », franc et arrondi, avec une alternative plus sobre, « Calme », pour qui la préfère dans les réglages. La page Décisions venait ensuite, avec le panneau qui s'ouvre quand on clique sur une décision.
+
+        Avant de commencer, j'ai fait trois choix pour garder les choses simples. D'abord, un seul designer Expressif : pas de piste Calme cette fois, et pas deux auteurs en concurrence sur la même page. Ensuite, les quatre points sensibles étaient tous ouverts : les champs de formulaire du panneau (une liste déroulante pour le statut, un champ de date et deux zones de texte encadrées), les lignes du journal et leur rail chronologique, les chaînes de décisions qui se remplacent les unes les autres, et la page elle-même, sans en-tête et avec une simple barre d'outils. Enfin, le statut d'une décision avait le droit de quitter sa liste déroulante. S'il se lisait mieux autrement, tant mieux.
+
+        ## Designer dans l'app, pas à côté
+
+        Je ne voulais pas de maquettes. Une maquette montre le meilleur jour d'un design, avec le titre le plus court et les données les plus propres. Alors l'exploration a vécu dans l'app elle-même, dans ce qu'on appelle un « tweaker » : un petit panneau où chaque partie de la page bascule d'une proposition à l'autre pendant qu'on regarde la vraie chose.
+
+        Il y avait dix parties. Sur la page : l'en-tête, la barre d'outils, le journal, la ligne et la chaîne. Dans le panneau : l'en-tête, l'intro, le statut et la date, le raisonnement et les relations. Je composais en choisissant une proposition par partie, en direct, et n'importe quelle combinaison pouvait être copiée comme une recette et rejouée plus tard.
+
+        Les données venaient d'une copie d'un vrai projet en production, Pebbles, avec quelques cas limites plantés par-dessus : une décision pour chaque statut, une chaîne de remplacement sur trois niveaux, et une décision sans rien d'écrit dedans. Si un design devait casser, je voulais le voir casser sous mes yeux.
+
+        ## Quarante-six façons de le dire
+
+        L'agent designer de Claude est revenu avec 46 variantes réparties sur ces dix parties, plus deux looks complets. L'un, bruyant, mettait la couleur des statuts partout. L'autre, retenu, ne gardait la couleur que sur la carte du haut du panneau.
+
+        Les options étaient généreuses. Pour l'en-tête, une rangée de touches de statut, une version « décisions en attente » et une version « dernière décision ». Le journal pouvait se grouper par mois, par trimestre, en étagères par statut ou en paquet de cartes. Les lignes pouvaient être des sceaux, des cartes, des bandes de couleur, un registre dense ou une simple ligne discrète. Les chaînes pouvaient prendre la forme d'une bande, d'une pastille repliée, de cartes empilées ou de « versions ». Dans le panneau, le statut pouvait devenir une piste connectée, une feuille de route, un grand sceau, une série de puces, ou tout simplement une phrase. Le raisonnement pouvait rester en champs, ou devenir des tuiles côte à côte, des citations, un paquet replié ou une seule carte.
+
+        Claude a aussi proposé une combinaison de départ, qui corrigeait deux redondances repérées dans le look bruyant. Le filtre de statut apparaissait deux fois, dans l'en-tête et dans la barre d'outils, et des tuiles de compte répétaient les lignes de relations juste en dessous. Ça m'a donné un point de départ, puis j'ai commencé à choisir moi-même.
+
+        ## Deux choses que les vraies données nous ont dites
+
+        Travailler sur de vrais enregistrements a fait remonter deux problèmes qu'aucune maquette n'aurait montrés.
+
+        Le premier concernait la lecture. Ouvre une décision depuis le Changelog, en lecture seule, et l'ancien panneau montrait son titre, sa description et ses relations, mais rien de son raisonnement. Le pourquoi et le comment n'étaient tout simplement pas là. Pour un journal dont toute la raison d'être est de garder le raisonnement, c'était un échec discret. La refonte les affiche en texte simple quand on ne peut pas modifier.
+
+        Le second était une contradiction dans les données. Une décision avait été remplacée par une autre, mais restait marquée comme appliquée. Un design plus lisse l'aurait cachée. Le nôtre le dit franchement : une courte note nomme la décision qui l'a remplacée, rappelle que celle-ci est toujours marquée appliquée, et propose un seul bouton, *Mark superseded*, pour remettre les choses d'aplomb.
+
+        ## Ce que j'ai choisi
+
+        Voici la composition que j'ai retenue. L'en-tête, c'est la rangée de touches de statut, qui servent aussi de filtres. La barre d'outils porte les mêmes touches connectées. Le journal est groupé par trimestre, avec une grosse marque en forme de biscuit pour chaque trimestre, posée sur une colonne. Chaque ligne suit le registre dense, avec la date en petit tampon de calendrier sur le rail. Une décision qui en a remplacé d'autres affiche une pastille repliée, *Replaced 2 earlier decisions*, qui s'ouvre quand tu veux l'historique.
+
+        Dans le panneau, une puce de statut se place dans l'en-tête. Le statut lui-même est devenu une phrase qu'on peut modifier : cette décision est, puis un statut qu'on peut changer, depuis, puis une date. Le pourquoi et le comment sont devenus des champs sans bordure, et une carte Lignée se place désormais au-dessus des relations.
+
+        ## Ajuster la composition
+
+        Choisir, c'est une chose ; regarder l'ensemble, c'en est une autre. Quelques changements sont venus une fois mes choix réunis.
+
+        Je voulais pouvoir basculer le journal entre « par trimestre » et « par statut ». Les groupes par statut reprennent le look des trimestres : un titre à côté d'une marque en biscuit qui contient l'icône du statut, sans les fonds colorés des étagères que j'avais essayées et que je ne voulais pas. Un détail comptait. Dans la vue par statut, chaque décision se range sous son propre statut, donc les chaînes de remplacement s'y déplient. Sans ça, le compte d'un groupe contredisait sa touche : le groupe annonçait 37 décisions appliquées quand sa touche en affichait 39.
+
+        Le registre était vraiment chouette, mais la pastille de statut devant chaque titre décalait les titres, qui ne s'alignaient plus. J'ai descendu la puce dans la ligne de petites puces sous le texte, et maintenant chaque titre commence au même bord. Je voulais aussi que l'en-tête prenne toute la largeur de la page, comme l'en-tête de n'importe quel panneau, au lieu d'être posé en retrait.
+
+        Le changement suivant venait de moi, et aucune des 46 propositions ne l'avait. La description de la décision est descendue dans le corps du panneau, en tant que *What*, à côté de *Why* et de *How* : le quoi, le pourquoi, le comment. La phrase du verdict est montée dans la carte du haut, juste sous le titre. Désormais, la carte du haut dit où en est la décision, et le corps porte le texte.
+
+        Enfin, avec un panneau ouvert, la page devient étroite, alors la barre d'outils se compacte : la recherche devient une icône, et les touches de statut deviennent une liste déroulante avec les comptes.
+
+        ## Deux correctifs que je n'attendais pas
+
+        Les finitions ont fait remonter un vieux bug. La barre d'outils collante cessait de coller après environ un écran de défilement. Ce n'était pas la refonte qui l'avait introduit : ça arrivait sur toutes les pages. Le corriger a révélé un second problème : les marques de trimestre, collantes elles aussi, glissaient sous la barre d'outils. Elles s'arrêtent maintenant juste en dessous.
+
+        Puis est venu le contraste. Une fois que la barre d'outils prenait la couleur de l'en-tête, ses boutons paraissaient ternes dessus. Je voyais trois issues : garder la barre dans sa couleur d'origine, reteinter les boutons, ou reteinter les boutons et rendre à la barre sa propre couleur une fois l'en-tête sorti de l'écran. Claude a construit la troisième, en gardant la barre neutre comme alternative. J'ai trouvé le contraste retravaillé parfait. Le même correctif est ensuite passé à la liste déroulante de statut et au champ de date, dans la carte colorée en haut du panneau.
+
+        ## Une dernière touche : une typo qui se montre
+
+        Tard dans le travail, j'ai pris une petite décision typographique. Sur le look Expressif, les grands chiffres mis en avant (les comptes dans les tuiles de l'en-tête, les marques Q1 à Q4) utilisent DynaPuff, la police d'affichage arrondie que l'Arkademy utilise déjà. Sur le look Calme, ils restent dans la police de lecture habituelle. Même page, autre voix.
+
+        ## Comment c'est sorti
+
+        On n'a pas livré le prototype. Les pièces que j'ai choisies ont été reconstruites dans les vrais composants, et le travail est sorti en quatre petits changements, chacun relisible seul. D'abord, le correctif de la barre collante, qui aide toutes les pages. Ensuite, les règles du journal (quelle décision en remplace une autre, ce qu'un filtre montre, quelle date porte une ligne), regroupées en un seul endroit testé. Puis la nouvelle page Décisions. Et enfin le nouveau panneau de décision. Le look Calme garde le panneau actuel pour l'instant.
+
+        ## Ce que j'en retiens
+
+        Ce que je garderais de tout ça, c'est la méthode. Composer en direct, sur une copie d'un vrai projet truffée de cas tordus, m'a montré des problèmes qu'un dessin n'aurait jamais montrés : un raisonnement invisible dans une vue, un enregistrement qui se contredisait, une barre collante discrètement cassée depuis un moment. Le résultat, c'est un journal des décisions qui a l'air de faire partie du reste de l'app, et qui dit la vérité sur les décisions qu'il contient.
+    media:
+      - { file: shots/decisions-redesign/01-before-page.png, alt: "The old Decisions page: a thin rail, small status icons and long grey previews, with no hero above them." }
+      - { file: shots/decisions-redesign/02-before-panel.png, alt: "The old decision panel: a status dropdown, a date field, and two bordered text boxes." }
+      - { file: shots/decisions-redesign/03-loud-look.png, alt: "The loud look: status colour on the hero tiles, the rail seals and the chips." }
+      - { file: shots/decisions-redesign/04-before-readonly.png, alt: "The old read-only panel: title, description, relations, and no reasoning at all." }
+      - { file: shots/decisions-redesign/05-after-readonly.png, alt: "The new read-only panel: What, Why and How as plain text." }
+      - { file: shots/decisions-redesign/06-replaced-but-enacted.png, alt: "The panel noting that a decision was replaced but is still marked enacted, with a Mark superseded button." }
+      - { file: shots/decisions-redesign/07-first-composition.png, alt: "My first composition: status keys in the hero, quarter marks on a spine, ledger rows with calendar stamps." }
+      - { file: shots/decisions-redesign/08-by-status.png, alt: "The log grouped by status, each group headed by a cookie mark with the status icon." }
+      - { file: shots/decisions-redesign/09-verdict-what-why-how.png, alt: "The decision panel: the title and the verdict sentence in the top card, then What, Why and How below." }
+      - { file: shots/decisions-redesign/10-compact-toolbar.png, alt: "With a panel open, the toolbar shrinks to icons and the status keys sit in a dropdown with counts." }
+      - { file: shots/decisions-redesign/11-toolbar-tinted.png, alt: "The toolbar tinted to match the hero, with re-toned buttons." }
+      - { file: shots/decisions-redesign/12-toolbar-plain.png, alt: "The toolbar back to its plain colour after scrolling past the hero." }
+      - { file: shots/decisions-redesign/13-calm-look.png, alt: "The Calm look: the hero figures in the reading face, the old-style panel beside the log." }
