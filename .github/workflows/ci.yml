@@ -250,6 +250,9 @@ jobs:
       - name: Delivery board grouping tests
         run: npm run test:delivery
 
+      - name: Decision Log model tests (chains, flattening, dates, counts)
+        run: npm run test:decision-log
+
       - name: Journey graph golden parity tests
         run: npm run test:journey-graph
 

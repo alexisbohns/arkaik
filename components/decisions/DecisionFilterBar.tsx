@@ -10,8 +10,10 @@ import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DECISION_STATUSES, type DecisionStatusId } from "@/lib/config/decision-statuses";
 import { GUARDED_HOTKEY, toolbarKey, useShortcut } from "@/lib/hooks/useShortcut";
+import type { DecisionStatusFilter } from "@/lib/utils/decision-log";
 
-export type DecisionStatusFilter = DecisionStatusId | "all";
+// The filter value lives with the log model that reads it; re-exported for the page.
+export type { DecisionStatusFilter };
 
 /** The "no filter" value. Already a real string, so Radix's Select can hold it. */
 const ALL = "all";
