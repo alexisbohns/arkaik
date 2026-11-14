@@ -43,6 +43,7 @@
 /tests/app/.test-build-graph-spotlight/
 /tests/app/.test-build-coverage/
 /tests/app/.test-build-changelog-period/
+/tests/app/.test-build-decision-log/
 /tests/app/.test-build-changelog-releases/
 /tests/app/.test-build-deliverable-pr/
 /tests/app/.test-build-playlist-*/

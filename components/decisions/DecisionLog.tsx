@@ -1,14 +1,13 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { DiamondPlusIcon, LoaderIcon } from "lucide-react";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
-import { decisionStatusOf } from "@/lib/utils/decision";
 import type { DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
 import { RelatedNodesPopover } from "@/components/layout/RelatedNodesPopover";
 import { CopyIdChip } from "@/components/graph/nodes/EntityBadges";
-import { formatEventDate } from "@/components/journal/describe-event";
+import { buildDecisionLog, type DecisionRowModel } from "@/lib/utils/decision-log";
 import { ICON_CHIP_ROW, iconChipVariants } from "@/components/layout/IconChip";
 import { cn } from "@/lib/utils";
 
@@ -50,59 +49,6 @@ interface DecisionLogProps {
    * not put. See `topLevel`.
    */
   search?: string;
-}
-
-/**
- * When a decision was made, for ordering: `decided_at` when present, else the
- * node's `node.created` journal ts, else empty (sorts last). Backfilled
- * history carries decided_at precisely because created-events all carry the
- * backfill date (spec §1).
- *
- * The two sources differ in granularity — `decided_at` is a bare `YYYY-MM-DD`
- * date, `ts` is a full ISO-8601 instant — but a lexicographic compare stays
- * correct across them: a date string is exactly the prefix any same-day
- * instant would share, so it still sorts immediately before that instant and
- * on the correct side of every other day.
- */
-function decidedInstant(node: Node, createdTs: Map<string, string>): string {
-  const decidedAt = typeof node.metadata?.decided_at === "string" ? node.metadata.decided_at : undefined;
-  return decidedAt ?? createdTs.get(node.id) ?? "";
-}
-
-/**
- * Whether a decision answers the toolbar's search box.
- *
- * Title, description and id, because those are the three things anyone knows
- * about a decision they are trying to find again: what it said, why, or the
- * `DEC-…` someone pasted at them.
- */
-function matchesQuery(node: Node, query: string): boolean {
-  if (query === "") return true;
-  return (
-    node.title.toLowerCase().includes(query) ||
-    (node.description ?? "").toLowerCase().includes(query) ||
-    node.id.toLowerCase().includes(query)
-  );
-}
-
-function byNewest(createdTs: Map<string, string>) {
-  return (a: Node, b: Node) => decidedInstant(b, createdTs).localeCompare(decidedInstant(a, createdTs));
-}
-
-/**
- * A decided instant as a date to read.
- *
- * `decided_at` is a bare `YYYY-MM-DD` and a journal `ts` is a full instant, so
- * the two cannot go through one parser: `new Date("2026-01-05")` is UTC
- * midnight, which in every timezone west of Greenwich renders as the 4th. A
- * date-only string is therefore built as a *local* date before it is formatted,
- * and only a real instant is handed to {@link formatEventDate}.
- */
-function formatDecidedInstant(instant: string): string {
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(instant);
-  if (dateOnly === null) return formatEventDate(instant);
-  const [, year, month, day] = dateOnly;
-  return formatEventDate(new Date(Number(year), Number(month) - 1, Number(day)).toISOString());
 }
 
 /**
@@ -192,33 +138,21 @@ function RelatedNodesChip({
  * replaced — a title, a date, and what it still touches.
  */
 function DecisionRow({
-  node,
-  createdTs,
+  row,
   dimmed,
   connector,
-  detailed,
-  impacted,
-  generated,
   onSelect,
   children,
 }: {
-  node: Node;
-  createdTs: Map<string, string>;
+  row: DecisionRowModel;
   dimmed?: boolean;
   /** Whether anything follows on this rail, and so whether a line runs down to it. */
   connector: boolean;
-  detailed: boolean;
-  /** The nodes this decision's `impacts` edges point at. */
-  impacted: readonly Node[];
-  /** The acceptances its `generates` edges point at. */
-  generated: readonly Node[];
   onSelect: (node: Node) => void;
   /** What this decision supersedes, drawn as its own rail underneath. */
   children?: ReactNode;
 }) {
-  const instant = decidedInstant(node, createdTs);
-  const superseded = decisionStatusOf(node) === "superseded";
-  const showDescription = detailed && !superseded && node.description;
+  const { node } = row;
 
   return (
     <li className={cn("grid grid-cols-[auto_1fr] gap-x-3", dimmed && "opacity-60")}>
@@ -234,7 +168,7 @@ function DecisionRow({
       <div className="flex flex-col items-center">
         {/* `lead`, because the title beside it is a `text-sm` line — the chip
             owns what that means; see `iconChipVariants`. */}
-        <DecisionStatusBadge status={decisionStatusOf(node)} variant="tile" lead />
+        <DecisionStatusBadge status={row.status} variant="tile" lead />
         {connector && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
       </div>
 
@@ -252,12 +186,10 @@ function DecisionRow({
             <span className="min-w-0 truncate text-sm font-medium group-hover/decision:underline group-focus-visible/decision:underline">
               {node.title}
             </span>
-            {instant && (
-              <span className="shrink-0 text-xs text-muted-foreground">{formatDecidedInstant(instant)}</span>
-            )}
+            {row.dateLabel && <span className="shrink-0 text-xs text-muted-foreground">{row.dateLabel}</span>}
           </span>
-          {showDescription && (
-            <span className="line-clamp-2 text-xs text-muted-foreground">{node.description}</span>
+          {row.showDescription && (
+            <span className="line-clamp-2 text-xs text-muted-foreground">{row.description}</span>
           )}
         </button>
 
@@ -266,21 +198,21 @@ function DecisionRow({
             a decision, so a column of `DEC-…` prefixes says the same word
             twenty times, and what anyone ever wanted from it was the clipboard.
             The tooltip is where it is readable. */}
-        {detailed && (
+        {row.showMeta && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
             <CopyIdChip id={node.id} />
             <RelatedNodesChip
               icon={<LoaderIcon className="size-3" aria-hidden="true" />}
               label="Impacted surfaces"
               unit="surface"
-              nodes={impacted}
+              nodes={row.impacted}
               onSelect={onSelect}
             />
             <RelatedNodesChip
               icon={<DiamondPlusIcon className="size-3" aria-hidden="true" />}
               label="Generated acceptances"
               unit="acceptance"
-              nodes={generated}
+              nodes={row.generated}
               onSelect={onSelect}
             />
           </div>
@@ -293,146 +225,14 @@ function DecisionRow({
 }
 
 export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, statusFilter, detailed, search = "" }: DecisionLogProps) {
-  const createdTs = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const event of journal ?? []) {
-      if (event.type === "node.created" && typeof event.node_id === "string" && !map.has(event.node_id)) {
-        map.set(event.node_id, event.ts);
-      }
-    }
-    return map;
-  }, [journal]);
-
-  // `supersedes` edges point new → old (source supersedes target). Two
-  // derived views of the same edges: who a decision directly supersedes (to
-  // walk chains downward from a head), and which decisions carry an incoming
-  // edge at all (to tell a head — nothing supersedes it — from the rest).
-  const directlySupersedes = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const edge of allEdges) {
-      if (edge.edge_type !== "supersedes") continue;
-      map.set(edge.source_id, [...(map.get(edge.source_id) ?? []), edge.target_id]);
-    }
-    return map;
-  }, [allEdges]);
-
-  /**
-   * What each decision impacts, and what it generated — its `impacts` and
-   * `generates` targets, resolved to nodes.
-   *
-   * Built once for the whole log rather than per row: a page of twenty
-   * decisions would otherwise walk every edge twenty times, and the row is
-   * rendered again on every filter change.
-   *
-   * A target no node answers to is dropped rather than shown as a bare id, the
-   * rule `DeliverableHoverCard` states for its own list: a popover naming an id
-   * it cannot describe, under a count that promised something to read, is worse
-   * than a chip that never appeared. The count on the chip therefore means
-   * "nodes I can tell you about".
-   */
-  const related = useMemo(() => {
-    const byId = new Map(allNodes.map((node) => [node.id, node]));
-    const map = new Map<string, { impacted: Node[]; generated: Node[] }>();
-    for (const edge of allEdges) {
-      const key = edge.edge_type === "impacts" ? "impacted" : edge.edge_type === "generates" ? "generated" : null;
-      if (key === null) continue;
-      const target = byId.get(edge.target_id);
-      if (target === undefined) continue;
-      const entry = map.get(edge.source_id) ?? { impacted: [], generated: [] };
-      entry[key].push(target);
-      map.set(edge.source_id, entry);
-    }
-    return map;
-  }, [allEdges, allNodes]);
-
-  const hasIncomingSupersedes = useMemo(() => {
-    const set = new Set<string>();
-    for (const edge of allEdges) {
-      if (edge.edge_type === "supersedes") set.add(edge.target_id);
-    }
-    return set;
-  }, [allEdges]);
-
-  /**
-   * Chain heads (spec §5) are decisions nothing supersedes. Each head's chain
-   * is every decision it transitively supersedes, found by walking
-   * `directlySupersedes` depth-first from the head with a *shared* visited
-   * set across all heads — so a decision two chains could both reach nests
-   * under whichever head's DFS gets to it first, which is simply head order
-   * (newest-first) and then edge order within `directlySupersedes`. The
-   * shared set also doubles as cycle protection: a node already claimed is
-   * never re-entered, so an A⇄B loop cannot recurse forever.
-   *
-   * A decision can have an incoming `supersedes` edge and still never be
-   * visited here — every member of a cycle with no external head does. Those
-   * are surfaced separately in `topLevel` below rather than lost.
-   */
-  const { heads, headIds, chainsByHead, visited } = useMemo(() => {
-    const byId = new Map(decisions.map((d) => [d.id, d]));
-    const orderedHeads = decisions
-      .filter((d) => !hasIncomingSupersedes.has(d.id))
-      .sort(byNewest(createdTs));
-    const headIds = new Set(orderedHeads.map((d) => d.id));
-
-    const visited = new Set<string>();
-    const chainsByHead = new Map<string, Node[]>();
-
-    function collect(nodeId: string, into: Node[]) {
-      for (const predecessorId of directlySupersedes.get(nodeId) ?? []) {
-        if (visited.has(predecessorId)) continue;
-        const predecessor = byId.get(predecessorId);
-        if (!predecessor) continue;
-        visited.add(predecessorId);
-        into.push(predecessor);
-        collect(predecessorId, into);
-      }
-    }
-
-    for (const head of orderedHeads) {
-      const chain: Node[] = [];
-      collect(head.id, chain);
-      chain.sort(byNewest(createdTs));
-      chainsByHead.set(head.id, chain);
-    }
-
-    return { heads: orderedHeads, headIds, chainsByHead, visited };
-  }, [decisions, directlySupersedes, hasIncomingSupersedes, createdTs]);
-
-  const query = search.trim().toLowerCase();
-  const flat = statusFilter !== "all" || query !== "";
-
-  const topLevel = useMemo(() => {
-    if (flat) {
-      // A filter of either kind shows flat matching rows — nesting a chain
-      // under a head that itself may not match the filter would be confusing.
-      return decisions
-        .filter((d) => statusFilter === "all" || decisionStatusOf(d) === statusFilter)
-        .filter((d) => matchesQuery(d, query))
-        .sort(byNewest(createdTs));
-    }
-    // Heads plus any decision no head's DFS reached — a pure cycle (A
-    // supersedes B, B supersedes A) leaves every member with an incoming
-    // edge, so neither is a head; without this line both would vanish.
-    const orphaned = decisions.filter((d) => !headIds.has(d.id) && !visited.has(d.id));
-    return [...heads, ...orphaned].sort(byNewest(createdTs));
-  }, [decisions, flat, statusFilter, query, heads, headIds, visited, createdTs]);
+  // Every rule (heads and chains, what a filter flattens, which date, what a
+  // superseded row keeps) lives in the model; this renders it.
+  const log = buildDecisionLog({ decisions, allEdges, allNodes, journal, statusFilter, search, detailed });
 
   // No wrapper of its own now that the pills have moved out: the log is a single
   // block, and the page's content column already supplies the gap it used to add.
-  if (decisions.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
-        No decisions yet. Decisions record the why, what, and how of the choices that shaped this product.
-      </p>
-    );
-  }
-
-  if (topLevel.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
-        {query === "" ? "No decisions with this status." : "No decisions match this search."}
-      </p>
-    );
+  if (log.empty !== null) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">{log.emptyMessage}</p>;
   }
 
   // The log as one timeline — the Changelog's rail, applied to the choices that
@@ -442,43 +242,32 @@ export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, 
   // up with nothing.
   return (
     <ol className="flex flex-col">
-      {topLevel.map((node, index) => {
-        const chain = flat ? [] : (chainsByHead.get(node.id) ?? []);
-        return (
-          <DecisionRow
-            key={node.id}
-            node={node}
-            createdTs={createdTs}
-            detailed={detailed}
-            impacted={related.get(node.id)?.impacted ?? []}
-            generated={related.get(node.id)?.generated ?? []}
-            // The line runs on when another decision follows it *or* when
-            // this one supersedes something: a chain nested in the content
-            // column with nothing joining it to its head is two marks floating
-            // at two indents, and the indent alone is not a relationship.
-            connector={index < topLevel.length - 1 || chain.length > 0}
-            onSelect={onSelect}
-          >
-            {chain.length > 0 && (
-              <ol className="flex flex-col pt-2">
-                {chain.map((old, oldIndex) => (
-                  <DecisionRow
-                    key={old.id}
-                    node={old}
-                    createdTs={createdTs}
-                    dimmed
-                    detailed={detailed}
-                    impacted={related.get(old.id)?.impacted ?? []}
-                    generated={related.get(old.id)?.generated ?? []}
-                    connector={oldIndex < chain.length - 1}
-                    onSelect={onSelect}
-                  />
-                ))}
-              </ol>
-            )}
-          </DecisionRow>
-        );
-      })}
+      {log.entries.map(({ row, chain }, index) => (
+        <DecisionRow
+          key={row.id}
+          row={row}
+          // The line runs on when another decision follows it *or* when
+          // this one supersedes something: a chain nested in the content
+          // column with nothing joining it to its head is two marks floating
+          // at two indents, and the indent alone is not a relationship.
+          connector={index < log.entries.length - 1 || chain.length > 0}
+          onSelect={onSelect}
+        >
+          {chain.length > 0 && (
+            <ol className="flex flex-col pt-2">
+              {chain.map((old, oldIndex) => (
+                <DecisionRow
+                  key={old.id}
+                  row={old}
+                  dimmed
+                  connector={oldIndex < chain.length - 1}
+                  onSelect={onSelect}
+                />
+              ))}
+            </ol>
+          )}
+        </DecisionRow>
+      ))}
     </ol>
   );
 }
