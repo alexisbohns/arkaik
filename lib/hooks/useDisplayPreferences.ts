@@ -22,6 +22,13 @@ export type AcceptanceDisplay = "rows" | "cards";
  */
 export type DeliveryCardDisplay = "compact" | "detailed";
 
+/**
+ * How the Decisions page groups its log: by `quarter` (a timeline, newest
+ * first, each replacement chain folded under the decision that replaced it) or
+ * by `status` (open calls first, every decision under its own status).
+ */
+export type DecisionGrouping = "quarter" | "status";
+
 export interface DisplayPreferences {
   acceptanceDisplay: AcceptanceDisplay;
   deliveryCardDisplay: DeliveryCardDisplay;
@@ -35,6 +42,8 @@ export interface DisplayPreferences {
   screensLens: WallLens | null;
   /** The Screens map's "Gaps only" switch: fade everything but stale shots and live screens with no shot. */
   screensGapsOnly: boolean;
+  /** The Decisions page's grouping switch. */
+  decisionGrouping: DecisionGrouping;
 }
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
@@ -42,6 +51,7 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   deliveryCardDisplay: "compact",
   screensLens: null,
   screensGapsOnly: false,
+  decisionGrouping: "quarter",
 };
 
 const STORAGE_PREFIX = "arkaik:display-prefs:";
@@ -84,6 +94,10 @@ function isScreensGapsOnly(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
+function isDecisionGrouping(value: unknown): value is DecisionGrouping {
+  return value === "quarter" || value === "status";
+}
+
 function read(projectId: string): DisplayPreferences {
   if (typeof window === "undefined") return DEFAULT_DISPLAY_PREFERENCES;
   try {
@@ -91,7 +105,7 @@ function read(projectId: string): DisplayPreferences {
     if (!stored) return DEFAULT_DISPLAY_PREFERENCES;
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_DISPLAY_PREFERENCES;
-    const { acceptanceDisplay, deliveryCardDisplay, screensLens, screensGapsOnly } =
+    const { acceptanceDisplay, deliveryCardDisplay, screensLens, screensGapsOnly, decisionGrouping } =
       parsed as Partial<DisplayPreferences>;
     return {
       acceptanceDisplay: isAcceptanceDisplay(acceptanceDisplay)
@@ -104,6 +118,9 @@ function read(projectId: string): DisplayPreferences {
       screensGapsOnly: isScreensGapsOnly(screensGapsOnly)
         ? screensGapsOnly
         : DEFAULT_DISPLAY_PREFERENCES.screensGapsOnly,
+      decisionGrouping: isDecisionGrouping(decisionGrouping)
+        ? decisionGrouping
+        : DEFAULT_DISPLAY_PREFERENCES.decisionGrouping,
     };
   } catch {
     return DEFAULT_DISPLAY_PREFERENCES;

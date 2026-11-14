@@ -1,15 +1,20 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { DiamondPlusIcon, LoaderIcon } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronDownIcon } from "lucide-react";
 import type { Node, Edge, JournalEvent } from "@/lib/data/types";
 import type { DecisionStatusFilter } from "@/components/decisions/DecisionFilterBar";
-import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
-import { RelatedNodesPopover } from "@/components/layout/RelatedNodesPopover";
 import { CopyIdChip } from "@/components/graph/nodes/EntityBadges";
-import { buildDecisionLog, type DecisionRowModel } from "@/lib/utils/decision-log";
-import { ICON_CHIP_ROW, iconChipVariants } from "@/components/layout/IconChip";
-import { cn } from "@/lib/utils";
+import { DECISION_STATUS_ICONS } from "@/components/graph/nodes/node-styles";
+import { ReasoningCue, RelatedTiles, Shape, StatusPill, StatusSeal, plural } from "@/components/decisions/DecisionMarks";
+import type { DecisionGrouping } from "@/lib/hooks/useDisplayPreferences";
+import {
+  buildDecisionLog,
+  decidedDate,
+  type DecisionLogEntry,
+  type DecisionLogModel,
+  type DecisionRowModel,
+} from "@/lib/utils/decision-log";
 
 interface DecisionLogProps {
   decisions: Node[];
@@ -49,225 +54,322 @@ interface DecisionLogProps {
    * not put. See `topLevel`.
    */
   search?: string;
+  /**
+   * By quarter (the default): a timeline, each replacement chain folded under
+   * the decision that replaced it. By status: open calls first, every decision
+   * under its own status — so chains unfold there, a chain spanning statuses.
+   */
+  grouping?: DecisionGrouping;
 }
 
-/**
- * A decision's related nodes, as a popover behind a countable mark.
- *
- * Both of a decision's outward edges get one of these and they are deliberately
- * the same shape, because they answer the same kind of question about different
- * things: `impacts` names the surfaces a choice landed on, `generates` names the
- * promises it created. The list itself is {@link RelatedNodesPopover}, the same
- * panel the Library's "Used in" column opens; what lives here is the trigger.
- *
- * It is drawn as the Changelog's mark: {@link ICON_CHIP_ROW}'s tile with the
- * count *beside* it, not a number crammed into a bordered plate. The label is a
- * word as well as a number — "3 surfaces", not "3" — because two glyphs on one
- * line cannot both be self-evident, and the room is there once the count is
- * outside the box.
- *
- * **Both tiles are neutral.** The Changelog paints its forge mark plum
- * because the forge has an identity; these two have none to claim, and the one
- * thing colour means on a decision row is the status on the rail. A green
- * acceptance tile beside a green `enacted` mark would be two greens saying
- * different things at one glance. The glyph tells them apart, and the word
- * under the pointer confirms it.
- */
-function RelatedNodesChip({
-  icon,
-  label,
-  unit,
-  nodes,
-  onSelect,
-}: {
-  icon: ReactNode;
-  /** What the list is, for the heading and the accessible name. */
-  label: string;
-  /** The singular noun the count is of — pluralised here. */
-  unit: string;
-  nodes: readonly Node[];
-  onSelect: (node: Node) => void;
-}) {
-  if (nodes.length === 0) return null;
 
+const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
+const DAY = new Intl.DateTimeFormat(undefined, { day: "numeric" });
+
+/**
+ * A row's date as a calendar stamp on the rail: month, day, year. A date that
+ * is only the record's creation (no authored `decided_at`) wears the dashed
+ * "open on purpose" outline instead of a fill, and a decision with no date at
+ * all a dashed dash. The stamp is drawn for the eye; the title's sr text says
+ * the date in words.
+ */
+function DateStamp({ row }: { row: DecisionRowModel }) {
+  const date = decidedDate(row.instant);
+  if (!date) {
+    return (
+      <span className="dc-when" data-empty="" aria-hidden="true">
+        <span className="dc-when-month">—</span>
+      </span>
+    );
+  }
   return (
-    <RelatedNodesPopover
-      label={label}
-      nodes={nodes}
-      onSelect={onSelect}
-      trigger={
-        <button
-          type="button"
-          // The visible label is "3 surfaces", which needs the list's name to
-          // be unambiguous read out on its own.
-          aria-label={`${label} (${nodes.length})`}
-          className={cn(
-            ICON_CHIP_ROW,
-            "cursor-pointer text-muted-foreground hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          )}
-        >
-          <span className={cn(iconChipVariants(), "group-hover:bg-accent")}>{icon}</span>
-          {nodes.length} {unit}
-          {nodes.length === 1 ? "" : "s"}
-        </button>
-      }
-    />
+    <span className="dc-when" data-source={row.dateSource ?? undefined} aria-hidden="true">
+      <span className="dc-when-month">{MONTH.format(date)}</span>
+      <span className="dc-when-day">{DAY.format(date)}</span>
+      <span className="dc-when-year">{date.getFullYear()}</span>
+    </span>
   );
 }
 
 /**
- * One decision on the rail: the status as the mark, then what was decided.
+ * One decision on the rail: its date stamp, then what was decided.
  *
- * **No card.** The rows used to be bordered boxes inside the page's bordered
- * surface — the two-lids-for-one-fact stack the Changelog dropped when it built
- * this rail, and the Findings board and the Flow panel's playlist after it. The
- * rail carries the grouping; the mark carries the status, in the colour the
- * canvas already gives that status, so a log read top to bottom is a column of
- * verdicts before it is a column of titles.
+ * **No card.** The rail carries the grouping, the stamp carries the date, and
+ * the status rides as the first chip of the line under the prose — so every
+ * title starts on the same edge, which is what a column of decisions is read
+ * by.
  *
- * **The row is not one button.** Three of the things on it are controls — the
- * id copies, the two glyphs open panels — and a button inside a button is
- * markup no browser honours. So the title and description are the button that
- * opens the decision, and the meta line beside them is its own row of controls,
- * the division {@link EntityRow} draws for the same reason.
+ * **The row is not one button.** The id copies and the related tiles open
+ * lists — a button inside a button is markup no browser honours. So the title
+ * is the button that opens the decision, its hit area stretched over the row's
+ * text, and the chip line sits above that hit area as its own controls. A
+ * nested chain renders under the body, outside it, so its rows stay their own
+ * buttons.
  *
- * **A superseded decision keeps its title and loses its prose.** What it once
- * argued has been argued again, one row up; the rationale you want is the
- * successor's. What stays is the fact that the choice was made and then
- * replaced — a title, a date, and what it still touches.
+ * **A superseded decision keeps its title and loses its prose** (the model's
+ * rule). In a flat list — a filter, a search, the status grouping — a replaced
+ * decision also says what replaced it, since there is no head above it to.
+ *
+ * `data-look="ledger"` is the row's look in app/m3/decisions.css.
  */
 function DecisionRow({
   row,
-  dimmed,
+  context,
   connector,
   onSelect,
   children,
 }: {
   row: DecisionRowModel;
-  dimmed?: boolean;
+  /** head = top level (may carry a chain); chain = inside one; flat = a filtered, searched or status-grouped list. */
+  context: "head" | "chain" | "flat";
   /** Whether anything follows on this rail, and so whether a line runs down to it. */
   connector: boolean;
   onSelect: (node: Node) => void;
-  /** What this decision supersedes, drawn as its own rail underneath. */
+  /** What this decision supersedes, drawn under it. */
   children?: ReactNode;
 }) {
-  const { node } = row;
-
+  const replacedBy = context === "flat" && row.supersededBy.length > 0 ? row.supersededBy : null;
   return (
-    <li className={cn("grid grid-cols-[auto_1fr] gap-x-3", dimmed && "opacity-60")}>
-      {/* The rail. The connector is `flex-1` inside a stretched grid cell, so
-          it runs to the bottom of the entry however tall it grows — past a
-          superseded chain nested under it — and is absent on the last one,
-          which would otherwise trail into nothing.
-
-          The breathing room below belongs to the *content* column, never to
-          the `<li>`: a grid child stretches to its content box, so padding on
-          the row would end the connector above the gap and leave the marks
-          unlinked. */}
-      <div className="flex flex-col items-center">
-        {/* `lead`, because the title beside it is a `text-sm` line — the chip
-            owns what that means; see `iconChipVariants`. */}
-        <DecisionStatusBadge status={row.status} variant="tile" lead />
-        {connector && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
+    <li
+      data-decision-row
+      data-decision-status={row.status}
+      data-decision-context={context}
+      data-dc-status={row.status}
+      data-look="ledger"
+      data-connector={connector ? "" : undefined}
+      data-dimmed={context === "chain" ? "" : undefined}
+      data-detailed={row.showMeta ? "" : undefined}
+      className="dc-row"
+    >
+      <div className="dc-row-rail">
+        <DateStamp row={row} />
+        {connector && <span className="dc-row-line" aria-hidden="true" />}
       </div>
-
-      <div className={cn("flex min-w-0 flex-col gap-1", connector && "pb-4")}>
-        {/* The 24px mark centres on this line, which is why the title sits at
-            the top of the column with the date beside it — the Changelog's
-            row, and the same `items-baseline` so a long title and a short date
-            share one baseline rather than one box. */}
-        <button
-          type="button"
-          onClick={() => onSelect(node)}
-          className="group/decision flex min-w-0 cursor-pointer flex-col gap-1 text-left outline-none"
-        >
-          <span className="flex w-full min-w-0 items-baseline justify-between gap-3">
-            <span className="min-w-0 truncate text-sm font-medium group-hover/decision:underline group-focus-visible/decision:underline">
-              {node.title}
-            </span>
-            {row.dateLabel && <span className="shrink-0 text-xs text-muted-foreground">{row.dateLabel}</span>}
-          </span>
-          {row.showDescription && (
-            <span className="line-clamp-2 text-xs text-muted-foreground">{row.description}</span>
-          )}
-        </button>
-
-        {/* The meta line: the id, then the two edges a decision owns. The id is
-            a hash rather than the slug spelled out — every row on this page is
-            a decision, so a column of `DEC-…` prefixes says the same word
-            twenty times, and what anyone ever wanted from it was the clipboard.
-            The tooltip is where it is readable. */}
-        {row.showMeta && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
-            <CopyIdChip id={node.id} />
-            <RelatedNodesChip
-              icon={<LoaderIcon className="size-3" aria-hidden="true" />}
-              label="Impacted surfaces"
-              unit="surface"
-              nodes={row.impacted}
-              onSelect={onSelect}
-            />
-            <RelatedNodesChip
-              icon={<DiamondPlusIcon className="size-3" aria-hidden="true" />}
-              label="Generated acceptances"
-              unit="acceptance"
-              nodes={row.generated}
-              onSelect={onSelect}
-            />
+      <div className="dc-row-body">
+        <div className="dc-row-hit">
+          <div className="dc-row-top">
+            <button type="button" className="dc-row-title" onClick={() => onSelect(row.node)}>
+              {row.title || row.id}
+              <span className="sr-only">
+                , {row.statusLabel}
+                {row.dateLabel && `, ${row.dateSource === "recorded" ? "recorded" : "decided"} ${row.dateLabel}`}
+              </span>
+            </button>
           </div>
-        )}
-
+          {row.showDescription && <p className="dc-row-prose">{row.description}</p>}
+          <div className="dc-row-meta">
+            <StatusPill status={row.status} className="dc-row-pill" />
+            {row.showMeta && (
+              <>
+                <CopyIdChip id={row.id} />
+                <RelatedTiles row={row} onSelect={onSelect} />
+                {context !== "chain" && !row.superseded && (
+                  <ReasoningCue hasContext={row.hasContext} hasConsequences={row.hasConsequences} />
+                )}
+                {replacedBy && (
+                  <span className="dc-row-replaced">
+                    Replaced by{" "}
+                    {replacedBy.map((node, i) => (
+                      <span key={node.id}>
+                        {i > 0 && ", "}
+                        <button type="button" className="dc-inline-link" onClick={() => onSelect(node)}>
+                          {node.title || node.id}
+                        </button>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
         {children}
       </div>
     </li>
   );
 }
 
-export function DecisionLog({ decisions, allEdges, allNodes, journal, onSelect, statusFilter, detailed, search = "" }: DecisionLogProps) {
+/**
+ * What a head replaced, folded: one pill — the line's seals newest to oldest
+ * and "Replaced 2 earlier decisions" — that opens to their rows. Folded by
+ * default because a replaced decision's rationale has been argued again by its
+ * successor; the line is there to be followed, not read past.
+ */
+function ReplacedChain({
+  head,
+  chain,
+  onSelect,
+}: {
+  head: DecisionRowModel;
+  chain: DecisionRowModel[];
+  onSelect: (node: Node) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="dc-chain" data-chain="pill" data-open={open ? "" : undefined}>
+      <button type="button" className="dc-chain-pill" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        <span className="dc-chain-seals" aria-hidden="true">
+          {[head, ...chain].map((row) => (
+            <StatusSeal key={row.id} status={row.status} size="xs" />
+          ))}
+        </span>
+        <span>Replaced {chain.length === 1 ? "an earlier decision" : `${chain.length} earlier decisions`}</span>
+        <ChevronDownIcon aria-hidden="true" className="dc-chain-chevron" />
+      </button>
+      {open && (
+        <ol data-decision-chain id={id} className="dc-chain-list">
+          {chain.map((row, i) => (
+            <DecisionRow key={row.id} row={row} context="chain" connector={i < chain.length - 1} onSelect={onSelect} />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** A group's mark: a cookie seal holding "Q4" or the status glyph, then its title and count. Sticky beside its rows on a wide log. */
+function GroupMark({ seal, title, count }: { seal: ReactNode; title: string; count: number }) {
+  return (
+    <h3 className="dc-quarter-mark">
+      <span className="dc-quarter-seal" aria-hidden="true">
+        <Shape name="cookie9" />
+        {seal}
+      </span>
+      <span className="dc-quarter-text">
+        <span className="dc-quarter-year">{title}</span>
+        <span className="dc-quarter-count">{plural(count, "decision")}</span>
+      </span>
+    </h3>
+  );
+}
+
+/** Consecutive entries sharing a key, in the log's order. */
+function runsBy<T>(items: T[], keyOf: (item: T) => string): { key: string; items: T[] }[] {
+  const runs: { key: string; items: T[] }[] = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    const last = runs[runs.length - 1];
+    if (last && last.key === key) last.items.push(item);
+    else runs.push({ key, items: [item] });
+  }
+  return runs;
+}
+
+function quarterOf(row: DecisionRowModel): string {
+  const date = decidedDate(row.instant);
+  return date ? `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}` : "undated";
+}
+
+export function DecisionLog({
+  decisions,
+  allEdges,
+  allNodes,
+  journal,
+  onSelect,
+  statusFilter,
+  detailed,
+  search = "",
+  grouping = "quarter",
+}: DecisionLogProps) {
   // Every rule (heads and chains, what a filter flattens, which date, what a
   // superseded row keeps) lives in the model; this renders it.
   const log = buildDecisionLog({ decisions, allEdges, allNodes, journal, statusFilter, search, detailed });
 
-  // No wrapper of its own now that the pills have moved out: the log is a single
-  // block, and the page's content column already supplies the gap it used to add.
   if (log.empty !== null) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">{log.emptyMessage}</p>;
+    return (
+      <div className="dc-empty" data-reason={log.empty}>
+        <Shape name="flower" className="dc-empty-shape" />
+        <p>{log.emptyMessage}</p>
+      </div>
+    );
   }
+  return grouping === "status" ? (
+    <LogByStatus log={log} onSelect={onSelect} />
+  ) : (
+    <LogByQuarter log={log} onSelect={onSelect} />
+  );
+}
 
-  // The log as one timeline — the Changelog's rail, applied to the choices that
-  // shaped the product rather than to what shipped from them. A superseded
-  // chain is a rail of its own inside its head's content column, so the nesting
-  // is carried by the second line of marks rather than by an indent that lined
-  // up with nothing.
+/**
+ * The log as a timeline in quarters, newest first: each quarter's mark on a
+ * spine beside its decisions. A head's replacement chain folds under it; a
+ * filter or a search flattens the log (the model's rule), and the quarters
+ * still hold.
+ */
+function LogByQuarter({ log, onSelect }: { log: DecisionLogModel; onSelect: (node: Node) => void }) {
   return (
-    <ol className="flex flex-col">
-      {log.entries.map(({ row, chain }, index) => (
-        <DecisionRow
-          key={row.id}
-          row={row}
-          // The line runs on when another decision follows it *or* when
-          // this one supersedes something: a chain nested in the content
-          // column with nothing joining it to its head is two marks floating
-          // at two indents, and the indent alone is not a relationship.
-          connector={index < log.entries.length - 1 || chain.length > 0}
-          onSelect={onSelect}
-        >
-          {chain.length > 0 && (
-            <ol className="flex flex-col pt-2">
-              {chain.map((old, oldIndex) => (
+    <div className="dc-log" data-log="quarters">
+      {runsBy(log.entries, (entry: DecisionLogEntry) => quarterOf(entry.row)).map(({ key, items }) => {
+        const [year, quarter] = key === "undated" ? [null, null] : key.split("-");
+        const count = items.reduce((n, entry) => n + 1 + entry.chain.length, 0);
+        return (
+          <section key={key} className="dc-quarter" aria-label={year ? `${quarter} ${year}` : "Undated"}>
+            <GroupMark seal={<span>{quarter ?? "—"}</span>} title={year ? `${quarter} ${year}` : "Undated"} count={count} />
+            <ol data-decision-log className="dc-quarter-list">
+              {items.map(({ row, chain }, index) => (
                 <DecisionRow
-                  key={old.id}
-                  row={old}
-                  dimmed
-                  connector={oldIndex < chain.length - 1}
+                  key={row.id}
+                  row={row}
+                  context={log.flat ? "flat" : "head"}
+                  // The line runs on when another decision follows it *or*
+                  // when this one replaced something folded under it.
+                  connector={index < items.length - 1 || chain.length > 0}
                   onSelect={onSelect}
-                />
+                >
+                  {chain.length > 0 && <ReplacedChain head={row} chain={chain} onSelect={onSelect} />}
+                </DecisionRow>
               ))}
             </ol>
-          )}
-        </DecisionRow>
-      ))}
-    </ol>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The log by status, open calls first, each group under the quarter's mark
+ * with the status glyph in the cookie. Every decision sits under its OWN
+ * status, so chains unfold here (a chain spans statuses): each replaced
+ * decision is a flat row saying what replaced it, and a group's count is the
+ * status key's count.
+ */
+function LogByStatus({ log, onSelect }: { log: DecisionLogModel; onSelect: (node: Node) => void }) {
+  const rows = log.entries.flatMap((entry) => [entry.row, ...entry.chain]);
+  const groups = log.counts
+    .map(({ status, label }) => ({
+      status,
+      label,
+      // Newest first, like the log: unfolded chain members are older than their heads.
+      rows: rows
+        .filter((row) => row.status === status)
+        .sort((a, b) => b.instant.localeCompare(a.instant)),
+    }))
+    .filter((group) => group.rows.length > 0);
+  return (
+    <div className="dc-log" data-log="quarters" data-dc-grouping="status">
+      {groups.map(({ status, label, rows: groupRows }) => {
+        const Icon = DECISION_STATUS_ICONS[status];
+        return (
+          <section key={status} className="dc-quarter" aria-label={label}>
+            <GroupMark
+              seal={
+                <span className="dc-group-glyph">
+                  <Icon />
+                </span>
+              }
+              title={label}
+              count={groupRows.length}
+            />
+            <ol data-decision-log className="dc-quarter-list">
+              {groupRows.map((row, index) => (
+                <DecisionRow key={row.id} row={row} context="flat" connector={index < groupRows.length - 1} onSelect={onSelect} />
+              ))}
+            </ol>
+          </section>
+        );
+      })}
+    </div>
   );
 }

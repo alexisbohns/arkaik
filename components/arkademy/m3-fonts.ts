@@ -1,11 +1,7 @@
-import {
-  Bitcount_Grid_Single,
-  DynaPuff,
-  Ruslan_Display,
-  Yatra_One,
-} from "next/font/google";
+import { Bitcount_Grid_Single, Ruslan_Display, Yatra_One } from "next/font/google";
 
 import type { M3FontId } from "@/components/arkademy/m3-font-options";
+import { dynaPuff } from "@/lib/font-display";
 import { inclusiveSans } from "@/lib/font-sans";
 import { gochiHand } from "@/lib/fonts";
 
@@ -23,8 +19,8 @@ import { gochiHand } from "@/lib/fonts";
  * Drop this table, and the panel's font group, once a face is chosen.
  */
 
-/** The default brand face, so the one preloaded. */
-export const dynaPuff = DynaPuff({ subsets: ["latin"], display: "swap", axes: ["wdth"] });
+/** The default brand face, so the one preloaded — declared once, in lib/font-display.ts. */
+export { dynaPuff };
 const bitcountGridSingle = Bitcount_Grid_Single({ subsets: ["latin"], display: "swap", preload: false });
 const ruslanDisplay = Ruslan_Display({ subsets: ["latin"], display: "swap", preload: false, weight: "400" });
 const yatraOne = Yatra_One({ subsets: ["latin"], display: "swap", preload: false, weight: "400" });
