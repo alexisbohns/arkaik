@@ -2,49 +2,182 @@
 
 /**
  * TWEAKER SCAFFOLD (redesigning-with-tweaks skill) — the floating tweaker. Pick a variant per section; the
- * picks compose. Sections on screen (this page + open panels) list first;
- * the rest fold under "Elsewhere". "Copy recipe" yields the `?tw=` string
- * that reproduces the composition, axes included.
+ * picks compose. Sections on screen list first; the rest fold under
+ * "Elsewhere". "Copy recipe" yields the `?tw=` string that reproduces the
+ * composition, axes included.
+ *
+ * DOCKING. The tweaker docks to any of the four corners, so it never sits on
+ * the surface being tweaked: pick a corner on the header's corner pad, or drag
+ * the header and let go — it snaps to the corner nearest the pointer. The
+ * corner is remembered per browser (`arkaik.tweaks.dock`), and `?tw-dock=tl`
+ * pins it for a screenshot.
  */
-import { useState } from "react";
-import { AUTHORS, TWEAK_AXES, TWEAK_SECTIONS, TWEAK_SURFACES, type AuthorId, type SectionId } from "./contract";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  AUTHOR_LABELS,
+  AUTHORS,
+  TWEAK_AXES,
+  TWEAK_SECTIONS,
+  TWEAK_SURFACES,
+  type AuthorId,
+  type SectionId,
+} from "./contract";
 import { PRESETS, variantsFor } from "./registry";
 import { resetAll, setAxis, setPick, setState, toRecipe, useMountedSections, useTweakState } from "./store";
 
-const DIRECTION_DOT = {
-  expressive: "bg-[#E5552F]",
-  calm: "bg-[#5B7FA6]",
-  lead: "bg-[#C9A227]",
-} as const;
-const dotOf = (author: AuthorId) => DIRECTION_DOT[AUTHORS.find((a) => a.id === author)?.direction ?? "lead"];
+type Corner = "tl" | "tr" | "bl" | "br";
+const CORNERS: Corner[] = ["tl", "tr", "bl", "br"];
+const CORNER_NAMES: Record<Corner, string> = { tl: "top left", tr: "top right", bl: "bottom left", br: "bottom right" };
+const CORNER_CLASS: Record<Corner, string> = {
+  tl: "top-4 left-4 items-start",
+  tr: "top-4 right-4 items-end",
+  bl: "bottom-4 left-4 items-start justify-end",
+  br: "bottom-4 right-4 items-end justify-end",
+};
+const DOCK_KEY = "arkaik.tweaks.dock";
 
-function SectionPicker({ id, label, hint, current }: { id: SectionId; label: string; hint: string; current: string }) {
-  const variants = variantsFor(id);
-  const currentNote = variants.find((v) => v.id === current)?.note;
+function readDock(): Corner {
+  if (typeof window === "undefined") return "br";
+  const fromUrl = new URLSearchParams(window.location.search).get("tw-dock");
+  if (fromUrl && (CORNERS as string[]).includes(fromUrl)) return fromUrl as Corner;
+  try {
+    const stored = window.localStorage.getItem(DOCK_KEY);
+    if (stored && (CORNERS as string[]).includes(stored)) return stored as Corner;
+  } catch {
+    /* private mode */
+  }
+  return "br";
+}
+
+const AUTHOR_TONE = {
+  expressive: ["#E5552F", "#8E44AD", "#1E8C6E", "#D4881C"],
+  calm: ["#5B7FA6", "#6B8E8E"],
+  lead: ["#C9A227"],
+} as const;
+const authorColor = (() => {
+  const seen: Record<string, number> = {};
+  const map = {} as Record<AuthorId, string>;
+  for (const a of AUTHORS) {
+    const tones = AUTHOR_TONE[a.direction];
+    const i = seen[a.direction] ?? 0;
+    seen[a.direction] = i + 1;
+    map[a.id] = tones[i % tones.length];
+  }
+  return (author: AuthorId | null) => (author ? map[author] : "#a3a3a3");
+})();
+
+function Dot({ author }: { author: AuthorId | null }) {
+  return <i aria-hidden className="inline-block size-2 shrink-0 rounded-full" style={{ background: authorColor(author) }} />;
+}
+
+/** The 2×2 corner pad: each cell docks the tweaker there. */
+function CornerPad({ corner, onPick }: { corner: Corner; onPick: (c: Corner) => void }) {
   return (
-    <section className="mb-2.5">
-      <h5 className="mb-1 flex items-baseline gap-2">
-        <span className="text-[11px] font-semibold text-neutral-700">{label}</span>
-        <span className="truncate text-[10px] text-neutral-400">{hint}</span>
-      </h5>
-      <div className="flex flex-wrap gap-1">
-        {[{ id: "base", label: "Current", author: null as AuthorId | null, note: "What ships today" }, ...variants].map((v) => {
-          const on = current === v.id;
-          return (
-            <button
-              key={v.id}
-              type="button"
-              title={`${v.id}${v.note ? ` — ${v.note}` : ""}`}
-              onClick={() => setPick(id, v.id)}
-              className={`flex items-center gap-1 rounded-full px-2 py-0.5 ${on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"}`}
-            >
-              {v.author && <i className={`size-2 rounded-full ${dotOf(v.author)}`} />}
-              {v.label}
-            </button>
-          );
-        })}
-      </div>
-      {currentNote && current !== "base" && <p className="mt-1 text-[11px] text-neutral-500">{currentNote}</p>}
+    <div role="group" aria-label="Dock the tweaker" className="grid grid-cols-2 gap-0.5 rounded-md bg-neutral-100 p-0.5">
+      {CORNERS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          aria-label={`Dock ${CORNER_NAMES[c]}`}
+          aria-pressed={corner === c}
+          title={`Dock ${CORNER_NAMES[c]}`}
+          onClick={() => onPick(c)}
+          className={`size-2.5 rounded-[3px] ${corner === c ? "bg-neutral-900" : "bg-neutral-300 hover:bg-neutral-500"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SectionBlock({
+  index,
+  id,
+  label,
+  hint,
+  current,
+}: {
+  index: number;
+  id: SectionId;
+  label: string;
+  hint: string;
+  current: string;
+}) {
+  const [open, setOpen] = useState(true);
+  const variants = variantsFor(id);
+  const picked = variants.find((v) => v.id === current);
+  const changed = current !== "base";
+  const options = [{ id: "base", label: "Current", author: null as AuthorId | null, note: "What ships today" }, ...variants];
+  return (
+    <section
+      className="relative border-t border-neutral-200 first:border-t-0"
+      style={changed ? { boxShadow: `inset 3px 0 0 ${authorColor(picked?.author ?? null)}` } : undefined}
+    >
+      <header className="flex items-center gap-2 py-2 pr-2 pl-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="w-5 shrink-0 font-mono text-[10px] text-neutral-400 tabular-nums">
+            {String(index).padStart(2, "0")}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-semibold text-neutral-900">{label}</span>
+            <span className="block truncate text-[10.5px] text-neutral-500">{hint}</span>
+          </span>
+        </button>
+        <span
+          className={`flex max-w-[45%] shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] ${changed ? "bg-neutral-900 text-white" : "text-neutral-400"}`}
+          title={picked ? `${picked.id}${picked.note ? ` — ${picked.note}` : ""}` : "What ships today"}
+        >
+          {changed && <Dot author={picked?.author ?? null} />}
+          <span className="truncate">{picked?.label ?? (changed ? current : "current")}</span>
+        </span>
+        {changed ? (
+          <button
+            type="button"
+            aria-label={`Reset ${label}`}
+            title="Back to current"
+            onClick={() => setPick(id, null)}
+            className="grid size-5 shrink-0 place-items-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+          >
+            ×
+          </button>
+        ) : (
+          <span className="size-5 shrink-0" />
+        )}
+      </header>
+      {open && (
+        <div className="pr-3 pb-3 pl-10">
+          <div className="flex flex-wrap gap-1">
+            {options.map((v) => {
+              const on = current === v.id;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  aria-pressed={on}
+                  title={`${v.id}${v.note ? ` — ${v.note}` : ""}`}
+                  onClick={() => setPick(id, v.id)}
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] ring-1 ${
+                    on
+                      ? "bg-neutral-900 text-white ring-neutral-900"
+                      : "bg-white text-neutral-700 ring-neutral-200 hover:bg-neutral-50 hover:ring-neutral-300"
+                  }`}
+                >
+                  {v.author && <Dot author={v.author} />}
+                  {v.label}
+                </button>
+              );
+            })}
+            {variants.length === 0 && <span className="text-[11px] text-neutral-400 italic">no variants yet</span>}
+          </div>
+          {picked?.note && (
+            <p className="mt-1.5 rounded-md bg-neutral-50 px-2 py-1 text-[11px] leading-snug text-neutral-600">{picked.note}</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -55,8 +188,45 @@ export function Tweaker() {
   const [open, setOpen] = useState(false);
   const [showElsewhere, setShowElsewhere] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [corner, setCorner] = useState<Corner>("br");
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const justDragged = useRef(false);
   const recipe = toRecipe(state);
   const active = Object.keys(state.picks).length;
+
+  // Read after mount: the server render has no window, and a mismatch would warn.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setCorner(readDock()), []);
+
+  const dock = (c: Corner) => {
+    setCorner(c);
+    try {
+      window.localStorage.setItem(DOCK_KEY, c);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
+    const button = (e.target as HTMLElement).closest("button");
+    if (e.button !== 0 || (button && button !== e.currentTarget)) return;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
+    if (!dragStart.current) return;
+    setDrag({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
+  };
+  const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    if (!dragStart.current) return;
+    const moved = drag !== null && Math.hypot(drag.x, drag.y) > 6;
+    justDragged.current = moved;
+    dragStart.current = null;
+    setDrag(null);
+    if (moved) dock(`${e.clientY < window.innerHeight / 2 ? "t" : "b"}${e.clientX < window.innerWidth / 2 ? "l" : "r"}` as Corner);
+  };
+  const dragHandlers = { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp };
 
   const surfaces = TWEAK_SURFACES.map((surface) => {
     const sections = TWEAK_SECTIONS.filter((s) => s.surface === surface.id);
@@ -65,89 +235,121 @@ export function Tweaker() {
   const here = surfaces.filter((s) => s.here);
   const elsewhere = surfaces.filter((s) => !s.here);
 
-  const renderSurface = (surface: (typeof surfaces)[number]) => (
-    <div key={surface.id} className="mb-3">
-      <h4 className="mb-1.5 border-b border-black/5 pb-1 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">
-        {surface.label}
-      </h4>
-      {surface.sections.map((s) => (
-        <SectionPicker key={s.id} id={s.id} label={s.label} hint={s.hint} current={state.picks[s.id] ?? "base"} />
-      ))}
-    </div>
-  );
+  const renderSurface = (surface: (typeof surfaces)[number]) => {
+    const changed = surface.sections.filter((s) => state.picks[s.id]).length;
+    return (
+      <div key={surface.id} className="shrink-0 overflow-clip rounded-xl bg-white ring-1 ring-neutral-200">
+        <h4 className="flex items-center gap-2 bg-neutral-100 px-3 py-1.5 text-[10px] font-semibold tracking-wider text-neutral-600 uppercase">
+          {surface.label}
+          <span className="ml-auto font-normal tracking-normal normal-case text-neutral-500">
+            {changed} of {surface.sections.length} changed
+          </span>
+        </h4>
+        {surface.sections.map((s, i) => (
+          <SectionBlock key={s.id} index={i + 1} id={s.id} label={s.label} hint={s.hint} current={state.picks[s.id] ?? "base"} />
+        ))}
+      </div>
+    );
+  };
+
+  const style = drag ? { transform: `translate(${drag.x}px, ${drag.y}px)` } : undefined;
 
   return (
-    <div className="fixed bottom-4 left-20 z-[200] font-sans text-[12px] text-neutral-900" data-tweaker>
+    <div
+      className={`pointer-events-none fixed z-[200] flex flex-col font-sans text-[12px] text-neutral-900 ${CORNER_CLASS[corner]}`}
+      data-tweaker
+      data-tweaker-dock={corner}
+    >
       {open ? (
-        <div className="flex max-h-[82vh] w-[400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
-          <div className="flex items-center gap-2 border-b border-black/10 px-3 py-2">
+        <div
+          style={style}
+          className={`pointer-events-auto flex max-h-[min(84vh,860px)] w-[392px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-neutral-50 shadow-2xl ring-1 ring-black/10 ${drag ? "opacity-90" : ""}`}
+        >
+          <header
+            {...dragHandlers}
+            className={`flex cursor-grab touch-none items-center gap-2 border-b border-black/10 bg-white px-3 py-2 select-none ${drag ? "cursor-grabbing" : ""}`}
+            title="Drag to another corner"
+          >
+            <span aria-hidden className="text-neutral-300">⠿</span>
             <strong className="text-[13px]">Tweaks</strong>
-            <span className="flex items-center gap-1 text-neutral-500">
-              <i className={`size-2 rounded-full ${DIRECTION_DOT.expressive}`} /> expressive
-              <i className={`ml-2 size-2 rounded-full ${DIRECTION_DOT.calm}`} /> calm
-              <i className={`ml-2 size-2 rounded-full ${DIRECTION_DOT.lead}`} /> ★
-            </span>
-            <button type="button" className="ml-auto rounded px-2 py-0.5 hover:bg-black/5" onClick={() => setOpen(false)}>
+            {active > 0 && <span className="rounded-full bg-neutral-900 px-1.5 text-[10px] text-white">{active}</span>}
+            <span className="ml-auto" />
+            <CornerPad corner={corner} onPick={dock} />
+            <button type="button" className="rounded-md px-2 py-0.5 hover:bg-black/5" onClick={() => setOpen(false)}>
               Close
             </button>
+          </header>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-black/5 bg-white px-3 py-1.5 text-[10.5px] text-neutral-500">
+            {AUTHORS.map((a) => (
+              <span key={a.id} className="flex items-center gap-1">
+                <Dot author={a.id} /> {AUTHOR_LABELS[a.id]}
+              </span>
+            ))}
           </div>
-          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2">
-            <section className="mb-3 flex flex-col gap-1">
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-3">
+            <div className="flex shrink-0 flex-col gap-2 rounded-xl bg-white p-3 ring-1 ring-neutral-200">
               {TWEAK_AXES.map((axis) => {
                 const current = state.axes[axis.id];
                 return (
                   <div key={axis.id} className="flex items-center gap-2">
-                    <span className="w-20 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">{axis.label}</span>
-                    {axis.values.map((value, i) => {
-                      const on = current === undefined ? false : current === value;
-                      return (
-                        <button
-                          key={String(value)}
-                          type="button"
-                          onClick={() => setAxis(axis.id, value)}
-                          className={`rounded-full px-2 py-0.5 ${on ? "bg-neutral-900 text-white" : "bg-neutral-100 hover:bg-neutral-200"}`}
-                        >
-                          {axis.names[i]}
-                        </button>
-                      );
-                    })}
-                    {current === undefined && <span className="text-[10px] text-neutral-400">(your setting)</span>}
+                    <span className="w-16 shrink-0 text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">{axis.label}</span>
+                    <div className="flex rounded-full bg-neutral-100 p-0.5">
+                      {axis.values.map((value, i) => {
+                        const on = current !== undefined && current === value;
+                        return (
+                          <button
+                            key={String(value)}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setAxis(axis.id, value)}
+                            className={`rounded-full px-2.5 py-0.5 ${on ? "bg-neutral-900 text-white" : "hover:bg-neutral-200"}`}
+                          >
+                            {axis.names[i]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {current === undefined && <span className="text-[10px] text-neutral-400">your setting</span>}
                   </div>
                 );
               })}
-            </section>
-            {PRESETS.length > 0 && (
-              <section className="mb-3">
-                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">Presets</h4>
-                <div className="flex flex-wrap gap-1">
-                  {PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      title={p.note}
-                      onClick={() => setState({ picks: p.picks, axes: p.axes })}
-                      className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1 hover:bg-neutral-200"
-                    >
-                      <i className={`size-2 rounded-full ${dotOf(p.author)}`} />
-                      {p.label}
-                    </button>
-                  ))}
+              {PRESETS.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <span className="w-16 shrink-0 pt-1 text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">Presets</span>
+                  <div className="flex flex-wrap gap-1">
+                    {PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        title={p.note}
+                        onClick={() => setState({ picks: p.picks, axes: p.axes })}
+                        className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[11.5px] hover:bg-neutral-200"
+                      >
+                        <Dot author={p.author} />
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </section>
-            )}
+              )}
+            </div>
+
             {here.map(renderSurface)}
             {elsewhere.length > 0 && (
               <button
                 type="button"
                 onClick={() => setShowElsewhere((v) => !v)}
-                className="mb-2 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase hover:text-neutral-900"
+                className="self-start text-[10px] font-semibold tracking-wider text-neutral-500 uppercase hover:text-neutral-900"
               >
                 {showElsewhere ? "▾" : "▸"} Elsewhere ({elsewhere.map((s) => s.label).join(", ")})
               </button>
             )}
             {showElsewhere && elsewhere.map(renderSurface)}
           </div>
-          <div className="flex items-center gap-2 border-t border-black/10 px-3 py-2">
+
+          <footer className="flex items-center gap-2 border-t border-black/10 bg-white px-3 py-2">
             <code className="min-w-0 flex-1 truncate text-[11px] text-neutral-600" title={recipe}>
               {recipe}
             </code>
@@ -165,13 +367,19 @@ export function Tweaker() {
             <button type="button" className="rounded-full px-2 py-1 hover:bg-black/5" onClick={resetAll}>
               Reset
             </button>
-          </div>
+          </footer>
         </div>
       ) : (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1.5 text-white shadow-lg"
+          style={style}
+          {...dragHandlers}
+          onClick={() => {
+            if (!justDragged.current) setOpen(true);
+            justDragged.current = false;
+          }}
+          title="Open the tweaker (drag to another corner)"
+          className="pointer-events-auto flex touch-none items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1.5 text-white shadow-lg"
         >
           Tweaks{active > 0 && <span className="rounded-full bg-white/20 px-1.5">{active}</span>}
         </button>

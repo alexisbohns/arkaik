@@ -71,6 +71,14 @@
     }
   },
   "_sections": "Per tweak section, the owner's pick: one id for every combination ('all'), or one per value of the axis it varies by ('by').",
+  "markers": [
+    [
+      "\\.bold-search\\b",
+      "search",
+      "bold-search-dock"
+    ]
+  ],
+  "_markers": "Pass 0. [selector regex, section, pick]: class-styled rules of a Component variant carry no data-tw condition (its classes only existed while picked). When the shipped markup carries several looks' classes, or renders several looks' structures at once, each such rule needs its pick's condition to be re-keyed onto the preference. A match inside :not(...) does not count. The sidebar run (stack: sidebar/2-redesign) gated identity, search and nav this way.",
   "parts": {
     "3": {
       "look": [
@@ -134,6 +142,8 @@
   ],
   "class_prefix": "np-",
   "_class_prefix": "Selectors naming a class with this prefix that no file under 'components' contains are pruned.",
+  "dead_attrs": "data-np-glide|data-np-c-nav=\"(fold|slide)\"",
+  "_dead_attrs": "Regex of data attributes only unpicked variants rendered: the class prune cannot see them. Dead alternatives inside :is() are dropped, the selector only when nothing is left. Selectors made impossible by gating ([look=calm]:not([look=calm])) always go.",
   "components": [
     "../../components",
     "../../app",

@@ -223,9 +223,44 @@ def emit(nodes, keep, indent=""):
     return "".join(out)
 
 
+# ── Pass 0: key class-styled component rules on the pick that renders them ─────
+#
+# A Component variant styles its own classes with no `data-tw-*` condition: in
+# the exploration those classes only existed while it was picked. Shipped, when
+# one markup carries BOTH looks' classes (or both looks' structures render at
+# once), each such rule must carry its pick's condition for Pass 1 to re-key it
+# onto the preference. `markers`: [[selector regex, section, pick], ...]. A
+# match inside `:not(...)` does not count: `:not(.tile)` excludes, not styles.
+# A look condition written BEFORE a pick condition (`:root[data-panel-look=
+# "calm"][data-tw-…]`) is moved behind it, the only place Pass 1 reads one.
+
+LOOK_ATTRS = "|".join(re.escape(a["attr"]) for a in AXES.values())
+LOOK_FIRST = re.compile(
+    rf':root((?:\[(?:{LOOK_ATTRS})="[^"]*"\]|:not\(\[(?:{LOOK_ATTRS})="[^"]*"\]\))+)((?:\[data-tw-[^\]]*\]|:is\(\s*\[data-tw-[^)]*\))+)'
+)
+MARKERS = [(re.compile(rx), section, pick) for rx, section, pick in cfg.get("markers", [])]
+
+
+def gate(sel):
+    sel = LOOK_FIRST.sub(lambda m: ":root" + m.group(2) + m.group(1), sel)
+    bare = re.sub(r":not\([^()]*\)", "", sel)
+    for rx, section, pick in MARKERS:
+        if not rx.search(bare) or f"data-tw-{section}" in sel:
+            continue
+        cond = f'[data-tw-{section}="{pick}"]'
+        m = re.match(r"(html)?:root(\.dark)?", sel)
+        if m:
+            return sel[: m.end()] + cond + sel[m.end():]
+        if sel.startswith(".dark"):
+            return ":root.dark" + cond + sel[len(".dark"):]
+        return f":root{cond} {sel}"
+    return sel
+
+
 # ── Pass 1: conditions -> preference attributes ───────────────────────────────
 
 css = "".join(re.sub(r"/\*.*?\*/", "", open(rel(p)).read(), flags=re.S) for p in cfg["sources"])
+css = emit(parse(css), lambda sel: [gate(sel)])
 css = emit(parse(css), lambda sel: [new for truth, new in port_selector(sel) if ships(truth)])
 
 # ── Pass 2: structural re-keys, then renames ───────────────────────────────────
@@ -266,6 +301,44 @@ def alive(sel):
 
 
 css = emit(parse(css), alive)
+
+# Dead DATA attributes too (the class prune above cannot see them): `dead_attrs`
+# is a regex of attributes only unpicked variants rendered. Dead alternatives
+# inside :is() are dropped, the selector only when nothing is left. Selectors
+# a gated pick made impossible (`[look="calm"]:not([look="calm"])`) go as well.
+DEAD = re.compile(cfg["dead_attrs"]) if cfg.get("dead_attrs") else None
+IS_ANY = re.compile(r":is\(((?:[^()]|\([^()]*\))*)\)")
+
+
+def contradicts(sel):
+    for a in AXES.values():
+        for v in a["values"]:
+            on, off = f'[{a["attr"]}="{v}"]', f':not([{a["attr"]}="{v}"])'
+            if on + off in sel or off + on in sel:
+                return True
+    return False
+
+
+def live_attrs(sel):
+    if contradicts(sel):
+        return []
+    if not DEAD:
+        return [sel]
+
+    def repl(m):
+        alts = [a for a in split_top(m.group(1)) if not DEAD.search(a)]
+        if not alts:
+            raise ValueError
+        return alts[0] if len(alts) == 1 else ":is(" + ", ".join(alts) + ")"
+
+    try:
+        sel = IS_ANY.sub(repl, sel)
+    except ValueError:
+        return []
+    return [] if DEAD.search(sel) else [sel]
+
+
+css = emit(parse(css), live_attrs)
 for name in set(re.findall(r"@keyframes ([\w-]+)", css)):
     if len(re.findall(rf"\b{re.escape(name)}\b", css)) == 1:
         css = re.sub(rf"@keyframes {re.escape(name)} \{{.*?\n\}}\n", "", css, flags=re.S)
