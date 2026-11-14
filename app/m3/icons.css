@@ -1,0 +1,60 @@
+/*
+ * Icons under the pointer.
+ *
+ * - Expressive: the pop. Hovering or keyboard-focusing an interactive item —
+ *   a link, a button, a menu item, an option, a tab, a label, a summary, or a
+ *   clickable wrapper marked `[data-icon-group]` (a library card, a table row)
+ *   — springs every lucide icon inside it to 1.15.
+ * - Calm: still.
+ *
+ * The pop scales the icon's CHILDREN — an SVG-internal transform — never the
+ * <svg> box. A CSS transform on the <svg> element promotes it to a compositor
+ * layer: the browser rasterizes it once at rest size, stretches that bitmap
+ * while the spring runs (blurred), then re-rasterizes it crisp and re-snaps it
+ * to the pixel grid when it settles — a visible glitch after every pop. An
+ * <svg>'s children are repainted by the SVG renderer each frame, so they stay
+ * sharp all the way through.
+ *
+ * This replaced the hand-drawn wobble and its hover "boil" (docs/icon-wobble.md),
+ * which the Expressive look outgrew.
+ */
+
+/*
+ * The wobble's `filter` made every icon a stacking context, painted with the
+ * positioned elements — so a glyph drawn over a seal (`.np-seal`, `.kp-seal`,
+ * `.dc-seal`, the drop target's cookie…) always sat on top, even while the
+ * seal's shape turned under the pointer. `position: relative` paints at the
+ * same step and keeps that order. In the base layer, so any icon a utility or
+ * a stylesheet positions (`absolute`) keeps its own.
+ */
+@layer base {
+  svg.lucide {
+    position: relative;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-panel-look="calm"]) svg.lucide > * {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
+    transition: scale var(--mx-spring-fast-dur) var(--mx-spring-fast);
+  }
+  :root:not([data-panel-look="calm"])
+    :is(
+      a[href],
+      button,
+      [role="button"],
+      [role="menuitem"],
+      [role="menuitemcheckbox"],
+      [role="menuitemradio"],
+      [role="option"],
+      [role="tab"],
+      label,
+      summary,
+      [data-icon-group]
+    ):is(:hover, :focus-visible)
+    svg.lucide
+    > * {
+    scale: 1.15;
+  }
+}

@@ -1,7 +1,7 @@
 /**
  * The shared paint server stone icons stroke with: `url(#stone-icon)`.
  *
- * Mounted once at the app root, like `WobbleFilters`. Its stops read
+ * Mounted once at the app root. Its stops read
  * `--stone-icon-1..3`, which css/stones.css maps to the secondary stone's icon
  * tone for the current theme — so the gradient follows the reader's stones and
  * the theme with no JavaScript. `userSpaceOnUse` in lucide's 24×24 viewBox,

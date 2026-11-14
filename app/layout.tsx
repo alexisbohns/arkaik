@@ -7,8 +7,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query/QueryProvider";
 import { AppToaster } from "@/components/ui/toaster";
 import { SyncProvider } from "@/components/sync/SyncProvider";
-import { WobbleFilters } from "@/components/wobble/WobbleFilters";
-import { WobbleBoil } from "@/components/wobble/WobbleBoil";
 import { PANEL_PREFERENCES_SCRIPT } from "@/lib/config/panel-preferences";
 
 export const metadata: Metadata = {
@@ -97,8 +95,6 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
-        <WobbleFilters />
-        <WobbleBoil />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

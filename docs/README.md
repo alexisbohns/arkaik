@@ -8,7 +8,7 @@
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
 - [Hosted Projects](hosted-projects.md) — Put a project in your account, point a coding agent at it, and let pull requests move acceptances
 - [Bootstrap](bootstrap.md) — Onboarding an existing repo onto Arkaik in one run
-- [Icon Wobble](icon-wobble.md) — The hand-drawn icon effect: why/what/how + a portable recipe
+- [Icon Wobble](icon-wobble.md) — The hand-drawn icon effect (retired 2026-11): why/what/how + a portable recipe
 - [Vision](vision.md) — Product strategy: the four layers, modes & tiers, format levels, roadmap
 
 ## Specifications

@@ -236,7 +236,7 @@ export function NodeTable({
           const usedIn = usedInByNodeId[node.id] ?? [];
           const platforms = scopedPlatforms(node, scope);
           return (
-            <TableRow key={node.id} data-wobble-group className="group/row cursor-pointer" onClick={() => onSelectNode(node)}>
+            <TableRow key={node.id} data-icon-group className="group/row cursor-pointer" onClick={() => onSelectNode(node)}>
               {selectedIds !== undefined && (
                 // The whole row opens the node, so the cell swallows the click
                 // as well as the box: a fat-fingered tap on the padding around
