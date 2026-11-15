@@ -2,7 +2,14 @@ import type { DataProvider, JournalProjection, JournalStats, MutationResult, Rea
 import { journalPageOf, journalStatsOf, projectJournal } from "./journal-projection";
 import type { Node, Edge, JournalEvent, ProjectBundle } from "./types";
 import { migrateBundle } from "./migrate";
-import { applyOps, type JournalPage, type MutationOp } from "@arkaik/schema";
+import {
+  applyOps,
+  foldWeighingEvents,
+  planWeighingEvents,
+  type JournalPage,
+  type MutationOp,
+  type WeighingEventInput,
+} from "@arkaik/schema";
 import {
   appendJournalEvents,
   assembleBundle,
@@ -168,7 +175,12 @@ export const localProvider: DataProvider = {
     // carry resolutions — and the two providers must not disagree about what a
     // bundle says.
     const quality = foldQualityEvents(bundle.quality, journalRow?.events ?? []);
-    return quality === bundle.quality ? bundle : { ...bundle, quality };
+    const withQuality = quality === bundle.quality ? bundle : { ...bundle, quality };
+    // The weighing section the same way: a local project's assessments and its
+    // positioning are journal events (there is no checkout for a sidecar), and
+    // the read folds them over whatever section an import carried.
+    const weighing = foldWeighingEvents(withQuality.weighing, journalRow?.events ?? []);
+    return weighing === withQuality.weighing ? withQuality : { ...withQuality, weighing };
   },
 
   /**
@@ -318,6 +330,38 @@ export const localProvider: DataProvider = {
     // No `version`: Dexie serializes the transactions, so results resolve in
     // commit order and the cache has nothing to guard against.
     return { nodes, edges, events };
+  },
+
+  /**
+   * Record assessments, or a positioning, as journal events — the local twin of
+   * `POST …/weighing/events`. The same `planWeighingEvents` gate the hosted route
+   * and the MCP tools use, so a score written here has been checked against the
+   * same library, scale and subject rule. A browser session is a person: the
+   * scorer is stamped `human`, which is why a level written here beats an
+   * agent's.
+   *
+   * Journal only — the snapshot is not touched, exactly as on a hosted project:
+   * `getProject` folds the events over the stored section. Notifies once, after
+   * the transaction commits, so the query cache and Synk both hear of it.
+   */
+  async appendWeighingEvents(projectId: string, inputs: readonly WeighingEventInput[]) {
+    const db = await getDb();
+    if (!db) throw new Error(`Project ${projectId} not found`);
+    let appended: JournalEvent[] = [];
+    await db.transaction("rw", db.projects, db.journals, async () => {
+      const record = await db.projects.get(projectId);
+      if (!record) throw new Error(`Project ${projectId} not found`);
+      const journalRow = await db.journals.get(projectId);
+      const section = foldWeighingEvents(record.snapshot.weighing, journalRow?.events ?? []);
+      const plan = planWeighingEvents(section, record.snapshot.nodes, inputs, { actor: "arkaik-app", scorerKind: "human" });
+      if (!plan.ok) {
+        throw new Error(`Assessment refused — ${plan.refusals.map((r) => `${r.reason}: ${r.detail}`).join("; ")}`);
+      }
+      appended = plan.events;
+      await appendJournalEvents(db, projectId, appended);
+    });
+    notifyMutation(projectId);
+    return appended;
   },
 
   async exportProject(id: string) {

@@ -33,6 +33,7 @@ export {
   resolveQualityRoot,
   type ResolvedPack,
 } from "./lib/kritik-io";
+export { foldWeighingSection, type FoldWeighingResult } from "./lib/weighing-io";
 export {
   validateBundleAt,
   journalLineErrorLines,

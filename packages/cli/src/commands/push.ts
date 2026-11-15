@@ -1,5 +1,6 @@
 /**
- * `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]`
+ * `arkaik push [--include-journal] [--include-quality] [--include-weighing]
+ *             [--api <base-url>] [path]`
  * `arkaik push --delete <id> --key <owner_key> [--api <base-url>]`
  *
  * Completes the Kommit journey — repo bundle to shareable URL without
@@ -25,7 +26,11 @@
  *     `--include-quality` flips it. The two are separate decisions on
  *     purpose: publishing your history and publishing your open findings are
  *     different disclosures, and both default to no.
- *  3. `POST {api}/api/publik[?include_journal=true][&include_quality=true]`
+ *     `noWeighing: !includeWeighing` is the same posture for a weighing
+ *     section (docs/rfcs/weighing.md): what a product scores its promises
+ *     against its own values, and the costs it has admitted, is a third
+ *     disclosure with a third default of no. `--include-weighing` flips it.
+ *  3. `POST {api}/api/publik[?include_journal=true][&include_quality=true][&include_weighing=true]`
  *     with the packed, canonical bundle as the body (docs/spec/services.md
  *     § Publik → Protocol — the API this command talks to is implemented at
  *     `app/api/publik/route.ts` / `lib/services/publik.ts`).
@@ -63,7 +68,8 @@ const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 /** Default Publik host — override with `--api <base-url>` for self-hosted deployments. */
 export const DEFAULT_API_BASE = "https://arkaik.app";
 
-const USAGE = `arkaik push [--include-journal] [--include-quality] [--api <base-url>] [path]
+const USAGE = `arkaik push [--include-journal] [--include-quality] [--include-weighing]
+            [--api <base-url>] [path]
 arkaik push --delete <id> --key <owner_key> [--api <base-url>]
 
 Publish a project bundle to Publik (anonymous, account-less snapshot
@@ -79,7 +85,9 @@ knows to keep it.
 
 A Kritik "quality" section is stripped by default too, and separately:
 publishing your history and publishing your open findings are two decisions,
-not one, and both default to no. --include-quality opts in.
+not one, and both default to no. --include-quality opts in. A "weighing"
+section (a positioning and the assessments scored against it) is a third
+decision with a third default of no: --include-weighing opts in.
 
 Snapshots are immutable: there is no update verb. Pushing again always mints
 a new id. The owner key printed on success is shown exactly once and cannot
@@ -100,6 +108,11 @@ Options:
                        § 8.3) — publishing that is a decision worth typing.
                        Default: deleted before packing, so it is never in the
                        request body at all.
+  --include-weighing  Embed the weighing section and forward
+                       ?include_weighing=true. Opt-in: it holds what the
+                       product scores its own promises, costs included.
+                       Default: deleted before packing, so it is never in
+                       the request body at all.
   --api <base-url>    Publik API base URL (default: ${DEFAULT_API_BASE}).
                        Point at a self-hosted deployment.
   --delete <id>       Delete a snapshot by id instead of pushing. Requires
@@ -124,6 +137,8 @@ export interface RunPushOptions {
   includeJournal?: boolean;
   /** Embed the quality section (forwarding ?include_quality=true) instead of stripping it. */
   includeQuality?: boolean;
+  /** Embed the weighing section (forwarding ?include_weighing=true) instead of stripping it. */
+  includeWeighing?: boolean;
   /** Publik API base URL (default: https://arkaik.app). */
   apiBase?: string;
   /** Base directory `path` resolves against (default: process.cwd()). */
@@ -195,6 +210,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   const filePath = resolve(cwd, options.path ?? DEFAULT_BUNDLE_PATH);
   const includeJournal = options.includeJournal ?? false;
   const includeQuality = options.includeQuality ?? false;
+  const includeWeighing = options.includeWeighing ?? false;
   const apiBase = options.apiBase ?? DEFAULT_API_BASE;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
@@ -221,7 +237,13 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   // No `root:` here on purpose — runPack derives it from the bundle's own
   // path, and passing the cwd would fold whichever repo the user happens to
   // be standing in.
-  const packed = runPack({ path: filePath, noJournal: !includeJournal, noQuality: !includeQuality, cwd });
+  const packed = runPack({
+    path: filePath,
+    noJournal: !includeJournal,
+    noQuality: !includeQuality,
+    noWeighing: !includeWeighing,
+    cwd,
+  });
   if (!packed.ok) {
     return fatalResult(filePath, packed.fatal ?? "pack failed");
   }
@@ -234,6 +256,7 @@ export async function runPush(options: RunPushOptions = {}): Promise<RunPushResu
   const params: string[] = [];
   if (includeJournal) params.push("include_journal=true");
   if (includeQuality) params.push("include_quality=true");
+  if (includeWeighing) params.push("include_weighing=true");
   const url = `${apiBase}/api/publik${params.length > 0 ? `?${params.join("&")}` : ""}`;
 
   let res: Response;
@@ -436,6 +459,7 @@ function reportDelete(id: string, result: RunPushDeleteResult): never {
 export function runPushCli(args: string[]): void {
   let includeJournal = false;
   let includeQuality = false;
+  let includeWeighing = false;
   let apiBase: string | undefined;
   let deleteId: string | undefined;
   let key: string | undefined;
@@ -450,6 +474,8 @@ export function runPushCli(args: string[]): void {
       includeJournal = true;
     } else if (arg === "--include-quality") {
       includeQuality = true;
+    } else if (arg === "--include-weighing") {
+      includeWeighing = true;
     } else if (arg === "--api") {
       const value = args[++i];
       if (value === undefined) fail(`Missing value for --api\n\n${USAGE}`);
@@ -485,7 +511,7 @@ export function runPushCli(args: string[]): void {
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
 
-  runPush({ path: filePath, includeJournal, includeQuality, apiBase })
+  runPush({ path: filePath, includeJournal, includeQuality, includeWeighing, apiBase })
     .then((result) => {
       if (!result.ok) fail(`FATAL: ${result.fatal}`);
       reportPush(result);

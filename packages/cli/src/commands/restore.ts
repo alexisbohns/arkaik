@@ -1,6 +1,7 @@
 /**
  * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions]
- *                 [--no-quality] [--allow-quality-loss] [--allow-metadata-loss]
+ *                 [--no-quality] [--no-weighing] [--allow-quality-loss]
+ *                 [--allow-metadata-loss]
  *                 [--audit <id>]
  *                 [--root <dir>] [--api <base-url>] [path]`
  *
@@ -172,6 +173,7 @@ import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSyn
 import { join, resolve } from "node:path";
 import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
 import { foldQualitySection, isQualitySection, resolveQualityRoot } from "../lib/kritik-io";
+import { foldWeighingSection } from "../lib/weighing-io";
 import { QUALITY_DIR } from "@arkaik/schema/src/cli/kritik-paths";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
 
@@ -223,6 +225,16 @@ Options:
                         one — that needs --allow-quality-loss too, because
                         "don't send mine" and "destroy theirs" are different
                         decisions and only one of them is irreversible.
+  --no-weighing         Do not send a weighing section: skip the docs/weighing/
+                        fold AND drop any section the local bundle already
+                        carries. WARNING: a restore replaces the hosted
+                        journal, and an assessment recorded only on the hosted
+                        project lives in that journal. The history guard
+                        compares COUNTS, so it does NOT reliably protect those
+                        events: a repo whose journal is as long as the hosted
+                        one passes it while still erasing them. The backup this
+                        command writes first holds them; the proper fix is
+                        issue #624 (restore appends by default).
   --allow-quality-loss  Proceed even though the restore would erase a quality
                         section the hosted project currently has. Without this
                         flag, that refuses outright — it usually means
@@ -267,6 +279,8 @@ export interface RunRestoreOptions {
   allowDeletions?: boolean;
   /** Skip folding docs/quality/ into the outbound bundle, and drop any section the local bundle carries. Default: false. */
   noQuality?: boolean;
+  /** Skip folding docs/weighing/ into the outbound bundle, and drop any section the local bundle carries. Default: false. */
+  noWeighing?: boolean;
   /** Pin one audit's snapshot instead of merging every audit into current state. */
   audit?: string;
   /** Repo root holding docs/quality/. Default: derived from the bundle's path, cwd as fallback. */
@@ -655,6 +669,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   const allowHistoryLoss = options.allowHistoryLoss ?? false;
   const allowDeletions = options.allowDeletions ?? false;
   const noQuality = options.noQuality ?? false;
+  const noWeighing = options.noWeighing ?? false;
   const allowQualityLoss = options.allowQualityLoss ?? false;
   const allowMetadataLoss = options.allowMetadataLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
@@ -721,6 +736,22 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     }
   }
   const qualityFields = { qualityFolded, qualityNotice };
+
+  // Weighing rides the same bundle, from the same repo root. There is NO loss guard of its
+  // own, and the history guard does not stand in for one: an assessment recorded only on
+  // the hosted project is a journal event, the PUT replaces the journal, and the guard
+  // compares COUNTS (a repo journal as long as the hosted one passes it while still
+  // erasing those events). The backup written before the PUT is the only recovery.
+  // Issue #624 (restore appends by default) is the real fix and is not part of this slice.
+  if (noWeighing) {
+    delete outboundBundle.weighing;
+  } else {
+    try {
+      foldWeighingSection(outboundBundle, qualityRoot);
+    } catch (e) {
+      return fatalResult(dryRun, (e as Error).message);
+    }
+  }
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -1023,6 +1054,7 @@ export function runRestoreCli(argv: string[]): void {
   let allowHistoryLoss = false;
   let allowDeletions = false;
   let noQuality = false;
+  let noWeighing = false;
   let allowQualityLoss = false;
   let allowMetadataLoss = false;
   let audit: string | undefined;
@@ -1044,6 +1076,8 @@ export function runRestoreCli(argv: string[]): void {
       allowDeletions = true;
     } else if (arg === "--no-quality") {
       noQuality = true;
+    } else if (arg === "--no-weighing") {
+      noWeighing = true;
     } else if (arg === "--allow-quality-loss") {
       allowQualityLoss = true;
     } else if (arg === "--allow-metadata-loss") {
@@ -1082,6 +1116,7 @@ export function runRestoreCli(argv: string[]): void {
     allowHistoryLoss,
     allowDeletions,
     noQuality,
+    noWeighing,
     allowQualityLoss,
     allowMetadataLoss,
     audit,

@@ -623,6 +623,68 @@ async function main() {
       `${afterScored["GET nodes"]} / ${afterScored["GET edges"]}`,
     );
 
+    // A weighing event is journal-only and folded into the bundle the same way
+    // (foldWeighingEvents), so it moves the bundle GET's validator through the
+    // same `quality_event_count` column — BUNDLE_FOLD_TYPES is the one list both
+    // the fold and the count read, and this pins it growing to include them.
+    const beforeWeighingValidators = await store.loadValidators(projectId, [ownerA]);
+    const weighingEvent = {
+      id: "01etagweighing0000000000001",
+      ts: "2026-11-15T12:10:00Z",
+      actor: "graphtest",
+      type: "weighing.assessment.recorded",
+      matrix: "value",
+      subject: "V-etag",
+      criterion: "connects",
+      level: 2,
+      confidence: 1,
+      scorer: { kind: "human", id: "graphtest" },
+    };
+    const appendWeighing = await store.appendJournalEvents(projectId, [ownerA], [weighingEvent], "graphtest");
+    check("a weighing.assessment.recorded append succeeds", appendWeighing.ok === true, JSON.stringify(appendWeighing));
+    const afterWeighingValidators = await store.loadValidators(projectId, [ownerA]);
+    check(
+      "qualityEventCount rises by one for a weighing.assessment.recorded append",
+      BigInt(afterWeighingValidators.qualityEventCount) === BigInt(beforeWeighingValidators.qualityEventCount) + BigInt(1),
+      `${beforeWeighingValidators.qualityEventCount} -> ${afterWeighingValidators.qualityEventCount}`,
+    );
+    // All-or-nothing at the storage layer: the owner check and every insert share one transaction, so a
+    // failure part-way through a batch (here a duplicate id) leaves NOTHING of the batch behind.
+    {
+      const before = await store.loadValidators(projectId, [ownerA]);
+      let failed = false;
+      try {
+        await store.appendJournalEvents(
+          projectId,
+          [ownerA],
+          [{ ...weighingEvent, id: "01etagweighing0000000000002" }, { ...weighingEvent, id: "01etagweighing0000000000003" }, weighingEvent],
+          "graphtest",
+        );
+      } catch {
+        failed = true;
+      }
+      const after = await store.loadValidators(projectId, [ownerA]);
+      check("an append whose last event collides with an existing id fails", failed);
+      check(
+        "…and none of the earlier events in the batch were written (one transaction)",
+        after.eventCount === before.eventCount && after.qualityEventCount === before.qualityEventCount,
+        `${before.eventCount}/${before.qualityEventCount} -> ${after.eventCount}/${after.qualityEventCount}`,
+      );
+    }
+    const afterWeighing = {};
+    for (const [label, route] of READS) {
+      afterWeighing[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
+    }
+    check(
+      "a weighing.assessment.recorded append moves the bundle GET's validator",
+      afterWeighing["GET project"] !== afterScored["GET project"],
+      `${afterScored["GET project"]} -> ${afterWeighing["GET project"]}`,
+    );
+    check(
+      "…and still not /nodes or /edges",
+      afterWeighing["GET nodes"] === afterScored["GET nodes"] && afterWeighing["GET edges"] === afterScored["GET edges"],
+    );
+
     // A snapshot write bumps the version, so every read validator moves.
     const etagMutation = await api.MUTATE(
       jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-etag", "view") }] }),
@@ -1434,6 +1496,151 @@ async function main() {
       scopeDeniedRes.status === 403 && scopeDeniedBody.required === "graph:write",
       `${scopeDeniedRes.status} ${JSON.stringify(scopeDeniedBody)}`,
     );
+    // --- POST .../weighing/events: assessments and a positioning (docs/rfcs/weighing.md) ---
+    // A fresh owner, for the reason the blocks above give.
+    const userW = await seedUser(client, "weighing");
+    const ownerW = (await owners.resolveOwnerIds(userW))[0];
+    const weighToken = await tokens.mintToken({ ownerId: ownerW, userId: userW, name: "weigh-write", scopes: ["graph:read", "graph:write"] });
+    const weighReadToken = await tokens.mintToken({ ownerId: ownerW, userId: userW, name: "weigh-read", scopes: ["graph:read"] });
+    const weighAppendToken = await tokens.mintToken({ ownerId: ownerW, userId: userW, name: "weigh-append", scopes: ["quality:append"] });
+
+    setSession(sessionFor(userW));
+    const weighSeed = bundle([
+      node("AC-w", "acceptance", { status: "live", metadata: { gherkin: "Given a link", values: ["connects"] } }),
+      node("V-w", "view", { status: "live" }),
+    ]);
+    const weighCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", weighSeed));
+    const weighCreatedBody = await weighCreated.json();
+    check("weighing fixture project imports", weighCreated.status === 201, `${weighCreated.status} ${JSON.stringify(weighCreatedBody)}`);
+    const weighProjectId = weighCreatedBody.id;
+
+    const weighPost = (events, token) =>
+      api.WEIGHING_EVENTS(
+        jsonReq(`${ORIGIN}/api/graph/projects/${weighProjectId}/weighing/events`, "POST", { events }, token ? bearer(token) : {}),
+        ctx(weighProjectId),
+      );
+    const weighAssess = (over = {}) => ({ type: "weighing.assessment.recorded", subject: "AC-w", criterion: "connects", level: 3, confidence: 2, evidence: "the title says so", ...over });
+    const readWeighing = async (token) => {
+      const res = await api.GET_PROJECT(new Request(ORIGIN, { headers: bearer(token) }), ctx(weighProjectId));
+      return (await res.json()).bundle.weighing;
+    };
+
+    // 1. The scope posture: graph:write, and no narrower credential opens it.
+    setSession(null);
+    check("weighing events without credentials is 401", (await weighPost([weighAssess()])).status === 401);
+    {
+      const res = await weighPost([weighAssess()], weighReadToken.plaintext);
+      const body = await res.json();
+      check("a graph:read token is refused 403 naming graph:write", res.status === 403 && body.required === "graph:write", `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const res = await weighPost([weighAssess()], weighAppendToken.plaintext);
+      check("a quality:append token is refused — an assessment outranks the ones before it", res.status === 403, String(res.status));
+    }
+
+    // 2. A token is an agent; the scorer is stamped, never read from the body.
+    {
+      const res = await weighPost([weighAssess({ model: "claude" })], weighToken.plaintext);
+      const body = await res.json();
+      check("a graph:write token records an assessment", res.status === 200 && body.events?.length === 1, `${res.status} ${JSON.stringify(body)}`);
+      check(
+        "the event carries the agent scorer, the model and the server's basis",
+        body.events?.[0].scorer.kind === "agent" && body.events[0].scorer.model === "claude" && /^fp1-/.test(body.events[0].basis?.fingerprint) && body.events[0].actor === "arkaik-agent",
+        JSON.stringify(body.events?.[0]),
+      );
+      // D14: a token is an agent acting for its owner.
+      check(
+        "a token write is stamped on behalf of its owner: the user id as an opaque string, never an email",
+        body.events?.[0].scorer.on_behalf_of === String(userW) && !String(body.events[0].scorer.on_behalf_of).includes("@"),
+        JSON.stringify(body.events?.[0].scorer),
+      );
+    }
+    {
+      const res = await weighPost([weighAssess({ scorer: { kind: "human", id: "me" } })], weighToken.plaintext);
+      const body = await res.json();
+      check("a body that claims a scorer is a 400, not a forged human", res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
+    }
+
+    for (const [field, value] of [
+      ["basis", { fingerprint: "fp1-0", set_version: "1.0.0" }],
+      ["ts", "2026-01-01T00:00:00.000Z"],
+    ]) {
+      const res = await weighPost([weighAssess({ [field]: value })], weighToken.plaintext);
+      const body = await res.json();
+      check(`a body that claims a ${field} is a 400 too — the server stamps it`, res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const res = await weighPost([weighAssess({ evidence: "x".repeat(300 * 1024) })], weighToken.plaintext);
+      const body = await res.json();
+      check("a body over 256 KB is a 413 before it is parsed", res.status === 413 && body.limit === 256 * 1024, `${res.status} ${JSON.stringify(body).slice(0, 120)}`);
+    }
+    {
+      const res = await weighPost([weighAssess({ confidence: 7 })], weighToken.plaintext);
+      const body = await res.json();
+      check("a structurally bad entry is refused by the planner: a 422 naming its index, not a 500", res.status === 422 && body.refusals?.[0].index === 0 && body.refusals[0].reason === "invalid_entry", `${res.status} ${JSON.stringify(body)}`);
+    }
+
+    // 3. The GET folds it, and a session writes as a person.
+    {
+      const section = await readWeighing(weighToken.plaintext);
+      check("the project GET folds the event into a weighing section", section?.assessments?.length === 1 && section.assessments[0].level === 3, JSON.stringify(section));
+    }
+    setSession(sessionFor(userW));
+    {
+      const res = await weighPost([weighAssess({ level: -1, evidence: "costs more than it says" })]);
+      const body = await res.json();
+      check("a signed-in session records a human assessment", res.status === 200 && body.events?.[0].scorer.kind === "human" && body.events[0].actor === "arkaik-app" && !("on_behalf_of" in body.events[0].scorer), `${res.status} ${JSON.stringify(body)}`);
+    }
+    setSession(null);
+    {
+      const section = await readWeighing(weighToken.plaintext);
+      const kinds = (section?.assessments ?? []).map((a) => `${a.scorer?.kind}:${a.level}`).sort();
+      check("the human's level and the agent's sit side by side", kinds.join() === "agent:3,human:-1", kinds.join());
+    }
+    {
+      const stored = await store.getProject(weighProjectId, [ownerW]);
+      check("the stored snapshot never grew a weighing section", stored.bundle.weighing === undefined);
+    }
+
+    // 4. The gate: all or nothing, each refusal naming its entry.
+    {
+      const before = await store.loadValidators(weighProjectId, [ownerW]);
+      const res = await weighPost([weighAssess({ level: 2 }), weighAssess({ criterion: "teleports" }), weighAssess({ subject: "V-w" })], weighToken.plaintext);
+      const body = await res.json();
+      check(
+        "a batch with bad entries is a 422 refusing every entry, naming indexes",
+        res.status === 422 && body.error === "refused" && body.refusals?.map((r) => r.index).join() === "1,2" && /unknown_criterion/.test(body.message),
+        `${res.status} ${JSON.stringify(body)}`,
+      );
+      const after = await store.loadValidators(weighProjectId, [ownerW]);
+      check("…and nothing was written", after.qualityEventCount === before.qualityEventCount, `${before.qualityEventCount} -> ${after.qualityEventCount}`);
+    }
+    {
+      const res = await weighPost([{ type: "quality.finding.resolved", finding_id: "F-1" }], weighToken.plaintext);
+      check("only weighing types are accepted here", res.status === 400, String(res.status));
+    }
+
+    // 5. A positioning is a saved set, latest-wins.
+    {
+      const set = { id: "positioning", version: "1.0.0", subject: "acceptance", scale: { min: -3, max: 3, anchors: {} }, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "connects", weight: 3 }] };
+      const first = await weighPost([{ type: "weighing.set.saved", set }], weighToken.plaintext);
+      check("a positioning draft is recorded", first.status === 200, String(first.status));
+      await weighPost([{ type: "weighing.set.saved", set: { ...set, status: "active" } }], weighToken.plaintext);
+      const section = await readWeighing(weighToken.plaintext);
+      check("saving it again replaces it — one set, now active", section.sets.length === 1 && section.sets[0].status === "active", JSON.stringify(section.sets));
+      const bad = await weighPost([{ type: "weighing.set.saved", set: { ...set, criteria: [{ id: "teleports" }] } }], weighToken.plaintext);
+      check("a positioning naming a non-element is refused", bad.status === 422, String(bad.status));
+    }
+
+    // 6. Owner isolation, like every other route here.
+    {
+      const stranger = await seedUser(client, "weighing-stranger");
+      const strangerOwner = (await owners.resolveOwnerIds(stranger))[0];
+      const strangerToken = await tokens.mintToken({ ownerId: strangerOwner, userId: stranger, name: "stranger", scopes: ["graph:read", "graph:write"] });
+      const res = await weighPost([weighAssess()], strangerToken.plaintext);
+      check("another owner's token cannot weigh this project (404, not 403)", res.status === 404, String(res.status));
+    }
+
     // --- POST .../live: the deployment door (issue #424) --------------------
     // A fresh owner, as for quality/events above: userA sits at its project cap.
     const userL = await seedUser(client, "live");

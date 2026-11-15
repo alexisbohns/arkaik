@@ -1,4 +1,4 @@
-import type { JournalFamilyId, JournalPage, MutationOp, ReleaseEventCount } from "@arkaik/schema";
+import type { JournalFamilyId, JournalPage, MutationOp, ReleaseEventCount, WeighingEventInput } from "@arkaik/schema";
 
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
 
@@ -184,6 +184,21 @@ export interface DataProvider {
    * would land a hosted bundle in IndexedDB.
    */
   replaceProject?(projectId: string, bundle: ProjectBundle, options: ReplaceProjectOptions): Promise<{ version: string }>;
+
+  /**
+   * Record assessments, or a positioning, as journal events (docs/rfcs/weighing.md)
+   * — OPTIONAL, because the public seed sandbox has no journal to keep them in.
+   * The local provider appends to its journal row; the remote one posts to
+   * `POST …/weighing/events`. Both run the schema's `planWeighingEvents` gate,
+   * stamp the scorer from who is writing (a browser session is a person), and
+   * leave the snapshot alone: `getProject` folds the events over the stored
+   * section. Resolves to the events that were appended, and rejects with the
+   * refusal's reasons when the gate says no — all or nothing.
+   *
+   * The router refuses for a backend without it; it never falls back to a graph
+   * mutation, because an assessment is not one.
+   */
+  appendWeighingEvents?(projectId: string, inputs: readonly WeighingEventInput[]): Promise<JournalEvent[]>;
 }
 
 export interface ReadJournalPageOptions extends ReadProjectOptions {

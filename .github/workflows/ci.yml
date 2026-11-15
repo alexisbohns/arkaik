@@ -199,6 +199,12 @@ jobs:
       - name: Weighing derivation tests (seeds, effective level, served/cost, masses, flags)
         run: npm run test:weighing-derive
 
+      # The weighing write path: the two events, the planner every writer goes
+      # through (the hosted route, the browser provider, the MCP tools) and the
+      # fold that reads them back. Pure — the route's SQL is in `services`.
+      - name: Weighing events tests (parser, planner gate, all-or-nothing, fold)
+        run: npm run test:weighing-events
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
@@ -406,6 +412,11 @@ jobs:
       # site was not (issue #382 phase E, commit 519b9b6).
       - name: Quality fold wired to the local provider's getProject
         run: npm run test:quality-fold
+
+      # The browser provider's weighing writes: events into the journal row,
+      # folded on read, the snapshot never touched, the gate refusing whole.
+      - name: Weighing browser-provider tests (append, fold, refusal, export/import)
+        run: npm run test:weighing-provider
 
       - name: Projects page section + create-target routing
         run: npm run test:project-sections

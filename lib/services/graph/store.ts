@@ -8,6 +8,7 @@ import {
   MutationError,
   RELEASE_COUNT_EVENT_FIELDS,
   STATUS_VOCABULARY_VERSION,
+  WEIGHING_FOLD_TYPES,
   applyOps,
   computeReleaseEventCounts,
   formatJournalCursor,
@@ -247,7 +248,11 @@ export interface ProjectValidators {
   version: string;
   /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
   eventCount: string;
-  /** Only the event types `foldQualityEvents` reads into the bundle — see `QUALITY_FOLD_TYPES`. */
+  /**
+   * Only the event types the project GET folds into the bundle — see
+   * `BUNDLE_FOLD_TYPES`. Named for the first of them; a weighing event moves it
+   * too, because the bundle it validates carries the folded weighing section.
+   */
   qualityEventCount: string;
 }
 
@@ -269,14 +274,24 @@ interface ValidatorColumns {
 export const QUALITY_FOLD_TYPES = ["quality.finding.resolved", "quality.finding.accepted", "quality.assessment.scored"] as const;
 
 /**
+ * Everything the project GET folds over the stored snapshot on the way out: the
+ * Kritik decisions above, plus the weighing events (`WEIGHING_FOLD_TYPES` in
+ * `@arkaik/schema`, folded by `foldWeighingEvents`). The ETag's count is built
+ * from THIS list, so a new fold type cannot ship without the validator learning
+ * about it — and `QUALITY_FOLD_TYPES` stays what `planQualityEvents` loads, so a
+ * weighing event is never read into a Kritik plan.
+ */
+export const BUNDLE_FOLD_TYPES = [...QUALITY_FOLD_TYPES, ...WEIGHING_FOLD_TYPES] as const;
+
+/**
  * The validator columns, selected off `graph_projects p` in the SAME
  * statement as whatever body a read returns, so ETag and body come from one
  * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
- * inserts outside a transaction, so two concurrent appends can commit out of
+ * inserts in a transaction of its own, but nothing orders two of them, so two concurrent appends can commit out of
  * `seq` order and a max taken between them would never learn about the
  * earlier row; a count moves on every commit whatever the order.
  *
- * The `in (...)` list is string-built from `QUALITY_FOLD_TYPES` rather than
+ * The `in (...)` list is string-built from `BUNDLE_FOLD_TYPES` rather than
  * `$`-parameterized: those are source-code constants, never request input, so
  * there is nothing here for the "values go through `$`-params" rule (see
  * `replaceProjectBundle`'s own doc comment) to be protecting against.
@@ -286,7 +301,7 @@ const VALIDATOR_COLUMNS = `
             (select count(*) from graph_events e where e.project_id = p.id)::text as event_count,
             (select count(*) from graph_events e
               where e.project_id = p.id
-                and e.event->>'type' in (${QUALITY_FOLD_TYPES.map((t) => `'${t}'`).join(", ")}))::text as quality_event_count`;
+                and e.event->>'type' in (${BUNDLE_FOLD_TYPES.map((t) => `'${t}'`).join(", ")}))::text as quality_event_count`;
 
 /**
  * The owner scope every read shares — and deliberately NO `archived_at`
@@ -643,11 +658,21 @@ export const qualityFoldEvents = (projectId: string, ownerIds: readonly string[]
   qualityEventsOfTypes(projectId, ownerIds, QUALITY_FOLD_TYPES);
 
 /**
+ * The `WEIGHING_FOLD_TYPES` events, and nothing else — what the project GET
+ * folds over the stored `weighing` section (`foldWeighingEvents` in
+ * `@arkaik/schema`), and what `POST …/weighing/events` plans against. Same
+ * one-row owner check as `qualityEventsOfTypes`, which it is.
+ */
+export const weighingFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
+  qualityEventsOfTypes(projectId, ownerIds, WEIGHING_FOLD_TYPES);
+
+/**
  * Append pre-stamped journal events WITHOUT touching the snapshot — the
  * journal-only write path (slice 3: the Lab Note webhook). Unlike
  * `applyMutation` there are no graph ops and no version bump: the snapshot is
  * authoritative for state and unchanged; the journal is authoritative for
- * history and grows. Owner-scoped like every other write.
+ * history and grows. Owner-scoped like every other write, and atomic: the batch
+ * commits whole or not at all.
  */
 export async function appendJournalEvents(
   projectId: string,
@@ -655,18 +680,25 @@ export async function appendJournalEvents(
   events: readonly JournalEvent[],
   actor: string,
 ): Promise<{ ok: true } | StoreFailure> {
-  const { rows } = await query<{ id: string }>(
-    `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
-    [projectId, ownerIds],
-  );
-  if (rows.length === 0) return { ok: false, reason: "not_found" };
-  for (const event of events) {
-    await query(
-      `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
-      [event.id, projectId, JSON.stringify(event), actor],
+  // One transaction for the owner check and every insert, on the transaction's own
+  // client: a batch is ALL or NOTHING at the storage layer too. Were each insert its own
+  // statement, a failure part-way (a duplicate id, a dropped connection) would leave the
+  // batch's earlier events behind while the caller was told the whole batch failed —
+  // and the quality and weighing routes both promise all-or-nothing.
+  return withTransaction<{ ok: true } | StoreFailure>(async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
+      [projectId, ownerIds],
     );
-  }
-  return { ok: true };
+    if (rows.length === 0) return { ok: false, reason: "not_found" };
+    for (const event of events) {
+      await client.query(
+        `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
+        [event.id, projectId, JSON.stringify(event), actor],
+      );
+    }
+    return { ok: true };
+  });
 }
 
 /**

@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
 import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
+import { WeighingAssessmentBasisSchema, WeighingConfidenceSchema, WeighingCriteriaSetSchema, WeighingScorerSchema } from "./weighing-schemas";
 import type { JournalEvent } from "./journal";
 
 /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -320,6 +321,36 @@ export const QualitySignalTrippedEventSchema = z
   })
   .catchall(z.unknown());
 
+/**
+ * Weighing events (docs/rfcs/weighing.md). Written away from a checkout — a
+ * hosted session, a browser project — where there is no `docs/weighing/` sidecar
+ * to hold them; in a repository the sidecar is the record and no event is
+ * written. The read folds them over `snapshot.weighing` latest-wins
+ * (`foldWeighingEvents`). The payload is an assessment minus its `ts`, which is
+ * the envelope's.
+ */
+export const WeighingAssessmentRecordedEventSchema = z
+  .object({
+    ...envelope,
+    type: z.literal("weighing.assessment.recorded"),
+    matrix: z.string(),
+    subject: z.string(),
+    criterion: z.string(),
+    level: z.number().int(),
+    scorer: WeighingScorerSchema,
+    confidence: WeighingConfidenceSchema,
+    evidence: z.string().optional(),
+    refs: z.array(z.string()).optional(),
+    basis: WeighingAssessmentBasisSchema.optional(),
+    run: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+/** A criteria set saved whole — latest-wins by set id. How a positioning is written away from a checkout. */
+export const WeighingSetSavedEventSchema = z
+  .object({ ...envelope, type: z.literal("weighing.set.saved"), set: WeighingCriteriaSetSchema })
+  .catchall(z.unknown());
+
 /** Per-type schemas keyed by `type`, for validating a single known event. */
 export const JOURNAL_EVENT_SCHEMAS = {
   "node.created": NodeCreatedEventSchema,
@@ -345,6 +376,8 @@ export const JOURNAL_EVENT_SCHEMAS = {
   "quality.finding.resolved": QualityFindingResolvedEventSchema,
   "quality.finding.accepted": QualityFindingAcceptedEventSchema,
   "quality.signal.tripped": QualitySignalTrippedEventSchema,
+  "weighing.assessment.recorded": WeighingAssessmentRecordedEventSchema,
+  "weighing.set.saved": WeighingSetSavedEventSchema,
 } as const;
 
 /**
@@ -376,4 +409,6 @@ export const KnownJournalEventSchema = z.union([
   QualityFindingResolvedEventSchema,
   QualityFindingAcceptedEventSchema,
   QualitySignalTrippedEventSchema,
+  WeighingAssessmentRecordedEventSchema,
+  WeighingSetSavedEventSchema,
 ]);

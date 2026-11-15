@@ -1,4 +1,4 @@
-import type { JournalPage, MutationOp } from "@arkaik/schema";
+import type { JournalPage, MutationOp, WeighingEventInput } from "@arkaik/schema";
 
 import type {
   DataProvider,
@@ -318,6 +318,22 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
         body: JSON.stringify(bundle),
       });
       return { version: result.version };
+    },
+
+    /**
+     * Assessments and a positioning, recorded as journal events on the server
+     * (`POST …/weighing/events`, docs/rfcs/weighing.md). The route stamps the
+     * scorer from the session — a person — so nothing about provenance is sent
+     * from here, and a refusal (422) surfaces with the server's reasons in its
+     * message. The snapshot is not touched; the next project read folds the
+     * events in, which is why the caller invalidates the project afterwards.
+     */
+    async appendWeighingEvents(projectId: string, inputs: readonly WeighingEventInput[]) {
+      const result = await request<{ events: JournalEvent[] }>(
+        `/projects/${encodeURIComponent(projectId)}/weighing/events`,
+        { method: "POST", body: JSON.stringify({ events: inputs }) },
+      );
+      return result.events;
     },
 
     async readProject(id: string, options: ReadProjectOptions): Promise<ReadResult<ProjectBundle>> {

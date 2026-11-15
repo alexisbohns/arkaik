@@ -1,6 +1,6 @@
 /**
- * `arkaik pack [--no-journal] [--no-quality] [--inline-assets] [--audit <id>]
- *              [--root <dir>] [--out <path>] [path]`.
+ * `arkaik pack [--no-journal] [--no-quality] [--no-weighing] [--inline-assets]
+ *              [--audit <id>] [--root <dir>] [--out <path>] [path]`.
  *
  * Produces a SINGLE self-contained interchange bundle (docs/spec/journal.md §
  * Interchange: embedded journal[]; docs/spec/bundle-format.md § Asset Values):
@@ -28,6 +28,14 @@
  *     merge, and `--root <dir>` overrides the repo root the sidecars are
  *     looked for under (see `resolveQualityRoot` — the default follows the
  *     bundle, not the cwd);
+ *  3b. weighing folding — `docs/weighing/` is canonical for a project's
+ *     positioning and assessments exactly as `docs/quality/` is for its audits
+ *     (docs/rfcs/weighing.md), with `bundle.weighing` as the interchange
+ *     projection. The sidecars of the packed bundle's own repo root are
+ *     merged into `weighing` (`lib/weighing-io.ts`); no files means no
+ *     section, never a failure. `--no-weighing` DELETES `weighing` instead,
+ *     for the reason `--no-quality` does. The root is the same one quality
+ *     uses — which repo owns a bundle file is one question;
  *  4. `--inline-assets` (OFF by default, local-only in v1): every
  *     `metadata.platformScreenshots` value that is a *relative path* (no URI
  *     scheme, no leading `/` — docs/spec/bundle-format.md § Asset Values) is
@@ -53,16 +61,17 @@ import { serializeBundle } from "@arkaik/schema";
 import { readBundle } from "../lib/bundle-io";
 import { loadJournalEvents } from "../lib/journal-io";
 import { foldQualitySection, resolveQualityRoot } from "../lib/kritik-io";
+import { foldWeighingSection } from "../lib/weighing-io";
 
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
 
-const USAGE = `arkaik pack [--no-journal] [--no-quality] [--inline-assets] [--audit <id>]
-            [--root <dir>] [--out <path>] [path]
+const USAGE = `arkaik pack [--no-journal] [--no-quality] [--no-weighing] [--inline-assets]
+            [--audit <id>] [--root <dir>] [--out <path>] [path]
 
 Produce a single self-contained interchange bundle: fold in the sidecar
 journal (or keep an existing embedded one), fold docs/quality/ into the
-quality section, and, with --inline-assets, inline local screenshot files as
-data: URIs. Written canonically via serializeBundle. Unknown top-level keys
+quality section, fold docs/weighing/ into the weighing section, and, with
+--inline-assets, inline local screenshot files as data: URIs. Written canonically via serializeBundle. Unknown top-level keys
 and unknown fields always round-trip.
 
 Arguments:
@@ -83,6 +92,10 @@ Options:
                      find it in. ("arkaik push" packs this way by default;
                      its --include-quality opts back in.)
                      Default: docs/quality/ IS folded in.
+  --no-weighing     DELETE the weighing section rather than folding one in, for
+                     the same reason --no-quality deletes: a source bundle that
+                     already carried one must not be packed with it either.
+                     Default: docs/weighing/ IS folded in.
   --inline-assets   Convert relative-path metadata.platformScreenshots values
                      into data: URIs by reading the file from disk (resolved
                      against the bundle's directory). Absolute https:// URLs
@@ -148,6 +161,8 @@ export interface RunPackOptions {
   inlineAssets?: boolean;
   /** Delete `quality` rather than folding docs/quality/ in — including a section the source bundle already carried. The Publik-safe posture, as `noJournal` is for history. */
   noQuality?: boolean;
+  /** Delete `weighing` rather than folding docs/weighing/ in — including a section the source bundle already carried. */
+  noWeighing?: boolean;
   /** Pin one audit's snapshot instead of merging every audit into current state. */
   audit?: string;
   /** Repo root holding docs/quality/, resolved against `cwd`. Default: NOT `cwd` — {@link resolveQualityRoot} derives it from the bundle's own path, with `cwd` only as the fallback for a bundle outside `docs/arkaik/`. */
@@ -168,6 +183,10 @@ export interface RunPackResult {
   inlinedAssets: InlinedAsset[];
   /** Non-fatal notices — e.g. an asset referenced by a relative path that was not found on disk. */
   assetWarnings: string[];
+  /** Whether a `weighing` section was actually folded in. Absent with `noWeighing`. */
+  weighingFolded?: boolean;
+  /** What the weighing fold did — folded, or nothing to fold. Absent with `noWeighing`. */
+  weighingNotice?: string;
   /** Whether a `quality` section was actually folded in. Absent with `noQuality`. */
   qualityFolded?: boolean;
   /** What the quality fold did — folded, skipped, or nothing to fold. Absent with `noQuality`. */
@@ -238,6 +257,21 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     }
   }
 
+  let weighingFolded: boolean | undefined;
+  let weighingNotice: string | undefined;
+  if (options.noWeighing ?? false) {
+    delete bundle.weighing;
+  } else {
+    const root = resolveQualityRoot({ root: options.root, bundlePath: filePath, fallback: cwd });
+    try {
+      const fold = foldWeighingSection(bundle, root);
+      weighingFolded = fold.folded;
+      weighingNotice = fold.notice;
+    } catch (e) {
+      return fatalResult(filePath, (e as Error).message);
+    }
+  }
+
   const inlinedAssets: InlinedAsset[] = [];
   const assetWarnings: string[] = [];
   if (inlineAssets) {
@@ -275,12 +309,26 @@ export function runPack(options: RunPackOptions = {}): RunPackResult {
     writeFileSync(outPath, output);
   }
 
-  return { ok: true, bundlePath: filePath, outPath, journalIncluded, journalEventCount, inlinedAssets, assetWarnings, qualityFolded, qualityNotice, output };
+  return {
+    ok: true,
+    bundlePath: filePath,
+    outPath,
+    journalIncluded,
+    journalEventCount,
+    inlinedAssets,
+    assetWarnings,
+    qualityFolded,
+    qualityNotice,
+    weighingFolded,
+    weighingNotice,
+    output,
+  };
 }
 
 export function runPackCli(args: string[]): void {
   let noJournal = false;
   let noQuality = false;
+  let noWeighing = false;
   let inlineAssets = false;
   let audit: string | undefined;
   let root: string | undefined;
@@ -296,6 +344,8 @@ export function runPackCli(args: string[]): void {
       noJournal = true;
     } else if (arg === "--no-quality") {
       noQuality = true;
+    } else if (arg === "--no-weighing") {
+      noWeighing = true;
     } else if (arg === "--inline-assets") {
       inlineAssets = true;
     } else if (arg === "--audit") {
@@ -329,7 +379,7 @@ export function runPackCli(args: string[]): void {
   }
 
   const filePath = positionals[0] ?? DEFAULT_BUNDLE_PATH;
-  const result = runPack({ path: filePath, out, noJournal, inlineAssets, noQuality, audit, root });
+  const result = runPack({ path: filePath, out, noJournal, inlineAssets, noQuality, noWeighing, audit, root });
   if (!result.ok) fail(`FATAL: ${result.fatal}`);
 
   if (result.journalIncluded) {
@@ -341,6 +391,9 @@ export function runPackCli(args: string[]): void {
   }
   if (result.qualityNotice !== undefined) {
     console.error(result.qualityNotice);
+  }
+  if (result.weighingNotice !== undefined) {
+    console.error(result.weighingNotice);
   }
   for (const asset of result.inlinedAssets) {
     console.error(`Inlined asset: ${asset.nodeId}/${asset.platform} (${asset.path})`);

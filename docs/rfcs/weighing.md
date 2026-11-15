@@ -967,6 +967,7 @@ The model is decided. These are the details it leaves, each with the lead's lean
 | 13 | Pebbles acceptances whose node status disagrees with their platform statuses. | Kept share reads platform statuses only, as `getNodePlatformStatuses` does. A validator warning is worth adding. |
 | 14 | An "essential" mark on a promise, so that one critical promise can fire the journey cap alone. | Later. The owed-share rule is the first cut. |
 | 15 | The default for X, the journey cap's threshold. | 25%, held in the positioning so each product tunes it. |
+| 16 | Forged human rows. `POST …/weighing/events` stamps the scorer, so no caller there can claim to be a human. A whole-bundle `PUT` (`arkaik restore`) or an import carries whatever scorers the bundle holds, so anyone with `graph:write` can plant a `human` row, and a human's level wins every cell. | Known and accepted in slice 1: provenance is a record, not an access control. Restore appending by default (issue #624) narrows the window. Provenance-checked restore is a later question. |
 
 Risks, and what answers them:
 
