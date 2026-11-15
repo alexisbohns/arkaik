@@ -336,11 +336,12 @@ check("promises sort by positioned over distinct values: 2, 1, 1/3", eq(sortProm
 // --- Probabilities: stored sparingly, read as a range when unsure ------------------
 
 check("a row without probabilities is never uncertain — its confidence already says how sure it is", isUncertainCell({ level: 2 }) === false && isUncertainCell({ level: 0 }) === false);
-check("a clear direction is certain: serves at 0.9, costs at 0.1", isUncertainCell({ level: 1, p_serves: 0.9, p_costs: 0.1 }) === false && isUncertainCell({ level: -2, p_serves: 0.05, p_costs: 0.85 }) === false);
-check("under 0.7 for the direction the level took is uncertain", isUncertainCell({ level: 1, p_serves: 0.65 }) && isUncertainCell({ level: -1, p_costs: 0.5 }));
-check("0.7 is the gate itself, so it is certain", isUncertainCell({ level: 1, p_serves: 0.7 }) === false);
-check("at least 0.3 for the other direction is uncertain — the \"both\" cell", isUncertainCell({ level: 1, p_serves: 0.95, p_costs: 0.3 }) && isUncertainCell({ level: -1, p_serves: 0.8, p_costs: 0.9 }));
-check("a 0 is uncertain when either direction reaches 0.3", isUncertainCell({ level: 0, p_serves: 0.35, p_costs: 0.1 }) && isUncertainCell({ level: 0, p_costs: 0.4 }) && !isUncertainCell({ level: 0, p_serves: 0.2, p_costs: 0.1 }));
+check("a clear direction is certain: serves at 0.95, costs at 0.92", isUncertainCell({ level: 1, p_serves: 0.95, p_costs: 0.1 }) === false && isUncertainCell({ level: -2, p_serves: 0.05, p_costs: 0.92 }) === false);
+check("under 0.9 for the direction the level took is uncertain", isUncertainCell({ level: 1, p_serves: 0.85 }) && isUncertainCell({ level: -1, p_costs: 0.7 }));
+check("0.9 is the gate itself, so it is certain", isUncertainCell({ level: 1, p_serves: 0.9 }) === false);
+check("at least 0.5 for the other direction is uncertain — the \"both\" cell", isUncertainCell({ level: 1, p_serves: 0.95, p_costs: 0.5 }) && isUncertainCell({ level: -1, p_serves: 0.8, p_costs: 0.95 }));
+check("under 0.5 for the other direction does not unsettle a certain cell", isUncertainCell({ level: 1, p_serves: 0.95, p_costs: 0.45 }) === false);
+check("a 0 is uncertain when either direction reaches 0.5", isUncertainCell({ level: 0, p_serves: 0.55, p_costs: 0.1 }) && isUncertainCell({ level: 0, p_costs: 0.6 }) && !isUncertainCell({ level: 0, p_serves: 0.4, p_costs: 0.1 }));
 check("a probability off 0..1 or not a number is ignored", isUncertainCell({ level: 1, p_serves: 1.5 }) === false && isUncertainCell({ level: 1, p_serves: "0.2" }) === false && isUncertainCell({ level: 1, p_serves: Number.NaN }) === false);
 const unsure = ac("AC-unsure", ["connects"]);
 const uw = weighPromise(unsure, buildWeighingContext({ assessments: [
