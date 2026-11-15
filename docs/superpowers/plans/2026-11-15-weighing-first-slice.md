@@ -878,6 +878,13 @@ export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 export interface ResolvedWeighing {
   sets: WeighingCriteriaSet[];
   matrices: WeighingMatrix[];
+  /**
+   * Every stored entry the resolver dropped — malformed, a redefinition of a
+   * built-in, or a duplicate id — with its position in the stored list, so a
+   * surface can say "your saved positioning is malformed and is ignored"
+   * instead of showing nothing. `id` is absent when the entry has none.
+   */
+  skipped: { kind: "set" | "matrix"; id?: string; /** A set's role, when it names one (a mistyped positioning has role `positioning` and any id). */ role?: string; index: number }[];
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -915,15 +922,22 @@ export function isWeighingMatrixShape(matrix: unknown): matrix is WeighingMatrix
   return (kind === "query" && typeof species === "string") || (kind === "list" && Array.isArray(items));
 }
 
+/** A scale a reader can use: numeric `min` and `max` and an object `anchors` (`weighing-scale-shape` warns on the rest). */
+function isUsableScale(scale: unknown): scale is WeighingScale {
+  return isObject(scale) && typeof scale.min === "number" && typeof scale.max === "number" && isObject(scale.anchors);
+}
+
 /**
  * The scale a set is read on: its own, or — for a positioning with none — its
- * `extends` ruler's, or at the last the built-in signed scale. Total, so a
+ * `extends` ruler's, or at the last the built-in signed scale — and it only
+ * takes a set's own scale when that scale is usable (numeric min and max, an
+ * anchors object), so `.anchors[...]` is always safe. Total, so a
  * reader never needs a guard before `.min` / `.max` / `.anchors`.
  */
 export function weighingScaleOf(set: Pick<WeighingCriteriaSet, "scale" | "extends">, resolved?: Pick<ResolvedWeighing, "sets">): WeighingScale {
-  if (isObject(set.scale)) return set.scale;
+  if (isUsableScale(set.scale)) return set.scale;
   const ruler = typeof set.extends === "string" && resolved !== undefined ? setOfRef(resolved, set.extends) : undefined;
-  return ruler !== undefined && isObject(ruler.scale) ? ruler.scale : VALUE_SCALE;
+  return ruler !== undefined && isUsableScale(ruler.scale) ? ruler.scale : VALUE_SCALE;
 }
 
 /**
@@ -940,13 +954,18 @@ export function weighingScaleOf(set: Pick<WeighingCriteriaSet, "scale" | "extend
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
   const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
   const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
-  for (const set of Array.isArray(section?.sets) ? section.sets : []) {
+  const skipped: ResolvedWeighing["skipped"] = [];
+  const idOf = (entry: unknown): { id?: string; role?: string } =>
+    isObject(entry) ? { ...(typeof entry.id === "string" ? { id: entry.id } : {}), ...(typeof entry.role === "string" ? { role: entry.role } : {}) } : {};
+  (Array.isArray(section?.sets) ? section.sets : []).forEach((set, index) => {
     if (isWeighingSetShape(set) && !sets.some((s) => s.id === set.id)) sets.push(cleaned(set));
-  }
-  for (const matrix of Array.isArray(section?.matrices) ? section.matrices : []) {
+    else skipped.push({ kind: "set", ...idOf(set), index });
+  });
+  (Array.isArray(section?.matrices) ? section.matrices : []).forEach((matrix, index) => {
     if (isWeighingMatrixShape(matrix) && !matrices.some((m) => m.id === matrix.id)) matrices.push(matrix);
-  }
-  return { sets, matrices };
+    else skipped.push({ kind: "matrix", ...idOf(matrix), index });
+  });
+  return { sets, matrices, skipped };
 }
 
 /**
@@ -1419,6 +1438,35 @@ check("a project set's unusable criteria are dropped from its resolved copy, so 
   return eq(resolvedSet.criteria.map((c) => c.id), ["a", "b"]) && own.criteria.length === 5;
 })());
 
+check("a project set whose scale has no anchors falls back: to its ruler's scale, then to the signed one", (() => {
+  const noAnchors = { id: "rubric", version: "1.0.0", criteria: [], scale: { min: -3, max: 3 } };
+  const bareMinMax = { ...pos, scale: { anchors: {} } };
+  return (
+    weighingScaleOf(noAnchors, resolveWeighing({ sets: [noAnchors] })) === set.scale &&
+    typeof weighingScaleOf(noAnchors).anchors === "object" &&
+    weighingScaleOf(bareMinMax, resolveWeighing({ sets: [bareMinMax] })) === set.scale &&
+    weighingScaleOf({ ...pos, scale: set.scale }) === set.scale
+  );
+})());
+check("resolveWeighing reports what it dropped, with kind, id and stored index", (() => {
+  const okSet = { id: "ok", version: "1.0.0", scale: set.scale, criteria: [] };
+  const okMatrix = { id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } };
+  const r = resolveWeighing({
+    sets: [okSet, { id: "positioning", role: "positioning" }, null, { ...okSet }, { ...set, version: "9.0.0" }],
+    matrices: [okMatrix, { id: "m2" }, { ...okMatrix }, 5],
+  });
+  return eq(r.skipped, [
+    { kind: "set", id: "positioning", role: "positioning", index: 1 },
+    { kind: "set", index: 2 },
+    { kind: "set", id: "ok", index: 3 },
+    { kind: "set", id: "value-contribution", index: 4 },
+    { kind: "matrix", id: "m2", index: 1 },
+    { kind: "matrix", id: "m", index: 2 },
+    { kind: "matrix", index: 3 },
+  ]);
+})());
+check("nothing dropped means an empty skipped list", resolveWeighing(undefined).skipped.length === 0 && resolveWeighing({ sets: [pos] }).skipped.length === 0);
+
 // --- "The first wins" is true ------------------------------------------------
 
 const dup = (title) => ({ id: "rubric", version: "1.0.0", subject: "acceptance", scale: set.scale, criteria: [], title });
@@ -1784,7 +1832,7 @@ In `packages/schema/src/index.ts`, after `export * from "./weighing-library";` a
 - [x] **Step 6: Run the tests**
 
 Run: `node tests/schema/weighing.test.js && npm run test:schema && npm run test:journal && npm run test:quality && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: all pass (`All weighing tests passed.` — 156 `PASS:` lines in total), `tsc` and `eslint` silent.
+Expected: all pass (`All weighing tests passed.` — 159 `PASS:` lines in total), `tsc` and `eslint` silent.
 
 - [x] **Step 7: Commit**
 
@@ -2128,6 +2176,8 @@ The validator warns on each of these (`weighing-assessment-shape`, `-assessment-
 **Status.** `status` on a set or matrix is any value in storage. Readers follow one rule: **absent or `"active"` is active, and any other present value — `"draft"`, `"Draft"`, `"archived"`, a non-string — counts as a draft**, so a draft feeds no roll-up even if its status is mistyped (`isActiveWeighingSet`). The validator warns on anything but `draft` and `active` (`weighing-set-status`).
 
 **A positioning may have no `scale`.** It then uses its `extends` ruler's scale (`weighingScaleOf`); every other set needs one. A set needs a string `id` and `version` and a `criteria` array to be used at all.
+
+**A scale is used only when usable** (numeric `min` and `max`, an object `anchors`); otherwise a set is read on its ruler's scale, then on the built-in signed one (`weighingScaleOf`), so `.anchors[...]` is always safe. **What `resolveWeighing` drops is reported:** its `skipped` list names the kind, id, role and stored index of every set or matrix it ignored (malformed, a built-in redefined, a duplicate), so a surface can say so instead of showing nothing.
 
 **"The first wins" is true.** For two sets (or matrices) with one id, the first *well-formed* one wins and the later one is ignored with a `weighing-duplicate-set` (`-matrix`) warning; a malformed earlier entry never shadows a good later one, and is not counted as a duplicate.
 
@@ -5557,7 +5607,7 @@ gh stack submit --auto
 
 **What the tools promise** (and the tests pin):
 
-- `get_matrix` reports served and cost per promise **never netted**, `positioned` only for an *active* positioning, `kept_share`, `guesswork`, the three claim flags, `stale` and `review`, and says — in `notes` — when every figure is a seeded guess or when the positioning is a draft. With `subject` it returns one promise's every cell plus the scale's anchors and the confidence anchors: what an agent reads before it scores.
+- `get_matrix` also returns `skipped` — `{ kind, id?, role?, index }` for every stored set or matrix the resolver dropped (malformed, a built-in redefined, a duplicate id) — plus a note, only when there is one. `get_matrix` reports served and cost per promise **never netted**, `positioned` only for an *active* positioning, `kept_share`, `guesswork`, the three claim flags, `stale` and `review`, and says — in `notes` — when every figure is a seeded guess or when the positioning is a draft. With `subject` it returns one promise's every cell plus the scale's anchors and the confidence anchors: what an agent reads before it scores.
 - `assess` has **no scorer argument** (an agent is stamped `agent`; the most it may say about itself is `model`; a repo-mode session stamps `scorer.on_behalf_of` only when it was told whose it is, via `ARKAIK_ON_BEHALF_OF`, and a hosted one lets the server stamp the token owner: D14, not yet run), requires `evidence` above confidence 0, refuses unknown elements, levels off the scale and non-acceptance subjects with the planner's reason, stamps the set's version and the subject's fingerprint, and — when a human's level already stands for the cell — says so and that the agent's is recorded beside it (and that the cell is on the review list if they differ by 2 or more).
 - Repo mode upserts `docs/weighing/assessments/<matrix>.json` and writes **nothing to the journal**; hosted mode sends no `scorer`, `basis` or `ts` (the route would 400 it).
 - `save_positioning` defaults to `status: "draft"` and replaces the positioning whole.
@@ -5817,6 +5867,7 @@ async function main() {
     check("kept share is live platforms over applicable ones", consent.kept_share === 0.5);
     check("no positioning, no positioned figure", consent.positioned === null && first.json.positioning === null);
     check("a list row carries no cells; the subject read does", consent.cells === undefined);
+    check("nothing stored was dropped, so there is no skipped list", first.json.skipped === undefined);
 
     const one = await repo.call("get_matrix", { subject: "AC-consent" });
     check("a subject read returns every cell with its scorer", one.json.promise.cells.length === 2 && one.json.promise.cells.every((c) => c.source === "seed" && c.scorer.kind === "rule" && c.confidence === 0));
@@ -6085,6 +6136,7 @@ import {
   buildWeighingContext,
   deriveWeighing,
   planWeighingEvents,
+  resolveWeighing,
   sortPromises,
   upsertWeighingAssessment,
   weighPromise,
@@ -6267,7 +6319,10 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
               status: view.positioning.active ? "active" : "draft",
               elements: view.positioning.set.criteria.map((criterion) => ({ id: criterion.id, weight: typeof criterion.weight === "number" && criterion.weight > 0 ? criterion.weight : 1, ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}) })),
             };
+      // What the resolver dropped (a malformed saved positioning, a duplicate id): said, not silent.
+      const { skipped } = resolveWeighing(section);
       const notes: string[] = [];
+      if (skipped.length > 0) notes.push(`${skipped.length} stored set(s) or matrix(es) are malformed or duplicated and are ignored — see \`skipped\`.`);
       if (view.positioning !== null && !view.positioning.active) notes.push("The positioning is a draft — `positioned` figures are absent until it is saved as active.");
       if (view.totals.assessed === 0) notes.push("Nothing has been assessed yet — every figure is seeded from the order of metadata.values (confidence 0), a guess.");
 
@@ -6281,6 +6336,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           confidence_anchors: CONFIDENCE_ANCHORS,
           positioning,
           promise: promiseRow(promise, true),
+          ...(skipped.length > 0 ? { skipped } : {}),
           ...(notes.length > 0 ? { notes } : {}),
         };
       }
@@ -6321,6 +6377,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
         elements,
         promises: ordered.slice(0, limit).map((promise) => promiseRow(promise, false)),
         matching: ordered.length,
+        ...(skipped.length > 0 ? { skipped } : {}),
         ...(notes.length > 0 ? { notes } : {}),
       };
     },
@@ -7309,6 +7366,8 @@ function toCriterion(id: string, row: RowState): WeighingCriterion {
 export function PositioningPanel({ projectId }: { projectId: string }) {
   const { section, record } = useWeighing(projectId);
   const resolved = useMemo(() => resolveWeighing(section), [section]);
+  // A saved positioning the resolver dropped as malformed would otherwise just vanish from this form.
+  const malformed = resolved.skipped.some((entry) => entry.kind === "set" && (entry.id === POSITIONING_SET_ID || entry.role === "positioning"));
   const ruler = resolved.sets.find((set) => set.id === VALUE_SET_ID);
   const saved = resolved.sets.find((set) => set.id === POSITIONING_SET_ID && set.role === "positioning");
 
@@ -7357,6 +7416,11 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
 
   return (
     <div data-positioning data-positioning-status={status} className="flex flex-col gap-4">
+      {malformed && (
+        <p data-positioning-malformed role="status" className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          Your saved positioning is malformed and is ignored. Saving will replace it.
+        </p>
+      )}
       {status === "draft" && (
         <p data-positioning-draft className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
           This is a draft. It feeds no weight until you save it as active.
@@ -7718,6 +7782,9 @@ suggested:
 | R9 | "`schema_version` stays 3." | `ProjectBundleSchema` is strict about a *present* `weighing`: a malformed section fails `parseBundle` on import (hard), exactly as a malformed `quality` does. Everything else is a warning. | Same as Kritik; the zod shapes are `.catchall` so extra fields survive. |
 
 ### Risks that remain
+
+- **R-F1 — stored elements are typed as well-formed.** `WeighingSection.sets` / `matrices` / `assessments` are typed as arrays of well-formed records although storage may hold anything in them (D15). Readers are safe because they go through `resolveWeighing` / `readWeighingAssessments`, but nothing in the types forces that. Follow-up: type the stored elements `unknown[]` so a direct read does not compile.
+- **R-F2 — the published JSON Schema no longer says what an author should write.** D15 made every leaf `z.unknown()`, so `public/schema/project-bundle.json` documents descriptions but enforces and types nothing. Follow-up: publish a strict authoring JSON Schema (the shapes as written, no `unknown` leaves) beside the permissive import one.
 
 - **R10 — restore replaces the hosted journal.** An assessment written hosted (or in a browser project) is an *event*; `arkaik restore` PUTs a bundle and journal from the repo, so hosted-only assessments vanish unless the repo's `docs/weighing/` carries them. The existing `--allow-history-loss` guard catches a journal that *shrinks*; nothing writes hosted events *back* into `docs/weighing/`. A `pull`-style verb is out of slice. Same story for a browser project exported to a repo: its events travel in `journal[]`, not as sidecars. **The owner wants `arkaik restore` to append by default and to overwrite only behind an explicit flag; that is filed as issue #624 (critical) and is deliberately not part of slice 1.** Until it lands, this risk stands as written: slice 1's `restore` folds the repo's sidecars and replaces the hosted journal.
 - **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person.

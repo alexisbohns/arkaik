@@ -211,6 +211,8 @@ The validator warns on each of these (`weighing-assessment-shape`, `-assessment-
 
 **A positioning may have no `scale`.** It then uses its `extends` ruler's scale (`weighingScaleOf`); every other set needs one. A set needs a string `id` and `version` and a `criteria` array to be used at all.
 
+**A scale is used only when usable** (numeric `min` and `max`, an object `anchors`); otherwise a set is read on its ruler's scale, then on the built-in signed one (`weighingScaleOf`), so `.anchors[...]` is always safe. **What `resolveWeighing` drops is reported:** its `skipped` list names the kind, id, role and stored index of every set or matrix it ignored (malformed, a built-in redefined, a duplicate), so a surface can say so instead of showing nothing.
+
 **"The first wins" is true.** For two sets (or matrices) with one id, the first *well-formed* one wins and the later one is ignored with a `weighing-duplicate-set` (`-matrix`) warning; a malformed earlier entry never shadows a good later one, and is not counted as a duplicate.
 
 **Validation is warnings only** (never import-blocking, per the leniency doctrine): an unknown or retired `criterion_id`, a surface absent from the profile, a duplicate score for one cell, an assessment with no evidence, a risk value outside 1-5, a `quality.*` event with no `actor`, a `quality.finding.resolved` or `quality.finding.accepted` for a finding nothing ever opened.

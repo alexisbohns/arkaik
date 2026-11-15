@@ -133,6 +133,13 @@ export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 export interface ResolvedWeighing {
   sets: WeighingCriteriaSet[];
   matrices: WeighingMatrix[];
+  /**
+   * Every stored entry the resolver dropped — malformed, a redefinition of a
+   * built-in, or a duplicate id — with its position in the stored list, so a
+   * surface can say "your saved positioning is malformed and is ignored"
+   * instead of showing nothing. `id` is absent when the entry has none.
+   */
+  skipped: { kind: "set" | "matrix"; id?: string; /** A set's role, when it names one (a mistyped positioning has role `positioning` and any id). */ role?: string; index: number }[];
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -170,15 +177,22 @@ export function isWeighingMatrixShape(matrix: unknown): matrix is WeighingMatrix
   return (kind === "query" && typeof species === "string") || (kind === "list" && Array.isArray(items));
 }
 
+/** A scale a reader can use: numeric `min` and `max` and an object `anchors` (`weighing-scale-shape` warns on the rest). */
+function isUsableScale(scale: unknown): scale is WeighingScale {
+  return isObject(scale) && typeof scale.min === "number" && typeof scale.max === "number" && isObject(scale.anchors);
+}
+
 /**
  * The scale a set is read on: its own, or — for a positioning with none — its
- * `extends` ruler's, or at the last the built-in signed scale. Total, so a
+ * `extends` ruler's, or at the last the built-in signed scale — and it only
+ * takes a set's own scale when that scale is usable (numeric min and max, an
+ * anchors object), so `.anchors[...]` is always safe. Total, so a
  * reader never needs a guard before `.min` / `.max` / `.anchors`.
  */
 export function weighingScaleOf(set: Pick<WeighingCriteriaSet, "scale" | "extends">, resolved?: Pick<ResolvedWeighing, "sets">): WeighingScale {
-  if (isObject(set.scale)) return set.scale;
+  if (isUsableScale(set.scale)) return set.scale;
   const ruler = typeof set.extends === "string" && resolved !== undefined ? setOfRef(resolved, set.extends) : undefined;
-  return ruler !== undefined && isObject(ruler.scale) ? ruler.scale : VALUE_SCALE;
+  return ruler !== undefined && isUsableScale(ruler.scale) ? ruler.scale : VALUE_SCALE;
 }
 
 /**
@@ -195,13 +209,18 @@ export function weighingScaleOf(set: Pick<WeighingCriteriaSet, "scale" | "extend
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
   const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
   const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
-  for (const set of Array.isArray(section?.sets) ? section.sets : []) {
+  const skipped: ResolvedWeighing["skipped"] = [];
+  const idOf = (entry: unknown): { id?: string; role?: string } =>
+    isObject(entry) ? { ...(typeof entry.id === "string" ? { id: entry.id } : {}), ...(typeof entry.role === "string" ? { role: entry.role } : {}) } : {};
+  (Array.isArray(section?.sets) ? section.sets : []).forEach((set, index) => {
     if (isWeighingSetShape(set) && !sets.some((s) => s.id === set.id)) sets.push(cleaned(set));
-  }
-  for (const matrix of Array.isArray(section?.matrices) ? section.matrices : []) {
+    else skipped.push({ kind: "set", ...idOf(set), index });
+  });
+  (Array.isArray(section?.matrices) ? section.matrices : []).forEach((matrix, index) => {
     if (isWeighingMatrixShape(matrix) && !matrices.some((m) => m.id === matrix.id)) matrices.push(matrix);
-  }
-  return { sets, matrices };
+    else skipped.push({ kind: "matrix", ...idOf(matrix), index });
+  });
+  return { sets, matrices, skipped };
 }
 
 /**

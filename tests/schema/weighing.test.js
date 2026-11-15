@@ -351,6 +351,35 @@ check("a project set's unusable criteria are dropped from its resolved copy, so 
   return eq(resolvedSet.criteria.map((c) => c.id), ["a", "b"]) && own.criteria.length === 5;
 })());
 
+check("a project set whose scale has no anchors falls back: to its ruler's scale, then to the signed one", (() => {
+  const noAnchors = { id: "rubric", version: "1.0.0", criteria: [], scale: { min: -3, max: 3 } };
+  const bareMinMax = { ...pos, scale: { anchors: {} } };
+  return (
+    weighingScaleOf(noAnchors, resolveWeighing({ sets: [noAnchors] })) === set.scale &&
+    typeof weighingScaleOf(noAnchors).anchors === "object" &&
+    weighingScaleOf(bareMinMax, resolveWeighing({ sets: [bareMinMax] })) === set.scale &&
+    weighingScaleOf({ ...pos, scale: set.scale }) === set.scale
+  );
+})());
+check("resolveWeighing reports what it dropped, with kind, id and stored index", (() => {
+  const okSet = { id: "ok", version: "1.0.0", scale: set.scale, criteria: [] };
+  const okMatrix = { id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } };
+  const r = resolveWeighing({
+    sets: [okSet, { id: "positioning", role: "positioning" }, null, { ...okSet }, { ...set, version: "9.0.0" }],
+    matrices: [okMatrix, { id: "m2" }, { ...okMatrix }, 5],
+  });
+  return eq(r.skipped, [
+    { kind: "set", id: "positioning", role: "positioning", index: 1 },
+    { kind: "set", index: 2 },
+    { kind: "set", id: "ok", index: 3 },
+    { kind: "set", id: "value-contribution", index: 4 },
+    { kind: "matrix", id: "m2", index: 1 },
+    { kind: "matrix", id: "m", index: 2 },
+    { kind: "matrix", index: 3 },
+  ]);
+})());
+check("nothing dropped means an empty skipped list", resolveWeighing(undefined).skipped.length === 0 && resolveWeighing({ sets: [pos] }).skipped.length === 0);
+
 // --- "The first wins" is true ------------------------------------------------
 
 const dup = (title) => ({ id: "rubric", version: "1.0.0", subject: "acceptance", scale: set.scale, criteria: [], title });
