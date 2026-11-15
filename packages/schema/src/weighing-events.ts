@@ -52,7 +52,7 @@ const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[
 
 // --- Inputs ------------------------------------------------------------------
 
-/** One caller-supplied write, after {@link parseWeighingEventInputs} has narrowed its shape. */
+/** One caller-supplied write: what {@link parseWeighingEventInputs} hands on. The types are a promise; {@link planWeighingEvents} judges every value anyway. */
 export type WeighingEventInput =
   | {
       type: typeof WEIGHING_ASSESSMENT_RECORDED;
@@ -426,7 +426,7 @@ export function foldWeighingEvents(
   const relevant = events.filter((event) => event?.type === WEIGHING_ASSESSMENT_RECORDED || event?.type === WEIGHING_SET_SAVED);
   if (relevant.length === 0) return section;
 
-  let assessments = [...asArray<WeighingAssessment>(section?.assessments)];
+  const assessments = [...asArray<WeighingAssessment>(section?.assessments)];
   let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
