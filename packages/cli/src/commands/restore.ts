@@ -520,12 +520,18 @@ async function interpretPutResponse(
       };
     case 412: {
       const current = typeof body.current === "string" ? body.current : undefined;
+      // Same version, so what moved is the journal: something appended an event (a Lab Note,
+      // a score) after this run read it. Say so, or "it is now 7" after "read version 7" reads
+      // like a server bug.
+      const journalMoved = current !== undefined && current === ctx.version;
+      const what = journalMoved
+        ? `its journal gained ${typeof body.eventCount === "number" ? `events (it now holds ${body.eventCount})` : "events"} since this run read it`
+        : `since this run read version ${ctx.version} (it is now ${current ?? "unknown"})`;
       return {
         ...base,
         conflictCurrent: current,
         errorMessage:
-          `Conflict — the hosted project changed since this run read version ${ctx.version} ` +
-          `(it is now ${current ?? "unknown"}). Nothing was written.${backupNote} ` +
+          `Conflict — the hosted project changed: ${what}. Nothing was written.${backupNote} ` +
           `Do not retry with the same version — that would overwrite state that has since moved. ` +
           `Re-run \`arkaik restore\` to read the current state and decide again.`,
       };
@@ -900,8 +906,6 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     return fatalResult(dryRun, `Could not read the project: ${(e as Error).message}`);
   }
 
-  const putHeaders = { ...headers, "Content-Type": "application/json", "If-Match": `"${version}"` };
-
   // A replace dry run never fetches the export (it has nothing to diff it against that the
   // server's own delta does not already show). Every other run needs it: a real run for the
   // backup and the guards, an append for the merge.
@@ -911,6 +915,16 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     if (typeof read === "string") return fatalResult(dryRun, read, qualityFields);
     exportedBundle = read;
   }
+
+  // If-Match names the journal this run read, not only the version (#639): a journal-only
+  // write (a Lab Note, a quality or weighing event, a live delivery) does not move the
+  // version, and the PUT replaces the journal, so a bare version would let such an event
+  // land after the export and be deleted unseen. `"<version>.<eventCount>"` makes the
+  // server answer 412 instead. The version was read BEFORE the export, so an append in
+  // between is in the export (and kept) while a versioned write in between still 412s.
+  // Only a replace dry run, which reads no export, has no count to name.
+  const ifMatch = exportedBundle === undefined ? version : `${version}.${exportedBundle.journal.length}`;
+  const putHeaders = { ...headers, "Content-Type": "application/json", "If-Match": `"${ifMatch}"` };
 
   let sendBundle: Record<string, unknown> = outboundBundle;
   let kept: AppendSummary | undefined;
