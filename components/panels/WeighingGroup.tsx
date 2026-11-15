@@ -9,8 +9,10 @@ import {
   WEIGHING_LEVELS,
   buildWeighingContext,
   weighPromise,
+  weighingScaleOf,
   type EffectiveCell,
   type WeighingCriterion,
+  type WeighingScale,
 } from "@arkaik/schema";
 
 import { PanelGroup } from "@/components/panels/PanelGroup";
@@ -47,6 +49,12 @@ import { assessmentFieldsFor, evidenceChanged, intentOf, type RowIntent } from "
  *   human's level wins; an agent's rides beside it.
  * - **Served and cost** sit above the list, never netted, with the share that
  *   rests on guesses.
+ * - **A level means what the element's own ladder says** (the reach ruler,
+ *   `value-contribution@2`): +1 within the product, +2 across its domain, +3
+ *   life-wide, worded per element. Each level option carries its rung as a
+ *   tooltip, and the chosen level's rung shows under the control — a person
+ *   labelling a cell reads the same words an agent scored against. A level a
+ *   probabilistic scorer was unsure of carries a **range** marker.
  *
  * Every write is one `weighing.assessment.recorded` through `useWeighing`'s
  * `record` — the same gate an agent's `assess` goes through. A refused write
@@ -76,10 +84,28 @@ const CONFIDENCE_OPTIONS = CONFIDENCE_LEVELS.map((level) => ({ id: String(level)
 /** A level as a person reads it: a real minus, an explicit plus. */
 const signed = (level: number) => (level > 0 ? `+${level}` : level < 0 ? `−${-level}` : "0");
 
-const LEVEL_OPTIONS = WEIGHING_LEVELS.map((level) => ({ id: String(level), label: signed(level) }));
+/** What a level means for one element: its own ladder's rung, else the scale's words. */
+const rungOf = (criterion: WeighingCriterion, scale: WeighingScale, level: number): string | undefined =>
+  criterion.anchors?.[String(level)] ?? scale.anchors[String(level)];
+
+/** The level options for one element, each titled with its rung, so hovering a level says what choosing it claims. */
+const levelOptions = (criterion: WeighingCriterion, scale: WeighingScale) =>
+  WEIGHING_LEVELS.map((level) => {
+    const rung = rungOf(criterion, scale, level);
+    return { id: String(level), label: signed(level), ...(rung === undefined ? {} : { title: `${signed(level)}: ${rung}` }) };
+  });
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const num = (value: number) => (Math.round(value * 100) / 100).toFixed(2);
+
+/** Why a cell is stale, in words: "re-read the promise" and "re-score on the new ruler" are different asks. */
+function staleWords(cell: EffectiveCell): string {
+  const subject = cell.stale_by?.includes("subject") ?? false;
+  const ruler = cell.stale_by?.includes("ruler") ?? false;
+  if (subject && ruler) return "stale: the promise and the ruler changed since this was scored";
+  if (ruler) return "stale: scored on the old ruler, before levels meant reach";
+  return "stale: the promise changed since this was scored";
+}
 
 function scorerLabel(cell: EffectiveCell): string {
   if (cell.source === "seed") return "Guess: a claimed value starts at +1, within the product";
@@ -107,6 +133,7 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   if (ctx === undefined || weighed === undefined) return null;
 
   const names = new Map(ctx.set.criteria.map((criterion) => [criterion.id, criterion] as const));
+  const scale = weighingScaleOf(ctx.set);
   const shown = new Set(weighed.cells.map((cell) => cell.criterion));
   const blank = extra.filter((id) => !shown.has(id));
   const addable = ctx.set.criteria.filter((criterion) => !shown.has(criterion.id) && !extra.includes(criterion.id));
@@ -236,6 +263,8 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
             <ul className="flex flex-col gap-4">
               {rows.map(({ criterion, cell }) => {
                 const label = criterion.name ?? criterion.id;
+                // A level scored on the old ruler meant something else: never put the new rung's words in that scorer's mouth.
+                const rung = cell === undefined || cell.stale_by?.includes("ruler") ? undefined : rungOf(criterion, scale, cell.level);
                 // A score that is not the person's: an agent's, or the guess. Choosing here records their own.
                 const notMine = cell !== undefined && (cell.source === "seed" || cell.scorer.kind !== "human");
                 return (
@@ -245,6 +274,7 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
                     data-source={cell?.source ?? "blank"}
                     data-level={cell?.level ?? ""}
                     data-stale={cell?.stale ? "true" : "false"}
+                    data-uncertain={cell?.uncertain ? "true" : "false"}
                     data-pending={pending.has(criterion.id) ? "true" : "false"}
                     aria-busy={pending.has(criterion.id)}
                     className="flex flex-col gap-2"
@@ -254,11 +284,11 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
                       {cell?.claimed && <Badge variant="outline">claimed</Badge>}
                       {cell?.stale && (
                         <Badge
-                          data-weighing-stale
+                          data-weighing-stale={cell.stale_by?.join(" ") ?? ""}
                           variant="secondary"
-                          title="Choose the level again — even the one already chosen — to score it against the promise as it reads now."
+                          title="Choose the level again — even the one already chosen — to score it against the promise and the ruler as they read now."
                         >
-                          stale: the promise changed since this was scored
+                          {staleWords(cell)}
                         </Badge>
                       )}
                       {cell?.review && (
@@ -266,7 +296,21 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
                           a person and an agent differ: review
                         </Badge>
                       )}
+                      {cell?.uncertain && (
+                        <Badge
+                          data-weighing-uncertain
+                          variant="outline"
+                          title="The scorer was unsure of this level's direction: read it as a range, not a point. It still counts as scored."
+                        >
+                          range
+                        </Badge>
+                      )}
                     </div>
+                    {criterion.question !== undefined && (
+                      <p data-weighing-question className="text-xs text-muted-foreground">
+                        {criterion.question}
+                      </p>
+                    )}
                     {cell !== undefined && (
                       <p data-weighing-scorer className="text-xs text-muted-foreground">
                         {scorerLabel(cell)}, confidence {cell.confidence}
@@ -281,6 +325,7 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
                     {readOnly ? (
                       <p data-weighing-readonly className="text-sm">
                         {cell === undefined ? "Not scored" : `Level ${signed(cell.level)}`}
+                        {rung !== undefined && <span data-weighing-rung className="text-muted-foreground">{` — ${rung}`}</span>}
                       </p>
                     ) : (
                       <>
@@ -290,10 +335,15 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
                           </span>
                           <SegmentedControl
                             ariaLabel={`${label}: level`}
-                            options={LEVEL_OPTIONS}
+                            options={levelOptions(criterion, scale)}
                             value={cell === undefined ? "" : String(cell.level)}
                             onChange={(value) => write(criterion.id, cell, { level: Number(value) })}
                           />
+                          {rung !== undefined && (
+                            <p data-weighing-rung className="text-xs text-muted-foreground">
+                              {signed(cell?.level ?? 0)}: {rung}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col gap-1">
                           <span className="text-xs text-muted-foreground" aria-hidden="true">

@@ -65,7 +65,7 @@ const describe = read("components", "journal", "describe-event.ts");
 // --- the acceptance-panel form ------------------------------------------------
 check("the form is a PanelGroup with PanelSections", /<PanelGroup\b/.test(group) && /<PanelSection\b/.test(group));
 check("the form renders no bare heading — the panel stack owns the outline", !/<h[1-6][\s>]/.test(group));
-for (const hookName of ["data-weighing", "data-weighing-element", "data-weighing-served", "data-weighing-cost", "data-weighing-kept", "data-weighing-guesswork", "data-weighing-scorer", "data-weighing-stale", "data-weighing-review", "data-weighing-flags", "data-weighing-add"]) {
+for (const hookName of ["data-weighing", "data-weighing-element", "data-weighing-served", "data-weighing-cost", "data-weighing-kept", "data-weighing-guesswork", "data-weighing-scorer", "data-weighing-stale", "data-weighing-review", "data-weighing-flags", "data-weighing-add", "data-weighing-uncertain", "data-weighing-rung", "data-weighing-question"]) {
   check(`the form carries ${hookName}`, group.includes(hookName));
 }
 check("the numbers come from the schema's derivation", /buildWeighingContext/.test(group) && /weighPromise/.test(group) && /from "@arkaik\/schema"/.test(group));
@@ -75,6 +75,8 @@ check("a refused write is a toast, and the list re-reads either way", /toast\.er
 check("the merge, not the form, decides what a first human score carries", /assessmentFieldsFor/.test(group));
 check("the claimed elements are listed first, then 'Add an element'", /Add an element/.test(group) && /claimed/.test(group));
 check("a read-only panel offers no controls", /readOnly/.test(group) && /data-weighing-readonly/.test(group));
+check("a level means what the element's own ladder says: each option is titled with its rung, the scale's words the fallback", /criterion\.anchors\?\.\[String\(level\)\] \?\? scale\.anchors\[String\(level\)\]/.test(group) && /options=\{levelOptions\(criterion, scale\)\}/.test(group));
+check("an uncertain cell is a marker read off the derivation, never recomputed here", /cell\?\.uncertain &&/.test(group) && !/p_serves|p_costs/.test(group));
 
 // --- the write is a merge, serialized per row (the stale-closure bug) --------------------
 const humanCell = (over = {}) => ({ level: 1, confidence: 1, source: "stored", scorer: { kind: "human" }, evidence: "old words", ...over });
