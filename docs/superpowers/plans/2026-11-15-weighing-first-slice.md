@@ -191,7 +191,7 @@ Every commit in this plan ends with the session's usual attribution trailer; it 
 - Modify: `packages/schema/src/index.ts`
 - Create: `tests/schema/weighing.test.js` (grows over tasks 1.1–1.3)
 
-- [ ] **Step 1: Write the failing test (library, keys, fingerprint)**
+- [x] **Step 1: Write the failing test (library, keys, fingerprint)**
 
 Create `tests/schema/weighing.test.js` — the preamble, the first three sections and the epilogue. Later tasks append the "zod shapes" and "validator" sections **above** the final `fs.rmSync(…)` line.
 
@@ -320,12 +320,12 @@ if (failures > 0) {
 console.log("\nAll weighing tests passed.");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing.test.js`
 Expected: FAIL — a `TypeError: Cannot read properties of undefined (reading 'criteria')` (the loader returns `undefined` for every name the schema does not export yet).
 
-- [ ] **Step 3: Write `packages/schema/src/weighing.ts`**
+- [x] **Step 3: Write `packages/schema/src/weighing.ts`**
 
 This is the whole model file. (It already carries the two event-type constants — the validator in Task 1.3 reads them, and Part 3's fold needs them.)
 
@@ -635,7 +635,7 @@ export function sortWeighingAssessments(assessments: readonly Assessment[]): Ass
 }
 ```
 
-- [ ] **Step 4: Write `packages/schema/src/weighing-library.ts`**
+- [x] **Step 4: Write `packages/schema/src/weighing-library.ts`**
 
 ```ts
 /**
@@ -780,7 +780,7 @@ export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string):
 }
 ```
 
-- [ ] **Step 5: Export both from the package index**
+- [x] **Step 5: Export both from the package index**
 
 In `packages/schema/src/index.ts`, after the line `export * from "./journal-page";`, add:
 
@@ -789,12 +789,12 @@ export * from "./weighing";
 export * from "./weighing-library";
 ```
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [x] **Step 6: Run the test to verify it passes**
 
 Run: `node tests/schema/weighing.test.js && npx tsc --noEmit -p .`
 Expected: every `PASS:` line, ending `All weighing tests passed.`; `tsc` prints nothing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/schema/src/weighing.ts packages/schema/src/weighing-library.ts packages/schema/src/index.ts tests/schema/weighing.test.js
