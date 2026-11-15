@@ -421,14 +421,16 @@ The list of stale and unscored cells is the work list for a re-audit, as `kritik
 
 `metadata.values` stays, unchanged, and stays the author's **claim**. The value matrix adds the **assessment**: how much, according to whom. They are allowed to disagree. That is what a value audit is for, in the same way Kritik compares what the code does with what the team believes.
 
-| Situation | What it means | What the page says |
-|---|---|---|
-| Claimed, no assessment | Nobody has looked yet | "Claimed". Counted, not weighed. |
-| Claimed, assessed +2 or +3 | The claim holds | A served level |
-| Claimed, assessed 0 or +1 | The claim is stronger than the promise | "Claim not supported" |
-| Claimed, assessed negative | The promise costs what it claims to serve | "Claim contradicted" |
-| Not claimed, assessed +1 or more | The promise does more than it says | "Unclaimed value" |
-| Not claimed, assessed negative | The promise costs something it never mentioned | "**Unclaimed cost**" |
+| Situation | What it means | What the page says | Flag |
+|---|---|---|---|
+| Claimed, no assessment | Nobody has looked yet | "Claimed". Counted, not weighed. | none |
+| Claimed, assessed +2 or +3 | The claim holds | A served level | none |
+| Claimed, assessed 0 or +1 | The claim is stronger than the promise | "Claim not supported" | `claim_not_supported` |
+| Claimed, assessed negative | The promise costs what it claims to serve | "Claim contradicted" | `claim_contradicted` |
+| Not claimed, assessed +1 or more | The promise does more than it says | "Unclaimed value" | `unclaimed_value` |
+| Not claimed, assessed negative | The promise costs something it never mentioned | "**Unclaimed cost**" | `unclaimed_cost` |
+
+The four flags are a partition: only an assessment a scorer stored raises one (a seeded cell never does), and a cell raises at most one. A claimed element assessed negative raises `claim_contradicted` alone, not also `unclaimed_cost`.
 
 The last row is the most valuable output of a value audit ([§ 8](#8-the-signed-value-scale)).
 
