@@ -6253,7 +6253,7 @@ gh stack submit --auto
 **Files:**
 - Modify: `packages/mcp/src/store.ts`, `packages/mcp/src/remote-store.ts`
 
-- [ ] **Step 1: Add `appendWeighingEvents?` to the `Store` interface and implement it on the remote store**
+- [x] **Step 1: Add `appendWeighingEvents?` to the `Store` interface and implement it on the remote store**
 
 The input type is `@arkaik/schema`'s own `WeighingEventInput` — unlike Kritik's `HostedQualityInput` it lives in the package this server already bundles, so there is no structural copy to keep in lockstep.
 
@@ -6333,12 +6333,12 @@ The input type is `@arkaik/schema`'s own `WeighingEventInput` — unlike Kritik'
  
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit -p .`
 Expected: silent.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/mcp/src/store.ts packages/mcp/src/remote-store.ts

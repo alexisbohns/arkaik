@@ -28,6 +28,7 @@ import {
   type Project,
   type ValidationFinding,
   type ValidationResult,
+  type WeighingEventInput,
 } from "@arkaik/schema";
 
 import type { HostedQualityInput, LoadedGraph, QualityEventRefusal, Store, WriteResult } from "./store";
@@ -259,6 +260,32 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
           // reliably as.
           if (refusals) rejection.refusals = refusals;
           throw rejection;
+        }
+        throw err;
+      }
+    },
+
+    // The weighing twin of the method above, and simpler: there is no
+    // retry-after-a-dropped-response story, because an assessment is
+    // latest-wins per cell and scorer kind — sending it twice is the same write.
+    // The server stamps the scorer (a token is an agent) and the basis, so
+    // nothing about provenance travels from here, and a refusal names each
+    // entry's `index`, `reason` and `detail`.
+    async appendWeighingEvents(inputs: readonly WeighingEventInput[]): Promise<JournalEvent[]> {
+      try {
+        const result = await request<{ events: JournalEvent[] }>("/weighing/events", {
+          method: "POST",
+          body: JSON.stringify({ events: inputs }),
+        });
+        return result.events;
+      } catch (err) {
+        const e = err as Error & {
+          status?: number;
+          body?: { error?: string; refusals?: { index: number; reason: string; detail?: string }[] };
+        };
+        if (e.status === 422 && e.body?.error === "refused" && e.body.refusals) {
+          const detail = e.body.refusals.map((r) => `entry ${r.index}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`).join("; ");
+          throw new Error(`Weighing events refused — ${detail}`);
         }
         throw err;
       }

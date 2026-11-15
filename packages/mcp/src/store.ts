@@ -18,6 +18,7 @@ import {
   type MutationOp,
   type Project,
   type ValidationFinding,
+  type WeighingEventInput,
 } from "@arkaik/schema";
 import { appendJournalEvent, journalPathFor, validateBundleAt, type BundleValidation } from "arkaik/io";
 
@@ -109,6 +110,16 @@ export interface Store {
    * no checkout needs the server to hold the pen.
    */
   appendQualityEvents?(inputs: readonly HostedQualityInput[]): Promise<JournalEvent[]>;
+  /**
+   * Hosted-only: record assessments, or a positioning, via
+   * `POST …/weighing/events` (docs/rfcs/weighing.md). `undefined` on the file
+   * store — in a repo the weighing tools write the sidecars under
+   * `docs/weighing/` themselves. The input type is `@arkaik/schema`'s own, not
+   * a structural copy: unlike the quality union it lives in the package this
+   * server already bundles. Resolves to the events the server appended; rejects
+   * with the refusal's reasons.
+   */
+  appendWeighingEvents?(inputs: readonly WeighingEventInput[]): Promise<JournalEvent[]>;
 }
 
 /**
