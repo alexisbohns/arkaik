@@ -166,12 +166,12 @@ interface ProjectBundle {
 }
 
 interface WeighingSection extends Record<string, unknown> {
-  sets: CriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored
-  matrices: Matrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored)
-  assessments: Assessment[];    // latest per (matrix × subject × criterion × scorer kind)
+  sets: WeighingCriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored
+  matrices: WeighingMatrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored)
+  assessments: WeighingAssessment[];    // latest per (matrix × subject × criterion × scorer kind)
 }
 
-interface Assessment extends Record<string, unknown> {
+interface WeighingAssessment extends Record<string, unknown> {
   matrix: string;               // "value"
   subject: string;              // an acceptance id
   criterion: string;            // an element of value, e.g. "reduces-anxiety"

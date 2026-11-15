@@ -1319,19 +1319,19 @@
         "sets": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/CriteriaSet"
+            "$ref": "#/$defs/WeighingCriteriaSet"
           }
         },
         "matrices": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/Matrix"
+            "$ref": "#/$defs/WeighingMatrix"
           }
         },
         "assessments": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/Assessment"
+            "$ref": "#/$defs/WeighingAssessment"
           }
         }
       },
@@ -1343,7 +1343,7 @@
       "additionalProperties": {},
       "description": "The project's weighing state (docs/rfcs/weighing.md) — its own criteria sets (a positioning), matrices and assessments. The built-in value set is library content, not stored; served, cost and kept share are derived, never stored."
     },
-    "CriteriaSet": {
+    "WeighingCriteriaSet": {
       "type": "object",
       "properties": {
         "id": {
@@ -1491,7 +1491,7 @@
       "additionalProperties": {},
       "description": "One question on a scale where every level is described."
     },
-    "Matrix": {
+    "WeighingMatrix": {
       "type": "object",
       "properties": {
         "id": {
@@ -1592,7 +1592,7 @@
       "additionalProperties": {},
       "description": "A criteria set applied to a list of subjects."
     },
-    "Assessment": {
+    "WeighingAssessment": {
       "type": "object",
       "properties": {
         "matrix": {
@@ -1611,7 +1611,7 @@
           "description": "A whole number on the set's scale. 0 means unrelated. No half points."
         },
         "scorer": {
-          "$ref": "#/$defs/Scorer"
+          "$ref": "#/$defs/WeighingScorer"
         },
         "confidence": {
           "anyOf": [
@@ -1682,7 +1682,7 @@
       "additionalProperties": {},
       "description": "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal."
     },
-    "Scorer": {
+    "WeighingScorer": {
       "type": "object",
       "properties": {
         "kind": {

@@ -14,20 +14,20 @@
 
 import { z } from "zod";
 import type {
-  Assessment,
-  AssessmentBasis,
-  CriteriaSet,
-  Matrix,
-  Scorer,
+  WeighingAssessment,
+  WeighingAssessmentBasis,
+  WeighingCriteriaSet,
+  WeighingMatrix,
+  WeighingScorer,
   WeighingCriterion,
   WeighingGroup,
   WeighingScale,
   WeighingSection,
 } from "./weighing";
 
-export const ConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+export const WeighingConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
-export const ScorerSchema: z.ZodType<Scorer> = z
+export const WeighingScorerSchema: z.ZodType<WeighingScorer> = z
   .object({
     kind: z.enum(["human", "agent", "rule"]).meta({ description: "Who judged. A human's level beats an agent's, which beats a rule's." }),
     id: z.string().meta({ description: "A person's handle, an agent's name, or a seeding rule's id." }),
@@ -35,7 +35,7 @@ export const ScorerSchema: z.ZodType<Scorer> = z
     on_behalf_of: z.string().optional().meta({ description: "Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known." }),
   })
   .catchall(z.unknown())
-  .meta({ id: "Scorer", description: "Provenance of one assessment." });
+  .meta({ id: "WeighingScorer", description: "Provenance of one assessment." });
 
 export const WeighingScaleSchema: z.ZodType<WeighingScale> = z
   .object({
@@ -67,7 +67,7 @@ export const WeighingCriterionSchema: z.ZodType<WeighingCriterion> = z
   .catchall(z.unknown())
   .meta({ id: "WeighingCriterion", description: "One question on a scale where every level is described." });
 
-export const CriteriaSetSchema: z.ZodType<CriteriaSet> = z
+export const WeighingCriteriaSetSchema: z.ZodType<WeighingCriteriaSet> = z
   .object({
     id: z.string(),
     version: z.string().meta({ description: "Semver. Levels are comparable only within a major." }),
@@ -81,9 +81,9 @@ export const CriteriaSetSchema: z.ZodType<CriteriaSet> = z
     extends: z.string().optional().meta({ description: "A positioning's ruler, e.g. value-contribution@1." }),
   })
   .catchall(z.unknown())
-  .meta({ id: "CriteriaSet", description: "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another." });
+  .meta({ id: "WeighingCriteriaSet", description: "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another." });
 
-export const MatrixSchema: z.ZodType<Matrix> = z
+export const WeighingMatrixSchema: z.ZodType<WeighingMatrix> = z
   .object({
     id: z.string(),
     title: z.string().optional(),
@@ -102,9 +102,9 @@ export const MatrixSchema: z.ZodType<Matrix> = z
     status: z.enum(["draft", "active"]).optional(),
   })
   .catchall(z.unknown())
-  .meta({ id: "Matrix", description: "A criteria set applied to a list of subjects." });
+  .meta({ id: "WeighingMatrix", description: "A criteria set applied to a list of subjects." });
 
-export const AssessmentBasisSchema: z.ZodType<AssessmentBasis> = z
+export const WeighingAssessmentBasisSchema: z.ZodType<WeighingAssessmentBasis> = z
   .object({
     fingerprint: z.string().optional().meta({ description: "A hash of the subject's judged fields." }),
     commit: z.string().optional(),
@@ -112,28 +112,28 @@ export const AssessmentBasisSchema: z.ZodType<AssessmentBasis> = z
   })
   .catchall(z.unknown());
 
-export const AssessmentSchema: z.ZodType<Assessment> = z
+export const WeighingAssessmentSchema: z.ZodType<WeighingAssessment> = z
   .object({
     matrix: z.string(),
     subject: z.string(),
     criterion: z.string(),
     level: z.number().int().meta({ description: "A whole number on the set's scale. 0 means unrelated. No half points." }),
-    scorer: ScorerSchema,
-    confidence: ConfidenceSchema.meta({ description: "0 guess · 1 inferred · 2 evidenced · 3 verified." }),
+    scorer: WeighingScorerSchema,
+    confidence: WeighingConfidenceSchema.meta({ description: "0 guess · 1 inferred · 2 evidenced · 3 verified." }),
     evidence: z.string().optional(),
     refs: z.array(z.string()).optional(),
-    basis: AssessmentBasisSchema.optional().meta({ description: "What the scorer was looking at, so a re-read can tell the score went stale." }),
+    basis: WeighingAssessmentBasisSchema.optional().meta({ description: "What the scorer was looking at, so a re-read can tell the score went stale." }),
     run: z.string().optional(),
     ts: z.string(),
   })
   .catchall(z.unknown())
-  .meta({ id: "Assessment", description: "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal." });
+  .meta({ id: "WeighingAssessment", description: "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal." });
 
 export const WeighingSectionSchema: z.ZodType<WeighingSection> = z
   .object({
-    sets: z.array(CriteriaSetSchema),
-    matrices: z.array(MatrixSchema),
-    assessments: z.array(AssessmentSchema),
+    sets: z.array(WeighingCriteriaSetSchema),
+    matrices: z.array(WeighingMatrixSchema),
+    assessments: z.array(WeighingAssessmentSchema),
   })
   .catchall(z.unknown())
   .meta({

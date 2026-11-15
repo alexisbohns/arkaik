@@ -41,12 +41,12 @@ export const WEIGHING_MIN_LEVEL = -3;
 export const WEIGHING_MAX_LEVEL = 3;
 
 /** How sure the scorer is. 0 is a guess; a seeding rule always scores 0. */
-export type Confidence = 0 | 1 | 2 | 3;
+export type WeighingConfidence = 0 | 1 | 2 | 3;
 
-export const CONFIDENCE_LEVELS: readonly Confidence[] = [0, 1, 2, 3];
+export const CONFIDENCE_LEVELS: readonly WeighingConfidence[] = [0, 1, 2, 3];
 
 /** What each confidence level means, in words — the anchors a form and a prompt both show. */
-export const CONFIDENCE_ANCHORS: Readonly<Record<Confidence, string>> = {
+export const CONFIDENCE_ANCHORS: Readonly<Record<WeighingConfidence, string>> = {
   0: "Guess. Nothing behind it.",
   1: "Inferred from the subject's own text.",
   2: "Evidenced: cites something outside the subject.",
@@ -58,20 +58,20 @@ export const CONFIDENCE_ANCHORS: Readonly<Record<Confidence, string>> = {
  * beats an agent's, which beats a rule's. A `rule` is a seeding rule — it is
  * computed on read and never stored.
  */
-export type ScorerKind = "human" | "agent" | "rule";
+export type WeighingScorerKind = "human" | "agent" | "rule";
 
-export const SCORER_KINDS: readonly ScorerKind[] = ["human", "agent", "rule"];
+export const SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent", "rule"];
 
 /** The kinds a stored assessment may carry — `rule` seeds are derived, never written. */
-export const STORED_SCORER_KINDS: readonly ScorerKind[] = ["human", "agent"];
+export const STORED_SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent"];
 
 /** 3 human, 2 agent, 1 rule — higher wins a cell. */
-export function scorerRank(kind: ScorerKind): number {
+export function scorerRank(kind: WeighingScorerKind): number {
   return SCORER_KINDS.length - SCORER_KINDS.indexOf(kind);
 }
 
-export interface Scorer extends Record<string, unknown> {
-  kind: ScorerKind;
+export interface WeighingScorer extends Record<string, unknown> {
+  kind: WeighingScorerKind;
   /** Who: a person's handle, an agent's name, or the seeding rule's id. */
   id: string;
   /** The model behind an agent, when it says. */
@@ -113,9 +113,9 @@ export interface WeighingCriterion extends Record<string, unknown> {
   superseded_by?: string;
 }
 
-export type CriteriaSetStatus = "draft" | "active";
+export type WeighingCriteriaSetStatus = "draft" | "active";
 
-export interface CriteriaSet extends Record<string, unknown> {
+export interface WeighingCriteriaSet extends Record<string, unknown> {
   id: string;
   /** Semver. Levels are comparable only within a major. */
   version: string;
@@ -128,33 +128,33 @@ export interface CriteriaSet extends Record<string, unknown> {
   /** `positioning` marks the set a project writes about itself; it re-weights `extends`. */
   role?: "positioning";
   /** Absent means active. A draft feeds no roll-up until someone activates it. */
-  status?: CriteriaSetStatus;
+  status?: WeighingCriteriaSetStatus;
   /** A positioning's ruler: `value-contribution@1`. */
   extends?: string;
 }
 
 // --- Matrices ----------------------------------------------------------------
 
-export type MatrixSubjects =
+export type WeighingMatrixSubjects =
   | { kind: "query"; species: string }
   | { kind: "list"; items: { id: string; title?: string; node_id?: string }[] };
 
-export interface Matrix extends Record<string, unknown> {
+export interface WeighingMatrix extends Record<string, unknown> {
   id: string;
   title?: string;
   /** `value-contribution@1` — the set's id and major. */
   set: string;
-  subjects: MatrixSubjects;
+  subjects: WeighingMatrixSubjects;
   /** The id of the positioning set that re-weights this matrix, when one exists. */
   positioning?: string;
   context?: { node_id: string };
-  status?: CriteriaSetStatus;
+  status?: WeighingCriteriaSetStatus;
 }
 
 // --- Assessments -------------------------------------------------------------
 
 /** What a scorer was looking at, so a re-read can tell the score went stale. */
-export interface AssessmentBasis extends Record<string, unknown> {
+export interface WeighingAssessmentBasis extends Record<string, unknown> {
   /** A hash of the subject's judged fields ({@link acceptanceFingerprint}). */
   fingerprint?: string;
   commit?: string;
@@ -163,7 +163,7 @@ export interface AssessmentBasis extends Record<string, unknown> {
 }
 
 /** One (matrix × subject × criterion) judgement. */
-export interface Assessment extends Record<string, unknown> {
+export interface WeighingAssessment extends Record<string, unknown> {
   matrix: string;
   /** A node id for the value matrix. */
   subject: string;
@@ -171,13 +171,13 @@ export interface Assessment extends Record<string, unknown> {
   criterion: string;
   /** A whole number on the set's scale. No half points. 0 means "unrelated". */
   level: number;
-  scorer: Scorer;
-  confidence: Confidence;
+  scorer: WeighingScorer;
+  confidence: WeighingConfidence;
   /** Markdown. */
   evidence?: string;
   /** Ids cited: nodes, journal events, findings. */
   refs?: string[];
-  basis?: AssessmentBasis;
+  basis?: WeighingAssessmentBasis;
   /** The audit or plan the score belongs to. */
   run?: string;
   /** ISO 8601. */
@@ -190,10 +190,10 @@ export interface Assessment extends Record<string, unknown> {
  * stored here; `sets` holds the project's own (its positioning, today).
  */
 export interface WeighingSection extends Record<string, unknown> {
-  sets: CriteriaSet[];
-  matrices: Matrix[];
+  sets: WeighingCriteriaSet[];
+  matrices: WeighingMatrix[];
   /** Latest per (matrix × subject × criterion × scorer kind); history lives in the journal. */
-  assessments: Assessment[];
+  assessments: WeighingAssessment[];
 }
 
 // --- Journal event types -----------------------------------------------------
@@ -214,7 +214,7 @@ export function cellKey(matrix: string, subject: string, criterion: string): str
 }
 
 /** One stored row per cell per scorer kind — a human's level and an agent's sit side by side. */
-export function assessmentKey(a: Pick<Assessment, "matrix" | "subject" | "criterion" | "scorer">): string {
+export function assessmentKey(a: Pick<WeighingAssessment, "matrix" | "subject" | "criterion" | "scorer">): string {
   return `${cellKey(a.matrix, a.subject, a.criterion)}\u0000${a.scorer.kind}`;
 }
 
@@ -275,9 +275,9 @@ export function acceptanceFingerprint(node: Pick<Node, "title" | "metadata">): s
  * correction. The replaced row comes back so the caller can say so.
  */
 export function upsertWeighingAssessment(
-  assessments: readonly Assessment[],
-  next: Assessment,
-): { assessments: Assessment[]; replaced?: Assessment } {
+  assessments: readonly WeighingAssessment[],
+  next: WeighingAssessment,
+): { assessments: WeighingAssessment[]; replaced?: WeighingAssessment } {
   const key = assessmentKey(next);
   const index = assessments.findIndex((candidate) => assessmentKey(candidate) === key);
   if (index === -1) return { assessments: [...assessments, next] };
@@ -288,7 +288,7 @@ export function upsertWeighingAssessment(
 }
 
 /** A stable order for a sidecar file, so two writers diff cleanly: matrix, subject, criterion, then authority. */
-export function sortWeighingAssessments(assessments: readonly Assessment[]): Assessment[] {
+export function sortWeighingAssessments(assessments: readonly WeighingAssessment[]): WeighingAssessment[] {
   return [...assessments].sort((a, b) => {
     const by = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
     return (

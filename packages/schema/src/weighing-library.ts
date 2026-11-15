@@ -13,7 +13,7 @@
  */
 
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
-import type { CriteriaSet, Matrix, WeighingSection } from "./weighing";
+import type { WeighingCriteriaSet, WeighingMatrix, WeighingSection } from "./weighing";
 import { splitSetRef } from "./weighing";
 
 export const VALUE_SET_ID = "value-contribution";
@@ -80,7 +80,7 @@ const VALUE_TEXT: Readonly<Record<ValueId, { name: string; definition: string }>
 };
 
 /** The 30 elements as criteria, in `VALUE_IDS` order, grouped by tier. */
-export const VALUE_CONTRIBUTION_SET: CriteriaSet = {
+export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = {
   id: VALUE_SET_ID,
   version: VALUE_SET_VERSION,
   title: "Elements of value",
@@ -97,7 +97,7 @@ export const VALUE_CONTRIBUTION_SET: CriteriaSet = {
 };
 
 /** The built-in matrix: every acceptance, judged against the elements of value. */
-export const VALUE_MATRIX: Matrix = {
+export const VALUE_MATRIX: WeighingMatrix = {
   id: VALUE_MATRIX_ID,
   title: "Value",
   set: `${VALUE_SET_ID}@1`,
@@ -106,13 +106,13 @@ export const VALUE_MATRIX: Matrix = {
   status: "active",
 };
 
-export const BUILT_IN_SETS: readonly CriteriaSet[] = [VALUE_CONTRIBUTION_SET];
-export const BUILT_IN_MATRICES: readonly Matrix[] = [VALUE_MATRIX];
+export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET];
+export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 
 /** The built-ins layered under a project's own entries. */
 export interface ResolvedWeighing {
-  sets: CriteriaSet[];
-  matrices: Matrix[];
+  sets: WeighingCriteriaSet[];
+  matrices: WeighingMatrix[];
 }
 
 /**
@@ -122,8 +122,8 @@ export interface ResolvedWeighing {
  * earlier ones, matching every other first-wins read in this package.
  */
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
-  const sets: CriteriaSet[] = [...BUILT_IN_SETS];
-  const matrices: Matrix[] = [...BUILT_IN_MATRICES];
+  const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
+  const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
   for (const set of Array.isArray(section?.sets) ? section.sets : []) {
     if (typeof set?.id === "string" && !sets.some((s) => s.id === set.id)) sets.push(set);
   }
@@ -134,7 +134,7 @@ export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" |
 }
 
 /** The set a `value-contribution@1` ref names, if the resolved library holds it. */
-export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): CriteriaSet | undefined {
+export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): WeighingCriteriaSet | undefined {
   const { id } = splitSetRef(ref);
   return resolved.sets.find((set) => set.id === id);
 }

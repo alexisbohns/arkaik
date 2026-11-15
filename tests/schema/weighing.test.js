@@ -27,8 +27,8 @@ const {
   upsertWeighingAssessment,
   sortWeighingAssessments,
   WeighingSectionSchema,
-  AssessmentSchema,
-  CriteriaSetSchema,
+  WeighingAssessmentSchema,
+  WeighingCriteriaSetSchema,
   ProjectBundleSchema,
   validateBundle,
 } = loadSchema();
@@ -118,13 +118,13 @@ check("a node with no metadata still fingerprints", /^fp1-/.test(acceptanceFinge
 
 const section = { sets: [], matrices: [], assessments: [row()] };
 check("a valid section parses", WeighingSectionSchema.safeParse(section).success);
-check("a level of 3.5 is refused — no half points", !AssessmentSchema.safeParse(row({ level: 3.5 })).success);
-check("a confidence of 4 is refused", !AssessmentSchema.safeParse(row({ confidence: 4 })).success);
-check("a scorer is required", !AssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
-check("an unknown scorer kind is refused", !AssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
-check("unknown keys survive (a scorer's full distribution)", AssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
-check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", AssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && AssessmentSchema.safeParse(row({ scorer: agent })).success && !AssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
-check("a set parses with its own anchors and weight", CriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
+check("a level of 3.5 is refused — no half points", !WeighingAssessmentSchema.safeParse(row({ level: 3.5 })).success);
+check("a confidence of 4 is refused", !WeighingAssessmentSchema.safeParse(row({ confidence: 4 })).success);
+check("a scorer is required", !WeighingAssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
+check("an unknown scorer kind is refused", !WeighingAssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
+check("unknown keys survive (a scorer's full distribution)", WeighingAssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
+check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", WeighingAssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && WeighingAssessmentSchema.safeParse(row({ scorer: agent })).success && !WeighingAssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
+check("a set parses with its own anchors and weight", WeighingCriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
 
 const base = {
   schema_version: 3,

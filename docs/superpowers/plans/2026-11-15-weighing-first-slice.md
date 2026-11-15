@@ -28,7 +28,7 @@ Slice 1 = no new species, no nesting, no opportunities, no caps. `schema_version
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | **Positioning is a `CriteriaSet`** with `role: "positioning"`, `status?: "draft" \| "active"` (absent = active) and `extends: "value-contribution@1"`. Each criterion is `{ id, weight?, anchors? }`. The `Matrix` carries only a pointer, `positioning: "positioning"`. `Matrix.weights` from ARCHITECTURE § 3 is **dropped**. | DISCUSSION § "Positioning is a criteria set". A draft must feed no roll-up, so the status has to live on the thing being drafted — the set — not on the matrix. |
+| D1 | **Positioning is a `WeighingCriteriaSet`** with `role: "positioning"`, `status?: "draft" \| "active"` (absent = active) and `extends: "value-contribution@1"`. Each criterion is `{ id, weight?, anchors? }`. The `WeighingMatrix` carries only a pointer, `positioning: "positioning"`. `Matrix.weights` from ARCHITECTURE § 3 is **dropped**. | DISCUSSION § "Positioning is a criteria set". A draft must feed no roll-up, so the status has to live on the thing being drafted — the set — not on the matrix. |
 | D2 | **Storage, three homes.** Repo: `docs/weighing/sets/<set-id>.json` + `docs/weighing/assessments/<matrix-id>.json` (`{ matrix, assessments[] }`), folded by `arkaik pack` and `arkaik restore`, never written into `bundle.json`. Hosted and browser: two events, `weighing.assessment.recorded` (an assessment minus its `ts`, flat) and `weighing.set.saved` (`{ set }`, latest wins by id), folded on read. **No DB migration**: `graph_events.event` is already free-form JSON and Kritik's `quality.assessment.scored` needed none. | Kritik precedent (`docs/spec/bundle-format.md` § Quality, `lib/services/graph/store.ts`, `packages/cli/src/lib/kritik-io.ts`). |
 | D3 | **One stored row per cell per scorer kind.** `(matrix, subject, criterion, scorer.kind)` is the key; a human row and an agent row sit side by side; a `rule` row is never stored (seeds are computed). | DISCUSSION: "human beats agent beats rule; latest wins within a kind". |
 | D4 | **The writer stamps the scorer; the caller never sends it.** The hosted route stamps `human` for a session and `agent` for a token; the browser provider stamps `human`; the MCP server stamps `agent`. A token write also stamps `scorer.on_behalf_of`, the token owner's user id (D14). A body carrying `scorer`, `basis` or `ts` is a 400. The server also stamps the set's full version and the subject's **fingerprint** (title + Gherkin + values, whitespace-normalised, never status). | A human's level wins every cell, so a token must not be able to claim to be a human; and staleness must be measured from what the server saw. |
@@ -41,7 +41,7 @@ Slice 1 = no new species, no nesting, no opportunities, no caps. `schema_version
 | D11 | **A third MCP tool, `save_positioning`.** The brief names two. Without it an agent on a *hosted* project has no way to draft a positioning (in a repo it could edit a file). It is the last task of Part 4 and self-contained — **Owner: keep (decided).** Agents may draft and activate a positioning; a human can revert it (see R17 for what the journal records of a save). | DISCUSSION: "an agent drafts it from the landing page". |
 | D12 | **`ValuePicker` keeps the author's pick order** (last task of Part 5). Today it re-sorts `metadata.values` into the model's canonical order on every change, so for any acceptance edited in the app the seeding rule "first value = +3" would read the *tier order*, not the author's intent. See Risk R1. | The seeding rule reads order; the only editor destroys it. **Owner: keep (decided).** |
 | D13 | **Publik:** `stripWeighing` + `?include_weighing=true`; CLI `arkaik push --include-weighing` (default: deleted before packing); `arkaik pack --no-weighing` deletes the section. A separate opt-in, as quality is separate from the journal. | Kritik precedent, one for one. |
-| D14 | **`Scorer.on_behalf_of?: string`: whom a scorer acts for.** Optional. Stamped by the writer **where identity is known**: a hosted token write stamps the token owner's user id (`String(caller.userId)`); a session, the browser provider and a repo-mode MCP session stamp nothing unless told (`ARKAIK_ON_BEHALF_OF`). An opaque user id or handle, **never an email**, because sidecars are committed to repos: the planner refuses an email-shaped value. A caller cannot send it, because it sits inside `scorer`, which the parser already refuses. Part 1 carries the field, Part 3 the stamping and the guard, Part 4 the MCP source. | The owner: recording who a scorer acts for is "very important". `scorer.id` says what acted (`arkaik-agent`), not for whom, so a person driving an agent was indistinguishable from any other. **Supersedes the coarse-label half of R11.** |
+| D14 | **`WeighingScorer.on_behalf_of?: string`: whom a scorer acts for.** Optional. Stamped by the writer **where identity is known**: a hosted token write stamps the token owner's user id (`String(caller.userId)`); a session, the browser provider and a repo-mode MCP session stamp nothing unless told (`ARKAIK_ON_BEHALF_OF`). An opaque user id or handle, **never an email**, because sidecars are committed to repos: the planner refuses an email-shaped value. A caller cannot send it, because it sits inside `scorer`, which the parser already refuses. Part 1 carries the field, Part 3 the stamping and the guard, Part 4 the MCP source. | The owner: recording who a scorer acts for is "very important". `scorer.id` says what acted (`arkaik-agent`), not for whom, so a person driving an agent was indistinguishable from any other. **Supersedes the coarse-label half of R11.** |
 
 ### Not in slice 1 (so nothing below builds it)
 
@@ -94,7 +94,7 @@ After opening, **read every PR's comments** (CLAUDE.md): the Lab Note reminder c
 
 | Action | Path | Responsibility |
 |---|---|---|
-| Create | `packages/schema/src/weighing.ts` | Types (`Assessment`, `CriteriaSet`, `Matrix`, `Scorer`, `WeighingSection`), scales, confidence anchors, keys, `acceptanceFingerprint`, `upsertWeighingAssessment`, event-type constants. Zod-free. |
+| Create | `packages/schema/src/weighing.ts` | Types (`WeighingAssessment`, `WeighingCriteriaSet`, `WeighingMatrix`, `WeighingScorer`, `WeighingSection`), scales, confidence anchors, keys, `acceptanceFingerprint`, `upsertWeighingAssessment`, event-type constants. Zod-free. |
 | Create | `packages/schema/src/weighing-library.ts` | The built-in `value-contribution` set (30 elements, 4 tiers, −3..+3 anchors), the `value` matrix, `resolveWeighing`, `setOfRef`. Zod-free. |
 | Create | `packages/schema/src/weighing-schemas.ts` | Zod shapes, all `.catchall(z.unknown())`. |
 | Create | `packages/schema/src/weighing-validate.ts` | Warning-only validator rules; zod-free so `validate.ts` stays bundleable. |
@@ -225,8 +225,8 @@ const {
   upsertWeighingAssessment,
   sortWeighingAssessments,
   WeighingSectionSchema,
-  AssessmentSchema,
-  CriteriaSetSchema,
+  WeighingAssessmentSchema,
+  WeighingCriteriaSetSchema,
   ProjectBundleSchema,
   validateBundle,
 } = loadSchema();
@@ -329,7 +329,7 @@ Expected: FAIL — a `TypeError: Cannot read properties of undefined (reading 'c
 
 This is the whole model file. (It already carries the two event-type constants — the validator in Task 1.3 reads them, and Part 3's fold needs them.)
 
-> **Not yet run (D14).** `Scorer` below carries one field the run did not: `on_behalf_of?`. It is a type-only addition; its test is in Task 1.2.
+> **Not yet run (D14).** `WeighingScorer` below carries one field the run did not: `on_behalf_of?`. It is a type-only addition; its test is in Task 1.2.
 
 ```ts
 /**
@@ -375,12 +375,12 @@ export const WEIGHING_MIN_LEVEL = -3;
 export const WEIGHING_MAX_LEVEL = 3;
 
 /** How sure the scorer is. 0 is a guess; a seeding rule always scores 0. */
-export type Confidence = 0 | 1 | 2 | 3;
+export type WeighingConfidence = 0 | 1 | 2 | 3;
 
-export const CONFIDENCE_LEVELS: readonly Confidence[] = [0, 1, 2, 3];
+export const CONFIDENCE_LEVELS: readonly WeighingConfidence[] = [0, 1, 2, 3];
 
 /** What each confidence level means, in words — the anchors a form and a prompt both show. */
-export const CONFIDENCE_ANCHORS: Readonly<Record<Confidence, string>> = {
+export const CONFIDENCE_ANCHORS: Readonly<Record<WeighingConfidence, string>> = {
   0: "Guess. Nothing behind it.",
   1: "Inferred from the subject's own text.",
   2: "Evidenced: cites something outside the subject.",
@@ -392,20 +392,20 @@ export const CONFIDENCE_ANCHORS: Readonly<Record<Confidence, string>> = {
  * beats an agent's, which beats a rule's. A `rule` is a seeding rule — it is
  * computed on read and never stored.
  */
-export type ScorerKind = "human" | "agent" | "rule";
+export type WeighingScorerKind = "human" | "agent" | "rule";
 
-export const SCORER_KINDS: readonly ScorerKind[] = ["human", "agent", "rule"];
+export const SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent", "rule"];
 
 /** The kinds a stored assessment may carry — `rule` seeds are derived, never written. */
-export const STORED_SCORER_KINDS: readonly ScorerKind[] = ["human", "agent"];
+export const STORED_SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent"];
 
 /** 3 human, 2 agent, 1 rule — higher wins a cell. */
-export function scorerRank(kind: ScorerKind): number {
+export function scorerRank(kind: WeighingScorerKind): number {
   return SCORER_KINDS.length - SCORER_KINDS.indexOf(kind);
 }
 
-export interface Scorer extends Record<string, unknown> {
-  kind: ScorerKind;
+export interface WeighingScorer extends Record<string, unknown> {
+  kind: WeighingScorerKind;
   /** Who: a person's handle, an agent's name, or the seeding rule's id. */
   id: string;
   /** The model behind an agent, when it says. */
@@ -447,9 +447,9 @@ export interface WeighingCriterion extends Record<string, unknown> {
   superseded_by?: string;
 }
 
-export type CriteriaSetStatus = "draft" | "active";
+export type WeighingCriteriaSetStatus = "draft" | "active";
 
-export interface CriteriaSet extends Record<string, unknown> {
+export interface WeighingCriteriaSet extends Record<string, unknown> {
   id: string;
   /** Semver. Levels are comparable only within a major. */
   version: string;
@@ -462,33 +462,33 @@ export interface CriteriaSet extends Record<string, unknown> {
   /** `positioning` marks the set a project writes about itself; it re-weights `extends`. */
   role?: "positioning";
   /** Absent means active. A draft feeds no roll-up until someone activates it. */
-  status?: CriteriaSetStatus;
+  status?: WeighingCriteriaSetStatus;
   /** A positioning's ruler: `value-contribution@1`. */
   extends?: string;
 }
 
 // --- Matrices ----------------------------------------------------------------
 
-export type MatrixSubjects =
+export type WeighingMatrixSubjects =
   | { kind: "query"; species: string }
   | { kind: "list"; items: { id: string; title?: string; node_id?: string }[] };
 
-export interface Matrix extends Record<string, unknown> {
+export interface WeighingMatrix extends Record<string, unknown> {
   id: string;
   title?: string;
   /** `value-contribution@1` — the set's id and major. */
   set: string;
-  subjects: MatrixSubjects;
+  subjects: WeighingMatrixSubjects;
   /** The id of the positioning set that re-weights this matrix, when one exists. */
   positioning?: string;
   context?: { node_id: string };
-  status?: CriteriaSetStatus;
+  status?: WeighingCriteriaSetStatus;
 }
 
 // --- Assessments -------------------------------------------------------------
 
 /** What a scorer was looking at, so a re-read can tell the score went stale. */
-export interface AssessmentBasis extends Record<string, unknown> {
+export interface WeighingAssessmentBasis extends Record<string, unknown> {
   /** A hash of the subject's judged fields ({@link acceptanceFingerprint}). */
   fingerprint?: string;
   commit?: string;
@@ -497,7 +497,7 @@ export interface AssessmentBasis extends Record<string, unknown> {
 }
 
 /** One (matrix × subject × criterion) judgement. */
-export interface Assessment extends Record<string, unknown> {
+export interface WeighingAssessment extends Record<string, unknown> {
   matrix: string;
   /** A node id for the value matrix. */
   subject: string;
@@ -505,13 +505,13 @@ export interface Assessment extends Record<string, unknown> {
   criterion: string;
   /** A whole number on the set's scale. No half points. 0 means "unrelated". */
   level: number;
-  scorer: Scorer;
-  confidence: Confidence;
+  scorer: WeighingScorer;
+  confidence: WeighingConfidence;
   /** Markdown. */
   evidence?: string;
   /** Ids cited: nodes, journal events, findings. */
   refs?: string[];
-  basis?: AssessmentBasis;
+  basis?: WeighingAssessmentBasis;
   /** The audit or plan the score belongs to. */
   run?: string;
   /** ISO 8601. */
@@ -524,10 +524,10 @@ export interface Assessment extends Record<string, unknown> {
  * stored here; `sets` holds the project's own (its positioning, today).
  */
 export interface WeighingSection extends Record<string, unknown> {
-  sets: CriteriaSet[];
-  matrices: Matrix[];
+  sets: WeighingCriteriaSet[];
+  matrices: WeighingMatrix[];
   /** Latest per (matrix × subject × criterion × scorer kind); history lives in the journal. */
-  assessments: Assessment[];
+  assessments: WeighingAssessment[];
 }
 
 // --- Journal event types -----------------------------------------------------
@@ -548,7 +548,7 @@ export function cellKey(matrix: string, subject: string, criterion: string): str
 }
 
 /** One stored row per cell per scorer kind — a human's level and an agent's sit side by side. */
-export function assessmentKey(a: Pick<Assessment, "matrix" | "subject" | "criterion" | "scorer">): string {
+export function assessmentKey(a: Pick<WeighingAssessment, "matrix" | "subject" | "criterion" | "scorer">): string {
   return `${cellKey(a.matrix, a.subject, a.criterion)}\u0000${a.scorer.kind}`;
 }
 
@@ -609,9 +609,9 @@ export function acceptanceFingerprint(node: Pick<Node, "title" | "metadata">): s
  * correction. The replaced row comes back so the caller can say so.
  */
 export function upsertWeighingAssessment(
-  assessments: readonly Assessment[],
-  next: Assessment,
-): { assessments: Assessment[]; replaced?: Assessment } {
+  assessments: readonly WeighingAssessment[],
+  next: WeighingAssessment,
+): { assessments: WeighingAssessment[]; replaced?: WeighingAssessment } {
   const key = assessmentKey(next);
   const index = assessments.findIndex((candidate) => assessmentKey(candidate) === key);
   if (index === -1) return { assessments: [...assessments, next] };
@@ -622,7 +622,7 @@ export function upsertWeighingAssessment(
 }
 
 /** A stable order for a sidecar file, so two writers diff cleanly: matrix, subject, criterion, then authority. */
-export function sortWeighingAssessments(assessments: readonly Assessment[]): Assessment[] {
+export function sortWeighingAssessments(assessments: readonly WeighingAssessment[]): WeighingAssessment[] {
   return [...assessments].sort((a, b) => {
     const by = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
     return (
@@ -653,7 +653,7 @@ export function sortWeighingAssessments(assessments: readonly Assessment[]): Ass
  */
 
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
-import type { CriteriaSet, Matrix, WeighingSection } from "./weighing";
+import type { WeighingCriteriaSet, WeighingMatrix, WeighingSection } from "./weighing";
 import { splitSetRef } from "./weighing";
 
 export const VALUE_SET_ID = "value-contribution";
@@ -720,7 +720,7 @@ const VALUE_TEXT: Readonly<Record<ValueId, { name: string; definition: string }>
 };
 
 /** The 30 elements as criteria, in `VALUE_IDS` order, grouped by tier. */
-export const VALUE_CONTRIBUTION_SET: CriteriaSet = {
+export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = {
   id: VALUE_SET_ID,
   version: VALUE_SET_VERSION,
   title: "Elements of value",
@@ -737,7 +737,7 @@ export const VALUE_CONTRIBUTION_SET: CriteriaSet = {
 };
 
 /** The built-in matrix: every acceptance, judged against the elements of value. */
-export const VALUE_MATRIX: Matrix = {
+export const VALUE_MATRIX: WeighingMatrix = {
   id: VALUE_MATRIX_ID,
   title: "Value",
   set: `${VALUE_SET_ID}@1`,
@@ -746,13 +746,13 @@ export const VALUE_MATRIX: Matrix = {
   status: "active",
 };
 
-export const BUILT_IN_SETS: readonly CriteriaSet[] = [VALUE_CONTRIBUTION_SET];
-export const BUILT_IN_MATRICES: readonly Matrix[] = [VALUE_MATRIX];
+export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET];
+export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 
 /** The built-ins layered under a project's own entries. */
 export interface ResolvedWeighing {
-  sets: CriteriaSet[];
-  matrices: Matrix[];
+  sets: WeighingCriteriaSet[];
+  matrices: WeighingMatrix[];
 }
 
 /**
@@ -762,8 +762,8 @@ export interface ResolvedWeighing {
  * earlier ones, matching every other first-wins read in this package.
  */
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
-  const sets: CriteriaSet[] = [...BUILT_IN_SETS];
-  const matrices: Matrix[] = [...BUILT_IN_MATRICES];
+  const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
+  const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
   for (const set of Array.isArray(section?.sets) ? section.sets : []) {
     if (typeof set?.id === "string" && !sets.some((s) => s.id === set.id)) sets.push(set);
   }
@@ -774,7 +774,7 @@ export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" |
 }
 
 /** The set a `value-contribution@1` ref names, if the resolved library holds it. */
-export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): CriteriaSet | undefined {
+export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): WeighingCriteriaSet | undefined {
   const { id } = splitSetRef(ref);
   return resolved.sets.find((set) => set.id === id);
 }
@@ -808,7 +808,7 @@ git commit -m "feat(weighing): the records, the fingerprint and the built-in val
 - Modify: `packages/schema/src/bundle.ts`, `packages/schema/src/index.ts`
 - Modify: `tests/schema/weighing.test.js`
 
-> **Not yet run (D14).** The `on_behalf_of` check in the block below and the `on_behalf_of` line in `ScorerSchema` were added after the run.
+> **Not yet run (D14).** The `on_behalf_of` check in the block below and the `on_behalf_of` line in `WeighingScorerSchema` were added after the run.
 
 - [x] **Step 1: Write the failing test**
 
@@ -819,13 +819,13 @@ In `tests/schema/weighing.test.js`, insert this block **immediately above** the 
 
 const section = { sets: [], matrices: [], assessments: [row()] };
 check("a valid section parses", WeighingSectionSchema.safeParse(section).success);
-check("a level of 3.5 is refused — no half points", !AssessmentSchema.safeParse(row({ level: 3.5 })).success);
-check("a confidence of 4 is refused", !AssessmentSchema.safeParse(row({ confidence: 4 })).success);
-check("a scorer is required", !AssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
-check("an unknown scorer kind is refused", !AssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
-check("unknown keys survive (a scorer's full distribution)", AssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
-check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", AssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && AssessmentSchema.safeParse(row({ scorer: agent })).success && !AssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
-check("a set parses with its own anchors and weight", CriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
+check("a level of 3.5 is refused — no half points", !WeighingAssessmentSchema.safeParse(row({ level: 3.5 })).success);
+check("a confidence of 4 is refused", !WeighingAssessmentSchema.safeParse(row({ confidence: 4 })).success);
+check("a scorer is required", !WeighingAssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
+check("an unknown scorer kind is refused", !WeighingAssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
+check("unknown keys survive (a scorer's full distribution)", WeighingAssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
+check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", WeighingAssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && WeighingAssessmentSchema.safeParse(row({ scorer: agent })).success && !WeighingAssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
+check("a set parses with its own anchors and weight", WeighingCriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
 
 const base = {
   schema_version: 3,
@@ -862,20 +862,20 @@ Expected: FAIL — `TypeError: Cannot read properties of undefined (reading 'saf
 
 import { z } from "zod";
 import type {
-  Assessment,
-  AssessmentBasis,
-  CriteriaSet,
-  Matrix,
-  Scorer,
+  WeighingAssessment,
+  WeighingAssessmentBasis,
+  WeighingCriteriaSet,
+  WeighingMatrix,
+  WeighingScorer,
   WeighingCriterion,
   WeighingGroup,
   WeighingScale,
   WeighingSection,
 } from "./weighing";
 
-export const ConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+export const WeighingConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
-export const ScorerSchema: z.ZodType<Scorer> = z
+export const WeighingScorerSchema: z.ZodType<WeighingScorer> = z
   .object({
     kind: z.enum(["human", "agent", "rule"]).meta({ description: "Who judged. A human's level beats an agent's, which beats a rule's." }),
     id: z.string().meta({ description: "A person's handle, an agent's name, or a seeding rule's id." }),
@@ -883,7 +883,7 @@ export const ScorerSchema: z.ZodType<Scorer> = z
     on_behalf_of: z.string().optional().meta({ description: "Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known." }),
   })
   .catchall(z.unknown())
-  .meta({ id: "Scorer", description: "Provenance of one assessment." });
+  .meta({ id: "WeighingScorer", description: "Provenance of one assessment." });
 
 export const WeighingScaleSchema: z.ZodType<WeighingScale> = z
   .object({
@@ -915,7 +915,7 @@ export const WeighingCriterionSchema: z.ZodType<WeighingCriterion> = z
   .catchall(z.unknown())
   .meta({ id: "WeighingCriterion", description: "One question on a scale where every level is described." });
 
-export const CriteriaSetSchema: z.ZodType<CriteriaSet> = z
+export const WeighingCriteriaSetSchema: z.ZodType<WeighingCriteriaSet> = z
   .object({
     id: z.string(),
     version: z.string().meta({ description: "Semver. Levels are comparable only within a major." }),
@@ -929,9 +929,9 @@ export const CriteriaSetSchema: z.ZodType<CriteriaSet> = z
     extends: z.string().optional().meta({ description: "A positioning's ruler, e.g. value-contribution@1." }),
   })
   .catchall(z.unknown())
-  .meta({ id: "CriteriaSet", description: "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another." });
+  .meta({ id: "WeighingCriteriaSet", description: "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another." });
 
-export const MatrixSchema: z.ZodType<Matrix> = z
+export const WeighingMatrixSchema: z.ZodType<WeighingMatrix> = z
   .object({
     id: z.string(),
     title: z.string().optional(),
@@ -950,9 +950,9 @@ export const MatrixSchema: z.ZodType<Matrix> = z
     status: z.enum(["draft", "active"]).optional(),
   })
   .catchall(z.unknown())
-  .meta({ id: "Matrix", description: "A criteria set applied to a list of subjects." });
+  .meta({ id: "WeighingMatrix", description: "A criteria set applied to a list of subjects." });
 
-export const AssessmentBasisSchema: z.ZodType<AssessmentBasis> = z
+export const WeighingAssessmentBasisSchema: z.ZodType<WeighingAssessmentBasis> = z
   .object({
     fingerprint: z.string().optional().meta({ description: "A hash of the subject's judged fields." }),
     commit: z.string().optional(),
@@ -960,28 +960,28 @@ export const AssessmentBasisSchema: z.ZodType<AssessmentBasis> = z
   })
   .catchall(z.unknown());
 
-export const AssessmentSchema: z.ZodType<Assessment> = z
+export const WeighingAssessmentSchema: z.ZodType<WeighingAssessment> = z
   .object({
     matrix: z.string(),
     subject: z.string(),
     criterion: z.string(),
     level: z.number().int().meta({ description: "A whole number on the set's scale. 0 means unrelated. No half points." }),
-    scorer: ScorerSchema,
-    confidence: ConfidenceSchema.meta({ description: "0 guess · 1 inferred · 2 evidenced · 3 verified." }),
+    scorer: WeighingScorerSchema,
+    confidence: WeighingConfidenceSchema.meta({ description: "0 guess · 1 inferred · 2 evidenced · 3 verified." }),
     evidence: z.string().optional(),
     refs: z.array(z.string()).optional(),
-    basis: AssessmentBasisSchema.optional().meta({ description: "What the scorer was looking at, so a re-read can tell the score went stale." }),
+    basis: WeighingAssessmentBasisSchema.optional().meta({ description: "What the scorer was looking at, so a re-read can tell the score went stale." }),
     run: z.string().optional(),
     ts: z.string(),
   })
   .catchall(z.unknown())
-  .meta({ id: "Assessment", description: "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal." });
+  .meta({ id: "WeighingAssessment", description: "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal." });
 
 export const WeighingSectionSchema: z.ZodType<WeighingSection> = z
   .object({
-    sets: z.array(CriteriaSetSchema),
-    matrices: z.array(MatrixSchema),
-    assessments: z.array(AssessmentSchema),
+    sets: z.array(WeighingCriteriaSetSchema),
+    matrices: z.array(WeighingMatrixSchema),
+    assessments: z.array(WeighingAssessmentSchema),
   })
   .catchall(z.unknown())
   .meta({
@@ -1569,7 +1569,7 @@ In `.github/workflows/ci.yml`, after the "Kritik plan tests (grammar, cells, sor
 - [x] **Step 3: Regenerate and look at what moved**
 
 Run: `npm run generate && git status --short`
-Expected modified: `public/schema/project-bundle.json`, `docs/arkaik-skill/scripts/validate-bundle.js`, `plugin/skills/arkaik/scripts/validate-bundle.js`. Nothing under `lib/prompts/generated`, `plugin-kritik`, `lib/landing/generated`, `docs/arkaik-skill/references/schema.md`. Run `git diff --stat public/schema/project-bundle.json` and confirm the JSON Schema gained `weighing` on `ProjectBundle` and the `$defs` `Scorer`, `WeighingScale`, `WeighingGroup`, `WeighingCriterion`, `CriteriaSet`, `Matrix`, `Assessment`, `WeighingSection`.
+Expected modified: `public/schema/project-bundle.json`, `docs/arkaik-skill/scripts/validate-bundle.js`, `plugin/skills/arkaik/scripts/validate-bundle.js`. Nothing under `lib/prompts/generated`, `plugin-kritik`, `lib/landing/generated`, `docs/arkaik-skill/references/schema.md`. Run `git diff --stat public/schema/project-bundle.json` and confirm the JSON Schema gained `weighing` on `ProjectBundle` and the `$defs` `WeighingScorer`, `WeighingScale`, `WeighingGroup`, `WeighingCriterion`, `WeighingCriteriaSet`, `WeighingMatrix`, `WeighingAssessment`, `WeighingSection`.
 
 - [x] **Step 4: Verify the drift gate is now clean**
 
@@ -1604,12 +1604,12 @@ interface ProjectBundle {
 }
 
 interface WeighingSection extends Record<string, unknown> {
-  sets: CriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored
-  matrices: Matrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored)
-  assessments: Assessment[];    // latest per (matrix × subject × criterion × scorer kind)
+  sets: WeighingCriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored
+  matrices: WeighingMatrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored)
+  assessments: WeighingAssessment[];    // latest per (matrix × subject × criterion × scorer kind)
 }
 
-interface Assessment extends Record<string, unknown> {
+interface WeighingAssessment extends Record<string, unknown> {
   matrix: string;               // "value"
   subject: string;              // an acceptance id
   criterion: string;            // an element of value, e.g. "reduces-anxiety"
@@ -1853,11 +1853,11 @@ import {
   acceptanceFingerprint,
   cellKey,
   majorOf,
-  type Assessment,
-  type Confidence,
-  type CriteriaSet,
-  type Matrix,
-  type Scorer,
+  type WeighingAssessment,
+  type WeighingConfidence,
+  type WeighingCriteriaSet,
+  type WeighingMatrix,
+  type WeighingScorer,
   type WeighingSection,
 } from "./weighing";
 import { VALUE_MATRIX_ID, resolveWeighing, setOfRef } from "./weighing-library";
@@ -1879,7 +1879,7 @@ export function seedLevelAt(position: number): number {
 }
 
 /** The claimed values of a node that the set knows, deduplicated, in claim order. */
-export function claimedElements(node: Pick<Node, "metadata">, set: Pick<CriteriaSet, "criteria">): string[] {
+export function claimedElements(node: Pick<Node, "metadata">, set: Pick<WeighingCriteriaSet, "criteria">): string[] {
   const known = new Set(set.criteria.map((criterion) => criterion.id));
   const claimed = Array.isArray(node.metadata?.values) ? node.metadata.values : [];
   const seen = new Set<string>();
@@ -1893,7 +1893,7 @@ export function claimedElements(node: Pick<Node, "metadata">, set: Pick<Criteria
 }
 
 /** The seeded assessments of a node, one per claimed element. Computed on read, never stored. */
-export function seedAssessments(node: WeighedNode, matrix: Pick<Matrix, "id">, set: CriteriaSet): Assessment[] {
+export function seedAssessments(node: WeighedNode, matrix: Pick<WeighingMatrix, "id">, set: WeighingCriteriaSet): WeighingAssessment[] {
   const fingerprint = acceptanceFingerprint(node);
   return claimedElements(node, set).map((criterion, position) => ({
     matrix: matrix.id,
@@ -1914,8 +1914,8 @@ export interface EffectiveCell {
   criterion: string;
   /** The winning level. */
   level: number;
-  scorer: Scorer;
-  confidence: Confidence;
+  scorer: WeighingScorer;
+  confidence: WeighingConfidence;
   /** `seed` means no scorer has judged this cell — the level is the rule's guess. */
   source: "stored" | "seed";
   /** The subject or the set moved since the winner looked. Never changes who wins. */
@@ -1924,14 +1924,14 @@ export interface EffectiveCell {
   /** The author claimed this element in `metadata.values`. */
   claimed: boolean;
   /** Stored rows of the other kinds — the fresh agent level beside a stale human one. */
-  others: Assessment[];
+  others: WeighingAssessment[];
   /** A human and an agent differ by two levels or more. */
   review: boolean;
 }
 
 /** The latest row of a kind: greatest `ts`, a tie going to the later row. */
-function latestOf(rows: readonly Assessment[]): Assessment | undefined {
-  let best: Assessment | undefined;
+function latestOf(rows: readonly WeighingAssessment[]): WeighingAssessment | undefined {
+  let best: WeighingAssessment | undefined;
   for (const row of rows) {
     if (best === undefined || row.ts >= best.ts) best = row;
   }
@@ -1949,8 +1949,8 @@ function latestOf(rows: readonly Assessment[]): Assessment | undefined {
  */
 export function resolveCell(
   criterion: string,
-  stored: readonly Assessment[],
-  seed: Assessment | undefined,
+  stored: readonly WeighingAssessment[],
+  seed: WeighingAssessment | undefined,
   current: { fingerprint: string; setVersion: string },
   claimed: boolean,
 ): EffectiveCell | undefined {
@@ -2092,14 +2092,14 @@ Append to `packages/schema/src/weighing-derive.ts`:
 
 /** The matrix, its set, the stored cells and the active positioning, resolved once. */
 export interface WeighingContext {
-  matrix: Matrix;
-  set: CriteriaSet;
+  matrix: WeighingMatrix;
+  set: WeighingCriteriaSet;
   /** Stored non-rule rows by {@link cellKey}. */
-  byCell: Map<string, Assessment[]>;
+  byCell: Map<string, WeighingAssessment[]>;
   /** The project's positioning set, active or not. */
-  positioningSet: CriteriaSet | undefined;
+  positioningSet: WeighingCriteriaSet | undefined;
   /** Present only while the positioning is active; a draft feeds no roll-up. */
-  positioning: { set: CriteriaSet; weights: Map<string, number> } | null;
+  positioning: { set: WeighingCriteriaSet; weights: Map<string, number> } | null;
 }
 
 /** Resolve a matrix over a section — `undefined` when the matrix or its set is not available. */
@@ -2113,7 +2113,7 @@ export function buildWeighingContext(
   const set = setOfRef(resolved, matrix.set);
   if (set === undefined) return undefined;
 
-  const byCell = new Map<string, Assessment[]>();
+  const byCell = new Map<string, WeighingAssessment[]>();
   for (const row of Array.isArray(section?.assessments) ? section.assessments : []) {
     if (row?.matrix !== matrix.id || row.scorer?.kind === "rule") continue;
     const key = cellKey(row.matrix, row.subject, row.criterion);
@@ -2321,10 +2321,10 @@ export interface ElementMass {
 }
 
 export interface WeighingView {
-  matrix: Matrix;
-  set: CriteriaSet;
+  matrix: WeighingMatrix;
+  set: WeighingCriteriaSet;
   /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. */
-  positioning: { set: CriteriaSet; active: boolean } | null;
+  positioning: { set: WeighingCriteriaSet; active: boolean } | null;
   promises: PromiseWeighing[];
   /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
   elements: Record<string, ElementMass>;
@@ -2341,7 +2341,7 @@ export interface WeighingView {
 }
 
 /** The nodes a matrix judges. */
-export function matrixSubjects<N extends Pick<Node, "id" | "species">>(nodes: readonly N[], matrix: Matrix): N[] {
+export function matrixSubjects<N extends Pick<Node, "id" | "species">>(nodes: readonly N[], matrix: WeighingMatrix): N[] {
   if (matrix.subjects.kind === "query") {
     const species = matrix.subjects.species;
     return nodes.filter((node) => node.species === species);
@@ -2588,7 +2588,7 @@ Expected: FAIL — `FAIL: both have a strict schema`, then `TypeError: parseWeig
  import { z } from "zod";
  import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
  import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
-+import { AssessmentBasisSchema, ConfidenceSchema, CriteriaSetSchema, ScorerSchema } from "./weighing-schemas";
++import { WeighingAssessmentBasisSchema, WeighingConfidenceSchema, WeighingCriteriaSetSchema, WeighingScorerSchema } from "./weighing-schemas";
  import type { JournalEvent } from "./journal";
  
  /** Shared envelope fields (docs/spec/journal.md § Event Envelope). */
@@ -2612,18 +2612,18 @@ Expected: FAIL — `FAIL: both have a strict schema`, then `TypeError: parseWeig
 +    subject: z.string(),
 +    criterion: z.string(),
 +    level: z.number().int(),
-+    scorer: ScorerSchema,
-+    confidence: ConfidenceSchema,
++    scorer: WeighingScorerSchema,
++    confidence: WeighingConfidenceSchema,
 +    evidence: z.string().optional(),
 +    refs: z.array(z.string()).optional(),
-+    basis: AssessmentBasisSchema.optional(),
++    basis: WeighingAssessmentBasisSchema.optional(),
 +    run: z.string().optional(),
 +  })
 +  .catchall(z.unknown());
 +
 +/** A criteria set saved whole — latest-wins by set id. How a positioning is written away from a checkout. */
 +export const WeighingSetSavedEventSchema = z
-+  .object({ ...envelope, type: z.literal("weighing.set.saved"), set: CriteriaSetSchema })
++  .object({ ...envelope, type: z.literal("weighing.set.saved"), set: WeighingCriteriaSetSchema })
 +  .catchall(z.unknown());
 +
  /** Per-type schemas keyed by `type`, for validating a single known event. */
@@ -2692,11 +2692,11 @@ import {
   WEIGHING_ASSESSMENT_RECORDED,
   WEIGHING_SET_SAVED,
   upsertWeighingAssessment,
-  type Assessment,
-  type Confidence,
-  type CriteriaSet,
-  type Matrix,
-  type ScorerKind,
+  type WeighingAssessment,
+  type WeighingConfidence,
+  type WeighingCriteriaSet,
+  type WeighingMatrix,
+  type WeighingScorerKind,
   type WeighingSection,
 } from "./weighing";
 
@@ -2722,7 +2722,7 @@ export type WeighingEventInput =
       /** The model behind an agent scorer. */
       model?: string;
     }
-  | { type: typeof WEIGHING_SET_SAVED; set: CriteriaSet };
+  | { type: typeof WEIGHING_SET_SAVED; set: WeighingCriteriaSet };
 
 const MAX_EVENTS = 50;
 
@@ -2797,7 +2797,7 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
       if (typeof s.scale !== "object" || s.scale === null || !Array.isArray(s.criteria)) {
         return { error: `events[${index}].set needs a scale and a criteria array` };
       }
-      parsed.push({ type: WEIGHING_SET_SAVED, set: set as CriteriaSet });
+      parsed.push({ type: WEIGHING_SET_SAVED, set: set as WeighingCriteriaSet });
       continue;
     }
 
@@ -2922,7 +2922,7 @@ export interface WeighingPlanContext {
   /** The envelope's `actor`: `arkaik-app`, `arkaik-agent`, `arkaik-mcp`. */
   actor: string;
   /** Stamped by the caller: a session is `human`, a token or the MCP server is `agent`. Never `rule`. */
-  scorerKind: Exclude<ScorerKind, "rule">;
+  scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
    * Whom the scorer acts for, when the writer knows (D14, not yet run): the token
    * owner's user id on the hosted route, whatever the MCP server was told in a
@@ -2939,7 +2939,7 @@ export type WeighingPlan =
       /** Stamped, ready to append. Same order as the inputs. */
       events: JournalEvent[];
       /** The assessment rows the assessment events carry — what a sidecar writer upserts. */
-      assessments: Assessment[];
+      assessments: WeighingAssessment[];
     }
   | { ok: false; refusals: WeighingRefusal[] };
 
@@ -2974,7 +2974,7 @@ export function planWeighingEvents(
   const now = ctx.now ?? new Date();
   const refusals: WeighingRefusal[] = [];
   const events: JournalEvent[] = [];
-  const assessments: Assessment[] = [];
+  const assessments: WeighingAssessment[] = [];
 
   inputs.forEach((input, index) => {
     const refuse = (reason: WeighingRefusalReason, detail: string) => refusals.push({ index, reason, detail });
@@ -3030,7 +3030,7 @@ export function planWeighingEvents(
     }
 
     const ts = now.toISOString();
-    const row: Assessment = {
+    const row: WeighingAssessment = {
       matrix: matrix.id,
       subject: input.subject,
       criterion: criterion.id,
@@ -3041,7 +3041,7 @@ export function planWeighingEvents(
         ...(input.model !== undefined ? { model: input.model } : {}),
         ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14, not yet run
       },
-      confidence: input.confidence as Confidence,
+      confidence: input.confidence as WeighingConfidence,
       ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
       ...(input.refs !== undefined ? { refs: input.refs } : {}),
       basis: {
@@ -3138,7 +3138,7 @@ Append to `packages/schema/src/weighing-events.ts`:
 // --- The fold ----------------------------------------------------------------
 
 /** The assessment an event carries, or `undefined` when it is not a well-formed one. */
-function assessmentOfEvent(event: JournalEvent): Assessment | undefined {
+function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined {
   const e = event as Record<string, unknown>;
   const scorer = e.scorer as { kind?: unknown; id?: unknown } | undefined;
   if (
@@ -3166,7 +3166,7 @@ function assessmentOfEvent(event: JournalEvent): Assessment | undefined {
   void _actor;
   void _type;
   void _v;
-  return rest as unknown as Assessment;
+  return rest as unknown as WeighingAssessment;
 }
 
 /**
@@ -3190,8 +3190,8 @@ export function foldWeighingEvents(
   const relevant = events.filter((event) => event?.type === WEIGHING_ASSESSMENT_RECORDED || event?.type === WEIGHING_SET_SAVED);
   if (relevant.length === 0) return section;
 
-  let assessments = asArray<Assessment>(section?.assessments);
-  let sets = asArray<CriteriaSet>(section?.sets);
+  let assessments = asArray<WeighingAssessment>(section?.assessments);
+  let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
     if (event.type === WEIGHING_ASSESSMENT_RECORDED) {
@@ -3204,10 +3204,10 @@ export function foldWeighingEvents(
     const id = (set as { id?: unknown }).id;
     if (typeof id !== "string" || id === "") continue;
     const at = sets.findIndex((existing) => existing?.id === id);
-    sets = at === -1 ? [...sets, set as CriteriaSet] : sets.map((existing, i) => (i === at ? (set as CriteriaSet) : existing));
+    sets = at === -1 ? [...sets, set as WeighingCriteriaSet] : sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
   }
 
-  return { ...(section ?? {}), sets, matrices: asArray<Matrix>(section?.matrices), assessments };
+  return { ...(section ?? {}), sets, matrices: asArray<WeighingMatrix>(section?.matrices), assessments };
 }
 ```
 
@@ -3478,7 +3478,7 @@ Expected: FAIL — `FAIL: pack folds the assessments of every scorer kind` (the 
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { sortWeighingAssessments, type Assessment, type CriteriaSet, type WeighingSection } from "../weighing";
+import { sortWeighingAssessments, type WeighingAssessment, type WeighingCriteriaSet, type WeighingSection } from "../weighing";
 import { readJson, writeJson } from "./kritik-paths";
 
 /** Where a project's own weighing files live, relative to the repo root. */
@@ -3489,7 +3489,7 @@ export const WEIGHING_ASSESSMENTS_DIR = "assessments";
 /** `assessments/<matrix>.json`: one matrix's stored cells. */
 export interface AssessmentsFile {
   matrix: string;
-  assessments: Assessment[];
+  assessments: WeighingAssessment[];
 }
 
 /**
@@ -3516,12 +3516,12 @@ function jsonFilesIn(dir: string): string[] {
 }
 
 /** Every project-authored set on disk, by file name. */
-export function loadWeighingSets(root: string): CriteriaSet[] {
-  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<CriteriaSet>(file));
+export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
+  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<WeighingCriteriaSet>(file));
 }
 
 /** Every stored assessment on disk, matrix by matrix. A file that is not `{ assessments: [] }` throws, naming the file. */
-export function loadWeighingAssessments(root: string): Assessment[] {
+export function loadWeighingAssessments(root: string): WeighingAssessment[] {
   return jsonFilesIn(join(weighingDir(root), WEIGHING_ASSESSMENTS_DIR)).flatMap((file) => {
     const parsed = readJson<Partial<AssessmentsFile>>(file);
     if (!Array.isArray(parsed.assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
@@ -3545,18 +3545,18 @@ export function loadWeighingSection(root: string): WeighingSection | undefined {
 }
 
 /** Write one matrix's cells, in the stable order that keeps two writers' diffs small. */
-export function saveWeighingAssessments(root: string, matrixId: string, assessments: readonly Assessment[]): void {
+export function saveWeighingAssessments(root: string, matrixId: string, assessments: readonly WeighingAssessment[]): void {
   const file: AssessmentsFile = { matrix: matrixId, assessments: sortWeighingAssessments(assessments) };
   writeJson(weighingAssessmentsPath(root, matrixId), file);
 }
 
 /** Write one set — the positioning. */
-export function saveWeighingSet(root: string, set: CriteriaSet): void {
+export function saveWeighingSet(root: string, set: WeighingCriteriaSet): void {
   writeJson(weighingSetPath(root, set.id), set);
 }
 
 /** The stored cells of one matrix, `[]` when its file does not exist. */
-export function loadMatrixAssessments(root: string, matrixId: string): Assessment[] {
+export function loadMatrixAssessments(root: string, matrixId: string): WeighingAssessment[] {
   const file = weighingAssessmentsPath(root, matrixId);
   if (!existsSync(file)) return [];
   const parsed = readJson<Partial<AssessmentsFile>>(file);
@@ -4915,7 +4915,7 @@ In `packages/cli/package.json` set `"version": "0.12.0"`. In `package-lock.json`
 - [ ] **Step 3b: `docs/spec/journal.md`** — after the `quality.signal.tripped` row of the vocabulary table add:
 
 ````markdown
-| `weighing.assessment.recorded` | `matrix`, `subject`, `criterion`, `level`, `scorer`, `confidence`, `evidence?`, `refs?`, `basis?`, `run?` | One assessment (an `Assessment` minus its `ts`, which is the envelope's) written away from a checkout — a hosted session or a browser project (docs/rfcs/weighing.md). The read folds these latest-wins per `(matrix, subject, criterion, scorer.kind)` over the bundle's `weighing` section, the way a repo checkout folds a sidecar re-score in place. The writer stamps `scorer` (a session is `human`, a token `agent` and also carries `scorer.on_behalf_of`, the token owner's opaque user id, never an email) and `basis` (the set's version and the subject's fingerprint); a caller cannot supply them. In a repository no event is written — `docs/weighing/` is the record |
+| `weighing.assessment.recorded` | `matrix`, `subject`, `criterion`, `level`, `scorer`, `confidence`, `evidence?`, `refs?`, `basis?`, `run?` | One assessment (an `WeighingAssessment` minus its `ts`, which is the envelope's) written away from a checkout — a hosted session or a browser project (docs/rfcs/weighing.md). The read folds these latest-wins per `(matrix, subject, criterion, scorer.kind)` over the bundle's `weighing` section, the way a repo checkout folds a sidecar re-score in place. The writer stamps `scorer` (a session is `human`, a token `agent` and also carries `scorer.on_behalf_of`, the token owner's opaque user id, never an email) and `basis` (the set's version and the subject's fingerprint); a caller cannot supply them. In a repository no event is written — `docs/weighing/` is the record |
 | `weighing.set.saved` | `set` | A criteria set saved whole — latest wins by `set.id`. Slice 1 admits exactly one: the `positioning` (`role: "positioning"`, `extends: "value-contribution@1"`, `status: "draft" \| "active"`) |
 ````
 
@@ -5522,8 +5522,8 @@ import {
   sortPromises,
   upsertWeighingAssessment,
   weighPromise,
-  type Assessment,
-  type CriteriaSet,
+  type WeighingAssessment,
+  type WeighingCriteriaSet,
   type EffectiveCell,
   type JournalEvent,
   type Node,
@@ -5878,7 +5878,7 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
       const plan = planWeighingEvents(section, nodes, [input], { actor: MCP_ACTOR, scorerKind: "agent", ...(onBehalfOf !== undefined ? { onBehalfOf } : {}) });
       if (!plan.ok) throw new ToolError(`Assessment refused — ${plan.refusals.map((r) => `${r.reason}: ${r.detail}`).join("; ")}`, { refusals: plan.refusals });
       const row = plan.assessments[0];
-      let replaced: Assessment | undefined;
+      let replaced: WeighingAssessment | undefined;
       try {
         const next = upsertWeighingAssessment(loadMatrixAssessments(ctx.qualityRoot, row.matrix), row);
         replaced = next.replaced;
@@ -5949,7 +5949,7 @@ Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upser
       const ruler = buildWeighingContext(section)?.set;
       if (ruler === undefined) throw new ToolError(`The built-in set "${VALUE_SET_ID}" is not available.`);
 
-      const set: CriteriaSet = {
+      const set: WeighingCriteriaSet = {
         id: POSITIONING_SET_ID,
         version: "1.0.0",
         title: optionalString(args, "title") ?? "Positioning",
@@ -6666,7 +6666,7 @@ import {
   VALUE_SET_ID,
   WEIGHING_SET_SAVED,
   resolveWeighing,
-  type CriteriaSet,
+  type WeighingCriteriaSet,
   type WeighingCriterion,
 } from "@arkaik/schema";
 
@@ -6714,7 +6714,7 @@ const WEIGHT_OPTIONS = [
   { id: "3", label: "3" },
 ];
 
-function initialRows(ruler: CriteriaSet, saved: CriteriaSet | undefined): Record<string, RowState> {
+function initialRows(ruler: WeighingCriteriaSet, saved: WeighingCriteriaSet | undefined): Record<string, RowState> {
   const rows: Record<string, RowState> = {};
   for (const criterion of ruler.criteria) {
     const own = saved?.criteria.find((candidate) => candidate.id === criterion.id);
@@ -6764,7 +6764,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
 
   async function save(next: "draft" | "active") {
     if (ruler === undefined) return;
-    const set: CriteriaSet = {
+    const set: WeighingCriteriaSet = {
       id: POSITIONING_SET_ID,
       version: "1.0.0",
       title: "Positioning",
@@ -7181,7 +7181,7 @@ suggested:
 
 | Brief item | Where |
 |---|---|
-| 1. `bundle.weighing`, schema + zod in `@arkaik/schema`; sidecars folded by `arkaik pack`; hosted events; Publik withholds; `CriteriaSet`/`Matrix`/`Assessment` with `scorer`, `confidence`, `basis`; `schema_version` 3 | 1.1–1.3 (types, zod, validator), 3.1–3.3 (events, fold), 3.4 (sidecars, `pack`, `restore`, `push`), 3.5 (hosted), 3.6 (browser), 1.4 (Publik) |
+| 1. `bundle.weighing`, schema + zod in `@arkaik/schema`; sidecars folded by `arkaik pack`; hosted events; Publik withholds; `WeighingCriteriaSet`/`WeighingMatrix`/`WeighingAssessment` with `scorer`, `confidence`, `basis`; `schema_version` 3 | 1.1–1.3 (types, zod, validator), 3.1–3.3 (events, fold), 3.4 (sidecars, `pack`, `restore`, `push`), 3.5 (hosted), 3.6 (browser), 1.4 (Publik) |
 | 2. Built-in `value-contribution` (30 elements, tiers, −3..+3 anchors) and `value` matrix | 1.1 (`weighing-library.ts`), pinned to the app's labels in 1.5 |
 | 3. Derivation: seeding, effective level, fingerprint, served/cost, positioned, kept share, masses, flags, guesswork | 1.1 (fingerprint), 2.1–2.3 |
 | 4. Positioning as a criteria set, draft/active, draft feeds no roll-up | 1.1/1.3 (shape, rules), 2.2 (draft → `null`), 3.2 (planner contract), 4.5 (`save_positioning`), 5.4 (editor) |
@@ -7194,7 +7194,7 @@ suggested:
 
 **Placeholder scan.** No "TBD", "TODO", "add validation" or "similar to Task N"; every code step carries the code (new files whole, existing files as unified diffs against the worktree's `main` state that were applied and run).
 
-**Type consistency.** The names below are used identically in every task: `Assessment`, `CriteriaSet`, `Matrix`, `Scorer`, `WeighingSection`, `WeighingEventInput`, `WEIGHING_ASSESSMENT_RECORDED`, `WEIGHING_SET_SAVED`, `WEIGHING_FOLD_TYPES`, `BUNDLE_FOLD_TYPES`, `acceptanceFingerprint`, `upsertWeighingAssessment`, `resolveWeighing`, `setOfRef`, `buildWeighingContext`, `weighPromise`, `deriveWeighing`, `sortPromises`, `planWeighingEvents`, `parseWeighingEventInputs`, `foldWeighingEvents`, `loadWeighingSection`, `foldWeighingSection`, `appendWeighingEvents` (provider **and** `Store`, with different signatures — the provider takes `(projectId, inputs)`, the MCP store `(inputs)`), `useWeighing`, `keepClaimOrder`.
+**Type consistency.** The names below are used identically in every task: `WeighingAssessment`, `WeighingCriteriaSet`, `WeighingMatrix`, `WeighingScorer`, `WeighingSection`, `WeighingEventInput`, `WEIGHING_ASSESSMENT_RECORDED`, `WEIGHING_SET_SAVED`, `WEIGHING_FOLD_TYPES`, `BUNDLE_FOLD_TYPES`, `acceptanceFingerprint`, `upsertWeighingAssessment`, `resolveWeighing`, `setOfRef`, `buildWeighingContext`, `weighPromise`, `deriveWeighing`, `sortPromises`, `planWeighingEvents`, `parseWeighingEventInputs`, `foldWeighingEvents`, `loadWeighingSection`, `foldWeighingSection`, `appendWeighingEvents` (provider **and** `Store`, with different signatures — the provider takes `(projectId, inputs)`, the MCP store `(inputs)`), `useWeighing`, `keepClaimOrder`.
 
 ---
 
@@ -7202,21 +7202,21 @@ suggested:
 
 ```ts
 // P1 — packages/schema/src/weighing.ts, weighing-library.ts, weighing-schemas.ts, weighing-validate.ts
-type ScorerKind = "human" | "agent" | "rule";                    // authority order; `rule` is never stored
-interface Scorer { kind: ScorerKind; id: string; model?: string; on_behalf_of?: string }  // on_behalf_of: opaque id or handle, never an email (D14)
-interface Assessment { matrix; subject; criterion; level: number /* -3..3 */; scorer: Scorer; confidence: 0|1|2|3;
+type WeighingScorerKind = "human" | "agent" | "rule";                    // authority order; `rule` is never stored
+interface WeighingScorer { kind: WeighingScorerKind; id: string; model?: string; on_behalf_of?: string }  // on_behalf_of: opaque id or handle, never an email (D14)
+interface WeighingAssessment { matrix; subject; criterion; level: number /* -3..3 */; scorer: WeighingScorer; confidence: 0|1|2|3;
                        evidence?; refs?; basis?: { fingerprint?; commit?; set_version: string }; run?; ts }
-interface CriteriaSet { id; version; title?; subject; scale: { min; max; anchors }; groups?; criteria: WeighingCriterion[];
+interface WeighingCriteriaSet { id; version; title?; subject; scale: { min; max; anchors }; groups?; criteria: WeighingCriterion[];
                         role?: "positioning"; status?: "draft" | "active"; extends? }
-interface Matrix { id; title?; set: "value-contribution@1"; subjects: {kind:"query";species}|{kind:"list";items}; positioning?; context?; status? }
-interface WeighingSection { sets: CriteriaSet[]; matrices: Matrix[]; assessments: Assessment[] }
+interface WeighingMatrix { id; title?; set: "value-contribution@1"; subjects: {kind:"query";species}|{kind:"list";items}; positioning?; context?; status? }
+interface WeighingSection { sets: WeighingCriteriaSet[]; matrices: WeighingMatrix[]; assessments: WeighingAssessment[] }
 function acceptanceFingerprint(node: Pick<Node, "title" | "metadata">): string          // "fp1-<14 hex>"; never status
 function upsertWeighingAssessment(rows, next): { assessments; replaced? }                 // key: matrix|subject|criterion|scorer.kind
-function resolveWeighing(section?): { sets: CriteriaSet[]; matrices: Matrix[] }           // built-ins first; a project cannot redefine them
+function resolveWeighing(section?): { sets: WeighingCriteriaSet[]; matrices: WeighingMatrix[] }           // built-ins first; a project cannot redefine them
 function validateWeighingSection(section, nodeSpecies, journal): { path; rule; message }[]
 
 // P2 — packages/schema/src/weighing-derive.ts
-function seedAssessments(node, matrix, set): Assessment[]                                  // computed, never stored
+function seedAssessments(node, matrix, set): WeighingAssessment[]                                  // computed, never stored
 function resolveCell(criterion, stored, seed, { fingerprint, setVersion }, claimed): EffectiveCell | undefined
 function buildWeighingContext(section, matrixId = "value"): WeighingContext | undefined
 function weighPromise(node, ctx): PromiseWeighing        // { served, cost, positioned|null, kept_share|null, guesswork, flags, stale, review, cells }
@@ -7226,10 +7226,10 @@ function sortPromises(promises, "served" | "cost" | "positioned" | "title"): Pro
 // P3 — packages/schema/src/weighing-events.ts
 type WeighingEventInput =
   | { type: "weighing.assessment.recorded"; matrix?; subject; criterion; level; confidence; evidence?; refs?; run?; commit?; model? }
-  | { type: "weighing.set.saved"; set: CriteriaSet }
+  | { type: "weighing.set.saved"; set: WeighingCriteriaSet }
 function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string }          // refuses scorer/basis/ts
 function planWeighingEvents(section, nodes, inputs, { actor, scorerKind: "human"|"agent", onBehalfOf?, now? }):
-  | { ok: true; events: JournalEvent[]; assessments: Assessment[] } | { ok: false; refusals: { index; reason; detail }[] }
+  | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }
 function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold
 // P3 — packages/schema/src/cli/weighing-files.ts:  loadWeighingSection(root), saveWeighingAssessments(root, matrix, rows), saveWeighingSet(root, set), loadMatrixAssessments(root, matrix)
 // P3 — DataProvider.appendWeighingEvents?(projectId, inputs): Promise<JournalEvent[]>        // local: journal row; remote: POST …/weighing/events
