@@ -20,6 +20,7 @@ import {
   isWeighingSetShape,
   resolveWeighing,
   setOfRef,
+  weighingScaleOf,
 } from "./weighing-library";
 import {
   WEIGHING_ASSESSMENT_RECORDED,
@@ -27,6 +28,7 @@ import {
   SCORER_KINDS,
   STORED_SCORER_KINDS,
   assessmentKey,
+  isWeighingAssessmentShape,
   majorOf,
   splitSetRef,
   type WeighingSection,
@@ -55,7 +57,16 @@ export function validateWeighingSection(
   const out: WeighingFinding[] = [];
   const warn = (path: string, rule: string, message: string) => out.push({ path, rule, message });
 
+  if (section !== undefined && section !== null && !isObject(section)) {
+    warn("weighing", "weighing-section-shape", "The weighing section is not an object — it is ignored");
+  }
+
   if (isObject(section)) {
+    for (const list of ["sets", "matrices", "assessments"] as const) {
+      if (section[list] !== undefined && !Array.isArray(section[list])) {
+        warn(`weighing.${list}`, "weighing-section-shape", `weighing.${list} is not an array — it is ignored`);
+      }
+    }
     const sets = Array.isArray(section.sets) ? section.sets : [];
     const matrices = Array.isArray(section.matrices) ? section.matrices : [];
     const assessments = Array.isArray(section.assessments) ? section.assessments : [];
@@ -81,39 +92,70 @@ export function validateWeighingSection(
     const positioningIds = new Set(
       resolved.matrices.map((matrix) => matrix.positioning).filter((id): id is string => typeof id === "string"),
     );
+    const checkStatus = (path: string, who: string, entry: Record<string, unknown>) => {
+      if (entry.status !== undefined && entry.status !== "draft" && entry.status !== "active") {
+        warn(`${path}.status`, "weighing-set-status", `${who}: status ${JSON.stringify(entry.status)} is not "draft" or "active" — it is read as a draft, which feeds no roll-up`);
+      }
+    };
+    const isLevelMap = (value: unknown) => isObject(value) && Object.values(value).every((anchor) => typeof anchor === "string");
 
     // Pinned built-ins are library content: a project cannot redefine them.
+    // Only shape-valid entries are counted for "the first wins", because only
+    // those can win: a malformed earlier entry never shadows a good later one.
     const seenSets = new Set<string>();
     sets.forEach((entry, index) => {
-      if (!isObject(entry) || typeof entry.id !== "string") return;
       const path = `weighing.sets[${index}]`;
-      if (BUILT_IN_SETS.some((set) => set.id === entry.id)) {
-        warn(`${path}.id`, "weighing-pinned-set-redefined", `Set "${entry.id}" is built in and pinned by version — the project's copy is ignored`);
-      } else if (seenSets.has(entry.id)) {
-        warn(`${path}.id`, "weighing-duplicate-set", `Duplicate set id "${entry.id}" — the first wins`);
+      if (!isObject(entry)) {
+        warn(path, "weighing-set-shape", "A set is not an object — it is ignored");
+        return;
       }
-      seenSets.add(entry.id);
-      if (!isWeighingSetShape(entry)) {
-        warn(path, "weighing-set-shape", `Set "${entry.id}" has no criteria array or no scale object — it is ignored`);
+      const who = `Set "${String(entry.id)}"`;
+      const wellFormed = isWeighingSetShape(entry);
+      if (!wellFormed) {
+        warn(path, "weighing-set-shape", `${who} needs a string id and version, a criteria array and a scale object (a positioning may leave the scale out) — it is ignored`);
+      }
+      if (typeof entry.id === "string") {
+        if (BUILT_IN_SETS.some((set) => set.id === entry.id)) {
+          warn(`${path}.id`, "weighing-pinned-set-redefined", `${who} is built in and pinned by version — the project's copy is ignored`);
+        } else if (wellFormed) {
+          if (seenSets.has(entry.id)) warn(`${path}.id`, "weighing-duplicate-set", `Duplicate set id "${entry.id}" — the first well-formed one wins, this one is ignored`);
+          seenSets.add(entry.id);
+        }
+      }
+      checkStatus(path, who, entry);
+
+      if (isObject(entry.scale)) {
+        const scale = entry.scale;
+        if (typeof scale.min !== "number" || typeof scale.max !== "number" || !isLevelMap(scale.anchors)) {
+          warn(`${path}.scale`, "weighing-scale-shape", `${who}: a scale needs a numeric min and max and an anchors object of strings`);
+        }
+      }
+      if (Array.isArray(entry.criteria)) {
+        entry.criteria.forEach((criterion, at) => {
+          const cpath = `${path}.criteria[${at}]`;
+          if (!isObject(criterion) || typeof criterion.id !== "string" || (criterion.anchors !== undefined && !isLevelMap(criterion.anchors))) {
+            warn(cpath, "weighing-criterion-shape", `${who}: criterion ${at} needs a string id, and its anchors (if any) must be an object of strings`);
+          }
+        });
       }
 
       // A positioning is found by its id (docs/rfcs/weighing.md § 9): slice 1 fixes it
       // at the id the matrices point to, so a renamed one would silently never apply.
-      if (entry.role === "positioning" && !positioningIds.has(entry.id)) {
-        warn(`${path}.id`, "weighing-positioning-id", `A positioning set must have the id "${POSITIONING_SET_ID}" (the one a matrix points at) — "${entry.id}" would never be applied`);
+      if (entry.role === "positioning" && !(typeof entry.id === "string" && positioningIds.has(entry.id))) {
+        warn(`${path}.id`, "weighing-positioning-id", `A positioning set must have the id "${POSITIONING_SET_ID}" (the one a matrix points at) — "${String(entry.id)}" would never be applied`);
       } else if (entry.role !== "positioning" && entry.id === POSITIONING_SET_ID) {
-        warn(`${path}.role`, "weighing-positioning-id", `Set "${POSITIONING_SET_ID}" is where a matrix looks for its positioning, but it has no role "positioning" — it would never be applied`);
+        warn(`${path}.role`, "weighing-positioning-id", `Set "${POSITIONING_SET_ID}" is where a matrix looks for its positioning, but its role is ${JSON.stringify(entry.role)}, not "positioning" — it would never be applied`);
       }
 
       if (entry.role === "positioning") {
         const ruler =
           typeof entry.extends === "string"
-            ? resolveRef(entry.extends, `${path}.extends`, `Positioning "${entry.id}"`, "weighing-positioning-unknown-ruler")
+            ? resolveRef(entry.extends, `${path}.extends`, `Positioning "${String(entry.id)}"`, "weighing-positioning-unknown-ruler")
             : undefined;
         if (typeof entry.extends !== "string") {
-          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${entry.id}" does not say which set it re-weights — set extends to e.g. value-contribution@1`);
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" does not say which set it re-weights — set extends to e.g. value-contribution@1`);
         } else if (ruler !== undefined && ruler.role === "positioning") {
-          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${entry.id}" extends "${entry.extends}", which is itself a positioning — it must extend a criteria set such as value-contribution@1`);
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" extends "${entry.extends}", which is itself a positioning — it must extend a criteria set such as value-contribution@1`);
         }
         const known = new Set(ruler !== undefined && ruler.role !== "positioning" ? ruler.criteria.map((criterion) => criterion?.id) : []);
         (Array.isArray(entry.criteria) ? entry.criteria : []).forEach((criterion, at) => {
@@ -131,41 +173,55 @@ export function validateWeighingSection(
 
     const seenMatrices = new Set<string>();
     matrices.forEach((entry, index) => {
-      if (!isObject(entry) || typeof entry.id !== "string") return;
       const path = `weighing.matrices[${index}]`;
-      if (BUILT_IN_MATRICES.some((matrix) => matrix.id === entry.id)) {
-        warn(`${path}.id`, "weighing-pinned-matrix-redefined", `Matrix "${entry.id}" is built in — the project's copy is ignored`);
-      } else if (seenMatrices.has(entry.id)) {
-        warn(`${path}.id`, "weighing-duplicate-matrix", `Duplicate matrix id "${entry.id}" — the first wins`);
+      if (!isObject(entry)) {
+        warn(path, "weighing-matrix-shape", "A matrix is not an object — it is ignored");
+        return;
       }
-      seenMatrices.add(entry.id);
-      if (!isWeighingMatrixShape(entry)) {
-        warn(path, "weighing-matrix-shape", `Matrix "${entry.id}" has no set ref or no subjects object — it is ignored`);
-      } else {
-        resolveRef(entry.set, `${path}.set`, `Matrix "${entry.id}"`, "weighing-unknown-set");
+      const who = `Matrix "${String(entry.id)}"`;
+      const wellFormed = isWeighingMatrixShape(entry);
+      if (!wellFormed) {
+        warn(path, "weighing-matrix-shape", `${who} needs a string id, a set ref and a subjects object of kind query or list — it is ignored`);
       }
+      if (typeof entry.id === "string") {
+        if (BUILT_IN_MATRICES.some((matrix) => matrix.id === entry.id)) {
+          warn(`${path}.id`, "weighing-pinned-matrix-redefined", `${who} is built in — the project's copy is ignored`);
+        } else if (wellFormed) {
+          if (seenMatrices.has(entry.id)) warn(`${path}.id`, "weighing-duplicate-matrix", `Duplicate matrix id "${entry.id}" — the first well-formed one wins, this one is ignored`);
+          seenMatrices.add(entry.id);
+        }
+      }
+      checkStatus(path, who, entry);
+      if (wellFormed) resolveRef(entry.set, `${path}.set`, who, "weighing-unknown-set");
     });
 
     const seenCells = new Set<string>();
     assessments.forEach((entry, index) => {
-      if (!isObject(entry)) return;
       const path = `weighing.assessments[${index}]`;
       const label = `Assessment ${index}`;
+      if (!isWeighingAssessmentShape(entry)) {
+        warn(path, "weighing-assessment-shape", `${label}: not an object with a string matrix, subject and criterion — it cannot be addressed, so every reader skips it`);
+        return;
+      }
+      if (typeof entry.ts !== "string" || Number.isNaN(Date.parse(entry.ts))) {
+        warn(`${path}.ts`, "weighing-assessment-ts", `${label}: ts must be an ISO 8601 string — without it "latest wins" cannot order this row`);
+      }
       const matrix = resolved.matrices.find((candidate) => candidate.id === entry.matrix);
       if (matrix === undefined) {
-        warn(`${path}.matrix`, "weighing-unknown-matrix", `${label}: matrix "${String(entry.matrix)}" is not defined`);
+        warn(`${path}.matrix`, "weighing-unknown-matrix", `${label}: matrix "${entry.matrix}" is not defined`);
       }
       // A matrix whose ref resolves to nothing was already warned about once, at the matrix.
       const set = matrix === undefined ? undefined : setOfRef(resolved, matrix.set);
       const criterion = set?.criteria.find((candidate) => candidate?.id === entry.criterion);
       if (set !== undefined && criterion === undefined) {
-        warn(`${path}.criterion`, "weighing-unknown-criterion", `${label}: criterion "${String(entry.criterion)}" is not in set "${set.id}"`);
+        warn(`${path}.criterion`, "weighing-unknown-criterion", `${label}: criterion "${entry.criterion}" is not in set "${set.id}"`);
       }
       if (criterion !== undefined && typeof criterion.superseded_by === "string" && criterion.superseded_by !== "") {
         warn(`${path}.criterion`, "weighing-retired-criterion", `${label}: criterion "${criterion.id}" is retired — superseded by "${criterion.superseded_by}"`);
       }
-      const min = set?.scale.min ?? -3;
-      const max = set?.scale.max ?? 3;
+      const scale = set === undefined ? undefined : weighingScaleOf(set, resolved);
+      const min = typeof scale?.min === "number" ? scale.min : -3;
+      const max = typeof scale?.max === "number" ? scale.max : 3;
       if (typeof entry.level !== "number" || !Number.isInteger(entry.level) || entry.level < min || entry.level > max) {
         warn(`${path}.level`, "weighing-level-range", `${label}: level must be an integer ${min}..${max} (a blank cell is the absence of the row; 0 means weighed and unrelated)`);
       }
@@ -174,25 +230,36 @@ export function validateWeighingSection(
       }
       const scorer = isObject(entry.scorer) ? entry.scorer : undefined;
       if (scorer === undefined || typeof scorer.kind !== "string" || typeof scorer.id !== "string" || scorer.id === "") {
-        warn(`${path}.scorer`, "weighing-scorer-missing", `${label}: no scorer — human, agent and rule levels become indistinguishable`);
+        warn(`${path}.scorer`, "weighing-scorer-missing", `${label}: no scorer with a string kind and id — human, agent and rule levels become indistinguishable, and the row can win no cell`);
       } else if (!(SCORER_KINDS as readonly string[]).includes(scorer.kind)) {
         warn(`${path}.scorer.kind`, "weighing-scorer-kind", `${label}: scorer kind "${scorer.kind}" is not one of ${SCORER_KINDS.join(", ")} — it ranks below every other scorer`);
       } else if (!(STORED_SCORER_KINDS as readonly string[]).includes(scorer.kind)) {
         warn(`${path}.scorer.kind`, "weighing-rule-stored", `${label}: scorer kind "${scorer.kind}" is never stored — a seeding rule is computed on read`);
       }
-      if (matrix?.subjects.kind === "query" && typeof entry.subject === "string") {
+      if (matrix?.subjects.kind === "query") {
         const species = nodeSpecies.get(entry.subject);
         if (species === undefined) {
           warn(`${path}.subject`, "weighing-unknown-subject", `${label}: subject "${entry.subject}" is not a node in this bundle`);
         } else if (species !== matrix.subjects.species) {
-          warn(`${path}.subject`, "weighing-subject-species", `${label}: subject "${entry.subject}" is a ${species}, and matrix "${matrix.id}" judges ${matrix.subjects.species} nodes`);
+          warn(`${path}.subject`, "weighing-subject-species", `${label}: subject "${entry.subject}" is a ${species}, and matrix "${matrix.id}" judges ${String(matrix.subjects.species)} nodes`);
         }
       }
-      if ((entry.confidence === 2 || entry.confidence === 3) && (typeof entry.evidence !== "string" || entry.evidence.trim() === "")) {
+      if (entry.evidence !== undefined && typeof entry.evidence !== "string") {
+        warn(`${path}.evidence`, "weighing-evidence-type", `${label}: evidence must be a markdown string`);
+      } else if ((entry.confidence === 2 || entry.confidence === 3) && (entry.evidence === undefined || entry.evidence.trim() === "")) {
         warn(`${path}.evidence`, "weighing-no-evidence", `${label}: confidence ${String(entry.confidence)} claims evidence and cites none`);
       }
-      if (typeof entry.matrix === "string" && typeof entry.subject === "string" && typeof entry.criterion === "string" && scorer !== undefined && typeof scorer.kind === "string") {
-        const key = assessmentKey({ matrix: entry.matrix, subject: entry.subject, criterion: entry.criterion, scorer: { kind: scorer.kind as "human", id: "" } });
+      if (entry.refs !== undefined && !(Array.isArray(entry.refs) && entry.refs.every((ref) => typeof ref === "string"))) {
+        warn(`${path}.refs`, "weighing-refs-type", `${label}: refs must be an array of id strings`);
+      }
+      if (
+        entry.basis !== undefined &&
+        !(isObject(entry.basis) && ["fingerprint", "commit", "set_version"].every((key) => (entry.basis as Record<string, unknown>)[key] === undefined || typeof (entry.basis as Record<string, unknown>)[key] === "string"))
+      ) {
+        warn(`${path}.basis`, "weighing-basis-shape", `${label}: basis must be an object whose fingerprint, commit and set_version are strings`);
+      }
+      if (scorer !== undefined && typeof scorer.kind === "string") {
+        const key = assessmentKey(entry);
         if (seenCells.has(key)) {
           warn(path, "weighing-duplicate-assessment", `${label}: a second ${scorer.kind} score for the same cell — the section stores latest-per-scorer-kind, so this cell is ambiguous`);
         }

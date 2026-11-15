@@ -13,7 +13,7 @@
  */
 
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
-import type { WeighingCriteriaSet, WeighingMatrix, WeighingSection } from "./weighing";
+import type { WeighingCriteriaSet, WeighingMatrix, WeighingScale, WeighingSection } from "./weighing";
 import { majorOf, splitSetRef } from "./weighing";
 
 /**
@@ -91,13 +91,16 @@ const VALUE_TEXT: Readonly<Record<ValueId, { name: string; definition: string }>
   "self-transcendence": { name: "Self-transcendence", definition: "Helps beyond the user themselves." },
 };
 
+/** The signed scale the value set (and, by default, a positioning) is read on. */
+const VALUE_SCALE: WeighingScale = { min: -3, max: 3, anchors: { ...VALUE_SCALE_ANCHORS } };
+
 /** The 30 elements as criteria, in `VALUE_IDS` order, grouped by tier. */
 export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = deepFreeze({
   id: VALUE_SET_ID,
   version: VALUE_SET_VERSION,
   title: "Elements of value",
   subject: "acceptance",
-  scale: { min: -3, max: 3, anchors: { ...VALUE_SCALE_ANCHORS } },
+  scale: VALUE_SCALE,
   groups: (Object.keys(TIER_TITLES) as ValueTierId[]).map((id) => ({ id, title: TIER_TITLES[id] })),
   criteria: VALUE_IDS.map((id) => ({
     id,
@@ -121,7 +124,12 @@ export const VALUE_MATRIX: WeighingMatrix = deepFreeze({
 export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET];
 export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 
-/** The built-ins layered under a project's own entries. */
+/**
+ * The built-ins layered under a project's own entries — the WELL-FORMED view of a
+ * section: every set and matrix here passed its shape guard, so derivation code
+ * can read `.criteria`, `.set` and `.subjects` without checking. Read a stored
+ * section through {@link resolveWeighing}, never straight off `section.sets`.
+ */
 export interface ResolvedWeighing {
   sets: WeighingCriteriaSet[];
   matrices: WeighingMatrix[];
@@ -130,14 +138,47 @@ export interface ResolvedWeighing {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A set a reader can use: an id, a criteria array and a scale object. */
-export function isWeighingSetShape(set: unknown): set is WeighingCriteriaSet {
-  return isObject(set) && typeof set.id === "string" && Array.isArray(set.criteria) && isObject(set.scale);
+/** A copy of a project set without its unusable criteria; the set itself when it has none. */
+function cleaned(set: WeighingCriteriaSet): WeighingCriteriaSet {
+  const usable = set.criteria.filter((criterion) => isObject(criterion) && typeof criterion.id === "string");
+  return usable.length === set.criteria.length ? set : { ...set, criteria: usable };
 }
 
-/** A matrix a reader can use: an id, a set ref and a subjects object. */
+/**
+ * A set a reader can use: a string id and version, a criteria array and a scale
+ * object — except a positioning (`role: "positioning"`), which may have no
+ * scale because it uses its `extends` ruler's ({@link weighingScaleOf}).
+ */
+export function isWeighingSetShape(set: unknown): set is WeighingCriteriaSet {
+  return (
+    isObject(set) &&
+    typeof set.id === "string" &&
+    typeof set.version === "string" &&
+    Array.isArray(set.criteria) &&
+    (isObject(set.scale) || set.role === "positioning")
+  );
+}
+
+/**
+ * A matrix a reader can use: a string id and set ref, and a subjects object of
+ * a known kind that carries what the kind needs — a `query` names a species, a
+ * `list` has an items array.
+ */
 export function isWeighingMatrixShape(matrix: unknown): matrix is WeighingMatrix {
-  return isObject(matrix) && typeof matrix.id === "string" && typeof matrix.set === "string" && isObject(matrix.subjects);
+  if (!isObject(matrix) || typeof matrix.id !== "string" || typeof matrix.set !== "string" || !isObject(matrix.subjects)) return false;
+  const { kind, species, items } = matrix.subjects;
+  return (kind === "query" && typeof species === "string") || (kind === "list" && Array.isArray(items));
+}
+
+/**
+ * The scale a set is read on: its own, or — for a positioning with none — its
+ * `extends` ruler's, or at the last the built-in signed scale. Total, so a
+ * reader never needs a guard before `.min` / `.max` / `.anchors`.
+ */
+export function weighingScaleOf(set: Pick<WeighingCriteriaSet, "scale" | "extends">, resolved?: Pick<ResolvedWeighing, "sets">): WeighingScale {
+  if (isObject(set.scale)) return set.scale;
+  const ruler = typeof set.extends === "string" && resolved !== undefined ? setOfRef(resolved, set.extends) : undefined;
+  return ruler !== undefined && isObject(ruler.scale) ? ruler.scale : VALUE_SCALE;
 }
 
 /**
@@ -147,13 +188,15 @@ export function isWeighingMatrixShape(matrix: unknown): matrix is WeighingMatrix
  * earlier ones, matching every other first-wins read in this package. An entry
  * a reader could not use (a matrix with no set, a set with no criteria or
  * scale) is skipped rather than thrown on; the validator warns about it
- * (`weighing-set-shape`, `weighing-matrix-shape`).
+ * (`weighing-set-shape`, `weighing-matrix-shape`). A criterion that is not an
+ * object with a string id is dropped from a project set's copy, so
+ * `set.criteria` is clean to walk (`weighing-criterion-shape` warns).
  */
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
   const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
   const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
   for (const set of Array.isArray(section?.sets) ? section.sets : []) {
-    if (isWeighingSetShape(set) && !sets.some((s) => s.id === set.id)) sets.push(set);
+    if (isWeighingSetShape(set) && !sets.some((s) => s.id === set.id)) sets.push(cleaned(set));
   }
   for (const matrix of Array.isArray(section?.matrices) ? section.matrices : []) {
     if (isWeighingMatrixShape(matrix) && !matrices.some((m) => m.id === matrix.id)) matrices.push(matrix);

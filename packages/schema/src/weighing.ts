@@ -29,6 +29,16 @@
  * shapes: they are looser than Kritik's on purpose (a section is filled at
  * scale by agents and scorers, so one bad cell must not block importing the
  * project), and the validator owns every judgement about a value.
+ *
+ * **Types and storage.** The record types below describe a record that has
+ * passed its shape guard (`isWeighingSetShape`, `isWeighingMatrixShape`,
+ * `isWeighingAssessmentShape`), plus the few things a stored record may
+ * legitimately lack: an assessment's `scorer`, a positioning's `scale`. What
+ * comes out of storage is not that — the zod shapes accept any value in any
+ * leaf — so a reader goes through `resolveWeighing` (sets and matrices) and
+ * `readWeighingAssessments` (rows), which hand back only records that pass
+ * their guard. Only the containers are strict: the section is an object and
+ * each of its lists is an array.
  */
 
 import type { Node } from "./bundle";
@@ -126,14 +136,19 @@ export interface WeighingCriteriaSet extends Record<string, unknown> {
   version: string;
   title?: string;
   /** What the set judges. Slice 1 uses `acceptance`; the rest is reserved. */
-  subject: string;
-  scale: WeighingScale;
+  subject?: string;
+  /** Absent on a positioning, which then uses its `extends` ruler's scale ({@link weighingScaleOf}). */
+  scale?: WeighingScale;
   groups?: WeighingGroup[];
   criteria: WeighingCriterion[];
   /** `positioning` marks the set a project writes about itself; it re-weights `extends`. */
-  role?: "positioning";
-  /** Absent means active. A draft feeds no roll-up until someone activates it. */
-  status?: WeighingCriteriaSetStatus;
+  role?: string;
+  /**
+   * Absent or `"active"` is active; anything else — `"draft"`, or a mistyped
+   * value — is a draft, which feeds no roll-up until someone activates it
+   * ({@link isActiveWeighingSet}).
+   */
+  status?: string;
   /** A positioning's ruler: `value-contribution@1`. */
   extends?: string;
 }
@@ -153,7 +168,8 @@ export interface WeighingMatrix extends Record<string, unknown> {
   /** The id of the positioning set that re-weights this matrix, when one exists. */
   positioning?: string;
   context?: { node_id: string };
-  status?: WeighingCriteriaSetStatus;
+  /** Same reading as {@link WeighingCriteriaSet.status}. */
+  status?: string;
 }
 
 // --- Assessments -------------------------------------------------------------
@@ -176,7 +192,8 @@ export interface WeighingAssessment extends Record<string, unknown> {
   criterion: string;
   /** A whole number on the set's scale. No half points. 0 means "unrelated". */
   level: number;
-  scorer: WeighingScorer;
+  /** Absent on a hand-edited row: it is then read as unscored (the validator warns) and can win no cell. */
+  scorer?: WeighingScorer;
   confidence: WeighingConfidence;
   /** Markdown. */
   evidence?: string;
@@ -195,10 +212,11 @@ export interface WeighingAssessment extends Record<string, unknown> {
  * stored here; `sets` holds the project's own (its positioning, today).
  */
 export interface WeighingSection extends Record<string, unknown> {
-  sets: WeighingCriteriaSet[];
-  matrices: WeighingMatrix[];
+  /** Each list may be absent in storage; a reader treats it as empty. */
+  sets?: WeighingCriteriaSet[];
+  matrices?: WeighingMatrix[];
   /** Latest per (matrix × subject × criterion × scorer kind); history lives in the journal. */
-  assessments: WeighingAssessment[];
+  assessments?: WeighingAssessment[];
 }
 
 // --- Journal event types -----------------------------------------------------
@@ -218,10 +236,44 @@ export function cellKey(matrix: string, subject: string, criterion: string): str
   return `${matrix}\u0000${subject}\u0000${criterion}`;
 }
 
-/** One stored row per cell per scorer kind — a human's level and an agent's sit side by side. */
+/**
+ * One stored row per cell per scorer kind — a human's level and an agent's sit
+ * side by side. Total: a hand-edited row with no scorer, or a key that is not a
+ * string, still gets a key (it never matches a well-formed row's), so keying
+ * cannot throw on it. Readers skip such rows with {@link isWeighingAssessmentShape}.
+ */
 export function assessmentKey(a: Pick<WeighingAssessment, "matrix" | "subject" | "criterion" | "scorer">): string {
-  // `?.`: a hand-edited row may have no scorer (the validator warns); keying must not throw on it.
-  return `${cellKey(a.matrix, a.subject, a.criterion)}\u0000${a.scorer?.kind ?? ""}`;
+  const kind = typeof a?.scorer?.kind === "string" ? a.scorer.kind : "";
+  return `${cellKey(String(a?.matrix), String(a?.subject), String(a?.criterion))}\u0000${kind}`;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * A row a reader can address: an object whose `matrix`, `subject` and
+ * `criterion` are strings. A row that is not (a `null`, a number, a row with no
+ * criterion) is skipped by every reader and warned about by the validator
+ * (`weighing-assessment-shape`) — it never blocks an import.
+ */
+export function isWeighingAssessmentShape(row: unknown): row is WeighingAssessment {
+  return isRecord(row) && typeof row.matrix === "string" && typeof row.subject === "string" && typeof row.criterion === "string";
+}
+
+/** The rows of a section a reader can address, in stored order. A missing list or a garbage row yields nothing. */
+export function readWeighingAssessments(section: Partial<Pick<WeighingSection, "assessments">> | null | undefined): WeighingAssessment[] {
+  return Array.isArray(section?.assessments) ? section.assessments.filter(isWeighingAssessmentShape) : [];
+}
+
+/**
+ * Is a set (or matrix) active? Absent means active and `"active"` means active;
+ * ANY other present value — `"draft"`, `"Draft"`, a typo, a non-string — counts
+ * as a draft, so a mistyped status can never let a draft feed a roll-up. The
+ * validator warns on anything but the two spellings (`weighing-set-status`).
+ */
+export function isActiveWeighingSet(set: { status?: unknown } | null | undefined): boolean {
+  const status = set?.status;
+  return status === undefined || status === "active";
 }
 
 /** `value-contribution@1` → `{ id: "value-contribution", major: "1" }`. A ref with no `@` has no major. */
@@ -296,12 +348,14 @@ export function upsertWeighingAssessment(
 /** A stable order for a sidecar file, so two writers diff cleanly: matrix, subject, criterion, then authority. */
 export function sortWeighingAssessments(assessments: readonly WeighingAssessment[]): WeighingAssessment[] {
   return [...assessments].sort((a, b) => {
-    const by = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+    // A key that is not a string sorts last, so a malformed row stays in the file but out of the way.
+    const text = (x: unknown) => (typeof x === "string" ? x : "\uffff");
+    const by = (x: unknown, y: unknown) => (text(x) < text(y) ? -1 : text(x) > text(y) ? 1 : 0);
     return (
-      by(a.matrix, b.matrix) ||
-      by(a.subject, b.subject) ||
-      by(a.criterion, b.criterion) ||
-      scorerRank(b.scorer?.kind) - scorerRank(a.scorer?.kind)
+      by(a?.matrix, b?.matrix) ||
+      by(a?.subject, b?.subject) ||
+      by(a?.criterion, b?.criterion) ||
+      scorerRank(b?.scorer?.kind) - scorerRank(a?.scorer?.kind)
     );
   });
 }

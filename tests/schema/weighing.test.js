@@ -18,6 +18,12 @@ const {
   POSITIONING_SET_ID,
   resolveWeighing,
   setOfRef,
+  isActiveWeighingSet,
+  isWeighingAssessmentShape,
+  isWeighingMatrixShape,
+  isWeighingSetShape,
+  readWeighingAssessments,
+  weighingScaleOf,
   splitSetRef,
   majorOf,
   acceptanceFingerprint,
@@ -85,7 +91,7 @@ check("a matrix with only an id is skipped, not thrown on", eq(matrixOf({ id: "m
 check("a matrix with no subjects is skipped", eq(matrixOf({ id: "m", set: "value-contribution@1" }), ["value"]));
 check("a well-formed matrix is layered on", eq(matrixOf({ id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }), ["value", "m"]));
 check("a set with no criteria or no scale is skipped", resolveWeighing({ sets: [{ id: "s" }, { id: "t", scale: set.scale }, { id: "u", criteria: [] }], matrices: [] }).sets.length === 1);
-check("a later well-formed duplicate beats an earlier malformed one", resolveWeighing({ sets: [{ id: "s" }, { id: "s", scale: set.scale, criteria: [] }], matrices: [] }).sets.some((s) => s.id === "s"));
+check("a later well-formed duplicate beats an earlier malformed one", resolveWeighing({ sets: [{ id: "s" }, { id: "s", version: "1.0.0", scale: set.scale, criteria: [] }], matrices: [] }).sets.some((s) => s.id === "s"));
 check(
   "a garbage section never throws, from the resolver or the validator",
   [
@@ -165,11 +171,11 @@ check("a confidence of 4 parses", WeighingAssessmentSchema.safeParse(row({ confi
 check("a missing scorer parses", WeighingAssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
 check("an unknown scorer kind parses", WeighingAssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
 check("a scorer with no id parses", WeighingAssessmentSchema.safeParse(row({ scorer: { kind: "agent" } })).success);
-check("a cell cannot be addressed without its keys, so those stay required", !WeighingAssessmentSchema.safeParse({ ...row(), criterion: undefined }).success && !WeighingAssessmentSchema.safeParse({ ...row(), subject: undefined }).success);
+check("a row that cannot be addressed still parses — readers skip it, the validator warns", WeighingAssessmentSchema.safeParse({ ...row(), criterion: undefined }).success && WeighingAssessmentSchema.safeParse({ ...row(), subject: 7 }).success && WeighingAssessmentSchema.safeParse({ ...row(), ts: undefined }).success);
 check("a partial section parses: each list is optional and a reader treats it as empty", WeighingSectionSchema.safeParse({}).success && WeighingSectionSchema.safeParse({ assessments: [row()] }).success && WeighingSectionSchema.safeParse({ sets: [] }).success);
 check("a matrix with no set or subjects, and a set with no scale or criteria, parse", WeighingSectionSchema.safeParse({ matrices: [{ id: "m" }], sets: [{ id: "s", version: "1.0.0", subject: "acceptance" }] }).success);
 check("unknown keys survive (a scorer's full distribution)", WeighingAssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
-check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", WeighingAssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && WeighingAssessmentSchema.safeParse(row({ scorer: agent })).success && !WeighingAssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
+check("a scorer may say whom it acts for: an optional string that survives, and a number still parses", WeighingAssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && WeighingAssessmentSchema.safeParse(row({ scorer: agent })).success && WeighingAssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
 check("a set parses with its own anchors and weight", WeighingCriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
 
 const base = {
@@ -248,6 +254,127 @@ check(
   "a weighing event with no actor warns",
   warningsFor(undefined, { journal: [{ id: "01A", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", matrix: "value", subject: "AC-a", criterion: "connects", level: 2, confidence: 1, scorer: human }] }).includes("weighing-event-no-actor"),
 );
+
+// --- Import never blocks: every probe case parses AND warns ------------------
+
+const good = { matrix: "value", subject: "AC-a", criterion: "connects", level: 1, scorer: { kind: "human", id: "x" }, confidence: 1, ts: "2026-11-15T10:00:00.000Z" };
+const pos = { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [{ id: "connects", weight: 2 }] };
+const asRow = (over) => ({ sets: [], matrices: [], assessments: [{ ...good, ...over }] });
+const asPos = (over) => ({ sets: [{ ...pos, ...over }], matrices: [], assessments: [] });
+const mat = (subjects) => ({ sets: [], matrices: [{ id: "m", set: "value-contribution@1", subjects }], assessments: [] });
+const bad = [
+  ["an assessment with no ts", asRow({ ts: undefined }), "weighing-assessment-ts"],
+  ["an assessment with an invalid ts", asRow({ ts: "yesterday" }), "weighing-assessment-ts"],
+  ["an assessment with no criterion", asRow({ criterion: undefined }), "weighing-assessment-shape"],
+  ["an assessment with a numeric subject", asRow({ subject: 7 }), "weighing-assessment-shape"],
+  ["a string level", asRow({ level: "2" }), "weighing-level-range"],
+  ["a null level", asRow({ level: null }), "weighing-level-range"],
+  ["a string confidence", asRow({ confidence: "high" }), "weighing-confidence-range"],
+  ["a scorer that is a string", asRow({ scorer: "alexis" }), "weighing-scorer-missing"],
+  ["a scorer with no kind", asRow({ scorer: { id: "x" } }), "weighing-scorer-missing"],
+  ["a numeric evidence", asRow({ evidence: 3 }), "weighing-evidence-type"],
+  ["refs that is a string", asRow({ refs: "AC-b" }), "weighing-refs-type"],
+  ["a numeric set_version", asRow({ basis: { set_version: 1 } }), "weighing-basis-shape"],
+  ["a null assessment row", { sets: [], matrices: [], assessments: [null] }, "weighing-assessment-shape"],
+  ["a number among the assessments", { sets: [], matrices: [], assessments: [good, 5] }, "weighing-assessment-shape"],
+  ["a null set", { sets: [null], matrices: [], assessments: [] }, "weighing-set-shape"],
+  ["a null matrix", { sets: [], matrices: [null], assessments: [] }, "weighing-matrix-shape"],
+  ["a set with no id", { sets: [{ version: "1.0.0", scale: set.scale, criteria: [] }], matrices: [], assessments: [] }, "weighing-set-shape"],
+  ["a positioning with no version", asPos({ version: undefined }), "weighing-set-shape"],
+  ["a positioning weight that is a string", asPos({ criteria: [{ id: "connects", weight: "2" }] }), "weighing-positioning-weight"],
+  ["a positioning anchor that is a number", asPos({ criteria: [{ id: "connects", anchors: { 3: 3 } }] }), "weighing-criterion-shape"],
+  ["a positioning criterion with no id", asPos({ criteria: [{ weight: 2 }] }), "weighing-criterion-shape"],
+  ["a null positioning criterion", asPos({ criteria: [null] }), "weighing-criterion-shape"],
+  ["a status of Draft", asPos({ status: "Draft" }), "weighing-set-status"],
+  ["a mistyped role", asPos({ role: "Positioning" }), "weighing-positioning-id"],
+  ["a numeric role", asPos({ role: 5 }), "weighing-positioning-id"],
+  ["a scale with no anchors", asPos({ scale: { min: -3, max: 3 } }), "weighing-scale-shape"],
+  ["a matrix whose subjects kind is a tag", mat({ kind: "tag" }), "weighing-matrix-shape"],
+  ["a matrix whose subjects is empty", mat({}), "weighing-matrix-shape"],
+  ["a matrix with a numeric status", { sets: [], matrices: [{ id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, status: 5 }], assessments: [] }, "weighing-set-status"],
+];
+for (const [name, weighing, rule] of bad) {
+  const parsed = ProjectBundleSchema.safeParse({ ...base, weighing }).success;
+  let rules = [];
+  let threw = "";
+  try {
+    rules = warningsFor(weighing);
+  } catch (error) {
+    threw = error.message;
+  }
+  check(`${name} imports and warns ${rule}`, parsed && threw === "" && rules.includes(rule), `parsed=${parsed} threw=${threw} rules=${rules.filter((r) => r.startsWith("weighing")).join(",")}`);
+}
+check("only the containers block: a section that is not an object, or a list that is not an array", !ProjectBundleSchema.safeParse({ ...base, weighing: "x" }).success && !ProjectBundleSchema.safeParse({ ...base, weighing: { sets: "x" } }).success);
+check("…and the validator still says so, without throwing", warningsFor("x").includes("weighing-section-shape") && warningsFor({ sets: "x" }).includes("weighing-section-shape"));
+check("a bad row survives a parse round trip untouched", (() => {
+  const weighing = { sets: [], matrices: [], assessments: [{ ...good, level: "2", confidence: { a: 1 }, scorer: "alexis", extra: [1, 2] }, null, 5] };
+  return eq(ProjectBundleSchema.parse({ ...base, weighing }).weighing, weighing);
+})());
+check("a clean assessment with a valid ts raises no assessment warning", rulesOf({ sets: [], matrices: [], assessments: [good] }).length === 0);
+
+// --- The readers skip what cannot be addressed -------------------------------
+
+check("readWeighingAssessments keeps only rows with string keys, in order", readWeighingAssessments({ assessments: [null, good, 5, { ...good, criterion: 3 }, { ...good, subject: "AC-b" }] }).map((r) => r.subject).join() === "AC-a,AC-b" && readWeighingAssessments(undefined).length === 0 && readWeighingAssessments({}).length === 0);
+check("isWeighingAssessmentShape", isWeighingAssessmentShape(good) && !isWeighingAssessmentShape(null) && !isWeighingAssessmentShape([]) && !isWeighingAssessmentShape({ ...good, matrix: undefined }));
+check("assessmentKey and the sort never throw on a null or half-empty row", (() => {
+  try {
+    assessmentKey(null);
+    return sortWeighingAssessments([null, good, { subject: 1 }, 5]).filter((r) => r === good).length === 1 && sortWeighingAssessments([null, good])[0] === good;
+  } catch {
+    return false;
+  }
+})());
+
+// --- Status: absent or "active" is active; anything else is a draft ---------
+
+check("a set with no status is active", isActiveWeighingSet({ id: "positioning" }) === true);
+check("status active is active", isActiveWeighingSet({ status: "active" }) === true);
+check("status draft is a draft", isActiveWeighingSet({ status: "draft" }) === false);
+check("status Draft (mistyped) is a draft, so it feeds no roll-up", isActiveWeighingSet({ status: "Draft" }) === false);
+check("status archived is a draft", isActiveWeighingSet({ status: "archived" }) === false);
+check("a non-string status is a draft", isActiveWeighingSet({ status: 5 }) === false && isActiveWeighingSet({ status: null }) === false);
+check("only draft and active are valid spellings", !warningsFor(asPos({ status: "active" })).includes("weighing-set-status") && !warningsFor(asPos({ status: "draft" })).includes("weighing-set-status") && warningsFor(asPos({ status: "archived" })).includes("weighing-set-status"));
+
+// --- A positioning needs no scale -------------------------------------------
+
+check("a positioning with no scale is well-formed", isWeighingSetShape(pos) && !("scale" in pos));
+check("…and raises no warning", rulesOf({ sets: [pos], matrices: [], assessments: [] }).length === 0);
+check("…it uses its ruler's scale", weighingScaleOf(pos, resolveWeighing({ sets: [pos] })) === set.scale);
+check("a set that is not a positioning still needs a scale", !isWeighingSetShape({ id: "s", version: "1.0.0", criteria: [] }) && isWeighingSetShape({ id: "s", version: "1.0.0", criteria: [], scale: set.scale }));
+check("a set needs a string version", !isWeighingSetShape({ ...pos, version: undefined }) && !isWeighingSetShape({ ...pos, version: 1 }));
+check("a matrix needs a string id, a string set and a known subjects kind", isWeighingMatrixShape({ id: "m", set: "s@1", subjects: { kind: "list", items: [] } }) && !isWeighingMatrixShape({ id: "m", set: "s@1", subjects: { kind: "tag" } }) && !isWeighingMatrixShape({ set: "s@1", subjects: { kind: "query" } }));
+
+check("a query matrix names a species and a list matrix has items", !isWeighingMatrixShape({ id: "m", set: "s@1", subjects: { kind: "query" } }) && !isWeighingMatrixShape({ id: "m", set: "s@1", subjects: { kind: "list" } }) && isWeighingMatrixShape({ id: "m", set: "s@1", subjects: { kind: "query", species: "acceptance" } }));
+check("a project set's unusable criteria are dropped from its resolved copy, so it is clean to walk", (() => {
+  const own = { id: "rubric", version: "1.0.0", scale: set.scale, criteria: [null, { id: "a" }, { weight: 2 }, 7, { id: "b" }] };
+  const resolvedSet = resolveWeighing({ sets: [own] }).sets.find((s) => s.id === "rubric");
+  return eq(resolvedSet.criteria.map((c) => c.id), ["a", "b"]) && own.criteria.length === 5;
+})());
+
+// --- "The first wins" is true ------------------------------------------------
+
+const dup = (title) => ({ id: "rubric", version: "1.0.0", subject: "acceptance", scale: set.scale, criteria: [], title });
+check("two well-formed sets with one id: the first wins, and the warning says exactly that", (() => {
+  const weighing = { sets: [dup("first"), dup("second")], matrices: [], assessments: [] };
+  const finding = validateBundle({ ...base, weighing }).warnings.find((w) => w.rule === "weighing-duplicate-set");
+  return resolveWeighing(weighing).sets.find((s) => s.id === "rubric").title === "first" && finding !== undefined && /first well-formed one wins/.test(finding.message) && finding.path === "weighing.sets[1].id";
+})());
+check("a malformed earlier set does not shadow a good later one, and raises no duplicate warning", (() => {
+  const weighing = { sets: [{ id: "rubric" }, dup("good")], matrices: [], assessments: [] };
+  return resolveWeighing(weighing).sets.find((s) => s.id === "rubric")?.title === "good" && !warningsFor(weighing).includes("weighing-duplicate-set");
+})());
+check("the same holds for matrices", (() => {
+  const okMatrix = (title) => ({ id: "m", title, set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } });
+  const first = { sets: [], matrices: [okMatrix("first"), okMatrix("second")], assessments: [] };
+  const shadow = { sets: [], matrices: [{ id: "m" }, okMatrix("good")], assessments: [] };
+  return (
+    resolveWeighing(first).matrices.find((m) => m.id === "m").title === "first" &&
+    warningsFor(first).includes("weighing-duplicate-matrix") &&
+    resolveWeighing(shadow).matrices.find((m) => m.id === "m")?.title === "good" &&
+    !warningsFor(shadow).includes("weighing-duplicate-matrix")
+  );
+})());
+
 check("none of this is an error — warnings never block an import", validateBundle({ ...base, weighing: { ...section, assessments: [row({ criterion: "teleports", level: 9 })] } }).valid === true);
 check("a bundle with no weighing section raises no weighing finding", validateBundle(base).findings.every((f) => !f.rule.startsWith("weighing")));
 
