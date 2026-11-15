@@ -33,6 +33,8 @@
     "test:quality-plan": "node tests/schema/quality-plan.test.js && node tests/schema/kritik-plan-prompt.test.js",
     "test:weighing": "node tests/schema/weighing.test.js",
     "test:weighing-derive": "node tests/schema/weighing-derive.test.js",
+    "test:weighing-events": "node tests/schema/weighing-events.test.js",
+    "test:weighing-provider": "node tests/data/weighing-provider.test.js",
     "test:quality-webhook": "node tests/services/quality-webhook.test.js",
     "test:once-changed-files": "node tests/services/once-changed-files.test.js",
     "test:quality-events": "node tests/services/quality-events.test.js",

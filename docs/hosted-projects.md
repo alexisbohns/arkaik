@@ -373,6 +373,14 @@ is a real error.
 This is the whole agent setup. The rest of this page is the PR automation, which
 is optional.
 
+### Weighing on a hosted project
+
+A hosted project has no `docs/weighing/` directory. Its weighing state is the `weighing` section a restore stored, plus the journal events that arrived since; the server folds the events in on every read. Every hosted write goes to one route, `POST /api/graph/projects/{id}/weighing/events`, scope `graph:write`, and takes exactly two event types: `weighing.assessment.recorded` (one signed level, from −3 to +3, for one acceptance on one element of value, with a confidence and evidence) and `weighing.set.saved` (the positioning). A batch is all-or-nothing and each refusal names the entry's `index`, a `reason` and a `detail`.
+
+**The scorer is stamped by the server, never read from the body.** A signed-in session writes as a person; a token writes as an agent and also records `scorer.on_behalf_of`, the token owner's user id (an opaque number, never an email), so the record says whose hands the agent was. A person's level beats an agent's for the same cell, and the agent's is kept beside it, which is why a token cannot claim to be one. The server also stamps a fingerprint of the acceptance (title, Gherkin, values) so a later edit marks the score stale, and the full version of the value set it was read against.
+
+Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing. Nothing lands in the repository: the journal events are the whole record.
+
 ## 4. Set up the GitHub App (once per deployment)
 
 Only needed for PR-driven status changes, and only once for your whole account.
