@@ -7899,7 +7899,7 @@ git commit -m "feat(weighing): useWeighing, and the contract the panel must keep
 - Create: `components/panels/WeighingGroup.tsx`
 - Modify: `components/panels/NodeDetailPanel.tsx`
 
-- [ ] **Step 1: Write the group**
+- [x] **Step 1: Write the group**
 
 ```tsx
 "use client";
@@ -8194,7 +8194,7 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
 }
 ```
 
-- [ ] **Step 2: Mount it beside the other acceptance groups**
+- [x] **Step 2: Mount it beside the other acceptance groups**
 
 ```diff
 --- a/components/panels/NodeDetailPanel.tsx
@@ -8221,14 +8221,14 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
              key={`pv-${node.id}-${initialPlatform ?? ""}`}
 ```
 
-- [ ] **Step 3: Run the checks that read panel source**
+- [x] **Step 3: Run the checks that read panel source**
 
 Run: `npm run test:weighing-panel && npm run test:panel-semantics && npm run test:project-panels && npm run test:product-scope && npm run test:platform-variants-gates && npm run test:panel-stack && npx tsc --noEmit -p . && npx eslint components/panels lib/hooks`
 Expected: the form and mount checks of `weighing-panel` `PASS:` (the editor, Settings and History checks still `FAIL:`); the four existing source-asserting suites pass; `tsc` and `eslint` silent.
 
-- [ ] **Step 3b: Note for the next person** — `WeighingGroup` keys the evidence `Textarea` on the stored evidence (`key={`${criterion.id}:${cell?.evidence ?? ""}`}`) so a refetch re-mounts it with the saved text; it autosaves on blur only when the text changed. That is a baseline, not a design: the tweaker may well want a Save button instead.
+- [x] **Step 3b: Note for the next person** — `WeighingGroup` keys the evidence `Textarea` on the stored evidence (`key={`${criterion.id}:${cell?.evidence ?? ""}`}`) so a refetch re-mounts it with the saved text; it autosaves on blur only when the text changed. That is a baseline, not a design: the tweaker may well want a Save button instead.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/panels/WeighingGroup.tsx components/panels/NodeDetailPanel.tsx

@@ -19,6 +19,7 @@ import { PlatformRollupTiles } from "@/components/panels/PlatformRollupTiles";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
+import { WeighingGroup } from "@/components/panels/WeighingGroup";
 import { DecisionEditor, DecisionReasoning, DecisionVerdict, useDecisionEditor } from "@/components/panels/DecisionEditor";
 import { DecisionLineage } from "@/components/panels/DecisionLineage";
 import { Shape, StatusPill, sealShapeOf } from "@/components/decisions/DecisionMarks";
@@ -1054,6 +1055,11 @@ export function NodeDetailPanel({
             </div>
           </PanelGroup>
         )}
+        {/* What the promise is worth: a signed level per element of value, how
+            sure the scorer is and why, and what that adds up to. A group of its
+            own, like Platforms and Relations, and read-only without a save path
+            (docs/rfcs/weighing.md). */}
+        {node.species === "acceptance" && <WeighingGroup key={`weighing-${node.id}`} node={node} readOnly={!onUpdate} />}
         {node.species === "view" && (
           <PlatformVariantsSection
             key={`pv-${node.id}-${initialPlatform ?? ""}`}
