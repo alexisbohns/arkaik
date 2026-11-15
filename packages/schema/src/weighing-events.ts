@@ -415,8 +415,9 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
  * wins. So a section a restore stored AFTER an event was written is not undone
  * by replaying that event, and a clock-skewed event cannot overwrite a newer
  * row. A `rule`-scored event is skipped (a rule row is never stored). A set
- * event replaces the set with the same id. An
- * event that is not shaped right is skipped, never thrown on — the journal is
+ * event replaces the set with the same id by the same rule, measured against the
+ * last event folded for that id (a stored set has no time of its own, so an event
+ * replaces it). An event that is not shaped right is skipped, never thrown on — the journal is
  * append-only, and a bad line stays forever.
  */
 export function foldWeighingEvents(
@@ -427,6 +428,8 @@ export function foldWeighingEvents(
   if (relevant.length === 0) return section;
 
   const assessments = [...asArray<WeighingAssessment>(section?.assessments)];
+  /** The time of the last event folded into each set id; a set that came from the section has none. */
+  const setTimes = new Map<string, number>();
   let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
@@ -444,7 +447,18 @@ export function foldWeighingEvents(
     const id = (set as { id?: unknown }).id;
     if (typeof id !== "string" || id === "") continue;
     const at = sets.findIndex((existing) => existing?.id === id);
-    sets = at === -1 ? [...sets, set as WeighingCriteriaSet] : sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
+    const time = timeOf(event.ts);
+    if (at === -1) {
+      sets = [...sets, set as WeighingCriteriaSet];
+      setTimes.set(id, time);
+    } else {
+      // A stored set carries no time, so one this fold has not replaced yet loses to any event;
+      // after that the last folded event's time is the one to beat (ties go to the later event).
+      const known = setTimes.get(id);
+      if (known !== undefined && time < known) continue;
+      sets = sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
+      setTimes.set(id, time);
+    }
   }
 
   return { ...(section ?? {}), sets, matrices: asArray<WeighingMatrix>(section?.matrices), assessments };

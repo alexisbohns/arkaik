@@ -71,7 +71,11 @@ function assessmentsOfFile(file: string): WeighingAssessment[] {
 
 /** Every project-authored set on disk, by file name. */
 export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
-  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<WeighingCriteriaSet>(file));
+  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => {
+    const parsed: unknown = readJson<unknown>(file);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error(`${file}: expected a criteria set object`);
+    return parsed as WeighingCriteriaSet;
+  });
 }
 
 /** Every stored assessment on disk, matrix by matrix. A file that is not `{ assessments: [] }` throws, naming the file. */

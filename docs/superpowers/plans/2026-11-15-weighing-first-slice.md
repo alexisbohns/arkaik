@@ -4045,6 +4045,14 @@ check("on equal times the later event wins", foldWeighingEvents(stored, [{ ...ol
 check("an unparseable stored time counts as oldest: the event replaces it", foldWeighingEvents({ ...stored, assessments: [{ ...stored.assessments[0], ts: "yesterday" }] }, [olderEvent]).assessments[0].level === 1);
 check("two events fold by their time, whatever order the journal holds them", foldWeighingEvents(section, [{ ...olderEvent, id: "01B", ts: "2026-11-15T12:00:00.000Z", level: 2 }, { ...olderEvent, id: "01A", ts: "2026-11-15T11:00:00.000Z", level: 0 }]).assessments[0].level === 2);
 
+// A set goes by time too: a replayed older event does not undo a newer one folded before it.
+const replayed = foldWeighingEvents(section, [...ev(activated), ...ev(saved)]);
+check("an older set event replayed after a newer one does not overwrite it", replayed.sets.length === 1 && replayed.sets[0].status === "active");
+check("…in either order the newest set event stands", foldWeighingEvents(section, [...ev(saved), ...ev(activated)]).sets[0].status === "active");
+check("a stored set has no time, so an event replaces it whatever its ts", foldWeighingEvents({ ...section, sets: [positioning({ status: "active", title: "stored" })] }, ev(saved)).sets[0].status === "draft");
+check("on equal times the later set event wins", foldWeighingEvents(section, [...ev(saved), { ...ev(activated)[0], ts: ev(saved)[0].ts }]).sets[0].status === "active");
+check("an unparseable set event time counts as oldest: it does not overwrite a dated one", foldWeighingEvents(section, [...ev(activated), { ...ev(saved)[0], ts: "yesterday" }]).sets[0].status === "active");
+
 const junk = [
   { id: "01J", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", subject: "AC-a" },
   { id: "01K", ts: "2026-11-15T10:00:00.000Z", type: "weighing.set.saved", set: "nope" },
@@ -4131,8 +4139,9 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
  * wins. So a section a restore stored AFTER an event was written is not undone
  * by replaying that event, and a clock-skewed event cannot overwrite a newer
  * row. A `rule`-scored event is skipped (a rule row is never stored). A set
- * event replaces the set with the same id. An
- * event that is not shaped right is skipped, never thrown on — the journal is
+ * event replaces the set with the same id by the same rule, measured against the
+ * last event folded for that id (a stored set has no time of its own, so an event
+ * replaces it). An event that is not shaped right is skipped, never thrown on — the journal is
  * append-only, and a bad line stays forever.
  */
 export function foldWeighingEvents(
@@ -4143,6 +4152,8 @@ export function foldWeighingEvents(
   if (relevant.length === 0) return section;
 
   const assessments = [...asArray<WeighingAssessment>(section?.assessments)];
+  /** The time of the last event folded into each set id; a set that came from the section has none. */
+  const setTimes = new Map<string, number>();
   let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
@@ -4160,7 +4171,18 @@ export function foldWeighingEvents(
     const id = (set as { id?: unknown }).id;
     if (typeof id !== "string" || id === "") continue;
     const at = sets.findIndex((existing) => existing?.id === id);
-    sets = at === -1 ? [...sets, set as WeighingCriteriaSet] : sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
+    const time = timeOf(event.ts);
+    if (at === -1) {
+      sets = [...sets, set as WeighingCriteriaSet];
+      setTimes.set(id, time);
+    } else {
+      // A stored set carries no time, so one this fold has not replaced yet loses to any event;
+      // after that the last folded event's time is the one to beat (ties go to the later event).
+      const known = setTimes.get(id);
+      if (known !== undefined && time < known) continue;
+      sets = sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
+      setTimes.set(id, time);
+    }
   }
 
   return { ...(section ?? {}), sets, matrices: asArray<WeighingMatrix>(section?.matrices), assessments };
@@ -4170,7 +4192,7 @@ export function foldWeighingEvents(
 - [x] **Step 4: Run the tests**
 
 Run: `node tests/schema/weighing-events.test.js && npm run test:journal && npm run test:schema && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: 86 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
+Expected: 91 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
 
 - [x] **Step 5: Commit**
 
@@ -4360,6 +4382,15 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
+  // A set sidecar fails the same way: named, never a null folded into the section.
+  for (const [what, body] of [["null", "null"], ["a bare array", "[]"], ["a string", '"x"']]) {
+    const { dir, bundlePath } = repo();
+    writeFileSync(path.join(dir, "docs", "weighing", "sets", "positioning.json"), body);
+    const res = pack([bundlePath], dir);
+    check(`a set sidecar holding ${what} fails the pack naming the file and what it expected`, res.status !== 0 && /positioning\.json: expected a criteria set object/.test(res.stderr), res.stderr);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
   // --- the writers and the loaders agree (weighing-files.ts, which load-schema.js does not discover) ---
   mkdirSync(TEST_BUILD_DIR, { recursive: true });
   await build({ entryPoints: [FILES_ENTRY], outfile: FILES_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
@@ -4523,7 +4554,11 @@ function assessmentsOfFile(file: string): WeighingAssessment[] {
 
 /** Every project-authored set on disk, by file name. */
 export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
-  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<WeighingCriteriaSet>(file));
+  return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => {
+    const parsed: unknown = readJson<unknown>(file);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error(`${file}: expected a criteria set object`);
+    return parsed as WeighingCriteriaSet;
+  });
 }
 
 /** Every stored assessment on disk, matrix by matrix. A file that is not `{ assessments: [] }` throws, naming the file. */
@@ -5123,7 +5158,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
 - [x] **Step 9: Run the CLI suites**
 
 Run: `npm run test:cli && npm run test:bootstrap && npx tsc --noEmit -p . && npx eslint packages`
-Expected: `All weighing CLI tests passed.` (37 `PASS:` lines) and every other CLI suite green (the bootstrap restore suite exercises `restore`); `tsc` and `eslint` silent.
+Expected: `All weighing CLI tests passed.` (40 `PASS:` lines) and every other CLI suite green (the bootstrap restore suite exercises `restore`); `tsc` and `eslint` silent.
 
 - [x] **Step 10: Commit**
 
@@ -8487,7 +8522,7 @@ function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string 
 const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 }             // enforced by planWeighingEvents
 function planWeighingEvents(section, nodes, inputs, { actor, scorerKind: "human"|"agent", onBehalfOf?, now? }):
   | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }   // reason adds "invalid_entry" (shape, caps); never throws; the model survives only on an agent's scorer
-function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold; replaces a stored row only if the event's ts is >= its ts; skips rule rows
+function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold; replaces a stored row (and a set, against the last event folded for its id) only if the event's ts is >= its ts; skips rule rows
 // P3 — packages/schema/src/cli/weighing-files.ts:  loadWeighingSection(root), saveWeighingAssessments(root, matrix, rows), saveWeighingSet(root, set), loadMatrixAssessments(root, matrix)
 // P3 — DataProvider.appendWeighingEvents?(projectId, inputs): Promise<JournalEvent[]>        // local: journal row; remote: POST …/weighing/events
 // P3 — POST /api/graph/projects/{id}/weighing/events   200 { events } · 400 invalid_events (HTTP shape: scorer/basis/ts) · 403 graph:write · 413 (> 256 KB) · 422 { error:"refused", message, refusals } — refusals carry every structural rule too

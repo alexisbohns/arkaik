@@ -194,6 +194,14 @@ check("on equal times the later event wins", foldWeighingEvents(stored, [{ ...ol
 check("an unparseable stored time counts as oldest: the event replaces it", foldWeighingEvents({ ...stored, assessments: [{ ...stored.assessments[0], ts: "yesterday" }] }, [olderEvent]).assessments[0].level === 1);
 check("two events fold by their time, whatever order the journal holds them", foldWeighingEvents(section, [{ ...olderEvent, id: "01B", ts: "2026-11-15T12:00:00.000Z", level: 2 }, { ...olderEvent, id: "01A", ts: "2026-11-15T11:00:00.000Z", level: 0 }]).assessments[0].level === 2);
 
+// A set goes by time too: a replayed older event does not undo a newer one folded before it.
+const replayed = foldWeighingEvents(section, [...ev(activated), ...ev(saved)]);
+check("an older set event replayed after a newer one does not overwrite it", replayed.sets.length === 1 && replayed.sets[0].status === "active");
+check("…in either order the newest set event stands", foldWeighingEvents(section, [...ev(saved), ...ev(activated)]).sets[0].status === "active");
+check("a stored set has no time, so an event replaces it whatever its ts", foldWeighingEvents({ ...section, sets: [positioning({ status: "active", title: "stored" })] }, ev(saved)).sets[0].status === "draft");
+check("on equal times the later set event wins", foldWeighingEvents(section, [...ev(saved), { ...ev(activated)[0], ts: ev(saved)[0].ts }]).sets[0].status === "active");
+check("an unparseable set event time counts as oldest: it does not overwrite a dated one", foldWeighingEvents(section, [...ev(activated), { ...ev(saved)[0], ts: "yesterday" }]).sets[0].status === "active");
+
 const junk = [
   { id: "01J", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", subject: "AC-a" },
   { id: "01K", ts: "2026-11-15T10:00:00.000Z", type: "weighing.set.saved", set: "nope" },

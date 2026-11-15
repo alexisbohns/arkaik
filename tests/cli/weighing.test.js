@@ -166,6 +166,15 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
+  // A set sidecar fails the same way: named, never a null folded into the section.
+  for (const [what, body] of [["null", "null"], ["a bare array", "[]"], ["a string", '"x"']]) {
+    const { dir, bundlePath } = repo();
+    writeFileSync(path.join(dir, "docs", "weighing", "sets", "positioning.json"), body);
+    const res = pack([bundlePath], dir);
+    check(`a set sidecar holding ${what} fails the pack naming the file and what it expected`, res.status !== 0 && /positioning\.json: expected a criteria set object/.test(res.stderr), res.stderr);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
   // --- the writers and the loaders agree (weighing-files.ts, which load-schema.js does not discover) ---
   mkdirSync(TEST_BUILD_DIR, { recursive: true });
   await build({ entryPoints: [FILES_ENTRY], outfile: FILES_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
