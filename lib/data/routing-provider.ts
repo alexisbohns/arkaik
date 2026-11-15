@@ -1,4 +1,4 @@
-import type { MutationOp } from "@arkaik/schema";
+import type { MutationOp, WeighingEventInput } from "@arkaik/schema";
 
 import type {
   DataProvider,
@@ -155,6 +155,20 @@ export function createRoutingProvider(options: RoutingProviderOptions): DataProv
         return Promise.reject(new Error(`Project ${projectId} cannot be replaced in place; import it instead.`));
       }
       return target.replaceProject(projectId, bundle, options);
+    },
+
+    /**
+     * NO fallback, for the reason `replaceProject` has none: an assessment is
+     * not a graph mutation, so there is nothing honest to stand in for it. The
+     * public seed sandbox has no journal to keep one in, and a caller that
+     * reaches it hears so.
+     */
+    appendWeighingEvents(projectId: string, inputs: readonly WeighingEventInput[]) {
+      const target = forProject(projectId);
+      if (!target.appendWeighingEvents) {
+        return Promise.reject(new Error(`Project ${projectId} cannot record assessments.`));
+      }
+      return target.appendWeighingEvents(projectId, inputs);
     },
   } satisfies DataProvider as DataProvider;
 }

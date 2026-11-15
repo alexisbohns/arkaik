@@ -5383,7 +5383,7 @@ git commit -m "feat(weighing): POST weighing/events, folded by the project GET a
 - Modify: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/data/remote-provider.ts`, `lib/data/routing-provider.ts`
 - Create: `tests/data/weighing-provider.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 #!/usr/bin/env node
@@ -5528,12 +5528,12 @@ main().catch((error) => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/data/weighing-provider.test.js`
 Expected: FAIL — `TypeError: localProvider.appendWeighingEvents is not a function`.
 
-- [ ] **Step 3: The interface, the local provider and the fold on read**
+- [x] **Step 3: The interface, the local provider and the fold on read**
 
 ```diff
 --- a/lib/data/data-provider.ts
@@ -5643,7 +5643,7 @@ Expected: FAIL — `TypeError: localProvider.appendWeighingEvents is not a funct
    async exportProject(id: string) {
 ```
 
-- [ ] **Step 4: The remote provider and the router**
+- [x] **Step 4: The remote provider and the router**
 
 ```diff
 --- a/lib/data/remote-provider.ts
@@ -5711,12 +5711,12 @@ Expected: FAIL — `TypeError: localProvider.appendWeighingEvents is not a funct
  
 ```
 
-- [ ] **Step 5: Run the provider suites and the type check**
+- [x] **Step 5: Run the provider suites and the type check**
 
 Run: `node tests/data/weighing-provider.test.js && npm run test:provider && npm run test:migrate && npm run test:quality-fold && npm run test:project-queries && npx tsc --noEmit -p .`
 Expected: `All weighing-provider tests passed.` (21 `PASS:` lines) and the existing suites green. (`local-provider.ts` imports only `@arkaik/schema` additions, so `load-local-provider.js`'s alias table is untouched.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/data/data-provider.ts lib/data/local-provider.ts lib/data/remote-provider.ts lib/data/routing-provider.ts tests/data/weighing-provider.test.js
