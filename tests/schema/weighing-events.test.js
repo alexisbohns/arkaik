@@ -174,7 +174,7 @@ check(
   "anchors that are not an object of words are refused, not fixed",
   [["not an object"], ["a", "b"], null, 5].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"),
 );
-check("an anchor on a level off the scale, or not a level, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("an anchor on a level off the scale, or not a level, or not written canonically, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }, { "03": "x" }, { "-0": "x" }, { "+3": "x" }, { "00": "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
 check("an anchor whose words are empty or not a string is refused", [{ "3": "" }, { "3": "  " }, { "3": 3 }, { "3": null }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
 check("a criterion that is not an object is refused", [null, 5, "connects"].every((entry) => setWith([entry]).refusals?.[0].reason === "invalid_set"));
 check("a weight that is not a number is refused as given", ["3", true, NaN, Infinity].every((weight) => setWith([{ id: "connects", weight }]).refusals?.[0].reason === "invalid_set"));

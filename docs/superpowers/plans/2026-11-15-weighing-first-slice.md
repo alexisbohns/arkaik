@@ -3800,7 +3800,7 @@ check(
   "anchors that are not an object of words are refused, not fixed",
   [["not an object"], ["a", "b"], null, 5].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"),
 );
-check("an anchor on a level off the scale, or not a level, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("an anchor on a level off the scale, or not a level, or not written canonically, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }, { "03": "x" }, { "-0": "x" }, { "+3": "x" }, { "00": "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
 check("an anchor whose words are empty or not a string is refused", [{ "3": "" }, { "3": "  " }, { "3": 3 }, { "3": null }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
 check("a criterion that is not an object is refused", [null, 5, "connects"].every((entry) => setWith([entry]).refusals?.[0].reason === "invalid_set"));
 check("a weight that is not a number is refused as given", ["3", true, NaN, Infinity].every((weight) => setWith([{ id: "connects", weight }]).refusals?.[0].reason === "invalid_set"));
@@ -3968,7 +3968,7 @@ export function planWeighingEvents(
           const anchors: unknown = criterion.anchors;
           if (!isObject(anchors)) return refuse("invalid_set", `the anchors for "${criterion.id}" must be an object of level -> words`);
           for (const [level, words] of Object.entries(anchors)) {
-            if (!/^-?\d+$/.test(level) || Number(level) < min || Number(level) > max) {
+            if (!/^-?\d+$/.test(level) || String(Number(level)) !== level || Number(level) < min || Number(level) > max) {
               return refuse("invalid_set", `an anchor for "${criterion.id}" is keyed "${level}", which is not a level from ${min} to ${max}`);
             }
             if (typeof words !== "string" || words.trim() === "") return refuse("invalid_set", `the anchor for "${criterion.id}" at level ${level} must be non-empty words`);
@@ -7593,7 +7593,7 @@ Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/w
 - **Hosted:** the server stamps the token's owner (a user id). The MCP server sends nothing, whatever its environment says.
 - **In a repo:** `assess` stamps the first usable of, in order: (1) `ARKAIK_ON_BEHALF_OF`, trimmed; (2) `git config arkaik.user`, read in the repo root; (3) `git config user.name`, the git author name. So most local scores say who they were made for with no setup.
 - **Privacy, and the opt-out.** In a repo, your git author name is written into the committed `docs/weighing/` sidecars (and into a Publik publication that opts into weighing). Set `git config arkaik.user <handle>` to use another name, or `-` to record nobody. `-` as `ARKAIK_ON_BEHALF_OF` or as `arkaik.user` stamps nothing and stops the chain (git's name is not read); an *empty* value is just "not set" and falls through.
-- **Never an email.** `user.email` is not a source, and a value that is email-shaped (anything containing `@`) in any source is *skipped*, not refused: the next source is tried, and scoring still works. The field is a user id, a handle or a display name, at most 128 characters with no control characters; sidecars are committed to repos.
+- **Never an email.** `user.email` is not a source, and a value that is email-shaped (anything containing `@`) in any source is *skipped*, not refused: the next source is tried, and scoring still works. The field is a user id, a handle or a display name, at most 128 characters with no control or invisible format characters (ZWJ and ZWNJ allowed); sidecars are committed to repos.
 - **Absent when none is set**, as in an unattended CI run: the row is still written, without the key. Git is run without a shell (`git config --get <key>`) with a 1.5 s timeout, and any failure (no git, not a repo, not set) means "not set"; a timeout on `arkaik.user` ends the chain, so a hung git costs one short wait, not two. The value is read on every `assess`, so a config change mid-session is honoured.
 
 It never changes who wins a cell: only the scorer's kind does.

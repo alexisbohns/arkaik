@@ -291,7 +291,7 @@ export function planWeighingEvents(
           const anchors: unknown = criterion.anchors;
           if (!isObject(anchors)) return refuse("invalid_set", `the anchors for "${criterion.id}" must be an object of level -> words`);
           for (const [level, words] of Object.entries(anchors)) {
-            if (!/^-?\d+$/.test(level) || Number(level) < min || Number(level) > max) {
+            if (!/^-?\d+$/.test(level) || String(Number(level)) !== level || Number(level) < min || Number(level) > max) {
               return refuse("invalid_set", `an anchor for "${criterion.id}" is keyed "${level}", which is not a level from ${min} to ${max}`);
             }
             if (typeof words !== "string" || words.trim() === "") return refuse("invalid_set", `the anchor for "${criterion.id}" at level ${level} must be non-empty words`);
