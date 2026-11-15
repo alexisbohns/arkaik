@@ -172,7 +172,7 @@ export function servicesUnavailable(): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Default withholds (journal, quality)
+// Default withholds (journal, quality, weighing)
 // ---------------------------------------------------------------------------
 
 /**
@@ -197,6 +197,22 @@ export function stripJournal(bundle: Record<string, unknown>): Record<string, un
 export function stripQuality(bundle: Record<string, unknown>): Record<string, unknown> {
   const { quality: _quality, ...rest } = bundle;
   void _quality;
+  return rest;
+}
+
+/**
+ * Remove the `weighing` section from a bundle, returning a shallow copy with
+ * every other key preserved verbatim. Same server-side enforcement as the
+ * strips above, for the same family of reason: a weighing section holds a
+ * product's positioning, what it scores each promise against its own values,
+ * and the costs it has admitted — "this consent page works against reducing
+ * anxiety" is a sentence a product keeps to itself until it chooses
+ * otherwise. Opt-in only (`?include_weighing=true`), never client-decided, and
+ * opting into the journal or the quality section never implies it.
+ */
+export function stripWeighing(bundle: Record<string, unknown>): Record<string, unknown> {
+  const { weighing: _weighing, ...rest } = bundle;
+  void _weighing;
   return rest;
 }
 

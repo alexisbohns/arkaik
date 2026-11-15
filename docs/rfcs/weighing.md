@@ -447,6 +447,8 @@ interface ProjectBundle {
 }
 ```
 
+In code the three records carry a `Weighing` prefix (`WeighingCriteriaSet`, `WeighingMatrix`, `WeighingAssessment`; likewise `WeighingScorer` and `WeighingConfidence`), because the bare names are too generic to export from the package root. The prose here uses the short names.
+
 It follows Kritik's storage rule exactly ([`docs/spec/bundle-format.md`](../spec/bundle-format.md) § Quality):
 
 - In a repository, sidecar files are canonical and `arkaik pack` folds them into the key. The section is a projection, never a second copy to keep in step.
@@ -477,7 +479,7 @@ Rules that make it useful:
 - **Elements read as two-sided bars.** What serves it on one side, what erodes it on the other.
 - **Authors claim intent, so they rarely claim costs.** "Unclaimed cost" is the most valuable output of an agent audit.
 - **Negative levels are never seeded by a rule.** A person or an agent adds them.
-- **Positive levels can be seeded** from the order of `metadata.values`: the first element core (+3), the second supports (+2), stored as scorer `rule`, confidence 0. That is the rule of the first draft, and it covers every case in Pebbles, where an acceptance claims at most two elements. These are guesses and say so on every number built from them.
+- **Positive levels can be seeded** from the order of `metadata.values`: the first claimed element core (+3), the second supports (+2), every other claimed element touches (+1), never negative. They carry scorer `rule` and confidence 0, and are computed on read, never stored. The first two steps are the rule of the first draft and cover every case in Pebbles, where an acceptance claims at most two elements; the +1 for the rest closes the case of three or more. These are guesses and say so on every number built from them.
 - No data exists on an earlier scale, because nothing of weighing has shipped, so there is no migration. The first draft of this design used 0 to 3. Its positive levels map one to one onto +1 to +3.
 
 ### Real examples
@@ -517,9 +519,11 @@ Pebbles' *reduces anxiety*, for example: **3** means it removes a worry the user
 
 Shape **(proposal)**. Only the two descriptions quoted above come from the discussion.
 
+**The id is fixed in slice 1.** A project's positioning set is called `positioning`, with `role: "positioning"` — the id the value matrix's `positioning` pointer names. A set with another id, or a set called `positioning` without the role, would never be applied, so the validator warns (`weighing-positioning-id`). Several named positionings are a later slice.
+
 ```jsonc
 {
-  "id": "positioning-pebbles",
+  "id": "positioning",
   "version": "0.1.0",
   "subject": "acceptance",
   "scale": { "min": -3, "max": 3, "anchors": { "+3": "core", "0": "unrelated", "-3": "costs it at its core" } },

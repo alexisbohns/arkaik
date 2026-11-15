@@ -9,13 +9,14 @@ import {
   storeSnapshot,
   stripJournal,
   stripQuality,
+  stripWeighing,
   validateInboundBundle,
 } from "@/lib/services/publik";
 
 /**
  * POST /api/publik — create an anonymous snapshot (docs/spec/services.md §
- * Publik → Protocol). Validates through @arkaik/schema, strips the journal and
- * the quality section by default, rate-limits per IP in Postgres, and returns `201 { id, url, owner_key }`
+ * Publik → Protocol). Validates through @arkaik/schema, strips the journal, the
+ * quality section and the weighing section by default, rate-limits per IP in Postgres, and returns `201 { id, url, owner_key }`
  * with the owner key delivered exactly once.
  *
  * Node runtime: the `pg` driver needs Node APIs, not the edge runtime.
@@ -71,18 +72,22 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    // 5. Journal + quality strips, enforced server-side (§ "Journal stripped by
-    //    default"; docs/rfcs/kritik.md § 8.3 for quality). Both operate on the
+    // 5. Journal + quality + weighing strips, enforced server-side (§ "Journal
+    //    stripped by default"; docs/rfcs/kritik.md § 8.3 for quality;
+    //    docs/rfcs/weighing.md for weighing). All three operate on the
     //    vocabulary-migrated bundle the gate returned — that is what gets
     //    stored, so a legacy-vocabulary snapshot is never persisted. Each opts
-    //    in separately: publishing your history and publishing your open
-    //    security findings are not the same decision.
+    //    in separately: publishing your history, publishing your open security
+    //    findings and publishing what you think your promises cost are not the
+    //    same decision.
     const params = new URL(req.url).searchParams;
     const includeJournal = params.get("include_journal") === "true";
     const includeQuality = params.get("include_quality") === "true";
+    const includeWeighing = params.get("include_weighing") === "true";
     const bundle = validation.bundle;
     const withJournal = includeJournal ? bundle : stripJournal(bundle);
-    const toStore = includeQuality ? withJournal : stripQuality(withJournal);
+    const withQuality = includeQuality ? withJournal : stripQuality(withJournal);
+    const toStore = includeWeighing ? withQuality : stripWeighing(withQuality);
 
     // 6. Store (immutable) and return id + one-time owner key.
     const { id, ownerKey } = await storeSnapshot(toStore);

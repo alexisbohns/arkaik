@@ -45,6 +45,10 @@
     "quality": {
       "description": "Optional Kritik quality state (docs/rfcs/kritik.md § 4.1) — the pinned pack version, the project's surface profile, its assessments and findings. Additive: a bundle without it is not an error, and the comparative matrix is derived from it (deriveQualityMatrix), never stored.",
       "$ref": "#/$defs/QualitySection"
+    },
+    "weighing": {
+      "description": "Optional weighing state (docs/rfcs/weighing.md) — the project's own criteria sets (a positioning), matrices and assessments, each assessment carrying its scorer, confidence and basis. Additive: a bundle without it is not an error, and every weight, served and cost figure is derived from it, never stored.",
+      "$ref": "#/$defs/WeighingSection"
     }
   },
   "$defs": {
@@ -1308,6 +1312,304 @@
       ],
       "additionalProperties": {},
       "description": "One concrete defect. Severity and priority are deliberately absent — they are derived from impact × likelihood and cost (deriveQualityMatrix), so a finding can never carry a severity its own numbers disagree with."
+    },
+    "WeighingSection": {
+      "type": "object",
+      "properties": {
+        "sets": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WeighingCriteriaSet"
+              },
+              {}
+            ]
+          }
+        },
+        "matrices": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WeighingMatrix"
+              },
+              {}
+            ]
+          }
+        },
+        "assessments": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WeighingAssessment"
+              },
+              {}
+            ]
+          }
+        }
+      },
+      "additionalProperties": {},
+      "description": "The project's weighing state (docs/rfcs/weighing.md) — its own criteria sets (a positioning), matrices and assessments. The built-in value set is library content, not stored; served, cost and kept share are derived, never stored. Each list may be absent; a reader treats it as empty."
+    },
+    "WeighingCriteriaSet": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The set's id."
+        },
+        "version": {
+          "description": "Semver. Levels are comparable only within a major."
+        },
+        "title": {
+          "description": "A human title."
+        },
+        "subject": {
+          "description": "What the set judges: acceptance today."
+        },
+        "scale": {
+          "description": "The scale. A positioning may leave it out and use its ruler's.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeighingScale"
+            },
+            {}
+          ]
+        },
+        "groups": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/WeighingGroup"
+                  },
+                  {}
+                ]
+              }
+            },
+            {}
+          ]
+        },
+        "criteria": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/WeighingCriterion"
+                  },
+                  {}
+                ]
+              }
+            },
+            {}
+          ]
+        },
+        "role": {
+          "description": "positioning marks the set a project writes about itself."
+        },
+        "status": {
+          "description": "Absent or active is active; anything else is a draft, which feeds no roll-up."
+        },
+        "extends": {
+          "description": "A positioning's ruler, e.g. value-contribution@1."
+        }
+      },
+      "additionalProperties": {},
+      "description": "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another."
+    },
+    "WeighingScale": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "description": "The lowest level, e.g. -3."
+        },
+        "max": {
+          "description": "The highest level, e.g. 3."
+        },
+        "anchors": {
+          "description": "Every level described in words, keyed by the level as a string."
+        }
+      },
+      "additionalProperties": {},
+      "description": "A criteria set's scale: its bounds and every level's anchor."
+    },
+    "WeighingGroup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The group's id."
+        },
+        "title": {
+          "description": "The group's title."
+        }
+      },
+      "additionalProperties": {},
+      "description": "A grouping of criteria — the tiers, for the value set."
+    },
+    "WeighingCriterion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Stable identifier. Never redefined — retired via superseded_by."
+        },
+        "group": {
+          "description": "A group id — for the value set, the tier."
+        },
+        "name": {
+          "description": "A short name."
+        },
+        "question": {
+          "description": "The question a scorer answers."
+        },
+        "definition": {
+          "description": "What the criterion means."
+        },
+        "anchors": {
+          "description": "This criterion's own wording of each level — on a positioning, in the product's words."
+        },
+        "weight": {
+          "description": "On a positioning: how much the product stands on it, a number above 0. Absent means 1."
+        },
+        "superseded_by": {
+          "description": "The id of the criterion that replaces this one."
+        }
+      },
+      "additionalProperties": {},
+      "description": "One question on a scale where every level is described."
+    },
+    "WeighingMatrix": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The matrix's id."
+        },
+        "title": {
+          "description": "A human title."
+        },
+        "set": {
+          "description": "The set's id and major, e.g. value-contribution@1."
+        },
+        "subjects": {
+          "description": "What the matrix judges: { kind: query, species } or { kind: list, items }.",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "description": "query or list."
+                },
+                "species": {
+                  "description": "For a query: the species judged."
+                },
+                "items": {
+                  "description": "For a list: the subjects."
+                }
+              },
+              "additionalProperties": {}
+            },
+            {}
+          ]
+        },
+        "positioning": {
+          "description": "The id of the positioning set that re-weights this matrix."
+        },
+        "context": {
+          "description": "The node the matrix is about, as { node_id }."
+        },
+        "status": {
+          "description": "Absent or active is active; anything else is a draft."
+        }
+      },
+      "additionalProperties": {},
+      "description": "A criteria set applied to a list of subjects."
+    },
+    "WeighingAssessment": {
+      "type": "object",
+      "properties": {
+        "matrix": {
+          "description": "The matrix's id. A row without it cannot be addressed: readers skip it and the validator warns."
+        },
+        "subject": {
+          "description": "A node id for the value matrix."
+        },
+        "criterion": {
+          "description": "A criterion id."
+        },
+        "level": {
+          "description": "A whole number on the set's scale. 0 means unrelated. No half points — but any value parses; the validator warns on one off the scale."
+        },
+        "scorer": {
+          "description": "Who judged. Required in practice: without it a human, an agent and a rule are indistinguishable, so the validator warns.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeighingScorer"
+            },
+            {}
+          ]
+        },
+        "confidence": {
+          "description": "0 guess · 1 inferred · 2 evidenced · 3 verified."
+        },
+        "evidence": {
+          "description": "Markdown."
+        },
+        "refs": {
+          "description": "Ids cited: nodes, journal events, findings."
+        },
+        "basis": {
+          "description": "What the scorer was looking at, so a re-read can tell the score went stale.",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "fingerprint": {
+                  "description": "A hash of the subject's judged fields."
+                },
+                "commit": {
+                  "description": "The commit the scorer was looking at."
+                },
+                "set_version": {
+                  "description": "The full version of the set the level was read against."
+                }
+              },
+              "additionalProperties": {}
+            },
+            {}
+          ]
+        },
+        "run": {
+          "description": "The audit or plan the score belongs to."
+        },
+        "ts": {
+          "description": "ISO 8601."
+        }
+      },
+      "additionalProperties": {},
+      "description": "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal."
+    },
+    "WeighingScorer": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "Who judged: human, agent or rule. A human's level beats an agent's, which beats a rule's. Any value parses; the validator warns on another kind."
+        },
+        "id": {
+          "description": "A person's handle, an agent's name, or a seeding rule's id."
+        },
+        "model": {
+          "description": "The model behind an agent, when it says."
+        },
+        "on_behalf_of": {
+          "description": "Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known."
+        }
+      },
+      "additionalProperties": {},
+      "description": "Provenance of one assessment."
     }
   }
 }

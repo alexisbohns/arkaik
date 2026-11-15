@@ -17,6 +17,7 @@ import { crossCheckJournal } from "./journal";
 import { isBuiltInMapId, MAP_FLOW_PLATFORMS_MODES, MAP_MINIMAP_COLOR_MODES, MAP_VIEW_PLATFORMS_MODES } from "./maps";
 import { PRODUCT_MEMBERSHIP_SPECIES, resolveProducts } from "./products";
 import { CROSS_SURFACE_ID } from "./quality";
+import { validateWeighingSection } from "./weighing-validate";
 
 /**
  * Semantic validation for Arkaik ProjectBundles.
@@ -1122,6 +1123,19 @@ export function validateBundle(input: unknown): ValidationResult {
         }
       }
     });
+  }
+
+  // --- Weighing section (docs/rfcs/weighing.md) ---
+  // Warning severity only, for the reason the Kritik block above gives: the
+  // section is written by scorers and edited by hand between them. Runs when a
+  // section is carried OR a `weighing.*` event is embedded, because an event
+  // with no actor is a finding with no section behind it.
+  const weighing = (bundle as { weighing?: unknown }).weighing;
+  const embeddedJournal = Array.isArray((bundle as { journal?: unknown }).journal) ? ((bundle as { journal?: unknown[] }).journal as unknown[]) : [];
+  const weighingSpecies = new Map<string, string>();
+  for (const [id, node] of nodeMap) weighingSpecies.set(id, String(node.species));
+  for (const finding of validateWeighingSection(weighing, weighingSpecies, embeddedJournal)) {
+    warn(finding.path, finding.rule, finding.message);
   }
 
   // --- Snapshot ↔ journal cross-checks (Format Level 2, docs/spec/journal.md) ---

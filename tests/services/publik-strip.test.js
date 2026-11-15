@@ -32,7 +32,7 @@ function check(name, cond, detail) {
 }
 
 const { publik } = loadPublikApi();
-const { stripJournal, stripQuality } = publik;
+const { stripJournal, stripQuality, stripWeighing } = publik;
 
 const bundle = () => ({
   schema_version: 3,
@@ -40,6 +40,11 @@ const bundle = () => ({
   nodes: [{ id: "V-a", project_id: "p", species: "view", title: "A", status: "live", platforms: ["web"] }],
   edges: [],
   journal: [{ id: "01A", ts: "2026-01-01T00:00:00.000Z", type: "node.created", node_id: "V-a", species: "view", title: "A" }],
+  weighing: {
+    sets: [{ id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", scale: { min: -3, max: 3, anchors: {} }, criteria: [{ id: "reduces-anxiety", weight: 3 }] }],
+    matrices: [],
+    assessments: [{ matrix: "value", subject: "V-a", criterion: "reduces-anxiety", level: -2, scorer: { kind: "human", id: "alexis" }, confidence: 2, evidence: "the consent page worries people", ts: "2026-11-15T10:00:00.000Z" }],
+  },
   quality: {
     framework_version: "0.1.0",
     profile: { surfaces: [{ id: "web", title: "Web" }] },
@@ -70,6 +75,30 @@ const qualityOnly = stripJournal(bundle());
 check("opting into quality does not publish the journal", "quality" in qualityOnly && !("journal" in qualityOnly));
 const neither = stripQuality(stripJournal(bundle()));
 check("the default withholds both", !("journal" in neither) && !("quality" in neither) && neither.nodes.length === 1);
+
+// --- stripWeighing -----------------------------------------------------------
+
+const withoutWeighing = stripWeighing(bundle());
+const everythingButWeighing = { ...bundle() };
+delete everythingButWeighing.weighing;
+check("stripWeighing removes the weighing section", !("weighing" in withoutWeighing));
+check("stripWeighing keeps every other key verbatim", JSON.stringify(withoutWeighing) === JSON.stringify(everythingButWeighing));
+check("stripWeighing does not mutate its input", (() => { const input = bundle(); stripWeighing(input); return "weighing" in input; })());
+check("stripWeighing on a bundle with no weighing section is a no-op", (() => {
+  const plain = stripWeighing({ project: { id: "p" }, nodes: [], edges: [] });
+  return !("weighing" in plain) && plain.project.id === "p";
+})());
+check("opting into the quality section does not publish weighing", (() => {
+  const onlyQuality = stripWeighing(stripJournal(bundle()));
+  return "quality" in onlyQuality && !("weighing" in onlyQuality);
+})());
+check("opting into weighing does not publish the quality section or the journal", (() => {
+  const onlyWeighing = stripQuality(stripJournal(bundle()));
+  return "weighing" in onlyWeighing && !("quality" in onlyWeighing) && !("journal" in onlyWeighing);
+})());
+const allThree = stripWeighing(stripQuality(stripJournal(bundle())));
+check("the default withholds all three", !("journal" in allThree) && !("quality" in allThree) && !("weighing" in allThree) && allThree.nodes.length === 1);
+check("no assessment evidence survives the default strip", !JSON.stringify(allThree).includes("the consent page worries people"));
 
 // --- what the default actually protects --------------------------------------
 
