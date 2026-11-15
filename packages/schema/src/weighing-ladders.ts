@@ -10,12 +10,12 @@
  * negative one were drafted by an agent and wait for the owner's review. Plain
  * sentences with no parentheses, because a probabilistic scorer reads them as is.
  *
- * Library content: zod-free and fs-free, frozen by {@link ./weighing-library}.
+ * Library content: zod-free and fs-free, and frozen.
  */
 
 import type { ValueId } from "./ids";
 
-export const VALUE_REACH_LADDERS: Readonly<Record<ValueId, Readonly<Record<string, string>>>> = {
+const LADDERS: Record<ValueId, Record<string, string>> = {
   "saves-time": {
     "-3": "Takes hours out of the person's life.",
     "-2": "Costs the person time on tasks they do regularly in this domain.",
@@ -257,3 +257,8 @@ export const VALUE_REACH_LADDERS: Readonly<Record<ValueId, Readonly<Record<strin
     "3": "Contributes to something larger than the person themselves.",
   },
 };
+
+/** Frozen, entry by entry: built-in content is shared by every reader in the process. */
+export const VALUE_REACH_LADDERS: Readonly<Record<ValueId, Readonly<Record<string, string>>>> = Object.freeze(
+  Object.fromEntries(Object.entries(LADDERS).map(([id, ladder]) => [id, Object.freeze(ladder)])) as Record<ValueId, Readonly<Record<string, string>>>,
+);

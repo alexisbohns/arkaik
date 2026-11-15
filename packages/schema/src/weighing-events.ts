@@ -31,6 +31,7 @@ import {
   POSITIONING_SET_ID,
   VALUE_SET_ID,
   VALUE_MATRIX_ID,
+  isOlderMajorRef,
   resolveWeighing,
   setOfRef,
   weighingScaleOf,
@@ -285,6 +286,10 @@ export function planWeighingEvents(
         return refuse("invalid_set", `only the positioning can be saved: id "${POSITIONING_SET_ID}" with role "positioning"`);
       }
       if (ruler === undefined) return refuse("invalid_set", `a positioning extends a set the library holds (e.g. ${VALUE_SET_ID}@2)`);
+      // An older major still resolves so a stored one reads, but nothing new is written against it.
+      if (isOlderMajorRef(resolved, set.extends as string)) {
+        return refuse("invalid_set", `${String(set.extends)} is an older ruler — extend ${ruler.id}'s current major instead`);
+      }
       const known = new Set(ruler.criteria.map((criterion) => criterion.id));
       for (const criterion of set.criteria) {
         if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
@@ -330,6 +335,9 @@ export function planWeighingEvents(
     }
     const set = setOfRef(resolved, matrix.set);
     if (set === undefined) return refuse("unknown_matrix", `matrix "${matrix.id}" names set "${matrix.set}", which is not available`);
+    if (isOlderMajorRef(resolved, matrix.set)) {
+      return refuse("unknown_matrix", `matrix "${matrix.id}" reads ${matrix.set}, an older ruler — nothing new is scored against it; point the matrix at the current major`);
+    }
 
     const node = byId.get(input.subject);
     const judged = matrix.subjects.kind === "query" ? node?.species === matrix.subjects.species : matrix.subjects.items.some((item) => (item?.node_id ?? item?.id) === input.subject);

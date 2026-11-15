@@ -198,7 +198,9 @@ export function validateWeighingSection(
         }
       }
       checkStatus(path, who, entry);
-      if (wellFormed) resolveRef(entry.set, `${path}.set`, who, "weighing-unknown-set");
+      if (wellFormed && resolveRef(entry.set, `${path}.set`, who, "weighing-unknown-set") !== undefined && isOlderMajorRef(resolved, entry.set)) {
+        warn(`${path}.set`, "weighing-matrix-old-ruler", `${who} reads ${entry.set}, an older ruler — its levels still read, but nothing new can be scored on it; point it at the current major`);
+      }
     });
 
     const seenCells = new Set<string>();

@@ -84,6 +84,12 @@ check("the parser carries p_serves and p_costs through, and drops a stray distri
 const probable = planWeighingEvents(undefined, [NODE], [assess({ p_serves: 0.62, p_costs: 0 })], ctx({ scorerKind: "agent", actor: "arkaik-mcp" }));
 check("probabilities land on the row and the event, which still validates", probable.ok && probable.assessments[0].p_serves === 0.62 && probable.assessments[0].p_costs === 0 && probable.events[0].p_serves === 0.62 && KnownJournalEventSchema.safeParse(probable.events[0]).success);
 check("an assessment without them stores none", !("p_serves" in row) && !("p_costs" in row));
+{
+  const old = { type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [{ id: "connects" }] } };
+  check("a positioning saved against the older ruler is refused — nothing new is written on @1", planWeighingEvents(undefined, [NODE], [old], ctx()).refusals?.[0].reason === "invalid_set");
+  const onV1 = { matrices: [{ id: "m1", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }] };
+  check("an assessment on a matrix that reads the older ruler is refused", planWeighingEvents(onV1, [NODE], [assess({ matrix: "m1" })], ctx()).refusals?.[0].reason === "unknown_matrix");
+}
 for (const bad of [1.01, -0.1, "0.5", Number.NaN, Infinity]) {
   check(`a probability of ${String(bad)} is refused`, planWeighingEvents(undefined, [NODE], [assess({ p_costs: bad })], ctx()).refusals?.[0].reason === "invalid_entry");
 }

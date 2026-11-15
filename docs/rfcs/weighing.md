@@ -485,7 +485,7 @@ The owner asked why scoring cannot be negative. A consent page that asks for 16 
 - **Informs is asked as "mainly"**: is what this promise mainly gives the person information, rather than an ability, a shortcut, a protection or a feeling? Asked "at least a little", every promise informs the person about the service. This is the wording of one element's question, a measurement fix, not a second dimension.
 - **There is no centrality axis.** "What the promise is mainly for" is not stored. The pyramid is an audit and navigation compass, like Kritik, so absolute reach is what counts (owner, 2026-11-15).
 - **Most promises land at +1.** That is what the definition implies, and it was accepted. +3 is rare by design.
-- **Migration is the major bump.** The built-in matrix reads `@2`. Every level scored against `@1` reads **stale** until re-scored: it still wins its cell and still counts, flagged, like any stale level. `@1` stays in the library, frozen, so a positioning or a project matrix that names it still resolves; a positioning on `@1` raises `weighing-positioning-old-ruler` until it is saved again.
+- **Migration is the major bump.** The built-in matrix reads `@2`. Every level scored against `@1` reads **stale** until re-scored: it still wins its cell and still counts, flagged, like any stale level. `@1` stays in the library, frozen, so a positioning or a project matrix that names it still resolves; a positioning on `@1` raises `weighing-positioning-old-ruler` until it is saved again (and a project matrix on `@1`, `weighing-matrix-old-ruler`). **Nothing new is written on `@1`**: the write gate refuses a positioning that extends it and an assessment on a matrix that reads it.
 
 Rules that make it useful:
 

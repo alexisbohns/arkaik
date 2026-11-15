@@ -16,6 +16,7 @@ const {
   VALUE_CONTRIBUTION_SET_V1,
   VALUE_MATRIX,
   isOlderMajorRef,
+  VALUE_REACH_LADDERS,
   VALUE_SET_VERSION,
   POSITIONING_SET_ID,
   resolveWeighing,
@@ -266,6 +267,8 @@ check("a positioning on the older ruler still applies, and says to re-save it", 
   const rules = rulesOf({ sets: [positioningOf({ extends: "value-contribution@1" })], matrices: [], assessments: [] });
   return eq(rules, ["weighing-positioning-old-ruler"]);
 })());
+check("a project matrix on the older ruler warns, and still resolves", rulesOf({ sets: [], matrices: [{ id: "m1", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }], assessments: [] }).includes("weighing-matrix-old-ruler"));
+check("the exported ladders are frozen, entry by entry", Object.isFrozen(VALUE_REACH_LADDERS) && Object.isFrozen(VALUE_REACH_LADDERS["saves-time"]));
 check("a probability off 0..1, or not a number, warns — and one in range does not", (() => {
   const bad = rulesOf({ ...section, assessments: [row({ p_serves: 1.2, p_costs: "high" })] }).filter((r) => r === "weighing-probability-shape").length;
   const fine = rulesOf({ ...section, assessments: [row({ p_serves: 0.9, p_costs: 0 })] }).includes("weighing-probability-shape");
