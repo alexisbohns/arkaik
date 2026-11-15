@@ -810,7 +810,7 @@ git commit -m "feat(weighing): the records, the fingerprint and the built-in val
 
 > **Not yet run (D14).** The `on_behalf_of` check in the block below and the `on_behalf_of` line in `ScorerSchema` were added after the run.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `tests/schema/weighing.test.js`, insert this block **immediately above** the final `fs.rmSync(BUILD_DIR, …)` line:
 
@@ -838,12 +838,12 @@ check("a bundle without one still parses", ProjectBundleSchema.safeParse(base).s
 check("schema_version stays 3 — the section is additive", base.schema_version === 3);
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing.test.js`
 Expected: FAIL — `TypeError: Cannot read properties of undefined (reading 'safeParse')` (no `WeighingSectionSchema` yet).
 
-- [ ] **Step 3: Write `packages/schema/src/weighing-schemas.ts`**
+- [x] **Step 3: Write `packages/schema/src/weighing-schemas.ts`**
 
 ```ts
 /**
@@ -991,7 +991,7 @@ export const WeighingSectionSchema: z.ZodType<WeighingSection> = z
   });
 ```
 
-- [ ] **Step 4: Wire the key into the bundle**
+- [x] **Step 4: Wire the key into the bundle**
 
 ```diff
 --- a/packages/schema/src/bundle.ts
@@ -1027,16 +1027,16 @@ export const WeighingSectionSchema: z.ZodType<WeighingSection> = z
    title: "Arkaik ProjectBundle",
 ```
 
-- [ ] **Step 5: Export the schemas**
+- [x] **Step 5: Export the schemas**
 
 In `packages/schema/src/index.ts`, after `export * from "./weighing";` add `export * from "./weighing-schemas";` (keep `weighing-library` last of the three).
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `node tests/schema/weighing.test.js && npm run test:schema && npm run test:fixtures && npx tsc --noEmit -p .`
 Expected: `All weighing tests passed.`, `All 15 parity tests passed.`, `All 14 fixture tests passed.`, `tsc` silent.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/schema/src/weighing-schemas.ts packages/schema/src/bundle.ts packages/schema/src/index.ts tests/schema/weighing.test.js

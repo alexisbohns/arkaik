@@ -22,6 +22,8 @@ import type { MapDefinition, MapDisplayOptions } from "./maps";
 import type { ProductDefinition } from "./products";
 import type { QualitySection } from "./quality";
 import { QualitySectionSchema } from "./quality-schemas";
+import type { WeighingSection } from "./weighing";
+import { WeighingSectionSchema } from "./weighing-schemas";
 
 export type PlatformStatusMap = Partial<Record<PlatformId, StatusId>>;
 export const PlatformStatusMapSchema: z.ZodType<PlatformStatusMap> = z.partialRecord(
@@ -411,6 +413,8 @@ export interface ProjectBundle {
   journal?: JournalEvent[];
   /** Optional Kritik quality state — profile, assessments, findings (docs/rfcs/kritik.md § 4.1). Additive; the matrix is derived, never stored. */
   quality?: QualitySection;
+  /** Optional weighing state — the project's own criteria sets (a positioning), matrices and assessments (docs/rfcs/weighing.md). Additive; served, cost and kept share are derived, never stored. */
+  weighing?: WeighingSection;
 }
 
 export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
@@ -428,6 +432,10 @@ export const ProjectBundleSchema: z.ZodType<ProjectBundle> = z.object({
   quality: QualitySectionSchema.optional().meta({
     description:
       "Optional Kritik quality state (docs/rfcs/kritik.md \u00a7 4.1) \u2014 the pinned pack version, the project's surface profile, its assessments and findings. Additive: a bundle without it is not an error, and the comparative matrix is derived from it (deriveQualityMatrix), never stored.",
+  }),
+  weighing: WeighingSectionSchema.optional().meta({
+    description:
+      "Optional weighing state (docs/rfcs/weighing.md) \u2014 the project's own criteria sets (a positioning), matrices and assessments, each assessment carrying its scorer, confidence and basis. Additive: a bundle without it is not an error, and every weight, served and cost figure is derived from it, never stored.",
   }),
 }).catchall(z.unknown()).meta({
   id: "ProjectBundle",

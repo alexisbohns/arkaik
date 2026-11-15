@@ -114,6 +114,28 @@ check("the values are, and their order is", fp !== acceptanceFingerprint(ac({ me
 check("whitespace is not", fp === acceptanceFingerprint(ac({ title: "  Accept   an invite ", metadata: { ...ac().metadata, gherkin: "Given a link When I tap it Then we connect" } })));
 check("a node with no metadata still fingerprints", /^fp1-/.test(acceptanceFingerprint({ title: "x" })));
 
+// --- The zod shapes ---------------------------------------------------------
+
+const section = { sets: [], matrices: [], assessments: [row()] };
+check("a valid section parses", WeighingSectionSchema.safeParse(section).success);
+check("a level of 3.5 is refused — no half points", !AssessmentSchema.safeParse(row({ level: 3.5 })).success);
+check("a confidence of 4 is refused", !AssessmentSchema.safeParse(row({ confidence: 4 })).success);
+check("a scorer is required", !AssessmentSchema.safeParse({ ...row(), scorer: undefined }).success);
+check("an unknown scorer kind is refused", !AssessmentSchema.safeParse(row({ scorer: { kind: "robot", id: "x" } })).success);
+check("unknown keys survive (a scorer's full distribution)", AssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
+check("a scorer may say whom it acts for: an optional string that survives, and a number is refused", AssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && AssessmentSchema.safeParse(row({ scorer: agent })).success && !AssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
+check("a set parses with its own anchors and weight", CriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
+
+const base = {
+  schema_version: 3,
+  project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+  nodes: [{ id: "AC-a", project_id: "p", species: "acceptance", title: "Accept an invite", status: "live", platforms: ["web"], metadata: { values: ["connects"] } }],
+  edges: [],
+};
+check("a bundle with a weighing section parses", ProjectBundleSchema.safeParse({ ...base, weighing: section }).success);
+check("a bundle without one still parses", ProjectBundleSchema.safeParse(base).success);
+check("schema_version stays 3 — the section is additive", base.schema_version === 3);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} weighing test(s) failed.`);
