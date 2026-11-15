@@ -35,7 +35,7 @@ Slice 1 = no new species, no nesting, no opportunities, no caps. `schema_version
 | D5 | **The fold, the planner and the derivation live in `@arkaik/schema`**, not `lib/`. | The MCP server cannot import `lib/`, and every new `@/…` import in a tested app file silently breaks one of the hand-maintained alias tables (§ 1.4). Nothing in this plan adds a new `@/…` specifier to a module a DB-free loader compiles. |
 | D6 | **Kept share uses `resolvePlatformStatus`** (`packages/schema/src/acceptance.ts`), pinned by a parity test to `getNodePlatformStatuses` in `lib/utils/platform-status.ts`. | The brief says use `getNodePlatformStatuses`; the MCP server cannot import it. Both read `metadata.platformStatuses[p] ?? node.status`; the test fails if they ever diverge. |
 | D7 | **Archived promises are weighed but counted in no mass.** `kept_share` is `null` (not 0) when a promise applies to no platform, and contributes 0 to kept mass. **Owner: yes (decided).** | "Subjects = every acceptance" would otherwise count a dead promise in the totals. |
-| D8 | **Flag definitions.** `claim_not_supported`: claimed, and the *stored* winner is ≤ 1. `unclaimed_value`: not claimed, stored winner ≥ 1. `unclaimed_cost`: **any** stored negative — a claim in `metadata.values` is positive intent, so a cost is never claimed. A seeded cell never raises a flag. A stored `0` suppresses a seed and flags the claim. | ARCHITECTURE § 3 table + DISCUSSION § signed scale. |
+| D8 | **Flag definitions — a clean partition, four flags.** Only a *stored* winner raises one; a seeded cell never does. `claim_not_supported`: claimed, stored winner **0 or 1**. `claim_contradicted`: claimed, stored winner **negative** (and only this flag — the promise costs what it claims to serve). `unclaimed_value`: not claimed, stored winner ≥ 1. `unclaimed_cost`: not claimed, stored winner negative — a claim in `metadata.values` is positive intent, so a cost is never claimed. A stored `0` suppresses a seed and flags the claim. A cell raises at most one flag. | ARCHITECTURE § 3 table + DISCUSSION § signed scale; the RFC § 7 table names all four situations. |
 | D9 | **The positioning editor lives in Settings** (`components/settings/PositioningPanel.tsx`), not on the Pyramid. | Settings is where this app keeps everything that *configures* a project (Products live there for the same reason); a positioning is a statement of intent, not a reading; the Pyramid is a derived page and the next design pass (tweaker) will reshape it, and an editor should not move with it. |
 | D10 | **`JOURNAL_EVENT_TYPES` stays at 22** (`tests/schema/journal.test.js` asserts the count). The new events join `JOURNAL_EVENT_SCHEMAS` / `KnownJournalEventSchema` only — exactly what `quality.assessment.scored` did. | Kritik precedent. |
 | D11 | **A third MCP tool, `save_positioning`.** The brief names two. Without it an agent on a *hosted* project has no way to draft a positioning (in a repo it could edit a file). It is the last task of Part 4 and self-contained — **Owner: keep (decided).** Agents may draft and activate a positioning; a human can revert it (see R17 for what the journal records of a save). | DISCUSSION: "an agent drafts it from the landing page". |
@@ -2276,11 +2276,14 @@ Then read the PR's comments; if the Lab Note reminder comments, add the `no-lab-
 **The rules this part pins** (so a reviewer can read the tests as the spec):
 
 - Seeds: first claimed value +3, second +2, the rest +1; scorer `rule` (`seed-by-claim-order`), confidence 0; **positive only**; computed, never stored; unknown or repeated values ignored.
-- Effective level per cell: human > agent > seed; latest `ts` wins within a kind (a tie goes to the later row); a stored `rule` row is ignored. **Staleness never changes the winner** — it flags it; the fresh agent level rides beside a stale human one in `others`. A human and an agent two or more levels apart put the cell on the review list.
-- `served` = Σ(level ÷ 3) over positive levels; `cost` = Σ(|level| ÷ 3) over negative ones. Never netted.
-- `positioned` exists only with an **active** positioning; each element contributes its mass × its weight (absent weight = 1); a draft yields `null`.
+- Rows a cell can read: a level must be a whole number on the set's scale (`weighingScaleOf`) — 99, 2.5 and −4 are skipped, and the cell reads its seed. A confidence outside `CONFIDENCE_LEVELS` reads as **0** ("unknown is a guess", so guesswork is never understated).
+- Effective level per cell: human > agent > seed; the latest `ts` wins within a kind, compared as times (`Date.parse`; an unparseable `ts` is the oldest; a tie goes to the later row); a stored `rule` row is ignored. **Staleness never changes the winner** — it flags it; the fresh agent level rides beside a stale human one in `others`. A human and an agent two or more levels apart put the cell on the review list.
+- `served` = Σ(level ÷ 3) over positive levels; `cost` = Σ(|level| ÷ 3) over negative ones. Never netted. Whole levels are summed and divided by 3 once; the figures are returned **unrounded** (rounding is the surface's: the MCP tool and the panel round at their edge).
+- `positioned` exists only with an **active** positioning *that is the matrix's own* (`id === matrix.positioning` **and** `role === "positioning"`); each element contributes its mass × its weight (a weight of 0 means 0; a missing, non-finite or negative weight is 1; a duplicate criterion id loses to the first); a draft yields `null`. It carries its own weighted `guesswork` share.
+- A matrix whose `status` is not absent/`"active"` is a draft and feeds no roll-up: `buildWeighingContext` and `deriveWeighing` return `undefined` for it.
+- Claim flags are a **clean partition** (only a stored winner raises one): claimed and 0 or 1 → `claim_not_supported`; claimed and negative → `claim_contradicted` (only that); not claimed and ≥ 1 → `unclaimed_value`; not claimed and negative → `unclaimed_cost`.
 - `kept_share` = platforms where the promise is live ÷ platforms it applies to; `null` for none. Pinned to `getNodePlatformStatuses` by a parity check.
-- Element masses: `promised` = Σ positive ÷ 3; `kept` = the same × the promise's kept share (0 when `null`); `cost` = Σ|negative| ÷ 3; `guesswork` = the share of `promised` resting on confidence-0 cells. Archived promises count in none.
+- Element masses: `promised` = Σ positive ÷ 3; `kept` = the same × the promise's kept share (0 when `null`); `cost` = Σ|negative| ÷ 3; `guesswork` = `{ promised, kept, cost }`, each the share of that mass resting on confidence-0 cells (the totals carry the same three). Archived promises count in none — nor in `totals.assessed`. A node id repeated in the input is judged once (the first wins).
 
 ### Task 2.1: Seeding and the effective level of a cell
 
@@ -2289,7 +2292,7 @@ Then read the PR's comments; if the Lab Note reminder comments, add the `no-lab-
 - Modify: `packages/schema/src/index.ts`
 - Create: `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/schema/weighing-derive.test.js` (preamble, the first two sections, epilogue). Tasks 2.2 and 2.3 insert more sections **above** the final `fs.rmSync(…)` lines.
 
@@ -2408,12 +2411,12 @@ if (failures > 0) {
 console.log("\nAll weighing-derive tests passed.");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: seedLevelAt is not a function`.
 
-- [ ] **Step 3: Write the first half of `weighing-derive.ts`**
+- [x] **Step 3: Write the first half of `weighing-derive.ts`**
 
 Create `packages/schema/src/weighing-derive.ts` with the module header (imports included — later tasks use them), the seeding section and the one-cell section:
 
@@ -2436,15 +2439,28 @@ Create `packages/schema/src/weighing-derive.ts` with the module header (imports 
  * at a level seeded from the *order* of `metadata.values` (first +3, second +2,
  * the rest +1), scorer `rule`, confidence 0. Negatives are never seeded.
  *
+ * **Every number says how much of it is guesswork** (RFC § 12): alongside each
+ * share or mass, the part of it that rests on confidence-0 cells. A confidence
+ * that is not one of {@link CONFIDENCE_LEVELS} reads as 0 — an unknown
+ * confidence is a guess, so a guesswork share is never understated.
+ *
+ * **Exact, not rounded.** Sums are taken over whole levels and divided by 3
+ * once, so no float drift accumulates; the figures themselves are returned
+ * unrounded so a test (or a caller summing them) can rely on them. Rounding is
+ * a display concern and belongs to the surface (the MCP tool and the panel
+ * round at their edge).
+ *
  * Same doctrine as {@link ./quality}: pure, immutable, zod-free and fs-free,
  * minimal `Pick<>` inputs, lenient and total — a level outside the scale, an
  * element the set dropped, a node with no platforms degrade to a blank cell or
- * a `null`, never a throw.
+ * a `null`, never a throw. Nothing here mutates its inputs; `others` on a cell
+ * and `positioning.set` on a view are REFERENCES into them, not copies.
  */
 
 import { DEFAULT_DELIVERED_STATUSES, resolvePlatformStatus } from "./acceptance";
 import type { Node } from "./bundle";
 import {
+  CONFIDENCE_LEVELS,
   acceptanceFingerprint,
   cellKey,
   isActiveWeighingSet,
@@ -2457,13 +2473,13 @@ import {
   type WeighingScorer,
   type WeighingSection,
 } from "./weighing";
-import { VALUE_MATRIX_ID, resolveWeighing, setOfRef } from "./weighing-library";
+import { VALUE_MATRIX_ID, resolveWeighing, setOfRef, weighingScaleOf } from "./weighing-library";
 
 /** The seeding rule's scorer id — what a `rule` cell reads as. */
 export const SEED_SCORER_ID = "seed-by-claim-order";
 
-/** The scorer every seed carries. */
-const SEED_SCORER: WeighingScorer = { kind: "rule", id: SEED_SCORER_ID };
+/** The scorer every seed carries. Frozen: every seed (and every cell reading one) shares it. */
+const SEED_SCORER: WeighingScorer = Object.freeze({ kind: "rule", id: SEED_SCORER_ID });
 
 /** A seed has no time. */
 export const SEED_TS = "1970-01-01T00:00:00.000Z";
@@ -2516,24 +2532,33 @@ export interface EffectiveCell {
   /** The winning level. */
   level: number;
   scorer: WeighingScorer;
+  /** 0 when the stored one is not a known confidence: unknown is a guess. */
   confidence: WeighingConfidence;
   /** `seed` means no scorer has judged this cell — the level is the rule's guess. */
   source: "stored" | "seed";
   /** The subject or the set moved since the winner looked. Never changes who wins. */
   stale: boolean;
+  /** Only when the stored evidence is a string. */
   evidence?: string;
   /** The author claimed this element in `metadata.values`. */
   claimed: boolean;
-  /** Stored rows of the other kinds — the fresh agent level beside a stale human one. */
+  /** Stored rows of the other kinds — the fresh agent level beside a stale human one. References to the stored rows, not copies. */
   others: WeighingAssessment[];
   /** A human and an agent differ by two levels or more. */
   review: boolean;
 }
 
-/** A row's time as text, `""` when it has none (the validator warns), so a row with no ts is the oldest. */
-const tsOf = (row: WeighingAssessment): string => (typeof row.ts === "string" ? row.ts : "");
+/** A row's time in ms. A missing or unparseable `ts` (the validator warns) is the oldest possible. */
+const tsOf = (row: WeighingAssessment): number => {
+  const ms = typeof row.ts === "string" ? Date.parse(row.ts) : Number.NaN;
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+};
 
-/** The latest row of a kind: greatest `ts`, a tie going to the later row. */
+/** A stored confidence the scale knows, else 0: an unknown confidence is a guess. */
+const confidenceOf = (value: unknown): WeighingConfidence =>
+  (CONFIDENCE_LEVELS as readonly unknown[]).includes(value) ? (value as WeighingConfidence) : 0;
+
+/** The latest row of a kind: greatest time, a tie going to the later row. */
 function latestOf(rows: readonly WeighingAssessment[]): WeighingAssessment | undefined {
   let best: WeighingAssessment | undefined;
   for (const row of rows) {
@@ -2587,10 +2612,10 @@ export function resolveCell(
     level: winner.level,
     // The winner was picked by `scorer?.kind`, so it has a scorer.
     scorer: winner.scorer as WeighingScorer,
-    confidence: winner.confidence,
+    confidence: confidenceOf(winner.confidence),
     source: "stored",
     stale,
-    ...(winner.evidence !== undefined ? { evidence: winner.evidence } : {}),
+    ...(typeof winner.evidence === "string" ? { evidence: winner.evidence } : {}),
     claimed,
     others: other === undefined ? [] : [other],
     review: human !== undefined && agent !== undefined && Math.abs(human.level - agent.level) >= 2,
@@ -2598,16 +2623,16 @@ export function resolveCell(
 }
 ```
 
-- [ ] **Step 4: Export it**
+- [x] **Step 4: Export it**
 
 In `packages/schema/src/index.ts`, after `export * from "./weighing-validate";` add `export * from "./weighing-derive";`.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `node tests/schema/weighing-derive.test.js && npx tsc --noEmit -p .`
 Expected: the seeding and cell checks `PASS:`, ending `All weighing-derive tests passed.`; `tsc` silent. (Lint is run at the end of the part: the header imports names the next tasks use.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts packages/schema/src/index.ts tests/schema/weighing-derive.test.js
@@ -2619,7 +2644,7 @@ git commit -m "feat(weighing): seeding and the level a cell reads at (part 2/5)"
 **Files:**
 - Modify: `packages/schema/src/weighing-derive.ts`, `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` line in `tests/schema/weighing-derive.test.js`:
 
@@ -2640,7 +2665,7 @@ const ctx = buildWeighingContext(section);
 const w = weighPromise(consent, ctx);
 check("served is the sum of positive levels over 3", near(w.served, 4 / 3), String(w.served));
 check("cost is the sum of |negative| levels over 3", near(w.cost, 1 / 3), String(w.cost));
-check("served and cost are never netted", !near(w.served - w.cost, w.served) && w.cost > 0);
+check("served and cost are never netted: served is exactly 4/3, cost 1/3, and nothing reads their difference (1)", w.served === 4 / 3 && w.cost === 1 / 3 && [w.served, w.cost, w.kept_share, w.guesswork.served, w.guesswork.cost].every((x) => x !== 1) && w.positioned === null);
 check("the claimed elements come first, in claim order, then the rest", eq(w.cells.map((c) => c.criterion), ["reduces-risk", "reduces-anxiety", "reduces-effort"]));
 check("an unclaimed negative is flagged as an unclaimed cost", eq(w.flags.unclaimed_cost, ["reduces-effort"]));
 check("a claim assessed at +3 is supported; one assessed at +1 is not (the consent page claims anxiety, delivers a touch)", eq(w.flags.claim_not_supported, ["reduces-anxiety"]) && w.flags.unclaimed_value.length === 0);
@@ -2689,12 +2714,12 @@ check(
 );
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: buildWeighingContext is not a function`.
 
-- [ ] **Step 3: Append the context and the promise sections**
+- [x] **Step 3: Append the context and the promise sections**
 
 Append to `packages/schema/src/weighing-derive.ts`:
 
@@ -2705,7 +2730,7 @@ Append to `packages/schema/src/weighing-derive.ts`:
 export interface WeighingContext {
   matrix: WeighingMatrix;
   set: WeighingCriteriaSet;
-  /** Stored non-rule rows by {@link cellKey}. */
+  /** Stored non-rule rows by {@link cellKey}, only those a reader can address with a level on the set's scale. */
   byCell: Map<string, WeighingAssessment[]>;
   /** The project's positioning set, active or not. */
   positioningSet: WeighingCriteriaSet | undefined;
@@ -2713,40 +2738,61 @@ export interface WeighingContext {
   positioning: { set: WeighingCriteriaSet; weights: Map<string, number> } | null;
 }
 
-/** Resolve a matrix over a section — `undefined` when the matrix or its set is not available. */
+/**
+ * Resolve a matrix over a section — `undefined` when the matrix or its set is
+ * not available, **or when the matrix is a draft** (anything but an absent or
+ * `"active"` status, {@link isActiveWeighingSet}): a draft feeds no roll-up.
+ */
 export function buildWeighingContext(
   section: Partial<Pick<WeighingSection, "sets" | "matrices" | "assessments">> | null | undefined,
   matrixId: string = VALUE_MATRIX_ID,
 ): WeighingContext | undefined {
   const resolved = resolveWeighing(section);
   const matrix = resolved.matrices.find((candidate) => candidate.id === matrixId);
-  if (matrix === undefined) return undefined;
+  if (matrix === undefined || !isActiveWeighingSet(matrix)) return undefined;
   const set = setOfRef(resolved, matrix.set);
   if (set === undefined) return undefined;
+  const scale = weighingScaleOf(set, resolved);
 
   const byCell = new Map<string, WeighingAssessment[]>();
-  // Rows a reader cannot address (no string matrix/subject/criterion) are skipped, and so is a
-  // row whose level is not a finite number — the validator warns about both.
+  // Rows a reader cannot address (no string matrix/subject/criterion) are skipped by
+  // `readWeighingAssessments`; a row whose level is not a whole number on the set's
+  // scale is skipped here (a cell then reads its seed or stays blank). The validator
+  // warns about both.
   for (const row of readWeighingAssessments(section)) {
-    if (row.matrix !== matrix.id || row.scorer?.kind === "rule" || typeof row.level !== "number" || !Number.isFinite(row.level)) continue;
+    if (row.matrix !== matrix.id || row.scorer?.kind === "rule") continue;
+    if (typeof row.level !== "number" || !Number.isInteger(row.level) || row.level < scale.min || row.level > scale.max) continue;
     const key = cellKey(row.matrix, row.subject, row.criterion);
     const rows = byCell.get(key);
     if (rows === undefined) byCell.set(key, [row]);
     else rows.push(row);
   }
 
-  const positioningSet = matrix.positioning === undefined ? undefined : resolved.sets.find((candidate) => candidate.id === matrix.positioning);
-  const positioning =
-    positioningSet === undefined || !isActiveWeighingSet(positioningSet)
-      ? null
-      : {
-          set: positioningSet,
-          weights: new Map(positioningSet.criteria.map((criterion) => [criterion.id, typeof criterion.weight === "number" && criterion.weight > 0 ? criterion.weight : 1] as const)),
-        };
+  // A positioning is the set the matrix points to AND that says it is one: the id alone is not enough.
+  const positioningSet =
+    matrix.positioning === undefined
+      ? undefined
+      : resolved.sets.find((candidate) => candidate.id === matrix.positioning && candidate.role === "positioning");
+  let positioning: WeighingContext["positioning"] = null;
+  if (positioningSet !== undefined && isActiveWeighingSet(positioningSet)) {
+    const weights = new Map<string, number>();
+    for (const criterion of positioningSet.criteria) {
+      if (weights.has(criterion.id)) continue; // the first wins
+      // 0 means "this element does not count"; anything that is not a finite, non-negative number means "no weight said" (1).
+      weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
+    }
+    positioning = { set: positioningSet, weights };
+  }
   return { matrix, set, byCell, positioningSet, positioning };
 }
 
 // --- One promise -------------------------------------------------------------
+
+/** A share (0–1) of a figure that rests on confidence-0 cells. */
+export interface ServedCostGuesswork {
+  served: number;
+  cost: number;
+}
 
 export interface PromiseWeighing {
   node_id: string;
@@ -2761,18 +2807,24 @@ export interface PromiseWeighing {
   served: number;
   /** Σ of |negative levels| ÷ 3. Never netted against `served`. */
   cost: number;
-  /** The same sums over the positioned elements only, each times its weight. `null` without an active positioning. */
-  positioned: { served: number; cost: number } | null;
+  /** The same sums over the positioned elements only, each times its weight, with its own guesswork share. `null` without an active positioning. */
+  positioned: { served: number; cost: number; guesswork: ServedCostGuesswork } | null;
   /** Platforms where the promise is live ÷ platforms it applies to; `null` when it applies to none. */
   kept_share: number | null;
   /** The share (0–1) of `served` and of `cost` that rests on confidence-0 cells. */
-  guesswork: { served: number; cost: number };
+  guesswork: ServedCostGuesswork;
+  /**
+   * A clean partition — a cell raises at most one flag, and only a STORED
+   * winner raises any (a seeded cell never does).
+   */
   flags: {
-    /** Claimed, and the stored level is 1 or less: the claim is stronger than the promise. */
+    /** Claimed, and the stored winner is 0 or 1: the claim is stronger than the promise. */
     claim_not_supported: string[];
-    /** Not claimed, and the stored level is 1 or more: the promise does more than it says. */
+    /** Claimed, and the stored winner is negative: the promise costs what it claims to serve. */
+    claim_contradicted: string[];
+    /** Not claimed, and the stored winner is 1 or more: the promise does more than it says. */
     unclaimed_value: string[];
-    /** Any stored negative level — authors claim intent, so a cost is never claimed. */
+    /** Not claimed, and the stored winner is negative — authors claim intent, so a cost is never claimed. */
     unclaimed_cost: string[];
   };
   /** Elements whose winning level was scored against a subject or set that has since moved. */
@@ -2791,6 +2843,9 @@ export function keptShare(node: Pick<Node, "status" | "platforms" | "metadata">)
   return live / node.platforms.length;
 }
 
+/** A guesswork share: the part of `total` that is `guess`, 0 when there is nothing. */
+const share = (guess: number, total: number): number => (total > 0 ? guess / total : 0);
+
 /** Weigh one promise against a resolved context. */
 export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWeighing {
   const fingerprint = acceptanceFingerprint(node);
@@ -2807,50 +2862,67 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
     if (cell !== undefined) cells.push(cell);
   }
 
+  // Whole levels are summed and divided by 3 once, so no float drift accumulates.
   let served = 0;
   let cost = 0;
   let servedGuess = 0;
   let costGuess = 0;
   let positionedServed = 0;
   let positionedCost = 0;
-  const flags: PromiseWeighing["flags"] = { claim_not_supported: [], unclaimed_value: [], unclaimed_cost: [] };
+  let positionedServedGuess = 0;
+  let positionedCostGuess = 0;
+  const flags: PromiseWeighing["flags"] = { claim_not_supported: [], claim_contradicted: [], unclaimed_value: [], unclaimed_cost: [] };
   const stale: string[] = [];
   const review: string[] = [];
 
   for (const cell of cells) {
     const weight = ctx.positioning?.weights.get(cell.criterion);
+    const guess = cell.confidence === 0;
     if (cell.level > 0) {
-      const mass = cell.level / 3;
-      served += mass;
-      if (cell.confidence === 0) servedGuess += mass;
-      if (weight !== undefined) positionedServed += mass * weight;
+      served += cell.level;
+      if (guess) servedGuess += cell.level;
+      if (weight !== undefined) {
+        positionedServed += cell.level * weight;
+        if (guess) positionedServedGuess += cell.level * weight;
+      }
     } else if (cell.level < 0) {
-      const mass = -cell.level / 3;
-      cost += mass;
-      if (cell.confidence === 0) costGuess += mass;
-      if (weight !== undefined) positionedCost += mass * weight;
+      cost += -cell.level;
+      if (guess) costGuess += -cell.level;
+      if (weight !== undefined) {
+        positionedCost += -cell.level * weight;
+        if (guess) positionedCostGuess += -cell.level * weight;
+      }
     }
     if (cell.stale) stale.push(cell.criterion);
     if (cell.review) review.push(cell.criterion);
     if (cell.source === "stored") {
-      if (cell.claimed && cell.level <= 1) flags.claim_not_supported.push(cell.criterion);
-      if (!cell.claimed && cell.level >= 1) flags.unclaimed_value.push(cell.criterion);
-      if (cell.level < 0) flags.unclaimed_cost.push(cell.criterion);
+      if (cell.claimed) {
+        if (cell.level < 0) flags.claim_contradicted.push(cell.criterion);
+        else if (cell.level <= 1) flags.claim_not_supported.push(cell.criterion);
+      } else if (cell.level < 0) flags.unclaimed_cost.push(cell.criterion);
+      else if (cell.level >= 1) flags.unclaimed_value.push(cell.criterion);
     }
   }
 
   return {
     node_id: node.id,
-    title: node.title,
+    title: node.title ?? "",
     status: node.status,
     archived: node.status === "archived",
     fingerprint,
     cells,
-    served,
-    cost,
-    positioned: ctx.positioning === null ? null : { served: positionedServed, cost: positionedCost },
+    served: served / 3,
+    cost: cost / 3,
+    positioned:
+      ctx.positioning === null
+        ? null
+        : {
+            served: positionedServed / 3,
+            cost: positionedCost / 3,
+            guesswork: { served: share(positionedServedGuess, positionedServed), cost: share(positionedCostGuess, positionedCost) },
+          },
     kept_share: keptShare(node),
-    guesswork: { served: served > 0 ? servedGuess / served : 0, cost: cost > 0 ? costGuess / cost : 0 },
+    guesswork: { served: share(servedGuess, served), cost: share(costGuess, cost) },
     flags,
     stale,
     review,
@@ -2858,12 +2930,12 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: `PASS: the schema's platform resolution agrees with lib/utils/platform-status.ts getNodePlatformStatuses` among the new checks, ending `All weighing-derive tests passed.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts tests/schema/weighing-derive.test.js
@@ -2875,7 +2947,7 @@ git commit -m "feat(weighing): served, cost, positioned, kept share, claim flags
 **Files:**
 - Modify: `packages/schema/src/weighing-derive.ts`, `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` lines in `tests/schema/weighing-derive.test.js`:
 
@@ -2896,25 +2968,150 @@ check("connects: kept = 1 × 1/2 (a1) + 1 × 1 (a2) = 1.5", near(derived.element
 check("reduces-anxiety carries a cost mass and no promised mass", near(derived.elements["reduces-anxiety"].cost, 2 / 3) && derived.elements["reduces-anxiety"].promised === 0);
 check("an archived promise is weighed but counted nowhere", derived.totals.archived === 1 && near(derived.totals.promised, 2));
 check("only a1 has a stored cell", derived.totals.assessed === 1);
-check("connects: guesswork is the seeded share — a2's mass over the total", near(derived.elements.connects.guesswork, 0.5), String(derived.elements.connects.guesswork));
-check("the total guesswork share is the same reading across elements", near(derived.totals.guesswork, 0.5));
+check("connects: guesswork is the seeded share — a2's mass over the total", near(derived.elements.connects.guesswork.promised, 0.5), String(derived.elements.connects.guesswork.promised));
+check("the total guesswork share is the same reading across elements", near(derived.totals.guesswork.promised, 0.5));
 check("a promise built only from seeds is all guesswork", near(derived.promises.find((p) => p.node_id === "AC-2").guesswork.served, 1));
 check("a human-scored promise at confidence 2 is no guesswork", near(derived.promises.find((p) => p.node_id === "AC-1").guesswork.served, 0));
 check("an unknown matrix derives to nothing", deriveWeighing([a1], sec, "nope") === undefined);
-check("a project with no section derives from seeds alone", deriveWeighing([a2], undefined).totals.guesswork === 1);
+check("a project with no section derives from seeds alone", deriveWeighing([a2], undefined).totals.guesswork.promised === 1);
 
 const order = sortPromises(derived.promises, "served").map((p) => p.node_id);
 check("promises sort by served, heaviest first, ties by title", order[0] === "AC-1" && order.length === 3);
 check("promises sort by title A to Z", sortPromises(derived.promises, "title")[0].title === "Promise AC-1");
 check("promises sort by cost, costliest first", sortPromises(derived.promises, "cost")[0].node_id === "AC-1");
+
+// --- Review round: levels, confidence, positioning lookup, guesswork, drafts, flags ----
+
+const lone = ac("AC-lone", ["connects"]);
+const lrow = (criterion, level, over = {}) => row(lone, criterion, level, over);
+const cellOf = (node, rows, criterion = "connects") => weighPromise(node, buildWeighingContext({ assessments: rows })).cells.find((c) => c.criterion === criterion);
+
+check("a level above the scale is skipped — the cell reads its seed", cellOf(lone, [lrow("connects", 99)]).source === "seed");
+check("a fractional level is skipped", cellOf(lone, [lrow("connects", 2.5)]).source === "seed");
+check("a level below the scale is skipped", cellOf(lone, [lrow("connects", -4)]).source === "seed");
+check("the scale's own ends are read", cellOf(lone, [lrow("connects", -3)]).level === -3 && cellOf(lone, [lrow("connects", 3)]).level === 3);
+check("a skipped out-of-scale row does not shadow a good one", cellOf(lone, [lrow("connects", 2), lrow("connects", 99, { ts: "2026-11-16T10:00:00.000Z" })]).level === 2);
+
+check("a confidence of \"0\" counts as a guess", weighPromise(lone, buildWeighingContext({ assessments: [lrow("connects", 3, { confidence: "0" })] })).guesswork.served === 1);
+check("a confidence of 4 counts as a guess", weighPromise(lone, buildWeighingContext({ assessments: [lrow("connects", 3, { confidence: 4 })] })).guesswork.served === 1);
+check("an unknown confidence reads as 0 on the cell too", cellOf(lone, [lrow("connects", 3, { confidence: 4 })]).confidence === 0);
+check("a real confidence is kept", cellOf(lone, [lrow("connects", 3, { confidence: 3 })]).confidence === 3);
+
+const bare = { id: "positioning", version: "1.0.0", scale: set.scale, criteria: [{ id: "connects", weight: 2 }] };
+const bareCtx = buildWeighingContext({ sets: [bare], assessments: [lrow("connects", 3)] });
+check("a set with the positioning id but no role is not applied", weighPromise(lone, bareCtx).positioned === null && bareCtx.positioningSet === undefined);
+check("a set with the positioning role under another id is not the matrix's positioning", buildWeighingContext({ sets: [{ ...bare, id: "other", role: "positioning" }] }).positioningSet === undefined);
+
+const weights = buildWeighingContext({ sets: [positioning("active", [{ id: "connects", weight: 0 }, { id: "informs", weight: Infinity }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }])] }).positioning.weights;
+check("a weight of 0 means 0; a non-finite or negative weight reads as 1; the first duplicate wins", weights.get("connects") === 0 && weights.get("informs") === 1 && weights.get("organizes") === 1);
+
+// Guesswork on every number
+const guessy = ac("AC-guessy", ["connects"], { platforms: ["web", "ios"], metadata: { gherkin: "g", values: ["connects"], platformStatuses: { web: "live", ios: "development" } } });
+const guessSec = { sets: [positioning("active", [{ id: "connects", weight: 2 }, { id: "reduces-effort", weight: 3 }])], assessments: [row(guessy, "connects", 3, { confidence: 2 }), row(guessy, "reduces-effort", -3, { scorer: agent, confidence: 0 }), row(guessy, "reduces-anxiety", -3, { scorer: agent, confidence: 2 })] };
+const gv = deriveWeighing([guessy], guessSec);
+const gp = gv.promises[0];
+check("a confidence-0 agent cost is a guess: half the cost rests on it", near(gp.cost, 2) && near(gp.guesswork.cost, 0.5) && gp.guesswork.served === 0, JSON.stringify(gp.guesswork));
+check("positioned carries its own, weighted, guesswork share", near(gp.positioned.cost, 3) && near(gp.positioned.guesswork.cost, 1) && gp.positioned.guesswork.served === 0, JSON.stringify(gp.positioned));
+check("an element says how much of its cost, promised and kept mass is a guess", near(gv.elements["reduces-effort"].guesswork.cost, 1) && near(gv.elements["reduces-anxiety"].guesswork.cost, 0) && gv.elements.connects.guesswork.promised === 0 && gv.elements.connects.guesswork.kept === 0);
+check("the totals say it for promised, kept and cost", gv.totals.guesswork.promised === 0 && gv.totals.guesswork.kept === 0 && near(gv.totals.guesswork.cost, 0.5), JSON.stringify(gv.totals.guesswork));
+const seededOnly = deriveWeighing([ac("AC-s", ["connects"], { platforms: ["web", "ios"], metadata: { gherkin: "g", values: ["connects"], platformStatuses: { web: "live" } } })], undefined);
+check("a seeded promise's kept mass is all guesswork too", seededOnly.totals.guesswork.promised === 1 && seededOnly.totals.guesswork.kept === 1 && seededOnly.elements.connects.guesswork.kept === 1);
+
+// Draft matrices feed no roll-up
+const projectMatrix = (status) => ({ id: "m2", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, ...(status === undefined ? {} : { status }) });
+check("a matrix with no status is active", deriveWeighing([a2], { matrices: [projectMatrix()] }, "m2") !== undefined);
+check("a matrix with status active is active", deriveWeighing([a2], { matrices: [projectMatrix("active")] }, "m2") !== undefined);
+check("a draft matrix derives to undefined", deriveWeighing([a2], { matrices: [projectMatrix("draft")] }, "m2") === undefined);
+check("a mistyped matrix status is a draft too", ["Draft", "archived", 5].every((st) => deriveWeighing([a2], { matrices: [projectMatrix(st)] }, "m2") === undefined && buildWeighingContext({ matrices: [projectMatrix(st)] }, "m2") === undefined));
+
+// The claim flags are a clean partition
+const claims = ac("AC-claims", ["connects", "informs", "organizes", "reduces-risk", "variety"]);
+const cw = weighPromise(claims, buildWeighingContext({
+  assessments: [
+    row(claims, "connects", -2),       // claimed, negative -> contradicted only
+    row(claims, "informs", 0),         // claimed, 0 -> not supported
+    row(claims, "organizes", 1),       // claimed, 1 -> not supported
+    row(claims, "reduces-risk", 2),    // claimed, 2 -> holds, no flag
+    row(claims, "variety", 3),         // claimed, 3 -> holds, no flag
+    row(claims, "reduces-effort", 1),  // unclaimed +1 -> unclaimed value
+    row(claims, "reduces-anxiety", -1, { scorer: agent }), // unclaimed negative -> unclaimed cost
+    row(claims, "avoids-hassles", 0),  // unclaimed 0 -> nothing
+  ],
+}));
+check("claim_not_supported: claimed and the stored winner is 0 or 1", eq(cw.flags.claim_not_supported, ["informs", "organizes"]), JSON.stringify(cw.flags));
+check("claim_contradicted: claimed and the stored winner is negative — and only that flag", eq(cw.flags.claim_contradicted, ["connects"]) && !cw.flags.claim_not_supported.includes("connects") && !cw.flags.unclaimed_cost.includes("connects"));
+check("unclaimed_value: not claimed and the stored winner is 1 or more", eq(cw.flags.unclaimed_value, ["reduces-effort"]));
+check("unclaimed_cost: not claimed and the stored winner is negative", eq(cw.flags.unclaimed_cost, ["reduces-anxiety"]));
+check("the four flags never overlap", (() => { const all = Object.values(cw.flags).flat(); return new Set(all).size === all.length; })());
+
+// A promise that applies to no platform, through the whole derivation
+const nowhere = ac("AC-nowhere", ["connects"], { platforms: [] });
+const nv = deriveWeighing([nowhere], { assessments: [row(nowhere, "connects", 3)] });
+check("a promise with no platform: promised is counted, kept is 0, kept_share is null", near(nv.elements.connects.promised, 1) && nv.elements.connects.kept === 0 && nv.promises[0].kept_share === null && nv.totals.kept === 0);
+
+// --- Review round: quality -------------------------------------------------------
+
+check("the seed scorer is frozen", Object.isFrozen(seed.scorer) && Object.isFrozen(weighPromise(lone, buildWeighingContext(undefined)).cells[0].scorer));
+
+const tie = { ts: "2026-11-15T12:00:00.000Z" };
+check("a ts tie goes to the later row", cellOf(lone, [lrow("connects", 1, tie), lrow("connects", 2, tie)]).level === 2 && cellOf(lone, [lrow("connects", 2, tie), lrow("connects", 1, tie)]).level === 1);
+check("timestamps compare as times, not text: an offset still orders", cellOf(lone, [lrow("connects", 1, { ts: "2026-11-15T12:00:00.000+02:00" }), lrow("connects", 2, { ts: "2026-11-15T11:00:00.000Z" })]).level === 2);
+check("an unparseable ts is the oldest, whatever its spelling", cellOf(lone, [lrow("connects", 3), lrow("connects", 1, { ts: "yesterday" })]).level === 3 && cellOf(lone, [lrow("connects", 1, { ts: "yesterday" }), lrow("connects", 3)]).level === 3);
+
+const freshAgent = resolveCell("connects", [row(node, "connects", 2, { basis: { fingerprint: "fp1-old", set_version: "1.0.0" } }), row(node, "connects", 3, { scorer: agent })], seed, current, true);
+check("a stale human beside a fresh agent: the human still wins, flagged, and the agent (current basis) rides beside it", freshAgent.level === 2 && freshAgent.stale === true && freshAgent.others[0].level === 3 && freshAgent.others[0].basis.fingerprint === current.fingerprint);
+check("evidence is kept only when it is a string", resolve([row(node, "connects", 2, { evidence: 7 })]).evidence === undefined && resolve([row(node, "connects", 2, { evidence: "why" })]).evidence === "why");
+
+const archivedNode = ac("AC-arch", ["connects"], { status: "archived", platforms: ["web", "ios"] });
+const av = deriveWeighing([archivedNode, a2], { assessments: [row(archivedNode, "reduces-effort", -3), row(archivedNode, "connects", 3)] });
+const ap = av.promises.find((p) => p.node_id === "AC-arch");
+check("an archived promise keeps its cells and flags", ap.cells.length === 2 && eq(ap.flags.unclaimed_cost, ["reduces-effort"]) && near(ap.cost, 1));
+check("…but is excluded from every mass and from the kept total", av.elements["reduces-effort"].cost === 0 && near(av.totals.cost, 0) && near(av.elements.connects.promised, 1) && near(av.elements.connects.kept, 1));
+check("…and from the assessed count", av.totals.assessed === 0 && av.totals.archived === 1);
+
+const driftNode = ac("AC-drift", ["connects", "informs"]);
+const drift = weighPromise(driftNode, buildWeighingContext({ assessments: [
+  row(driftNode, "connects", 3, { basis: { fingerprint: "fp1-old", set_version: "1.0.0" } }),
+  row(driftNode, "informs", 3), row(driftNode, "informs", 0, { scorer: agent }),
+] }));
+check("the promise lists the stale elements", eq(drift.stale, ["connects"]));
+check("the promise lists the elements a human and an agent disagree on", eq(drift.review, ["informs"]));
+
+const listNodes = [ac("AC-l1", ["connects"]), ac("AC-l2", ["connects"]), ac("AC-l3", ["connects"])];
+const listMatrix = { id: "m-list", set: "value-contribution@1", subjects: { kind: "list", items: [{ node_id: "AC-l1" }, { id: "AC-l2" }, { id: "AC-ghost" }] } };
+check("a list matrix judges the nodes it names, by node_id or id", eq(deriveWeighing(listNodes, { matrices: [listMatrix] }, "m-list").promises.map((p) => p.node_id), ["AC-l1", "AC-l2"]));
+check("a node repeated in the input is judged once, first wins", deriveWeighing([a2, { ...a2, title: "Again" }], undefined).promises.length === 1 && deriveWeighing([a2, { ...a2, title: "Again" }], undefined).promises[0].title === "Promise AC-2");
+
+const nameless = { ...ac("AC-nameless", ["connects"]), title: undefined, platforms: undefined };
+check("a node with no title or platforms derives and sorts without throwing", (() => {
+  const v = deriveWeighing([nameless, a2], undefined);
+  return v.promises.length === 2 && v.promises[0].kept_share === null && sortPromises(v.promises, "title").length === 2;
+})());
+
+const sevenNodes = Array.from({ length: 7 }, (_, i) => ac(`AC-f${i}`, ["connects"]));
+const sevenRows = sevenNodes.map((n) => row(n, "connects", 1));
+check("sums are of whole levels divided by 3 once, so seven +1 cells read exactly 7/3", deriveWeighing(sevenNodes, { assessments: sevenRows }).totals.promised === 7 / 3);
+
+// Sorting: distinct values
+const s1 = ac("AC-s1", ["informs", "connects", "organizes"]); // seeds 3,2,1
+const s2 = ac("AC-s2", ["connects", "informs"]);              // seeds 3,2
+const s3 = ac("AC-s3", ["connects"]);                         // seeds 3
+const sortSec = { sets: [positioning("active", [{ id: "connects", weight: 1 }, { id: "informs", weight: 2 }])], assessments: [row(s3, "reduces-effort", -3), row(s2, "reduces-effort", -1)] };
+const sv = deriveWeighing([s3, s2, s1], sortSec);
+check("promises sort by served over distinct values: 2, 5/3, 1", eq(sortPromises(sv.promises, "served").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]) && near(sv.promises.find((p) => p.node_id === "AC-s1").served, 2));
+check("promises sort by cost over distinct values: costliest first, then the rest by title", eq(sortPromises(sv.promises, "cost").map((p) => p.node_id), ["AC-s3", "AC-s2", "AC-s1"]));
+check("promises sort by positioned over distinct values", eq(sortPromises(sv.promises, "positioned").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]));
+check("a promise with no positioned figure sorts last on positioned", eq(sortPromises([{ node_id: "a", title: "A", served: 9, cost: 0, positioned: null }, { node_id: "b", title: "B", served: 0, cost: 0, positioned: { served: 0 } }], "positioned").map((p) => p.node_id), ["b", "a"]));
+check("equal titles break by node id", eq(sortPromises([{ node_id: "z", title: "Same", served: 1, cost: 0, positioned: null }, { node_id: "y", title: "Same", served: 1, cost: 0, positioned: null }], "served").map((p) => p.node_id), ["y", "z"]));
+check("a missing title sorts as empty", eq(sortPromises([{ node_id: "b", title: "B", served: 0, cost: 0, positioned: null }, { node_id: "a", served: 0, cost: 0, positioned: null }], "title").map((p) => p.node_id), ["a", "b"]));
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: deriveWeighing is not a function`.
 
-- [ ] **Step 3: Append the matrix section**
+- [x] **Step 3: Append the matrix section**
 
 Append to `packages/schema/src/weighing-derive.ts`:
 
@@ -2929,14 +3126,14 @@ export interface ElementMass {
   kept: number;
   /** Σ over promises of |negative level| ÷ 3. */
   cost: number;
-  /** The share (0–1) of `promised` that rests on confidence-0 cells. */
-  guesswork: number;
+  /** For each mass, the share (0–1) of it that rests on confidence-0 cells. */
+  guesswork: { promised: number; kept: number; cost: number };
 }
 
 export interface WeighingView {
   matrix: WeighingMatrix;
   set: WeighingCriteriaSet;
-  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. */
+  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference. */
   positioning: { set: WeighingCriteriaSet; active: boolean } | null;
   promises: PromiseWeighing[];
   /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
@@ -2945,27 +3142,36 @@ export interface WeighingView {
     promised: number;
     kept: number;
     cost: number;
-    guesswork: number;
+    guesswork: { promised: number; kept: number; cost: number };
     promises: number;
     archived: number;
-    /** Promises with at least one stored (non-seed) cell. */
+    /** Live promises with at least one stored (non-seed) cell — archived ones are counted nowhere, like the masses. */
     assessed: number;
   };
 }
 
-/** The nodes a matrix judges. */
+/** The nodes a matrix judges, each node id once (the first wins). */
 export function matrixSubjects<N extends Pick<Node, "id" | "species">>(nodes: readonly N[], matrix: WeighingMatrix): N[] {
-  if (matrix.subjects.kind === "query") {
-    const species = matrix.subjects.species;
-    return nodes.filter((node) => node.species === species);
+  const wanted =
+    matrix.subjects.kind === "query"
+      ? undefined
+      : new Set(matrix.subjects.items.map((item) => item?.node_id ?? item?.id));
+  const species = matrix.subjects.kind === "query" ? matrix.subjects.species : undefined;
+  const seen = new Set<string>();
+  const out: N[] = [];
+  for (const node of nodes) {
+    if (seen.has(node.id)) continue;
+    if (wanted === undefined ? node.species !== species : !wanted.has(node.id)) continue;
+    seen.add(node.id);
+    out.push(node);
   }
-  const ids = new Set(matrix.subjects.items.map((item) => item?.node_id ?? item?.id));
-  return nodes.filter((node) => ids.has(node.id));
+  return out;
 }
 
 /**
  * Derive the whole matrix: every promise weighed, every element's masses, the
- * totals. `undefined` when the matrix or its set is not available.
+ * totals. `undefined` when the matrix or its set is not available or the
+ * matrix is a draft ({@link buildWeighingContext}).
  *
  * Every roll-up is computed from promises, never from another roll-up, and an
  * archived promise is weighed (so its form still works) but counted nowhere.
@@ -2979,43 +3185,55 @@ export function deriveWeighing(
   if (ctx === undefined) return undefined;
 
   const promises = matrixSubjects(nodes, ctx.matrix).map((node) => weighPromise(node, ctx));
-  const raw = new Map<string, { promised: number; kept: number; cost: number; promisedGuess: number }>(
-    ctx.set.criteria.map((criterion) => [criterion.id, { promised: 0, kept: 0, cost: 0, promisedGuess: 0 }]),
-  );
+  // Whole levels (kept: levels times a kept share), summed; each mass is divided by 3 once at the end.
+  interface Raw {
+    promised: number;
+    promisedGuess: number;
+    kept: number;
+    keptGuess: number;
+    cost: number;
+    costGuess: number;
+  }
+  const empty = (): Raw => ({ promised: 0, promisedGuess: 0, kept: 0, keptGuess: 0, cost: 0, costGuess: 0 });
+  const raw = new Map<string, Raw>(ctx.set.criteria.map((criterion) => [criterion.id, empty()]));
 
   let assessed = 0;
   let archived = 0;
   for (const promise of promises) {
-    if (promise.cells.some((cell) => cell.source === "stored")) assessed++;
     if (promise.archived) {
       archived++;
       continue;
     }
+    if (promise.cells.some((cell) => cell.source === "stored")) assessed++;
     const kept = promise.kept_share ?? 0;
     for (const cell of promise.cells) {
       const mass = raw.get(cell.criterion);
       if (mass === undefined) continue;
+      const guess = cell.confidence === 0;
       if (cell.level > 0) {
-        mass.promised += cell.level / 3;
-        mass.kept += (cell.level / 3) * kept;
-        if (cell.confidence === 0) mass.promisedGuess += cell.level / 3;
+        mass.promised += cell.level;
+        mass.kept += cell.level * kept;
+        if (guess) {
+          mass.promisedGuess += cell.level;
+          mass.keptGuess += cell.level * kept;
+        }
       } else if (cell.level < 0) {
-        mass.cost += -cell.level / 3;
+        mass.cost += -cell.level;
+        if (guess) mass.costGuess += -cell.level;
       }
     }
   }
 
   const elements: Record<string, ElementMass> = {};
-  let promised = 0;
-  let keptTotal = 0;
-  let cost = 0;
-  let promisedGuess = 0;
+  const total = empty();
   for (const [id, mass] of raw) {
-    elements[id] = { promised: mass.promised, kept: mass.kept, cost: mass.cost, guesswork: mass.promised > 0 ? mass.promisedGuess / mass.promised : 0 };
-    promised += mass.promised;
-    keptTotal += mass.kept;
-    cost += mass.cost;
-    promisedGuess += mass.promisedGuess;
+    elements[id] = {
+      promised: mass.promised / 3,
+      kept: mass.kept / 3,
+      cost: mass.cost / 3,
+      guesswork: { promised: share(mass.promisedGuess, mass.promised), kept: share(mass.keptGuess, mass.kept), cost: share(mass.costGuess, mass.cost) },
+    };
+    for (const key of Object.keys(total) as (keyof Raw)[]) total[key] += mass[key];
   }
 
   return {
@@ -3024,27 +3242,42 @@ export function deriveWeighing(
     positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null },
     promises,
     elements,
-    totals: { promised, kept: keptTotal, cost, guesswork: promised > 0 ? promisedGuess / promised : 0, promises: promises.length, archived, assessed },
+    totals: {
+      promised: total.promised / 3,
+      kept: total.kept / 3,
+      cost: total.cost / 3,
+      guesswork: { promised: share(total.promisedGuess, total.promised), kept: share(total.keptGuess, total.kept), cost: share(total.costGuess, total.cost) },
+      promises: promises.length,
+      archived,
+      assessed,
+    },
   };
 }
 
 /** The sort keys a matrix page or an agent orders promises by. */
 export type PromiseSortKey = "served" | "cost" | "positioned" | "title";
 
-/** Promises ordered by a derived key, heaviest first (title: A to Z); a promise with no positioned figure sorts last. */
+/**
+ * Promises ordered by a derived key, heaviest first (title: A to Z); a promise
+ * with no positioned figure sorts last. Every tie breaks by title, then by id,
+ * so the order is total and stable across runs and locales.
+ */
 export function sortPromises(promises: readonly PromiseWeighing[], key: PromiseSortKey): PromiseWeighing[] {
+  // A figure is never negative, so -1 is "below every real figure" — a null positioned sorts last.
   const value = (promise: PromiseWeighing): number =>
     key === "served" ? promise.served : key === "cost" ? promise.cost : key === "positioned" ? promise.positioned?.served ?? -1 : 0;
-  return [...promises].sort((a, b) => (key === "title" ? a.title.localeCompare(b.title) : value(b) - value(a) || a.title.localeCompare(b.title)));
+  const byTitle = (a: PromiseWeighing, b: PromiseWeighing): number =>
+    (a.title ?? "").localeCompare(b.title ?? "", "en") || a.node_id.localeCompare(b.node_id);
+  return [...promises].sort((a, b) => (key === "title" ? byTitle(a, b) : value(b) - value(a) || byTitle(a, b)));
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `node tests/schema/weighing-derive.test.js`
-Expected: all 59 checks `PASS:`, ending `All weighing-derive tests passed.`
+Expected: all 109 checks `PASS:`, ending `All weighing-derive tests passed.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts tests/schema/weighing-derive.test.js
@@ -3056,13 +3289,13 @@ git commit -m "feat(weighing): element masses, totals and the promise sort keys 
 **Files:**
 - Modify: `package.json`, `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Add the script** — after `"test:weighing"` in `package.json`:
+- [x] **Step 1: Add the script** — after `"test:weighing"` in `package.json`:
 
 ```json
     "test:weighing-derive": "node tests/schema/weighing-derive.test.js",
 ```
 
-- [ ] **Step 2: Add the CI step** — directly after the "Weighing model tests" step in `ci.yml`:
+- [x] **Step 2: Add the CI step** — directly after the "Weighing model tests" step in `ci.yml`:
 
 ```yaml
       # The weighing projections: seeding, the level a cell reads at, served and
@@ -3072,12 +3305,12 @@ git commit -m "feat(weighing): element masses, totals and the promise sort keys 
         run: npm run test:weighing-derive
 ```
 
-- [ ] **Step 3: Run the gate**
+- [x] **Step 3: Run the gate**
 
 Run: `npm run generate && git status --short` (expected: no change — nothing in this part touches a generated artifact), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run test:weighing && npm run test:weighing-derive && npm run test:schema && npm run test:quality && npm run test:effective-status`.
 Expected: all exit 0; `eslint` reports no error (the header imports are all used now).
 
-- [ ] **Step 4: Commit and submit**
+- [ ] **Step 4: Commit and submit** (committed; `gh stack submit` deliberately not run by the implementer)
 
 ```bash
 git add package.json .github/workflows/ci.yml
@@ -5607,7 +5840,7 @@ gh stack submit --auto
 
 **What the tools promise** (and the tests pin):
 
-- `get_matrix` also returns `skipped` — `{ kind, id?, role?, index }` for every stored set or matrix the resolver dropped (malformed, a built-in redefined, a duplicate id) — plus a note, only when there is one. `get_matrix` reports served and cost per promise **never netted**, `positioned` only for an *active* positioning, `kept_share`, `guesswork`, the three claim flags, `stale` and `review`, and says — in `notes` — when every figure is a seeded guess or when the positioning is a draft. With `subject` it returns one promise's every cell plus the scale's anchors and the confidence anchors: what an agent reads before it scores.
+- `get_matrix` also returns `skipped` — `{ kind, id?, role?, index }` for every stored set or matrix the resolver dropped (malformed, a built-in redefined, a duplicate id) — plus a note, only when there is one. `get_matrix` reports served and cost per promise **never netted**, `positioned` only for an *active* positioning, `kept_share`, `guesswork`, the four claim flags, `stale` and `review`, and says — in `notes` — when every figure is a seeded guess or when the positioning is a draft. With `subject` it returns one promise's every cell plus the scale's anchors and the confidence anchors: what an agent reads before it scores.
 - `assess` has **no scorer argument** (an agent is stamped `agent`; the most it may say about itself is `model`; a repo-mode session stamps `scorer.on_behalf_of` only when it was told whose it is, via `ARKAIK_ON_BEHALF_OF`, and a hosted one lets the server stamp the token owner: D14, not yet run), requires `evidence` above confidence 0, refuses unknown elements, levels off the scale and non-acceptance subjects with the planner's reason, stamps the set's version and the subject's fingerprint, and — when a human's level already stands for the cell — says so and that the agent's is recorded beside it (and that the cell is on the review list if they differ by 2 or more).
 - Repo mode upserts `docs/weighing/assessments/<matrix>.json` and writes **nothing to the journal**; hosted mode sends no `scorer`, `basis` or `ts` (the route would 400 it).
 - `save_positioning` defaults to `status: "draft"` and replaces the positioning whole.
@@ -5861,7 +6094,7 @@ async function main() {
     check("get_matrix answers with nothing stored", !first.isError, first.text.slice(0, 200));
     check("it judges the two acceptances, not the view", first.json.totals.promises === 2, JSON.stringify(first.json.totals));
     check("nothing is assessed, and it says every figure is a guess", first.json.totals.assessed === 0 && first.json.notes.some((n) => /seeded/.test(n)), JSON.stringify(first.json.notes));
-    check("all of it is guesswork", first.json.totals.guesswork === 1);
+    check("all of it is guesswork", first.json.totals.guesswork.promised === 1);
     const consent = first.json.promises.find((p) => p.node_id === "AC-consent");
     check("served is seeded from claim order: +3 and +2 over 3 = 1.67", consent.served === 1.67 && consent.cost === 0, JSON.stringify(consent));
     check("kept share is live platforms over applicable ones", consent.kept_share === 0.5);
@@ -6216,7 +6449,14 @@ function promiseRow(promise: PromiseWeighing, withCells: boolean) {
     status: promise.status,
     served: round2(promise.served),
     cost: round2(promise.cost),
-    positioned: promise.positioned === null ? null : { served: round2(promise.positioned.served), cost: round2(promise.positioned.cost) },
+    positioned:
+      promise.positioned === null
+        ? null
+        : {
+            served: round2(promise.positioned.served),
+            cost: round2(promise.positioned.cost),
+            guesswork: { served: round2(promise.positioned.guesswork.served), cost: round2(promise.positioned.guesswork.cost) },
+          },
     kept_share: promise.kept_share === null ? null : round2(promise.kept_share),
     guesswork: { served: round2(promise.guesswork.served), cost: round2(promise.guesswork.cost) },
     flags: promise.flags,
@@ -6232,7 +6472,7 @@ const FILTERS = ["flagged", "stale", "review", "unassessed"] as const;
 function matchesFilter(promise: PromiseWeighing, filter: string): boolean {
   switch (filter) {
     case "flagged":
-      return promise.flags.claim_not_supported.length + promise.flags.unclaimed_value.length + promise.flags.unclaimed_cost.length > 0;
+      return Object.values(promise.flags).some((ids) => ids.length > 0);
     case "stale":
       return promise.stale.length > 0;
     case "review":
@@ -6291,7 +6531,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     {
       name: "get_matrix",
       description:
-        "The value matrix: what each promise (acceptance) is worth, against the 30 elements of value on a signed -3..+3 scale. Per promise: `served` (sum of positive levels / 3) and `cost` (sum of |negative levels| / 3), NEVER netted; `positioned` (the same over the elements the product's active positioning stands on, each times its weight); `kept_share` (platforms where it is live / platforms it applies to); `guesswork` (the share of served and of cost resting on confidence-0 cells). `flags` lists claim_not_supported (claimed in metadata.values but assessed 1 or less), unclaimed_value (assessed 1 or more but not claimed) and unclaimed_cost (any negative level — authors claim intent, so a cost is never claimed). `stale` lists elements whose winning level was scored before the promise's title, Gherkin or values changed; `review` lists elements where a human and an agent differ by 2 or more. A cell nobody has scored reads at a SEEDED level (first claimed value +3, second +2, rest +1; scorer rule, confidence 0): a guess, never a score — negatives are never seeded. A human's level beats an agent's beats a seed, whatever the dates. Pass `subject` for one promise with every cell, its evidence and the scale's anchors — what you read before calling assess. Otherwise it lists promises (sort: served | cost | positioned | title; filter: flagged | stale | review | unassessed; limit) plus the per-element promised / kept / cost masses. A draft positioning feeds nothing.",
+        "The value matrix: what each promise (acceptance) is worth, against the 30 elements of value on a signed -3..+3 scale. Per promise: `served` (sum of positive levels / 3) and `cost` (sum of |negative levels| / 3), NEVER netted; `positioned` (the same over the elements the product's active positioning stands on, each times its weight); `kept_share` (platforms where it is live / platforms it applies to); `guesswork` (the share of served and of cost resting on confidence-0 cells; `positioned` carries its own, and every mass and total says how much of it is guesswork). `flags` is a partition: claim_not_supported (claimed in metadata.values but assessed 0 or 1), claim_contradicted (claimed but assessed negative), unclaimed_value (not claimed, assessed 1 or more) and unclaimed_cost (not claimed, assessed negative — authors claim intent, so a cost is never claimed). `stale` lists elements whose winning level was scored before the promise's title, Gherkin or values changed; `review` lists elements where a human and an agent differ by 2 or more. A cell nobody has scored reads at a SEEDED level (first claimed value +3, second +2, rest +1; scorer rule, confidence 0): a guess, never a score — negatives are never seeded. A human's level beats an agent's beats a seed, whatever the dates. Pass `subject` for one promise with every cell, its evidence and the scale's anchors — what you read before calling assess. Otherwise it lists promises (sort: served | cost | positioned | title; filter: flagged | stale | review | unassessed; limit) plus the per-element promised / kept / cost masses. A draft positioning feeds nothing.",
       inputSchema: {
         type: "object",
         properties: {
@@ -6310,14 +6550,14 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       const nodes = graph.nodes as Node[];
       const matrixId = optionalString(args, "matrix") ?? VALUE_MATRIX_ID;
       const view = deriveWeighing(nodes, section, matrixId);
-      if (view === undefined) throw new ToolError(`No matrix "${matrixId}". The built-in one is "${VALUE_MATRIX_ID}".`);
+      if (view === undefined) throw new ToolError(`No usable matrix "${matrixId}" (unknown, or a draft — a draft feeds no roll-up). The built-in one is "${VALUE_MATRIX_ID}".`);
 
       const positioning =
         view.positioning === null
           ? null
           : {
               status: view.positioning.active ? "active" : "draft",
-              elements: view.positioning.set.criteria.map((criterion) => ({ id: criterion.id, weight: typeof criterion.weight === "number" && criterion.weight > 0 ? criterion.weight : 1, ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}) })),
+              elements: view.positioning.set.criteria.map((criterion) => ({ id: criterion.id, weight: typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1, ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}) })),
             };
       // What the resolver dropped (a malformed saved positioning, a duplicate id): said, not silent.
       const { skipped } = resolveWeighing(section);
@@ -6360,7 +6600,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           promised: round2(mass.promised),
           kept: round2(mass.kept),
           cost: round2(mass.cost),
-          guesswork: round2(mass.guesswork),
+          guesswork: { promised: round2(mass.guesswork.promised), kept: round2(mass.guesswork.kept), cost: round2(mass.guesswork.cost) },
         }));
       return {
         matrix: { id: view.matrix.id, set: view.matrix.set, set_version: view.set.version },
@@ -6372,7 +6612,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           promised: round2(view.totals.promised),
           kept: round2(view.totals.kept),
           cost: round2(view.totals.cost),
-          guesswork: round2(view.totals.guesswork),
+          guesswork: { promised: round2(view.totals.guesswork.promised), kept: round2(view.totals.guesswork.kept), cost: round2(view.totals.guesswork.cost) },
         },
         elements,
         promises: ordered.slice(0, limit).map((promise) => promiseRow(promise, false)),
@@ -6644,7 +6884,7 @@ Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/w
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells), `flags` (`claim_not_supported`, `unclaimed_value`, `unclaimed_cost`), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
+| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
 | `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?`, `refs?`, `model?`, `run?`, `commit?`, `matrix?` | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
 | `save_positioning` | `elements` (`[{ id, weight?, anchors? }]`), `status?` (default `draft`), `title?` | The positioning — a criteria set naming the elements the product stands on, each with a weight and, optionally, what each level means in the product's own words. Replaces the previous one whole. A **draft feeds no roll-up**; draft one from the landing page or a brainstorm and leave it for a person to read | repo: none (`docs/weighing/sets/positioning.json`); hosted: `weighing.set.saved` |
 
@@ -6683,7 +6923,7 @@ gh stack submit --auto
 1. Claimed elements first, in claim order; then every other element somebody scored; the rest behind "Add an element". Adding opens a *blank* row — nothing is written until a level is chosen.
 2. A cell nobody scored reads at its **seeded** level and says "Guess, from the order of the claimed values". Choosing a level writes the first human assessment (default confidence **1**, "inferred from the promise's own text" — nobody picking a level on a form means "I guessed").
 3. Each cell shows the effective level, its scorer, a **stale** badge (the promise changed since), a **review** badge (a person and an agent differ by 2+), and the other scorer's level in `others`.
-4. Above the list: serves, costs (never netted), "of what we stand on" (only with an *active* positioning), kept, and the share resting on guesses; plus the three claim flags.
+4. Above the list: serves, costs (never netted), "of what we stand on" (only with an *active* positioning), kept, and the share resting on guesses; plus the four claim flags.
 5. One write = one `weighing.assessment.recorded` through `useWeighing().record`; a refusal is a toast; the list re-reads either way. The form never sends a scorer.
 6. Without a save path (`onUpdate` absent) it is read-only.
 
@@ -7061,6 +7301,7 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
 
   const flagged = [
     ["Claim not supported", weighed.flags.claim_not_supported],
+    ["Claim contradicted", weighed.flags.claim_contradicted],
     ["Unclaimed value", weighed.flags.unclaimed_value],
     ["Unclaimed cost", weighed.flags.unclaimed_cost],
   ] as const;
@@ -7775,8 +8016,8 @@ suggested:
 | R2 | ARCHITECTURE § 3: `Matrix.weights` holds the positioning; § 5/DISCUSSION: a draft matrix feeds no roll-up. | A draft must live on the thing being drafted, and DISCUSSION § "Positioning is a criteria set" says the *set* carries weights and per-level words. | D1: `CriteriaSet.status`/`role`/`extends`; `Matrix.positioning` is a pointer. `Matrix.weights` is not built. |
 | R3 | The brief: kept share "via the existing `getNodePlatformStatuses`". | It lives in `lib/utils/platform-status.ts`, behind `@/lib/config/*` imports; `packages/mcp` cannot import `lib/`. | The schema reads `resolvePlatformStatus` (same `platformStatuses[p] ?? status` rule); `tests/schema/weighing-derive.test.js` loads the real `lib` module and asserts the two agree on every platform. |
 | R4 | "Hosted projects store assessments as journal events, like `quality.assessment.scored`." | That event is written only through `…/quality/events`, whose whitelist, scope rules (`quality:append`), baseline synthesis and `QualityEventRefusal` are all Kritik's. | A sibling route, `…/weighing/events`, with its own whitelist and `graph:write` only, and **no** edit to the Kritik route. The ETag count reads a new union list (`BUNDLE_FOLD_TYPES`) so `planQualityEvents` keeps loading only Kritik events. |
-| R5 | "Positive levels seeded; negatives never; 0 is a blank cell." | A seed can only be *suppressed* by something stored, and a blank is the absence of a row. | A stored `0` is allowed ("weighed and unrelated") and beats a seed — so a person can say "this claim is wrong". It raises `claim_not_supported`. |
-| R6 | "Unclaimed cost." | `metadata.values` lists value elements only, so no negative is ever claimed. | `unclaimed_cost` = any stored negative. A claimed element scored negative raises **both** `claim_not_supported` and `unclaimed_cost` — deliberate (the consent page that claims "reduces anxiety" and scores −2). |
+| R5 | "Positive levels seeded; negatives never; 0 is a blank cell." | A seed can only be *suppressed* by something stored, and a blank is the absence of a row. | A stored `0` is allowed ("weighed and unrelated") and beats a seed — so a person can say "this claim is wrong". It raises `claim_not_supported` (a claimed element stored at 0 or 1). |
+| R6 | "Unclaimed cost." | `metadata.values` lists value elements only, so no negative is ever *claimed as a cost*. | `unclaimed_cost` = a stored negative on an element the author did **not** claim. A claimed element scored negative raises **only** `claim_contradicted` (the consent page that claims "reduces anxiety" and scores −2) — the flags are a partition, so one cell never shouts twice; D8. |
 | R7 | "12 Pebbles acceptances have a node `status` that disagrees with their platform statuses." | `resolvePlatformStatus` reads `platformStatuses[p] ?? node.status` per platform, so a stale node `status` does not matter once every platform has a status. | Kept share reads platform statuses only, as designed. Nothing to fix here; the validator warning the draft suggests is out of slice. |
 | R8 | The tweaker will redesign the panel afterwards. | `tests/app/panel-semantics.test.js` and friends read panel *source*. | `WeighingGroup` uses `PanelGroup` + `PanelSection` only and is mounted beside its siblings; `weighing-panel.test.js` pins the hooks the tweaker must keep. |
 | R9 | "`schema_version` stays 3." | `ProjectBundleSchema` is strict about a *present* `weighing`: a malformed section fails `parseBundle` on import (hard), exactly as a malformed `quality` does. Everything else is a warning. | Same as Kritik; the zod shapes are `.catchall` so extra fields survive. |
@@ -7858,9 +8099,9 @@ function validateWeighingSection(section, nodeSpecies, journal): { path; rule; m
 // P2 — packages/schema/src/weighing-derive.ts
 function seedAssessments(node, matrix, set): WeighingAssessment[]                                  // computed, never stored
 function resolveCell(criterion, stored, seed, { fingerprint, setVersion }, claimed): EffectiveCell | undefined
-function buildWeighingContext(section, matrixId = "value"): WeighingContext | undefined
-function weighPromise(node, ctx): PromiseWeighing        // { served, cost, positioned|null, kept_share|null, guesswork, flags, stale, review, cells }
-function deriveWeighing(nodes, section, matrixId = "value"): WeighingView | undefined     // + elements{promised,kept,cost,guesswork}, totals
+function buildWeighingContext(section, matrixId = "value"): WeighingContext | undefined   // undefined for an unknown or draft matrix
+function weighPromise(node, ctx): PromiseWeighing        // { served, cost, positioned|null /* { served, cost, guesswork:{served,cost} } */, kept_share|null, guesswork:{served,cost}, flags:{claim_not_supported,claim_contradicted,unclaimed_value,unclaimed_cost}, stale, review, cells }
+function deriveWeighing(nodes, section, matrixId = "value"): WeighingView | undefined     // undefined for an unknown OR draft matrix; + elements{promised,kept,cost,guesswork:{promised,kept,cost}}, totals (same guesswork shape)
 function sortPromises(promises, "served" | "cost" | "positioned" | "title"): PromiseWeighing[]
 
 // P3 — packages/schema/src/weighing-events.ts
