@@ -135,7 +135,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
   return (
     <div data-positioning data-positioning-status={status} className="flex flex-col gap-4">
       {malformed && (
-        <p data-positioning-malformed role="status" className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+        <p data-positioning-malformed className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
           Your saved positioning is malformed and is ignored. Saving will replace it.
         </p>
       )}
@@ -154,11 +154,20 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
               if (row === undefined) return null;
               return (
                 <div key={criterion.id} data-positioning-element={criterion.id} data-on={row.on ? "true" : "false"} className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <Checkbox checked={row.on} onCheckedChange={(checked) => patch(criterion.id, { on: checked === true })} />
-                    {criterion.name ?? criterion.id}
-                    <span className="text-xs font-normal text-muted-foreground">{criterion.definition}</span>
-                  </label>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={row.on}
+                        aria-describedby={`positioning-definition-${criterion.id}`}
+                        onCheckedChange={(checked) => patch(criterion.id, { on: checked === true })}
+                      />
+                      {criterion.name ?? criterion.id}
+                    </label>
+                    {/* Outside the label, so the element's name is the checkbox's name and its definition its description. */}
+                    <span id={`positioning-definition-${criterion.id}`} className="text-xs font-normal text-muted-foreground">
+                      {criterion.definition}
+                    </span>
+                  </div>
                   {row.on && (
                     <div className="flex flex-col gap-2 pl-6">
                       <SegmentedControl

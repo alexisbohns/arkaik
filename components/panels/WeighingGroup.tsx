@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   CONFIDENCE_ANCHORS,
@@ -11,7 +11,6 @@ import {
   weighPromise,
   type EffectiveCell,
   type WeighingCriterion,
-  type WeighingEventInput,
 } from "@arkaik/schema";
 
 import { PanelGroup } from "@/components/panels/PanelGroup";
@@ -23,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Node } from "@/lib/data/types";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useWeighing } from "@/lib/hooks/useWeighing";
+import { assessmentFieldsFor, evidenceChanged, intentOf, type RowIntent } from "@/lib/utils/weighing-input";
 
 /**
  * An acceptance's weight: a signed level (−3 to +3) for each element of value it
@@ -52,6 +52,16 @@ import { useWeighing } from "@/lib/hooks/useWeighing";
  * `record` — the same gate an agent's `assess` goes through. A refused write
  * (the gate's reasons) is a toast, and the list re-reads either way, so the
  * controls never show a level the journal does not hold.
+ *
+ * **A write is a merge, and writes to one row go one at a time.** The `cell` a
+ * handler closes over is the last render's, so two quick gestures on a row (type
+ * evidence, click a confidence — the click blurs the box first; or click +3, then
+ * a confidence before the refetch) would each rebuild the row from the same stale
+ * cell and the later one would put the earlier one's fields back. So each row
+ * remembers what it last said (`lastSent`), `assessmentFieldsFor` merges
+ * cell < last said < this gesture (`lib/utils/weighing-input.ts`, tested), the
+ * evidence is read off the box itself, and a row's writes are chained so each is
+ * computed after the one before settled. Nothing is disabled to get there.
  */
 
 interface WeighingGroupProps {
@@ -60,8 +70,13 @@ interface WeighingGroupProps {
   readOnly?: boolean;
 }
 
-const LEVEL_OPTIONS = WEIGHING_LEVELS.map((level) => ({ id: String(level), label: level > 0 ? `+${level}` : level < 0 ? `−${-level}` : "0" }));
-const CONFIDENCE_OPTIONS = CONFIDENCE_LEVELS.map((level) => ({ id: String(level), label: String(level) }));
+// A bare "2" says little: each option carries its anchor as a tooltip and a description.
+const CONFIDENCE_OPTIONS = CONFIDENCE_LEVELS.map((level) => ({ id: String(level), label: String(level), title: CONFIDENCE_ANCHORS[level] }));
+
+/** A level as a person reads it: a real minus, an explicit plus. */
+const signed = (level: number) => (level > 0 ? `+${level}` : level < 0 ? `−${-level}` : "0");
+
+const LEVEL_OPTIONS = WEIGHING_LEVELS.map((level) => ({ id: String(level), label: signed(level) }));
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const num = (value: number) => (Math.round(value * 100) / 100).toFixed(2);
@@ -79,7 +94,15 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   const weighed = useMemo(() => (ctx === undefined ? undefined : weighPromise(node, ctx)), [ctx, node]);
   // Elements the person has opened a blank row for; nothing is written until a level is chosen.
   const [extra, setExtra] = useState<string[]>([]);
-  const [pending, setPending] = useState<string | null>(null);
+  // Rows with a write queued or in flight — per row, never one slot for the whole form.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  // The confidence a person picked on a row that has no level yet, shown while it waits for one.
+  const [held, setHeld] = useState<Readonly<Record<string, number>>>({});
+  // Per row: the evidence boxes (read live), what the row last said, the tail of its write chain, how many writes are in it.
+  const textareas = useRef(new Map<string, HTMLTextAreaElement>());
+  const lastSent = useRef(new Map<string, RowIntent>());
+  const queues = useRef(new Map<string, Promise<void>>());
+  const inFlight = useRef(new Map<string, number>());
 
   if (ctx === undefined || weighed === undefined) return null;
 
@@ -88,29 +111,59 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   const blank = extra.filter((id) => !shown.has(id));
   const addable = ctx.set.criteria.filter((criterion) => !shown.has(criterion.id) && !extra.includes(criterion.id));
 
-  async function save(criterion: string, cell: EffectiveCell | undefined, patch: { level?: number; confidence?: number; evidence?: string }) {
-    // What a person has already said about this cell — never an agent's evidence, which is not theirs to inherit.
-    const mine = cell?.source === "stored" && cell.scorer.kind === "human" ? cell : undefined;
-    const level = patch.level ?? cell?.level;
-    if (level === undefined) return;
-    const evidence = patch.evidence ?? mine?.evidence;
-    const input: WeighingEventInput = {
-      type: WEIGHING_ASSESSMENT_RECORDED,
-      subject: node.id,
-      criterion,
-      level,
-      confidence: patch.confidence ?? mine?.confidence ?? 1,
-      ...(evidence !== undefined && evidence.trim() !== "" ? { evidence } : {}),
+  /**
+   * Queue one write for a row. Its fields are worked out when its turn comes —
+   * after the write before it settled — from the cell the gesture saw, what the
+   * row last said and what this gesture changes. `onlyIfEvidenceChanged` is the
+   * blur's: a blur that left the text as it was is not a write.
+   */
+  function write(criterion: string, cell: EffectiveCell | undefined, patch: RowIntent, onlyIfEvidenceChanged = false) {
+    inFlight.current.set(criterion, (inFlight.current.get(criterion) ?? 0) + 1);
+    setPending((current) => new Set(current).add(criterion));
+    const task = async () => {
+      const before = lastSent.current.get(criterion);
+      if (onlyIfEvidenceChanged && !evidenceChanged(cell, before, patch.evidence ?? "")) return;
+      // The box's live text rides along with every level or confidence write: what is typed is never lost to a click.
+      const live = textareas.current.get(criterion)?.value;
+      const fields = assessmentFieldsFor(cell, before, { ...(live === undefined ? {} : { evidence: live }), ...patch });
+      if (fields === undefined) return; // a blank row is written once it has a level
+      lastSent.current.set(criterion, intentOf(fields));
+      try {
+        await record([{ type: WEIGHING_ASSESSMENT_RECORDED, subject: node.id, criterion, ...fields }]);
+        setExtra((current) => current.filter((id) => id !== criterion));
+      } catch (error) {
+        // Refused: the row did not say that, so the next write must not build on it.
+        if (before === undefined) lastSent.current.delete(criterion);
+        else lastSent.current.set(criterion, before);
+        toast.error(error instanceof Error ? error.message : "Could not record that assessment.");
+      }
     };
-    setPending(criterion);
-    try {
-      await record([input]);
-      setExtra((current) => current.filter((id) => id !== criterion));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not record that assessment.");
-    } finally {
-      setPending(null);
+    const tail = (queues.current.get(criterion) ?? Promise.resolve()).then(task).finally(() => {
+      const left = (inFlight.current.get(criterion) ?? 1) - 1;
+      if (left > 0) {
+        inFlight.current.set(criterion, left);
+        return;
+      }
+      inFlight.current.delete(criterion);
+      queues.current.delete(criterion);
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(criterion);
+        return next;
+      });
+    });
+    queues.current.set(criterion, tail);
+  }
+
+  function chooseConfidence(criterion: string, cell: EffectiveCell | undefined, confidence: number) {
+    const said = lastSent.current.get(criterion);
+    // A row with no level, and none on its way: hold the pick and send it with the level.
+    if (cell === undefined && said?.level === undefined && !inFlight.current.has(criterion)) {
+      lastSent.current.set(criterion, { ...said, confidence });
+      setHeld((current) => ({ ...current, [criterion]: confidence }));
+      return;
     }
+    write(criterion, cell, { confidence });
   }
 
   const rows: { criterion: WeighingCriterion; cell: EffectiveCell | undefined }[] = [
@@ -177,83 +230,122 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
         <PanelSection title="Elements of value">
           {rows.length === 0 ? (
             <p data-weighing-empty className="text-sm text-muted-foreground">
-              This promise claims no value and nobody has scored one. Add the first element below.
+              This promise claims no value and nobody has scored one.{readOnly ? "" : " Add the first element below."}
             </p>
           ) : (
             <ul className="flex flex-col gap-4">
-              {rows.map(({ criterion, cell }) => (
-                <li
-                  key={criterion.id}
-                  data-weighing-element={criterion.id}
-                  data-source={cell?.source ?? "blank"}
-                  data-level={cell?.level ?? ""}
-                  data-stale={cell?.stale ? "true" : "false"}
-                  className="flex flex-col gap-2"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{criterion.name ?? criterion.id}</span>
-                    {cell?.claimed && <Badge variant="outline">claimed</Badge>}
-                    {cell?.stale && (
-                      <Badge data-weighing-stale variant="secondary">
-                        stale: the promise changed since this was scored
-                      </Badge>
-                    )}
-                    {cell?.review && (
-                      <Badge data-weighing-review variant="secondary">
-                        a person and an agent differ: review
-                      </Badge>
-                    )}
-                  </div>
-                  {cell !== undefined && (
-                    <p data-weighing-scorer className="text-xs text-muted-foreground">
-                      {scorerLabel(cell)}, confidence {cell.confidence}
-                    </p>
-                  )}
-                  {readOnly ? (
-                    <p data-weighing-readonly className="text-sm">
-                      {cell === undefined ? "Not scored" : `Level ${cell.level > 0 ? "+" : ""}${cell.level}`}
-                    </p>
-                  ) : (
-                    <>
-                      <SegmentedControl
-                        ariaLabel={`${criterion.name ?? criterion.id}: level`}
-                        options={LEVEL_OPTIONS}
-                        value={cell === undefined ? "" : String(cell.level)}
-                        onChange={(value) => void save(criterion.id, cell, { level: Number(value) })}
-                      />
-                      <SegmentedControl
-                        ariaLabel={`${criterion.name ?? criterion.id}: confidence`}
-                        options={CONFIDENCE_OPTIONS}
-                        value={cell === undefined ? "" : String(cell.confidence)}
-                        onChange={(value) => void save(criterion.id, cell, { confidence: Number(value) })}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {cell === undefined ? "Choose a level to score this element." : CONFIDENCE_ANCHORS[cell.confidence]}
+              {rows.map(({ criterion, cell }) => {
+                const label = criterion.name ?? criterion.id;
+                // A score that is not the person's: an agent's, or the guess. Choosing here records their own.
+                const notMine = cell !== undefined && (cell.source === "seed" || cell.scorer.kind !== "human");
+                return (
+                  <li
+                    key={criterion.id}
+                    data-weighing-element={criterion.id}
+                    data-source={cell?.source ?? "blank"}
+                    data-level={cell?.level ?? ""}
+                    data-stale={cell?.stale ? "true" : "false"}
+                    data-pending={pending.has(criterion.id) ? "true" : "false"}
+                    aria-busy={pending.has(criterion.id)}
+                    className="flex flex-col gap-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{label}</span>
+                      {cell?.claimed && <Badge variant="outline">claimed</Badge>}
+                      {cell?.stale && (
+                        <Badge
+                          data-weighing-stale
+                          variant="secondary"
+                          title="Choose the level again — even the one already chosen — to score it against the promise as it reads now."
+                        >
+                          stale: the promise changed since this was scored
+                        </Badge>
+                      )}
+                      {cell?.review && (
+                        <Badge data-weighing-review variant="secondary">
+                          a person and an agent differ: review
+                        </Badge>
+                      )}
+                    </div>
+                    {cell !== undefined && (
+                      <p data-weighing-scorer className="text-xs text-muted-foreground">
+                        {scorerLabel(cell)}, confidence {cell.confidence}
                       </p>
-                      <Textarea
-                        // Re-mounts when the stored evidence changes, so an agent's refresh or this person's own save shows.
-                        key={`${criterion.id}:${cell?.evidence ?? ""}`}
-                        aria-label={`${criterion.name ?? criterion.id}: evidence`}
-                        placeholder="Why this level? Cite what you read."
-                        defaultValue={cell?.scorer.kind === "human" ? cell.evidence : undefined}
-                        disabled={pending === criterion.id || cell === undefined}
-                        rows={2}
-                        onBlur={(event) => {
-                          const next = event.currentTarget.value;
-                          if (cell !== undefined && next !== (cell.scorer.kind === "human" ? (cell.evidence ?? "") : "")) {
-                            void save(criterion.id, cell, { evidence: next });
-                          }
-                        }}
-                      />
-                    </>
-                  )}
-                  {cell !== undefined && cell.others.length > 0 && (
-                    <p data-weighing-others className="text-xs text-muted-foreground">
-                      {cell.others.map((row) => `${row.scorer?.kind === "agent" ? "An agent" : "A person"} reads ${row.level > 0 ? "+" : ""}${row.level} (confidence ${row.confidence})`).join("; ")}
-                    </p>
-                  )}
-                </li>
-              ))}
+                    )}
+                    {/* The reasons behind a score that is not the person's: it has no box of its own to sit in. A read-only panel shows every one. */}
+                    {cell?.source === "stored" && cell.evidence !== undefined && cell.evidence.trim() !== "" && (readOnly || cell.scorer.kind !== "human") && (
+                      <p data-weighing-evidence className="text-xs whitespace-pre-wrap">
+                        <span className="font-medium">Evidence:</span> {cell.evidence}
+                      </p>
+                    )}
+                    {readOnly ? (
+                      <p data-weighing-readonly className="text-sm">
+                        {cell === undefined ? "Not scored" : `Level ${signed(cell.level)}`}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground" aria-hidden="true">
+                            Level
+                          </span>
+                          <SegmentedControl
+                            ariaLabel={`${label}: level`}
+                            options={LEVEL_OPTIONS}
+                            value={cell === undefined ? "" : String(cell.level)}
+                            onChange={(value) => write(criterion.id, cell, { level: Number(value) })}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground" aria-hidden="true">
+                            How sure
+                          </span>
+                          <SegmentedControl
+                            ariaLabel={`${label}: confidence`}
+                            options={CONFIDENCE_OPTIONS}
+                            value={cell === undefined ? (held[criterion.id] === undefined ? "" : String(held[criterion.id])) : String(cell.confidence)}
+                            onChange={(value) => chooseConfidence(criterion.id, cell, Number(value))}
+                          />
+                        </div>
+                        {cell === undefined ? (
+                          <p data-weighing-hint className="text-xs text-muted-foreground">
+                            Choose a level to score this element.
+                          </p>
+                        ) : (
+                          <>
+                            {notMine && (
+                              <p data-weighing-hint className="text-xs text-muted-foreground">
+                                {cell.source === "seed"
+                                  ? "Choosing a level here records your own score, in place of the guess."
+                                  : "Choosing a level here records your own score, which outranks the agent's."}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">{CONFIDENCE_ANCHORS[cell.confidence]}</p>
+                          </>
+                        )}
+                        <Textarea
+                          // Re-mounts when the stored evidence changes, so an agent's refresh or this person's own save shows.
+                          key={`${criterion.id}:${cell?.evidence ?? ""}`}
+                          ref={(element) => {
+                            if (element === null) textareas.current.delete(criterion.id);
+                            else textareas.current.set(criterion.id, element);
+                          }}
+                          aria-label={`${label}: evidence`}
+                          placeholder="Why this level? Cite what you read."
+                          defaultValue={cell?.scorer.kind === "human" ? cell.evidence : undefined}
+                          rows={2}
+                          // Saves on blur, never per keystroke; the box is the source of truth for its own text, so a level or confidence write reads it live.
+                          onBlur={(event) => write(criterion.id, cell, { evidence: event.currentTarget.value }, true)}
+                        />
+                      </>
+                    )}
+                    {cell !== undefined && cell.others.length > 0 && (
+                      <p data-weighing-others className="text-xs text-muted-foreground">
+                        {cell.others.map((row) => `${row.scorer?.kind === "agent" ? "An agent" : "A person"} reads ${signed(row.level)} (confidence ${row.confidence})`).join("; ")}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </PanelSection>

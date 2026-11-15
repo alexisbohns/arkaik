@@ -22,6 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const ts = require("typescript");
 
 const ROOT = path.join(__dirname, "..", "..");
 /** A file that does not exist yet reads as empty, so a missing piece is a FAIL, not a crash. */
@@ -42,6 +43,18 @@ function check(name, cond, detail = "") {
   }
 }
 
+/** The pure merge, loaded without a build directory: transpiled and evaluated in place. It imports nothing. */
+function loadHelper() {
+  const source = read("lib", "utils", "weighing-input.ts");
+  if (source === "") return {};
+  const { outputText } = ts.transpileModule(source, { fileName: "weighing-input.ts", compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
+  const mod = { exports: {} };
+  new Function("module", "exports", outputText)(mod, mod.exports);
+  return mod.exports;
+}
+const helper = loadHelper();
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 const group = read("components", "panels", "WeighingGroup.tsx");
 const positioning = read("components", "settings", "PositioningPanel.tsx");
 const hook = read("lib", "hooks", "useWeighing.ts");
@@ -57,12 +70,53 @@ for (const hookName of ["data-weighing", "data-weighing-element", "data-weighing
 }
 check("the numbers come from the schema's derivation", /buildWeighingContext/.test(group) && /weighPromise/.test(group) && /from "@arkaik\/schema"/.test(group));
 check("the form never sends a scorer — the writer stamps it", !/\bscorer\s*:\s*\{/.test(group) && !/\bbasis\s*:/.test(group));
-check("a write is one weighing.assessment.recorded through record()", /WEIGHING_ASSESSMENT_RECORDED/.test(group) && /await record\(\[input\]\)/.test(group));
+check("a write is one weighing.assessment.recorded through record()", /WEIGHING_ASSESSMENT_RECORDED/.test(group) && /await record\(\[\{ type: WEIGHING_ASSESSMENT_RECORDED/.test(group));
 check("a refused write is a toast, and the list re-reads either way", /toast\.error/.test(group) && /finally/.test(group));
-check("a first human score defaults to confidence 1, never a silent guess", /mine\?\.confidence \?\? 1/.test(group));
-check("a person never inherits an agent's evidence", /cell\?\.source === "stored" && cell\.scorer\.kind === "human"/.test(group));
+check("the merge, not the form, decides what a first human score carries", /assessmentFieldsFor/.test(group));
 check("the claimed elements are listed first, then 'Add an element'", /Add an element/.test(group) && /claimed/.test(group));
 check("a read-only panel offers no controls", /readOnly/.test(group) && /data-weighing-readonly/.test(group));
+
+// --- the write is a merge, serialized per row (the stale-closure bug) --------------------
+const humanCell = (over = {}) => ({ level: 1, confidence: 1, source: "stored", scorer: { kind: "human" }, evidence: "old words", ...over });
+const agentCell = (over = {}) => ({ level: 2, confidence: 2, source: "stored", scorer: { kind: "agent" }, evidence: "the agent's reading", ...over });
+const seedCell = { level: 3, confidence: 0, source: "seed", scorer: { kind: "rule" } };
+const { assessmentFieldsFor, evidenceChanged, intentOf, currentIntent } = helper;
+check("the merge helper exists, with no runtime import", typeof assessmentFieldsFor === "function" && !/^import (?!type)/m.test(read("lib", "utils", "weighing-input.ts")));
+if (typeof assessmentFieldsFor === "function") {
+  // Reproduction 1: type evidence, click a confidence. The blur saves A; the click builds B from the SAME stale cell.
+  const afterBlur = intentOf(assessmentFieldsFor(humanCell(), undefined, { evidence: "typed words" }));
+  check("a confidence click after typing keeps the typed evidence", assessmentFieldsFor(humanCell(), afterBlur, { confidence: 2 })?.evidence === "typed words");
+  // Reproduction 2: click +3, click a confidence before the refetch lands.
+  const afterLevel = intentOf(assessmentFieldsFor(humanCell(), undefined, { level: 3 }));
+  check("a confidence click after a level click keeps the new level", assessmentFieldsFor(humanCell(), afterLevel, { confidence: 2 })?.level === 3);
+  check("a level click after typing keeps the typed evidence", eq(assessmentFieldsFor(humanCell(), afterBlur, { level: -1 }), { level: -1, confidence: 1, evidence: "typed words" }));
+  check("the gesture's own field beats what the row last said", assessmentFieldsFor(humanCell(), afterLevel, { level: -2 })?.level === -2);
+  check("a blank row has nothing to write until a level is chosen", assessmentFieldsFor(undefined, undefined, { confidence: 2 }) === undefined && assessmentFieldsFor(undefined, undefined, { evidence: "x" }) === undefined);
+  check("a confidence held on a blank row goes out with the level", eq(assessmentFieldsFor(undefined, { confidence: 3 }, { level: -1 }), { level: -1, confidence: 3 }));
+  check("a first score defaults to confidence 1", assessmentFieldsFor(undefined, undefined, { level: 1 })?.confidence === 1);
+  check("a person never inherits an agent's evidence or confidence", eq(assessmentFieldsFor(agentCell(), undefined, { level: 2 }), { level: 2, confidence: 1 }));
+  check("choosing on a guess records the person's own score at that level", eq(assessmentFieldsFor(seedCell, undefined, { level: 3 }), { level: 3, confidence: 1 }));
+  check("an evidence typed over a guess is kept with it", assessmentFieldsFor(seedCell, undefined, { evidence: "I read it" })?.evidence === "I read it");
+  check("blank evidence is omitted, never sent", !("evidence" in assessmentFieldsFor(humanCell(), undefined, { evidence: "   " })));
+  check("clearing the evidence beats the stored one, and sticks", !("evidence" in assessmentFieldsFor(humanCell(), intentOf({ level: 1, confidence: 1 }), { confidence: 2 })));
+  check("a patch carrying undefined never overwrites a value", assessmentFieldsFor(humanCell(), undefined, { level: undefined, confidence: 2 })?.level === 1);
+  check("the cell is not mutated", (() => { const c = humanCell(); assessmentFieldsFor(c, undefined, { level: 3 }); return eq(c, humanCell()); })());
+  check("a blur with the same text is not worth a write", evidenceChanged(humanCell(), undefined, "old words") === false);
+  check("…nor one that only repeats what was just sent", evidenceChanged(humanCell(), afterBlur, "typed words") === false);
+  check("…but different text is", evidenceChanged(humanCell(), afterBlur, "more words") === true);
+  check("…and an empty box over an agent's evidence is no change", evidenceChanged(agentCell(), undefined, "") === false);
+  check("currentIntent reads the person's own confidence only", currentIntent(agentCell(), undefined).confidence === undefined);
+}
+
+const evidenceBox = (group.match(/<Textarea\b[\s\S]*?\/>/) ?? [""])[0];
+check("the evidence box saves on blur, never per keystroke", /onBlur=/.test(evidenceBox) && !/onChange=/.test(evidenceBox));
+check("a write reads the box's live value, not the cached cell", /textareas\.current/.test(group) && /\.value/.test(group));
+check("every write is built by the merge, after the previous one settled", /assessmentFieldsFor\(/.test(group) && /queues\.current/.test(group) && /\.then\(/.test(group));
+check("a failed write gives back what the row last said", /lastSent\.current/.test(group) && /\.delete\(|\.set\(criterion, before\)/.test(group));
+check("pending is per row, and no strip is disabled by it", /data-pending/.test(group) && !/<SegmentedControl[^>]*disabled/.test(group));
+check("the evidence of a score that is not the person's is shown", /data-weighing-evidence/.test(group));
+check("both strips carry a visible label", />\s*Level\s*</.test(group) && />\s*How sure\s*</.test(group));
+check("each confidence option explains itself", /CONFIDENCE_ANCHORS\[level\]/.test(group) && /title/.test(read("components", "ui", "segmented-control.tsx")));
 
 // --- where it is mounted --------------------------------------------------------
 check("NodeDetailPanel mounts the group for acceptances only", /node\.species === "acceptance" && <WeighingGroup/.test(detail));
@@ -84,6 +138,8 @@ check("Settings mounts it, in the project's own words", /<PositioningPanel proje
 
 // --- History ----------------------------------------------------------------------------
 check("History words both weighing events instead of printing a raw type", /case "weighing\.assessment\.recorded"/.test(describe) && /case "weighing\.set\.saved"/.test(describe));
+check("History names the element and writes a minus as one", /VALUE_CONTRIBUTION_SET/.test(describe) && /\\u2212|−/.test(describe) && /with evidence/.test(describe));
+check("the static malformed notice is not a live region", !/data-positioning-malformed role="status"/.test(positioning) && !/role="status"/.test(positioning));
 
 if (failures > 0) {
   console.log(`\n${failures} weighing-panel test(s) failed.`);
