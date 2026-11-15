@@ -52,7 +52,7 @@ function fakeProvider() {
       return bundle.project;
     },
     async replaceProject(projectId, bundle, options) {
-      calls.push(`replaceProject:${projectId}:${options.version}`);
+      calls.push(`replaceProject:${projectId}:${options.version}:${options.eventCount}`);
       this.replaced = bundle;
       return { version: "8" };
     },
@@ -138,8 +138,8 @@ async function main() {
   edited.project.title = "Edited";
   await exp.saveRawBundle(HOSTED, edited, hostedBase);
   check(
-    "a hosted save replaces through the server under the opened version — never an import",
-    calls.join(",") === `replaceProject:${HOSTED}:7`,
+    "a hosted save replaces through the server under the opened version and journal length — never an import",
+    calls.join(",") === `replaceProject:${HOSTED}:7:0`,
     calls.join(","),
   );
   check(

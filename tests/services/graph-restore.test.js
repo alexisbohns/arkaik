@@ -85,6 +85,24 @@ check("stale: well-formed but wrong version", classifyIfMatch("6", "7") === "sta
 check("stale: no numeric coercion (differently-formatted, not just wrong)", classifyIfMatch('"07"', "7") === "stale");
 check("match: bare correct version", classifyIfMatch("7", "7") === "match");
 check("match: quoted correct version", classifyIfMatch('"7"', "7") === "match");
+
+// --- the journal-aware composite, "<version>.<eventCount>" ---
+// A journal-only append does not bump the version; only the count can see it.
+check("composite: matches when version AND count both match", classifyIfMatch('"7.42"', "7", 42) === "match");
+check("composite: bare (unquoted) form matches too", classifyIfMatch("7.42", "7", 42) === "match");
+check("composite: an append since the read makes it stale", classifyIfMatch('"7.42"', "7", 43) === "stale");
+check("composite: a version bump since the read makes it stale", classifyIfMatch('"7.42"', "8", 42) === "stale");
+check("composite: no numeric coercion on the count", classifyIfMatch('"7.042"', "7", 42) === "stale");
+check(
+  "composite: fails CLOSED when the server cannot supply a count",
+  classifyIfMatch('"7.42"', "7") === "stale",
+);
+check("composite: a weak composite is still refused", classifyIfMatch('W/"7.42"', "7", 42) === "unsupported");
+check("composite: an empty version part is malformed", classifyIfMatch('".42"', "7", 42) === "unsupported");
+check("composite: an empty count part is malformed", classifyIfMatch('"7."', "7", 42) === "unsupported");
+check("composite: a non-decimal count is malformed", classifyIfMatch('"7.4a"', "7", 42) === "unsupported");
+check("composite: a second dot is malformed", classifyIfMatch('"7.4.2"', "7", 42) === "unsupported");
+check("bare version keeps its meaning when a count is known", classifyIfMatch('"7"', "7", 42) === "match");
 check(
   "versionMatches is exactly classifyIfMatch === 'match'",
   versionMatches("7", "7") === (classifyIfMatch("7", "7") === "match") &&

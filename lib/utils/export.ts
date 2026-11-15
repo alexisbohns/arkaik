@@ -276,8 +276,11 @@ export async function saveRawBundle(projectId: string, edited: ProjectBundle, ba
   if (!base.version || !provider.replaceProject) {
     throw new Error("This hosted project cannot be saved from here — reopen the editor and try again.");
   }
+  // The ORIGINAL export's journal length, not the edited one's: it is what the
+  // server held at the read, and the edit may add or drop events on purpose.
   await provider.replaceProject(projectId, rewriteBundleProjectId(edited, base.bundle.project.id), {
     version: base.version,
+    eventCount: base.bundle.journal?.length,
   });
   void invalidateProjects();
 }

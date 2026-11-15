@@ -17,7 +17,10 @@ import { getUserTier, replaceProjectBundle } from "@/lib/services/graph/store";
  *    write in the graph store uses — not a separate check.
  *  - `If-Match` is REQUIRED, no wildcard, and fails CLOSED on anything this
  *    endpoint does not recognize as a single well-formed version
- *    (`lib/services/graph/restore.ts`'s `classifyIfMatch`).
+ *    (`lib/services/graph/restore.ts`'s `classifyIfMatch`). It may also be
+ *    `"<version>.<eventCount>"`, naming the journal the caller read: a
+ *    journal-only append does not bump the version, and only the count can
+ *    stop this PUT from deleting an event appended after that read.
  *  - `?dryRun=` fails CLOSED too, in the OPPOSITE direction: an unrecognized
  *    token is refused (400) rather than silently taking the destructive
  *    branch (`classifyDryRun`, same file — see its own doc comment for the
@@ -165,8 +168,16 @@ export async function PUT(
       case "conflict":
         // `current` only makes sense here — a 428/400 caller sent nothing
         // comparable in the first place, so those two responses omit it.
+        // `eventCount` too: a composite If-Match (`"<version>.<eventCount>"`)
+        // goes stale when only the journal moved, and the version alone would
+        // not tell the caller why.
         return Response.json(
-          { error: "conflict", message: "The project changed since you read it.", current: result.current },
+          {
+            error: "conflict",
+            message: "The project changed since you read it.",
+            current: result.current,
+            eventCount: result.eventCount,
+          },
           { status: 412, headers: { ETag: `"${result.current}"` } },
         );
       case "limit":

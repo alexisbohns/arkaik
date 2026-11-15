@@ -1302,6 +1302,97 @@ async function main() {
     const afterOverCap = await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json();
     check("the over-cap attempt wrote nothing — version is still 2", afterOverCap.version === "2", afterOverCap.version);
 
+    // --- PUT .../bundle vs a journal-only append (the export → PUT race) -----
+    // A journal-only append (a Lab Note's `deliverable.shipped`, a quality or
+    // weighing event, a live delivery) does not bump `version`, so a bare
+    // `If-Match: "<version>"` cannot see one land between the restore's read
+    // and its PUT — and the PUT's journal replace deletes it. The composite
+    // `"<version>.<eventCount>"` names the journal the caller read too.
+    const raceRead = await (await api.EXPORT(new Request(ORIGIN), ctx(restoreId))).json();
+    const raceVersion = afterOverCap.version;
+    const raceCount = raceRead.bundle.journal.length;
+    check(
+      "race precondition: the export the restore read holds exactly the restored event",
+      raceCount === 1 && raceRead.bundle.journal[0].id === "01RESTORENEW00000000000000",
+      JSON.stringify(raceRead.bundle.journal),
+    );
+    const racing = {
+      id: "01RACESHIPPED0000000000000",
+      ts: "2026-01-03T00:00:00.000Z",
+      actor: "github-webhook",
+      type: "deliverable.shipped",
+      deliverable_id: "D-race",
+      title: "Shipped while a restore was in flight",
+    };
+    const raceAppend = await store.appendJournalEvents(restoreId, [ownerA], [racing], "graphtest");
+    check("race: the journal-only append lands", raceAppend.ok === true, JSON.stringify(raceAppend));
+    const raceVersionAfter = (await (await api.GET_PROJECT(new Request(ORIGIN), ctx(restoreId))).json()).version;
+    check(
+      "race: the append left the version alone (why a bare If-Match cannot see it)",
+      raceVersionAfter === raceVersion,
+      `${raceVersion} → ${raceVersionAfter}`,
+    );
+    // The body is what the caller read: the export's journal, without the racing event.
+    const raceBody = { ...restoreBundle, journal: raceRead.bundle.journal };
+    const racePut = await api.PUT_BUNDLE(
+      putReq(raceBody, { "if-match": `"${raceVersion}.${raceCount}"` }),
+      ctx(restoreId),
+    );
+    const racePutBody = await racePut.json();
+    check(
+      "race: a PUT whose If-Match names the journal it read is refused with 412 once an append landed",
+      racePut.status === 412,
+      `${racePut.status} ${JSON.stringify(racePutBody)}`,
+    );
+    check(
+      "race: the 412 reports the current version and event count, so the caller can tell what moved",
+      racePutBody.current === raceVersion && racePutBody.eventCount === String(raceCount + 1),
+      JSON.stringify(racePutBody),
+    );
+    const raceJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(restoreId))).json();
+    check(
+      "race: the appended event survived the refused PUT",
+      raceJournal.journal.some((e) => e.id === racing.id),
+      JSON.stringify(raceJournal.journal.map((e) => e.id)),
+    );
+    // The same validator, refreshed, matches — dry run, so nothing is written.
+    const raceRetry = await api.PUT_BUNDLE(
+      new Request(`${ORIGIN}/api/graph/projects/${restoreId}/bundle?dryRun=1`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "if-match": `"${raceVersion}.${raceCount + 1}"` },
+        body: JSON.stringify({ bundle: { ...restoreBundle, journal: raceJournal.journal } }),
+      }),
+      ctx(restoreId),
+    );
+    check(
+      "race: re-read, the composite validator matches again",
+      raceRetry.status === 200,
+      `${raceRetry.status} ${JSON.stringify(await raceRetry.json())}`,
+    );
+
+    // The window INSIDE the restore's transaction: its count and its delete are
+    // two statements, and under READ COMMITTED an append committing between
+    // them would be deleted unseen. An append therefore waits on the row lock a
+    // restore holds. Hold that lock here and watch the append wait for it.
+    await client.query("begin");
+    await client.query(`select id from graph_projects where id = $1 for update`, [restoreId]);
+    let lockedAppendSettled = false;
+    const lockedAppend = store
+      .appendJournalEvents(
+        restoreId,
+        [ownerA],
+        [{ ...racing, id: "01RACELOCKED00000000000000", deliverable_id: "D-race-locked" }],
+        "graphtest",
+      )
+      .finally(() => {
+        lockedAppendSettled = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    check("race: an append waits while a restore holds the project row", lockedAppendSettled === false);
+    await client.query("commit");
+    const lockedResult = await lockedAppend;
+    check("race: the waiting append lands once the lock is released", lockedResult.ok === true, JSON.stringify(lockedResult));
+
     // --- POST .../quality/events: a hosted scoped re-audit (Task 11, #473) --
     // A fresh owner rather than reusing userA: userA's tier was just bumped to
     // `synk` (project cap 3) for the entity-limit check above, and it already

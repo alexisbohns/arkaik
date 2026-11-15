@@ -220,4 +220,11 @@ export interface JournalStats {
 export interface ReplaceProjectOptions {
   /** The server version the replacement was edited from — sent as `If-Match`. */
   version: string;
+  /**
+   * How many journal events the edited bundle was read with. When given, the
+   * `If-Match` names it too (`"<version>.<eventCount>"`), so an event appended
+   * after the read — which does not bump the version — refuses the save
+   * instead of being deleted by it.
+   */
+  eventCount?: number;
 }

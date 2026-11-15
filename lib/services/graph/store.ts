@@ -671,7 +671,9 @@ export const weighingFoldEvents = (projectId: string, ownerIds: readonly string[
  * journal-only write path (slice 3: the Lab Note webhook). Unlike
  * `applyMutation` there are no graph ops and no version bump: the snapshot is
  * authoritative for state and unchanged; the journal is authoritative for
- * history and grows. Owner-scoped like every other write, and atomic: the batch
+ * history and grows. Because the version stays put, a whole-bundle restore
+ * sees an append through its journal-aware `If-Match`
+ * (`"<version>.<eventCount>"`, `classifyIfMatch`), not through the version. Owner-scoped like every other write, and atomic: the batch
  * commits whole or not at all.
  */
 export async function appendJournalEvents(
@@ -686,8 +688,16 @@ export async function appendJournalEvents(
   // batch's earlier events behind while the caller was told the whole batch failed —
   // and the quality and weighing routes both promise all-or-nothing.
   return withTransaction<{ ok: true } | StoreFailure>(async (client) => {
+    // `for share`: an append must not commit INSIDE a whole-bundle restore,
+    // whose journal count and journal delete are two statements under READ
+    // COMMITTED — an event committed between them would be deleted unseen.
+    // The restore holds this row `for update`, so the append waits for it and
+    // lands after (or, holding the share lock first, makes the restore wait
+    // and count it). The FK insert below would take a key-share lock anyway;
+    // stating it here keeps the guarantee from resting on that detail.
     const { rows } = await client.query<{ id: string }>(
-      `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
+      `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null
+        for share`,
       [projectId, ownerIds],
     );
     if (rows.length === 0) return { ok: false, reason: "not_found" };
@@ -1123,7 +1133,8 @@ export type ReplaceResult =
   // A shape this endpoint refuses on principle: wildcard, weak ETag, multi-value list.
   | { ok: false; reason: "precondition_unsupported" }
   // A well-formed version that just isn't the current one — the one genuine conflict.
-  | { ok: false; reason: "conflict"; current: string }
+  // `eventCount` beside it: a composite If-Match can go stale on the journal alone.
+  | { ok: false; reason: "conflict"; current: string; eventCount: string }
   | { ok: false; reason: "validation"; errors: ValidationFinding[] }
   // `limit` is `number | null` (never `Infinity`) — see checkHostedEntityLimit.
   | { ok: false; reason: "limit"; limit: number | null; actual: number; tier: string };
@@ -1246,12 +1257,26 @@ export async function replaceProjectBundle(input: ReplaceProjectBundleInput): Pr
     // Classified against `current.version` — read by the query directly
     // above, under the lock this transaction now holds. See the "If-Match,
     // read-then-compare" note above for why the ordering here is load-bearing.
-    const classification = classifyIfMatch(input.ifMatch, current.version);
+    // The journal is read under the same lock, BEFORE the comparison, because
+    // a composite `If-Match` (`"<version>.<eventCount>"`) also vouches for its
+    // length — the one way to see a journal-only append that landed after the
+    // caller's read (`classifyIfMatch` says why). Rows are unique per
+    // `(project_id, id)`, so the array's length is the stored event count.
+    // An append cannot commit between this read and the delete below: it
+    // takes a share lock on the row this transaction holds `for update`.
+    const previousJournal = await loadJournalRows(client, input.projectId);
+    const classification = classifyIfMatch(input.ifMatch, current.version, previousJournal.length);
     if (classification === "absent") return { ok: false, reason: "precondition_required" } as const;
     if (classification === "unsupported") return { ok: false, reason: "precondition_unsupported" } as const;
-    if (classification === "stale") return { ok: false, reason: "conflict", current: current.version } as const;
+    if (classification === "stale") {
+      return {
+        ok: false,
+        reason: "conflict",
+        current: current.version,
+        eventCount: String(previousJournal.length),
+      } as const;
+    }
 
-    const previousJournal = await loadJournalRows(client, input.projectId);
     const delta = computeBundleDelta(
       { ...current.snapshot, journal: previousJournal },
       { ...snapshot, journal },
