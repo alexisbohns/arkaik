@@ -1588,7 +1588,7 @@ git commit -m "chore(weighing): test script, CI step and regenerated contract ar
 **Files:**
 - Modify: `docs/spec/bundle-format.md`
 
-- [ ] **Step 1: Insert § Weighing**
+- [x] **Step 1: Insert § Weighing**
 
 In `docs/spec/bundle-format.md`, immediately **before** the `## References` heading (which follows the Quality section's "Publik withholds it by default" paragraph), insert exactly:
 
