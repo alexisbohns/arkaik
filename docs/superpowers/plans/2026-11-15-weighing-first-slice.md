@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript (`@arkaik/schema`, `arkaik` CLI, `arkaik-mcp`), zod 4, Next.js 16 / React 19 app (TanStack Query provider layer, Dexie), Postgres-backed hosted graph API, plain-Node test harnesses (`ts.transpileModule` loaders, no test framework).
 
-**Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan never touches those two files** (the doc edits below go to `docs/spec/*.md` and `docs/hosted-projects.md`).
+**Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan touches `docs/README.md` never, and the RFC only where an owner decision changed what it says** (Part 4 Task 4.6 Step 2c: the `on_behalf_of` sources, D14); the other doc edits go to `docs/spec/*.md` and `docs/hosted-projects.md`.
 
 **Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
 
@@ -7352,7 +7352,7 @@ Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upser
 - [x] **Step 2: Run the suite**
 
 Run: `npm run test:mcp`
-Expected: every suite green — `tools/list exposes the 33-tool catalog`, `All MCP server tests passed`, `All MCP journal-baseline tests passed`, `All remote-store checks passed.`, `All MCP version checks passed.`, `All Kritik MCP tests passed`, `All weighing tool tests passed.` (66 `PASS:` lines).
+Expected: every suite green — `tools/list exposes the 33-tool catalog`, `All MCP server tests passed`, `All MCP journal-baseline tests passed`, `All remote-store checks passed.`, `All MCP version checks passed.`, `All Kritik MCP tests passed`, `All weighing tool tests passed.` (80 `PASS:` lines).
 
 - [x] **Step 3: Lint and type-check**
 
@@ -7371,11 +7371,11 @@ git commit -m "feat(weighing): get_matrix, assess and save_positioning over MCP 
 **Files:**
 - Modify: `packages/mcp/package.json`, `package-lock.json`, `docs/spec/mcp.md`, `docs/hosted-projects.md`
 
-- [ ] **Step 1: Bump the server** (its tool catalog grew; the owner publishes by hand)
+- [x] **Step 1: Bump the server** (its tool catalog grew; the owner publishes by hand)
 
 In `packages/mcp/package.json` set `"version": "0.11.0"`; in `package-lock.json` change the `"packages/mcp"` entry's `"version": "0.10.0"` to `"0.11.0"`. `tests/mcp/version.test.js` reads the built server's announced version.
 
-- [ ] **Step 2: `docs/spec/mcp.md`**
+- [x] **Step 2: `docs/spec/mcp.md`**
 
 Immediately **before** `## Write Path (dual-write, validator-gated)` insert:
 
@@ -7386,27 +7386,44 @@ Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/w
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
-| `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?`, `refs?`, `model?`, `run?`, `commit?`, `matrix?` | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
+| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. `skipped` lists any stored set or matrix the resolver dropped. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
+| `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?` (≤ 2,000 characters), `refs?` (≤ 50, each ≤ 200), `model?`, `run?`, `commit?`, `matrix?` | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
 | `save_positioning` | `elements` (`[{ id, weight?, anchors? }]`), `status?` (default `draft`), `title?` | The positioning — a criteria set naming the elements the product stands on, each with a weight and, optionally, what each level means in the product's own words. Replaces the previous one whole. A **draft feeds no roll-up**; draft one from the landing page or a brainstorm and leave it for a person to read | repo: none (`docs/weighing/sets/positioning.json`); hosted: `weighing.set.saved` |
 
 **Repo and hosted behave alike.** In a repo the sidecars under `docs/weighing/` are read fresh and written by the tool; hosted, the server's folded section is the read and the events are the write, and nothing lands on disk. The hosted route stamps the scorer from the token (`agent`) and refuses a body that carries one.
+
+**On whose behalf (`scorer.on_behalf_of`).** An assessment records whom the agent acted for.
+
+- **Hosted:** the server stamps the token's owner (a user id). The MCP server sends nothing, whatever its environment says.
+- **In a repo:** `assess` stamps the first usable of, in order: (1) `ARKAIK_ON_BEHALF_OF`, trimmed; (2) `git config arkaik.user`, read in the repo root; (3) `git config user.name`, the git author name. So most local scores say who they were made for with no setup. A repo that wants another label sets `arkaik.user` (per repo or globally) or the env var.
+- **Never an email.** `user.email` is not a source, and a value that is email-shaped (anything containing `@`) in any source is *skipped*, not refused: the next source is tried, and scoring still works. The field is a user id, a handle or a display name, at most 128 characters with no control characters; sidecars are committed to repos.
+- **Absent when none is set**, as in an unattended CI run: the row is still written, without the key. Git is run without a shell (`git config --get <key>`), and any failure (no git, not a repo, not set) means "not set". The value is read on every `assess`, so a config change mid-session is honoured.
+
+It never changes who wins a cell: only the scorer's kind does.
 ````
 
-In the same file, change the `### Quality tools (Kritik)` neighbour nothing else; and wherever the doc states the tool total (search for "16 graph" / "30"), update to include the three weighing tools (the suite's catalog assertion is now 33).
+In the same file, change nothing else: the doc states no tool total (the suite's catalog assertion is the count, now 33). In `## Testing`, immediately before `## Non-Goals (v1)`, add:
 
-- [ ] **Step 2b: `docs/hosted-projects.md`** — Part 3 left the MCP pointer out of its "Weighing on a hosted project" subsection (the tools did not exist yet). In that subsection, between the paragraph that begins "**The scorer is stamped by the server**" and the one that begins "Nothing lands in the repository", add:
+````markdown
+`tests/mcp/weighing-tools.test.js` covers the weighing tools over a tmpdir repo and a stub of the hosted API, and finishes by running the built CLI's `pack` over what an agent wrote. Its `on_behalf_of` cases use a temp git repo with local config and run the server with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so "none set" never depends on the machine's own git identity.
+````
+
+**RFC.** `docs/rfcs/weighing.md` carries the same chain in its "On whose behalf" paragraph (§ 7), its decision row 13 and its `assess` row in the MCP table (§ 15): Task 4.6 Step 2c edits them.
+
+- [x] **Step 2b: `docs/hosted-projects.md`** — Part 3 left the MCP pointer out of its "Weighing on a hosted project" subsection (the tools did not exist yet). In that subsection, between the paragraph that begins "**The scorer is stamped by the server**" and the one that begins "Nothing lands in the repository", add:
 
 ```markdown
-Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing.
+Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing. The MCP server sends no scorer and no `on_behalf_of`; the token owner is stamped here.
 ```
 
-- [ ] **Step 3: Gate**
+- [x] **Step 2c: `docs/rfcs/weighing.md`** — the owner decided that the repo-mode source of `on_behalf_of` is a chain, not the env var alone (D14). Three edits, each a sentence: the decision row 13 (add "the token owner's id on a hosted write, the git author name (or an override) in a repo"); the "On whose behalf" paragraph in § 7 (after "A session is the person, so it stamps nothing." say that in a repo the MCP server reads the first usable of `ARKAIK_ON_BEHALF_OF`, `git config arkaik.user` and `git config user.name`, that a writer finding none leaves it absent, and that the value is "a user id, a handle or a display name, never an email" — the git email is not a source and an email-shaped value is skipped); and the `assess` row of the § 15 table (add the chain).
 
-Run: `npm run generate && git status --short` (expected: no artifact changes), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider`, `npm run test:cli`, `npm run test:mcp`, `npm run test:docs-visibility`.
+- [x] **Step 3: Gate**
+
+Run: `npm run generate && git status --short` (expected: no artifact changes), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider`, `npm run test:journal`, `npm run test:quality`, `npm run test:publik-strip`, `npm run test:cli`, `npm run test:mcp`, `npm run test:docs-visibility`, and `actionlint` over `.github/workflows` (nothing in this part touches a workflow, so it is a formality). `test:graph` only if the part touched the hosted route or the store (it does not).
 Expected: all exit 0.
 
-- [ ] **Step 4: Commit and submit**
+- [x] **Step 4: Commit and submit** (committed; `gh stack submit` is run once for the whole stack, not per part)
 
 ```bash
 git add packages/mcp/package.json package-lock.json docs/spec/mcp.md docs/hosted-projects.md

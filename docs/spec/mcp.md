@@ -193,6 +193,27 @@ one — and the loop these tools exist to serve is the audit, not its terms.
 stored data and are recomputed on every read; a finding cannot carry a severity its own
 `impact × likelihood` disagrees with.
 
+### Weighing tools
+
+Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/weighing.md), [bundle-format.md](bundle-format.md) § Weighing). They mirror `kritik_matrix` and `kritik_score`, and the write goes through the same validator-gated gate the app's form uses (`planWeighingEvents` in `@arkaik/schema`): an unknown element, a level off the −3..+3 scale or a subject that is not an acceptance is refused with the reason.
+
+| Tool | Input | Returns | Journal events |
+|---|---|---|---|
+| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. `skipped` lists any stored set or matrix the resolver dropped. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
+| `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?` (≤ 2,000 characters), `refs?` (≤ 50, each ≤ 200), `model?`, `run?`, `commit?`, `matrix?` | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
+| `save_positioning` | `elements` (`[{ id, weight?, anchors? }]`), `status?` (default `draft`), `title?` | The positioning — a criteria set naming the elements the product stands on, each with a weight and, optionally, what each level means in the product's own words. Replaces the previous one whole. A **draft feeds no roll-up**; draft one from the landing page or a brainstorm and leave it for a person to read | repo: none (`docs/weighing/sets/positioning.json`); hosted: `weighing.set.saved` |
+
+**Repo and hosted behave alike.** In a repo the sidecars under `docs/weighing/` are read fresh and written by the tool; hosted, the server's folded section is the read and the events are the write, and nothing lands on disk. The hosted route stamps the scorer from the token (`agent`) and refuses a body that carries one.
+
+**On whose behalf (`scorer.on_behalf_of`).** An assessment records whom the agent acted for.
+
+- **Hosted:** the server stamps the token's owner (a user id). The MCP server sends nothing, whatever its environment says.
+- **In a repo:** `assess` stamps the first usable of, in order: (1) `ARKAIK_ON_BEHALF_OF`, trimmed; (2) `git config arkaik.user`, read in the repo root; (3) `git config user.name`, the git author name. So most local scores say who they were made for with no setup. A repo that wants another label sets `arkaik.user` (per repo or globally) or the env var.
+- **Never an email.** `user.email` is not a source, and a value that is email-shaped (anything containing `@`) in any source is *skipped*, not refused: the next source is tried, and scoring still works. The field is a user id, a handle or a display name, at most 128 characters with no control characters; sidecars are committed to repos.
+- **Absent when none is set**, as in an unattended CI run: the row is still written, without the key. Git is run without a shell (`git config --get <key>`), and any failure (no git, not a repo, not set) means "not set". The value is read on every `assess`, so a config change mid-session is honoured.
+
+It never changes who wins a cell: only the scorer's kind does.
+
 ## Write Path (dual-write, validator-gated)
 
 Every mutating tool MUST follow, in order:
@@ -226,6 +247,8 @@ A flow's playlist and its `composes` edges are two views of one relationship: th
 `tests/mcp/run-mcp-tests.js` follows the CLI harness pattern: spawn the built server against a tmpdir fixture bundle + journal sidecar, speak JSON-RPC over stdio (`initialize`, `tools/list`, `tools/call`), and assert: read-tool shapes; a write round-trip (update → journal line appended → `validate_bundle` clean → snapshot canonical); and the gate (a mutation that would dangle an edge is refused with pathed findings and the files untouched).
 
 `tests/mcp/remote-store.test.js` runs the same built server against a stub of the hosted API. Assertions that a tool *behaves the same through both stores* belong here rather than in the file-mode suite, which by construction cannot see hosted-only drift: `validate_bundle` returning a verdict identical to repo mode — clean and broken — is checked that way.
+
+`tests/mcp/weighing-tools.test.js` covers the weighing tools over a tmpdir repo and a stub of the hosted API, and finishes by running the built CLI's `pack` over what an agent wrote. Its `on_behalf_of` cases use a temp git repo with local config and run the server with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so "none set" never depends on the machine's own git identity.
 
 ## Non-Goals (v1)
 

@@ -67,7 +67,7 @@ All of it rests on one way of judging, the one Kritik already uses: a level on a
 | 10 | The cheap matrix (stories by elements) ships first. The expensive one (journeys by elements, with evidence) comes last. | [§ 14](#14-the-progressive-layers), [§ 17](#17-shipping-order) |
 | 11 | The states of a need are derived, never stored: raised, considered, promised, partly addressed, addressed. | [§ 6](#6-opportunities-and-outcomes) |
 | 12 | The journey cap fires on the owed share: the promises owed on a platform carry at least X% of the journey's served mass there. X lives in the positioning, 25% by default. It never ties. | [§ 11](#11-caps) |
-| 13 | A scorer records whom it acts for (`on_behalf_of`), where identity is known. An opaque id, never an email. | [§ 7](#7-the-assessment-primitive) |
+| 13 | A scorer records whom it acts for (`on_behalf_of`), where identity is known: the token owner's id on a hosted write, the git author name (or an override) in a repo. Never an email. | [§ 7](#7-the-assessment-primitive) |
 
 ---
 
@@ -404,7 +404,7 @@ A probabilistic scorer writes its most likely level and maps its probability ont
 4. When a human and an agent differ by two levels or more, the cell goes on a review list.
 5. A **draft** matrix feeds no roll-up until someone activates it. Activation is an action like any other and records who did it.
 
-**On whose behalf.** An agent acts for somebody, and the owner calls recording who "very important". The scorer therefore carries an optional `on_behalf_of`: whom it acts for. The writer stamps it **where identity is known**. On a hosted token write it is the token owner's user id. A session is the person, so it stamps nothing, and a writer that does not know leaves it absent. It is an opaque user id or handle, **never an email**, because sidecars are committed to repos. A caller cannot send it, since it sits inside `scorer`, which the writer stamps. It never changes who wins a cell: only the kind does.
+**On whose behalf.** An agent acts for somebody, and the owner calls recording who "very important". The scorer therefore carries an optional `on_behalf_of`: whom it acts for. The writer stamps it **where identity is known**. On a hosted token write it is the token owner's user id. A session is the person, so it stamps nothing. In a repo the MCP server has no account to ask, so it reads the checkout: the first usable of `ARKAIK_ON_BEHALF_OF`, `git config arkaik.user` and `git config user.name` (the git author name), which is what lets most local scores say who they were made for. A writer that finds none, as in an unattended CI run, leaves it absent. It is a user id, a handle or a display name, **never an email** (the git email is not a source, and an email-shaped value in any source is skipped, not stamped), because sidecars are committed to repos. A caller cannot send it, since it sits inside `scorer`, which the writer stamps. It never changes who wins a cell: only the kind does.
 
 **Staleness.** An assessment records what it was looking at. For code, Kritik stores a commit. For a graph subject it is a **fingerprint**: a short hash of the fields the criterion reads. A cell is stale when its fingerprint no longer matches, or when its criteria set had a major version bump. Staleness is computed on read and never stored.
 
@@ -793,7 +793,7 @@ Tools for matrices, each mirroring a Kritik tool:
 | Tool | Mirrors | Does | Slice |
 |---|---|---|---|
 | `get_matrix` | `kritik_matrix` | The grid with effective levels, served and cost, stale cells, the review list | 1 |
-| `assess` | `kritik_score` | Writes one assessment through the validator-gated write path. Takes scorer, confidence, evidence, and optionally `accepted_by` **(proposal)**. The server stamps `on_behalf_of` where it knows whose hands the scorer is. | 1 |
+| `assess` | `kritik_score` | Writes one assessment through the validator-gated write path. Takes scorer, confidence, evidence, and optionally `accepted_by` **(proposal)**. The server stamps `on_behalf_of` where it knows whose hands the scorer is; in a repo the MCP server reads the env var, then `git config arkaik.user`, then the git author name. | 1 |
 | `matrix_scope` | `kritik_scope` | The work list: unscored and stale cells | Not slotted |
 | `matrix_plan` | `kritik_plan` | Cuts a large audit into budgeted parts with a prompt per part | Not slotted |
 
