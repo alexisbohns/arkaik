@@ -59,14 +59,12 @@ check("a body with no events array is an error", typeof parseWeighingEventInputs
 check("an empty batch is an error", typeof parseWeighingEventInputs({ events: [] }).error === "string");
 check("51 entries is an error", typeof parseWeighingEventInputs({ events: Array.from({ length: 51 }, () => assess()) }).error === "string");
 check("an unknown type is an error", typeof parseWeighingEventInputs({ events: [{ type: "quality.finding.resolved", finding_id: "x" }] }).error === "string");
-check("a fractional level is an error", typeof parseWeighingEventInputs({ events: [assess({ level: 1.5 })] }).error === "string");
-check("a confidence of 4 is an error", typeof parseWeighingEventInputs({ events: [assess({ confidence: 4 })] }).error === "string");
-check("an empty subject is an error", typeof parseWeighingEventInputs({ events: [assess({ subject: "" })] }).error === "string");
+check("an entry that is not an object is an error", typeof parseWeighingEventInputs({ events: [null] }).error === "string");
+check("the parser is the HTTP shape only: it does not judge a value (that is the planner's, so every writer gets it)", Array.isArray(parseWeighingEventInputs({ events: [assess({ level: 1.5, confidence: 7, subject: "" })] })));
 for (const stamped of ["scorer", "basis", "ts"]) {
   check(`a caller-supplied ${stamped} is refused — the server stamps it`, /stamped by the server/.test(parseWeighingEventInputs({ events: [assess({ [stamped]: stamped === "ts" ? "2026-01-01T00:00:00.000Z" : { kind: "human", id: "me" } })] }).error ?? ""));
 }
-check("refs must be non-empty strings", typeof parseWeighingEventInputs({ events: [assess({ refs: ["ok", ""] })] }).error === "string");
-check("a set needs an id, version and subject", typeof parseWeighingEventInputs({ events: [{ type: "weighing.set.saved", set: { id: "positioning" } }] }).error === "string");
+check("a set must be an object", typeof parseWeighingEventInputs({ events: [{ type: "weighing.set.saved", set: "nope" }] }).error === "string");
 
 // --- planWeighingEvents: assessments -----------------------------------------
 
@@ -97,6 +95,39 @@ check("a level of 0 is accepted — weighed and unrelated", refused([assess({ le
 check("an unknown matrix is refused", refused([assess({ matrix: "nope" })]).refusals?.[0].reason === "unknown_matrix");
 const batch = refused([assess(), assess({ criterion: "teleports" }), assess({ level: 9 })]);
 check("one bad entry refuses the whole batch, each naming its index", batch.ok === false && eq(batch.refusals.map((r) => r.index), [1, 2]));
+
+// The planner is the ONE gate: a writer that never saw the HTTP parser (the browser provider, MCP) gets the same refusals, and never a throw.
+const reasonOf = (inputs) => planWeighingEvents(undefined, [NODE], inputs, ctx()).refusals?.[0]?.reason;
+check("a fractional level is refused, not thrown on", reasonOf([assess({ level: 1.5 })]) === "invalid_entry");
+check("a string level is refused", reasonOf([assess({ level: "2" })]) === "invalid_entry");
+check("a confidence of 4 is refused", reasonOf([assess({ confidence: 4 })]) === "invalid_entry");
+check("a confidence of 7 is refused", reasonOf([assess({ confidence: 7 })]) === "invalid_entry");
+check("a fractional confidence is refused", reasonOf([assess({ confidence: 1.5 })]) === "invalid_entry");
+check("a missing confidence is refused", reasonOf([assess({ confidence: undefined })]) === "invalid_entry");
+check("an empty subject is refused", reasonOf([assess({ subject: "" })]) === "invalid_entry");
+check("an empty criterion is refused", reasonOf([assess({ criterion: "" })]) === "invalid_entry");
+check("a non-string subject is refused", reasonOf([assess({ subject: 7 })]) === "invalid_entry");
+check("an empty ref is refused", reasonOf([assess({ refs: ["ok", ""] })]) === "invalid_entry");
+check("refs that are not an array are refused", reasonOf([assess({ refs: "AC-a" })]) === "invalid_entry");
+check("a non-string run is refused", reasonOf([assess({ run: 5 })]) === "invalid_entry");
+check("an entry that is not an object is refused", reasonOf([null]) === "invalid_entry");
+check("an unknown type is refused", reasonOf([{ type: "quality.finding.resolved" }]) === "invalid_entry");
+check("a set whose criteria are not an array is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: "connects" } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set with no version is refused (it would be saved and then silently ignored)", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [] } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set that is not an object is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: null }], ctx()).refusals?.[0].reason === "invalid_set");
+check("one structural refusal still refuses the whole batch, naming its index", eq(planWeighingEvents(undefined, [NODE], [assess(), assess({ confidence: 7 })], ctx()).refusals?.map((r) => r.index), [1]));
+
+// Caps: the scale of what one writer can put in a journal row.
+check("evidence of exactly 2000 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ evidence: "x".repeat(2000) })], ctx()).ok === true);
+check("evidence of 2001 characters is refused", reasonOf([assess({ evidence: "x".repeat(2001) })]) === "invalid_entry");
+check("50 refs are accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: Array.from({ length: 50 }, (_, i) => `R-${i}`) })], ctx()).ok === true);
+check("51 refs are refused", reasonOf([assess({ refs: Array.from({ length: 51 }, (_, i) => `R-${i}`) })]) === "invalid_entry");
+check("a ref of 200 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: ["r".repeat(200)] })], ctx()).ok === true);
+check("a ref of 201 characters is refused", reasonOf([assess({ refs: ["r".repeat(201)] })]) === "invalid_entry");
+
+// The model is the agent's own account of itself: a human session has none to claim.
+check("a human's scorer drops a supplied model", !("model" in planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx()).assessments[0].scorer));
+check("an agent's scorer keeps its model", planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx({ scorerKind: "agent" })).assessments[0].scorer.model === "claude");
 
 const retired = { sets: [], matrices: [], assessments: [] };
 check("an empty section changes nothing about planning", planWeighingEvents(retired, [NODE], [assess()], ctx()).ok === true);
@@ -148,6 +179,21 @@ check("a set event adds the set", setFolded.sets.length === 1 && setFolded.sets[
 const activated = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ status: "active" }) }], ctx({ now: new Date("2026-11-15T13:00:00.000Z") }));
 const reFolded = foldWeighingEvents(setFolded, ev(activated));
 check("a later set event replaces the set by id — latest wins", reFolded.sets.length === 1 && reFolded.sets[0].status === "active");
+// A `rule` row is computed on read and never stored (D3): an event claiming to be one is not folded, whoever appended it.
+const ruleEvent = { ...ev(plan)[0], id: "01RULE", scorer: { kind: "rule", id: "seed" } };
+check("a rule-scored event is skipped by the fold", foldWeighingEvents(section, [ruleEvent]).assessments.length === 0);
+check("…even beside a real one", foldWeighingEvents(section, [ruleEvent, ...ev(plan)]).assessments.length === 1);
+
+// Latest wins by TIME, not by arrival: a stored row newer than the event survives it.
+const stamp = (kind, ts, level) => ({ matrix: "value", subject: "AC-a", criterion: "connects", level, scorer: { kind, id: "x" }, confidence: 1, ts });
+const stored = { sets: [], matrices: [], assessments: [stamp("agent", "2026-11-16T00:00:00.000Z", 3)] };
+const olderEvent = { ...ev(plan)[0], id: "01OLD", scorer: { kind: "agent", id: "arkaik-mcp" }, level: 1, ts: "2026-11-15T10:00:00.000Z" };
+check("a stored row newer than the folded event survives it", foldWeighingEvents(stored, [olderEvent]).assessments[0].level === 3);
+check("an event newer than the stored row replaces it", foldWeighingEvents(stored, [{ ...olderEvent, ts: "2026-11-17T00:00:00.000Z" }]).assessments[0].level === 1);
+check("on equal times the later event wins", foldWeighingEvents(stored, [{ ...olderEvent, ts: "2026-11-16T00:00:00.000Z" }]).assessments[0].level === 1);
+check("an unparseable stored time counts as oldest: the event replaces it", foldWeighingEvents({ ...stored, assessments: [{ ...stored.assessments[0], ts: "yesterday" }] }, [olderEvent]).assessments[0].level === 1);
+check("two events fold by their time, whatever order the journal holds them", foldWeighingEvents(section, [{ ...olderEvent, id: "01B", ts: "2026-11-15T12:00:00.000Z", level: 2 }, { ...olderEvent, id: "01A", ts: "2026-11-15T11:00:00.000Z", level: 0 }]).assessments[0].level === 2);
+
 const junk = [
   { id: "01J", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", subject: "AC-a" },
   { id: "01K", ts: "2026-11-15T10:00:00.000Z", type: "weighing.set.saved", set: "nope" },

@@ -38,7 +38,7 @@ import {
 import {
   WEIGHING_ASSESSMENT_RECORDED,
   WEIGHING_SET_SAVED,
-  upsertWeighingAssessment,
+  assessmentKey,
   type WeighingAssessment,
   type WeighingConfidence,
   type WeighingCriteriaSet,
@@ -73,24 +73,35 @@ export type WeighingEventInput =
 
 const MAX_EVENTS = 50;
 
+/**
+ * What one writer may put in one journal row. Enforced by {@link planWeighingEvents},
+ * so every writer shares them; the hosted route also caps the whole body.
+ */
+export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 } as const;
+
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
 const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
 
 /**
- * Shape-validate a request body into a batch of {@link WeighingEventInput}.
+ * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
+ * half of the gate, and only that.
  *
- * Purely structural — it never looks at the graph or the section, so it cannot
- * refuse an unknown subject (that is {@link planWeighingEvents}'s job). A legal
- * batch is an array; an error is `{ error }`. 1–50 entries. **`scorer`, `basis`
- * and `ts` are refused outright**: provenance is stamped by the writer and the
- * fingerprint is read off the graph, so a caller can claim neither.
+ * It checks what only an HTTP body can get wrong: the body is an object with an
+ * `events` array of 1–50 entries, each an object of a known `type`, and **none
+ * carries `scorer`, `basis` or `ts`** — provenance is stamped by the writer and
+ * the fingerprint is read off the graph, so a caller can claim neither. It
+ * copies only the fields an event may carry, so a stray key never reaches the
+ * planner. It does **not** judge a value (a level, a confidence, an empty
+ * subject, a set's shape): that is {@link planWeighingEvents}'s job, because the
+ * browser provider and the MCP tools never see this parser and must be held to
+ * the same rules. An error is `{ error }`.
  */
 export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | { error: string } {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return { error: "body must be an object with an events array" };
-  }
+  if (!isObject(body)) return { error: "body must be an object with an events array" };
   const { events } = body as { events?: unknown };
   if (!Array.isArray(events)) return { error: "events must be an array" };
   if (events.length === 0) return { error: "events must contain at least one entry" };
@@ -98,54 +109,24 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
 
   const parsed: WeighingEventInput[] = [];
   for (const [index, raw] of events.entries()) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { error: `events[${index}] must be an object` };
-    const entry = raw as Record<string, unknown>;
+    if (!isObject(raw)) return { error: `events[${index}] must be an object` };
+    const entry = raw;
 
     if (entry.type === WEIGHING_ASSESSMENT_RECORDED) {
       for (const stamped of ["scorer", "basis", "ts"] as const) {
         if (stamped in entry) return { error: `events[${index}].${stamped} is stamped by the server — remove it` };
       }
-      for (const field of ["subject", "criterion"] as const) {
-        if (!isNonEmptyString(entry[field])) return { error: `events[${index}].${field} must be a non-empty string` };
+      const known: Record<string, unknown> = {};
+      for (const field of ["matrix", "subject", "criterion", "level", "confidence", "evidence", "refs", "run", "commit", "model"] as const) {
+        if (entry[field] !== undefined) known[field] = entry[field];
       }
-      if (typeof entry.level !== "number" || !Number.isInteger(entry.level)) return { error: `events[${index}].level must be an integer` };
-      if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
-        return { error: `events[${index}].confidence must be an integer 0-3` };
-      }
-      for (const field of ["matrix", "evidence", "run", "commit", "model"] as const) {
-        if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return { error: `events[${index}].${field} must be a non-empty string when present` };
-      }
-      if (entry.refs !== undefined && (!Array.isArray(entry.refs) || !entry.refs.every(isNonEmptyString))) {
-        return { error: `events[${index}].refs must be an array of non-empty strings when present` };
-      }
-      parsed.push({
-        type: WEIGHING_ASSESSMENT_RECORDED,
-        subject: entry.subject as string,
-        criterion: entry.criterion as string,
-        level: entry.level,
-        confidence: entry.confidence,
-        ...(entry.matrix !== undefined ? { matrix: entry.matrix as string } : {}),
-        ...(entry.evidence !== undefined ? { evidence: entry.evidence as string } : {}),
-        ...(entry.refs !== undefined ? { refs: entry.refs as string[] } : {}),
-        ...(entry.run !== undefined ? { run: entry.run as string } : {}),
-        ...(entry.commit !== undefined ? { commit: entry.commit as string } : {}),
-        ...(entry.model !== undefined ? { model: entry.model as string } : {}),
-      });
+      parsed.push({ type: WEIGHING_ASSESSMENT_RECORDED, ...known } as WeighingEventInput);
       continue;
     }
 
     if (entry.type === WEIGHING_SET_SAVED) {
-      const set = entry.set;
-      if (typeof set !== "object" || set === null || Array.isArray(set)) return { error: `events[${index}].set must be an object` };
-      const s = set as Record<string, unknown>;
-      if (!isNonEmptyString(s.id) || !isNonEmptyString(s.version) || !isNonEmptyString(s.subject)) {
-        return { error: `events[${index}].set needs a non-empty id, version and subject` };
-      }
-      // The scale is optional: a positioning without one uses its ruler's (weighingScaleOf).
-      if (!Array.isArray(s.criteria)) {
-        return { error: `events[${index}].set needs a criteria array` };
-      }
-      parsed.push({ type: WEIGHING_SET_SAVED, set: set as WeighingCriteriaSet });
+      if (!isObject(entry.set)) return { error: `events[${index}].set must be an object` };
+      parsed.push({ type: WEIGHING_SET_SAVED, set: entry.set as WeighingCriteriaSet });
       continue;
     }
 
@@ -162,6 +143,7 @@ export type WeighingRefusalReason =
   | "unknown_criterion"
   | "retired_criterion"
   | "level_out_of_range"
+  | "invalid_entry" // structurally wrong: a type, a level that is not an integer, a confidence outside 0-3, an empty id, a cap exceeded
   | "invalid_on_behalf_of" // D14
   | "invalid_set";
 
@@ -197,9 +179,43 @@ export type WeighingPlan =
     }
   | { ok: false; refusals: WeighingRefusal[] };
 
+/** The first structural problem with an assessment entry, or `undefined` when it is well-formed. Judges shape, never the graph. */
+function assessmentProblem(entry: Record<string, unknown>): string | undefined {
+  for (const field of ["subject", "criterion"] as const) {
+    if (!isNonEmptyString(entry[field])) return `${field} must be a non-empty string`;
+  }
+  if (typeof entry.level !== "number" || !Number.isInteger(entry.level)) return "level must be an integer";
+  if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
+    return "confidence must be an integer 0-3";
+  }
+  for (const field of ["matrix", "run", "commit", "model"] as const) {
+    if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return `${field} must be a non-empty string when present`;
+  }
+  const { evidenceChars, refs, refChars } = WEIGHING_WRITE_LIMITS;
+  if (entry.evidence !== undefined) {
+    if (!isNonEmptyString(entry.evidence)) return "evidence must be a non-empty string when present";
+    if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
+  }
+  if (entry.refs !== undefined) {
+    if (!Array.isArray(entry.refs) || !entry.refs.every(isNonEmptyString)) return "refs must be an array of non-empty strings when present";
+    if (entry.refs.length > refs) return `refs must hold at most ${refs} items`;
+    if (entry.refs.some((ref: string) => ref.length > refChars)) return `each ref must be at most ${refChars} characters`;
+  }
+  return undefined;
+}
+
 /**
  * Plan the journal events one batch of {@link WeighingEventInput}s would
  * produce, or refuse the whole batch.
+ *
+ * **The one gate.** The hosted route, the browser provider and the MCP tools all
+ * come through here, and only the route sees {@link parseWeighingEventInputs},
+ * so every structural rule lives HERE: an entry must be an object of a known
+ * type, a subject and a criterion non-empty strings, the level an integer, the
+ * confidence an integer 0-3, the optional strings non-empty, `evidence` at most
+ * {@link WEIGHING_WRITE_LIMITS}.evidenceChars characters and `refs` at most
+ * `refs` items of `refChars` characters. A failure is a refusal, never a throw —
+ * the types a caller compiled against are a promise nothing forces it to keep.
  *
  * Checks every assessment against the resolved library the way `kritik_score`
  * checks a score against the pack: the matrix exists, the subject is a node the
@@ -230,11 +246,18 @@ export function planWeighingEvents(
   const events: JournalEvent[] = [];
   const assessments: WeighingAssessment[] = [];
 
-  inputs.forEach((input, index) => {
+  inputs.forEach((entry: unknown, index) => {
     const refuse = (reason: WeighingRefusalReason, detail: string) => refusals.push({ index, reason, detail });
 
-    if (input.type === WEIGHING_SET_SAVED) {
-      const set = input.set;
+    if (!isObject(entry)) return refuse("invalid_entry", "an entry must be an object");
+
+    if (entry.type === WEIGHING_SET_SAVED) {
+      const set = entry.set as WeighingCriteriaSet;
+      if (!isObject(set)) return refuse("invalid_set", "set must be an object");
+      if (!isNonEmptyString(set.id) || !isNonEmptyString(set.version) || !isNonEmptyString(set.subject)) {
+        return refuse("invalid_set", "a set needs a non-empty id, version and subject");
+      }
+      if (!Array.isArray(set.criteria)) return refuse("invalid_set", "a set needs a criteria array");
       const ruler = typeof set.extends === "string" ? setOfRef(resolved, set.extends) : undefined;
       if (set.id !== POSITIONING_SET_ID || set.role !== "positioning") {
         return refuse("invalid_set", `only the positioning can be saved: id "${POSITIONING_SET_ID}" with role "positioning"`);
@@ -252,9 +275,20 @@ export function planWeighingEvents(
       if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
         return refuse("invalid_set", `status must be "draft" or "active"`);
       }
-      events.push(makeEvent(WEIGHING_SET_SAVED, { set }, { actor: ctx.actor, ts: now }));
+      try {
+        events.push(makeEvent(WEIGHING_SET_SAVED, { set }, { actor: ctx.actor, ts: now }));
+      } catch (error) {
+        return refuse("invalid_set", error instanceof Error ? error.message : "the event failed its schema");
+      }
       return;
     }
+
+    if (entry.type !== WEIGHING_ASSESSMENT_RECORDED) {
+      return refuse("invalid_entry", `type must be ${WEIGHING_ASSESSMENT_RECORDED} or ${WEIGHING_SET_SAVED}`);
+    }
+    const problem = assessmentProblem(entry);
+    if (problem !== undefined) return refuse("invalid_entry", problem);
+    const input = entry as Extract<WeighingEventInput, { type: typeof WEIGHING_ASSESSMENT_RECORDED }>;
 
     const matrix = resolved.matrices.find((candidate) => candidate.id === (input.matrix ?? VALUE_MATRIX_ID));
     if (matrix === undefined) {
@@ -293,7 +327,8 @@ export function planWeighingEvents(
       scorer: {
         kind: ctx.scorerKind,
         id: ctx.actor,
-        ...(input.model !== undefined ? { model: input.model } : {}),
+        // The model is an agent's account of itself; a person has none to claim.
+        ...(input.model !== undefined && ctx.scorerKind === "agent" ? { model: input.model } : {}),
         ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14
       },
       confidence: input.confidence as WeighingConfidence,
@@ -307,16 +342,27 @@ export function planWeighingEvents(
       ...(input.run !== undefined ? { run: input.run } : {}),
       ts,
     };
-    assessments.push(row);
     const { ts: _ts, ...payload } = row;
     void _ts;
-    events.push(makeEvent(WEIGHING_ASSESSMENT_RECORDED, payload, { actor: ctx.actor, ts: now }));
+    try {
+      events.push(makeEvent(WEIGHING_ASSESSMENT_RECORDED, payload, { actor: ctx.actor, ts: now }));
+    } catch (error) {
+      // The strict event schema is the last word; what it refuses is a refusal, not a crash.
+      return refuse("invalid_entry", error instanceof Error ? error.message : "the event failed its schema");
+    }
+    assessments.push(row);
   });
 
   return refusals.length > 0 ? { ok: false, refusals } : { ok: true, events, assessments };
 }
 
 // --- The fold ----------------------------------------------------------------
+
+/** A row's time for "latest wins": an unparseable or missing time is the oldest there is. */
+function timeOf(ts: unknown): number {
+  const time = typeof ts === "string" ? Date.parse(ts) : Number.NaN;
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
 
 /** The assessment an event carries, or `undefined` when it is not a well-formed one. */
 function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined {
@@ -337,6 +383,9 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
     typeof scorer !== "object" ||
     scorer === null ||
     typeof scorer.kind !== "string" ||
+    // A `rule` row is computed on read and never stored (D3): an event claiming to be one is skipped,
+    // whoever appended it, so a seed can never be forged into a stored cell.
+    scorer.kind === "rule" ||
     typeof scorer.id !== "string"
   ) {
     return undefined;
@@ -360,7 +409,13 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
  * restored first, so a project holding only events still folds.
  *
  * An assessment event replaces the stored row with the same
- * {@link assessmentKey}; a set event replaces the set with the same id. An
+ * {@link assessmentKey} **only when it is at least as recent**: the two are
+ * compared by their `ts` with `Date.parse`, an unparseable time counts as the
+ * oldest there is, and on equal times the later event (the one folded last)
+ * wins. So a section a restore stored AFTER an event was written is not undone
+ * by replaying that event, and a clock-skewed event cannot overwrite a newer
+ * row. A `rule`-scored event is skipped (a rule row is never stored). A set
+ * event replaces the set with the same id. An
  * event that is not shaped right is skipped, never thrown on — the journal is
  * append-only, and a bad line stays forever.
  */
@@ -371,13 +426,17 @@ export function foldWeighingEvents(
   const relevant = events.filter((event) => event?.type === WEIGHING_ASSESSMENT_RECORDED || event?.type === WEIGHING_SET_SAVED);
   if (relevant.length === 0) return section;
 
-  let assessments = asArray<WeighingAssessment>(section?.assessments);
+  let assessments = [...asArray<WeighingAssessment>(section?.assessments)];
   let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
     if (event.type === WEIGHING_ASSESSMENT_RECORDED) {
       const row = assessmentOfEvent(event);
-      if (row !== undefined) assessments = upsertWeighingAssessment(assessments, row).assessments;
+      if (row === undefined) continue;
+      const key = assessmentKey(row);
+      const at = assessments.findIndex((existing) => assessmentKey(existing) === key);
+      if (at === -1) assessments.push(row);
+      else if (timeOf(row.ts) >= timeOf(assessments[at]?.ts)) assessments[at] = row;
       continue;
     }
     const set = (event as { set?: unknown }).set;

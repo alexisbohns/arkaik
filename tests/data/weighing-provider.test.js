@@ -99,6 +99,24 @@ async function main() {
     viewRefusal = error;
   }
   check("a view is not a subject of the value matrix", viewRefusal !== null && /unknown_subject/.test(viewRefusal.message), viewRefusal?.message);
+  // The browser never sees the HTTP parser: the planner is its only gate, so it must refuse what the route's body parser used to.
+  for (const [name, bad] of [
+    ["a confidence of 7", { confidence: 7 }],
+    ["a fractional level (1.5)", { level: 1.5 }],
+    ["an empty subject", { subject: "" }],
+    ["evidence over the cap", { evidence: "x".repeat(2001) }],
+  ]) {
+    const countBefore = (await db.journals.get(PROJECT)).events.length;
+    received.length = 0;
+    let error = null;
+    try {
+      await localProvider.appendWeighingEvents(PROJECT, [assess(), assess(bad)]);
+    } catch (e) {
+      error = e;
+    }
+    check(`${name} is refused with a message, never a raw throw from the event schema`, error !== null && /Assessment refused — invalid_entry/.test(error.message), error?.message);
+    check(`…and nothing is written or notified (${name})`, (await db.journals.get(PROJECT)).events.length === countBefore && received.length === 0);
+  }
   let missing = null;
   try {
     await localProvider.appendWeighingEvents("p-nope", [assess()]);
