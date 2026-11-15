@@ -201,6 +201,22 @@ export function resolveCell(
 
 // --- The context -------------------------------------------------------------
 
+/**
+ * The weight each element of a positioning stands on, by id. **The one rule**
+ * for what a weight is: the first criterion with an id wins; 0 means "this
+ * element does not count"; anything that is not a finite, non-negative number
+ * means "no weight said" (1). The roll-up and every reader of a positioning
+ * (the MCP `get_matrix`) read weights through this, so they cannot disagree.
+ */
+export function positioningWeights(set: Pick<WeighingCriteriaSet, "criteria">): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const criterion of set.criteria) {
+    if (weights.has(criterion.id)) continue; // the first wins
+    weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
+  }
+  return weights;
+}
+
 /** The matrix, its set, the stored cells and the active positioning, resolved once. */
 export interface WeighingContext {
   matrix: WeighingMatrix;
@@ -250,13 +266,7 @@ export function buildWeighingContext(
       : resolved.sets.find((candidate) => candidate.id === matrix.positioning && candidate.role === "positioning");
   let positioning: WeighingContext["positioning"] = null;
   if (positioningSet !== undefined && isActiveWeighingSet(positioningSet)) {
-    const weights = new Map<string, number>();
-    for (const criterion of positioningSet.criteria) {
-      if (weights.has(criterion.id)) continue; // the first wins
-      // 0 means "this element does not count"; anything that is not a finite, non-negative number means "no weight said" (1).
-      weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
-    }
-    positioning = { set: positioningSet, weights };
+    positioning = { set: positioningSet, weights: positioningWeights(positioningSet) };
   }
   return { matrix, set, byCell, positioningSet, positioning };
 }
@@ -421,8 +431,8 @@ export interface ElementMass {
 export interface WeighingView {
   matrix: WeighingMatrix;
   set: WeighingCriteriaSet;
-  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference. */
-  positioning: { set: WeighingCriteriaSet; active: boolean } | null;
+  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference; `weights` is {@link positioningWeights} of it, a draft's too. */
+  positioning: { set: WeighingCriteriaSet; active: boolean; weights: Map<string, number> } | null;
   promises: PromiseWeighing[];
   /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
   elements: Record<string, ElementMass>;
@@ -527,7 +537,7 @@ export function deriveWeighing(
   return {
     matrix: ctx.matrix,
     set: ctx.set,
-    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null },
+    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null, weights: positioningWeights(ctx.positioningSet) },
     promises,
     elements,
     totals: {

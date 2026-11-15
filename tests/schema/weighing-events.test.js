@@ -15,6 +15,7 @@ const {
   foldWeighingEvents,
   parseWeighingEventInputs,
   planWeighingEvents,
+  WEIGHING_WRITE_LIMITS,
   WEIGHING_FOLD_TYPES,
   JOURNAL_EVENT_SCHEMAS,
   KnownJournalEventSchema,
@@ -84,6 +85,19 @@ const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKin
 check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
 check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
 check("an email is refused: sidecars are committed to repos", planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: "me@example.com" })).refusals?.[0].reason === "invalid_on_behalf_of");
+const behalfOutcome = (value) => planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: value })).ok === true;
+check(
+  "a git author name is accepted: spaces, accents, a hyphen, an apostrophe, non-Latin script",
+  ["Alexis Bohns", "Anne-Claire Dupré", "José O'Brien", "李 雷", "alexisbohns", "u_1842"].every(behalfOutcome),
+);
+check(
+  "anything with an @ is refused, whatever its shape",
+  ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
+);
+check("a look-alike @ is refused too: the full-width and the small commercial at", ["me＠example.com", "me﹫example.com", "＠alexis"].every((value) => !behalfOutcome(value)));
+check("an invisible format character is refused (a zero-width space, a bidi override, a byte-order mark)", ["Alexis\u200bBohns", "\u202eAlexis", "Alexis\u202eBohns", "\ufeffAlexis", "\u2066Alexis"].every((value) => !behalfOutcome(value)));
+check("…but the zero-width joiner and non-joiner are names: a ZWJ emoji sequence, Persian and Indic spellings", ["Alex 👩\u200d💻", "می\u200cخواهم", "क्\u200dष", "Anne\u200dClaire"].every(behalfOutcome));
+check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
 check("an unknown subject is refused", refused([assess({ subject: "AC-nope" })]).refusals?.[0].reason === "unknown_subject");
@@ -124,6 +138,12 @@ check("50 refs are accepted", planWeighingEvents(undefined, [NODE], [assess({ re
 check("51 refs are refused", reasonOf([assess({ refs: Array.from({ length: 51 }, (_, i) => `R-${i}`) })]) === "invalid_entry");
 check("a ref of 200 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: ["r".repeat(200)] })], ctx()).ok === true);
 check("a ref of 201 characters is refused", reasonOf([assess({ refs: ["r".repeat(201)] })]) === "invalid_entry");
+for (const field of ["model", "run", "commit"]) {
+  check(`${field} of exactly 200 characters is accepted`, planWeighingEvents(undefined, [NODE], [assess({ [field]: "m".repeat(200) })], ctx({ scorerKind: "agent" })).ok === true);
+  check(`${field} of 201 characters is refused`, reasonOf([assess({ [field]: "m".repeat(201) })]) === "invalid_entry");
+}
+check("the caps are named: evidence, refs, ref and the model/run/commit fields", eq(WEIGHING_WRITE_LIMITS, { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 }));
+check("evidence that is blank after trimming is refused", ["   ", "\n\t "].every((evidence) => reasonOf([assess({ evidence })]) === "invalid_entry") && planWeighingEvents(undefined, [NODE], [assess({ evidence: " fine " })], ctx()).ok === true);
 
 // The model is the agent's own account of itself: a human session has none to claim.
 check("a human's scorer drops a supplied model", !("model" in planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx()).assessments[0].scorer));
@@ -148,6 +168,16 @@ const positioning = (over = {}) => ({
 const saved = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning() }], ctx());
 check("a positioning plans one set.saved event", saved.ok === true && saved.events.length === 1 && saved.events[0].type === "weighing.set.saved" && saved.events[0].set.id === "positioning");
 check("the saved set validates against its strict schema", KnownJournalEventSchema.safeParse(saved.events[0]).success);
+const setWith = (criteria) => planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria }) }], ctx());
+check("anchors keyed by levels on the scale, with words, are accepted", setWith([{ id: "connects", anchors: { "3": "a", "0": "b", "-3": "c" } }]).ok === true);
+check(
+  "anchors that are not an object of words are refused, not fixed",
+  [["not an object"], ["a", "b"], null, 5].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"),
+);
+check("an anchor on a level off the scale, or not a level, or not written canonically, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }, { "03": "x" }, { "-0": "x" }, { "+3": "x" }, { "00": "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("an anchor whose words are empty or not a string is refused", [{ "3": "" }, { "3": "  " }, { "3": 3 }, { "3": null }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("a criterion that is not an object is refused", [null, 5, "connects"].every((entry) => setWith([entry]).refusals?.[0].reason === "invalid_set"));
+check("a weight that is not a number is refused as given", ["3", true, NaN, Infinity].every((weight) => setWith([{ id: "connects", weight }]).refusals?.[0].reason === "invalid_set"));
 check("a positioning with an unknown element is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "teleports" }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("a weight of 0 is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "connects", weight: 0 }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("only the positioning can be saved in this slice", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ id: "my-set", role: undefined }) }], ctx()).refusals?.[0].reason === "invalid_set");

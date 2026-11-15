@@ -77,14 +77,24 @@ const MAX_EVENTS = 50;
  * What one writer may put in one journal row. Enforced by {@link planWeighingEvents},
  * so every writer shares them; the hosted route also caps the whole body.
  */
-export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 } as const;
+export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 } as const;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
-const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
+/**
+ * D14: what `scorer.on_behalf_of` may hold — an opaque user id, a handle or a
+ * person's display name (a git author name: "Anne-Claire Dupré"), never an
+ * email, because a sidecar is committed to a repo. So: non-blank, 128
+ * characters at most, no control or invisible format characters (`\p{Cc}`,
+ * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text —
+ * except U+200C and U+200D, the zero-width non-joiner and joiner, which spell
+ * names in many scripts and emoji sequences),
+ * and **no `@` anywhere** — the ASCII one and its look-alikes (U+FF20 full-width,
+ * U+FE6B small) — which refuses "me@example.com" and "Alexis <me@example.com>" alike.
+ */
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/\p{Cc}|(?![\u200c\u200d])\p{Cf}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -161,8 +171,9 @@ export interface WeighingPlanContext {
   scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
    * Whom the scorer acts for, when the writer knows (D14): the token
-   * owner's user id on the hosted route, whatever the MCP server was told in a
-   * repo. An opaque id or handle, never an email. Absent otherwise.
+   * owner's user id on the hosted route, in a repo the MCP server's first usable
+   * of the env var, `arkaik.user` and the git author name. A user id, a handle
+   * or a name, never an email ({@link isValidOnBehalfOf}). Absent otherwise.
    */
   onBehalfOf?: string;
   /** Defaults to now. */
@@ -188,12 +199,15 @@ function assessmentProblem(entry: Record<string, unknown>): string | undefined {
   if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
     return "confidence must be an integer 0-3";
   }
+  const { evidenceChars, refs, refChars, fieldChars } = WEIGHING_WRITE_LIMITS;
   for (const field of ["matrix", "run", "commit", "model"] as const) {
     if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return `${field} must be a non-empty string when present`;
   }
-  const { evidenceChars, refs, refChars } = WEIGHING_WRITE_LIMITS;
+  for (const field of ["run", "commit", "model"] as const) {
+    if (typeof entry[field] === "string" && entry[field].length > fieldChars) return `${field} must be at most ${fieldChars} characters`;
+  }
   if (entry.evidence !== undefined) {
-    if (!isNonEmptyString(entry.evidence)) return "evidence must be a non-empty string when present";
+    if (!isNonEmptyString(entry.evidence) || entry.evidence.trim() === "") return "evidence must be a non-blank string when present";
     if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
   }
   if (entry.refs !== undefined) {
@@ -268,8 +282,20 @@ export function planWeighingEvents(
         if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
           return refuse("invalid_set", `"${String(criterion?.id)}" is not an element of ${ruler.id}`);
         }
-        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !(criterion.weight > 0))) {
+        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !Number.isFinite(criterion.weight) || !(criterion.weight > 0))) {
           return refuse("invalid_set", `the weight for "${criterion.id}" must be a number above 0 — leave the element out to leave it unpositioned`);
+        }
+        if (criterion.anchors !== undefined) {
+          // What each level means in the product's words: { "<level>": "words" }, levels on the ruler's scale.
+          const { min, max } = weighingScaleOf(ruler, resolved);
+          const anchors: unknown = criterion.anchors;
+          if (!isObject(anchors)) return refuse("invalid_set", `the anchors for "${criterion.id}" must be an object of level -> words`);
+          for (const [level, words] of Object.entries(anchors)) {
+            if (!/^-?\d+$/.test(level) || String(Number(level)) !== level || Number(level) < min || Number(level) > max) {
+              return refuse("invalid_set", `an anchor for "${criterion.id}" is keyed "${level}", which is not a level from ${min} to ${max}`);
+            }
+            if (typeof words !== "string" || words.trim() === "") return refuse("invalid_set", `the anchor for "${criterion.id}" at level ${level} must be non-empty words`);
+          }
         }
       }
       if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
@@ -313,9 +339,9 @@ export function planWeighingEvents(
       return refuse("level_out_of_range", `level ${input.level} is outside ${scale.min}..${scale.max}`);
     }
 
-    if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
+    if (ctx.onBehalfOf !== undefined && !isValidOnBehalfOf(ctx.onBehalfOf)) {
       // D14.
-      return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
+      return refuse("invalid_on_behalf_of", "on_behalf_of is a user id, a handle or a name (no control characters, at most 128 characters), never an email — sidecars are committed to repos");
     }
 
     const ts = now.toISOString();

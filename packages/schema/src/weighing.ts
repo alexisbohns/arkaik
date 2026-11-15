@@ -92,9 +92,9 @@ export interface WeighingScorer extends Record<string, unknown> {
   /** The model behind an agent, when it says. */
   model?: string;
   /**
-   * Whom the scorer acts for, when the writer knows: an opaque user id or
-   * handle, NEVER an email (sidecars are committed to repos). Stamped by the
-   * writer, never sent by a caller.
+   * Whom the scorer acts for, when the writer knows: an opaque user id, a
+   * handle or a display name (a git author name), NEVER an email (sidecars are
+   * committed to repos). Stamped by the writer, never sent by a caller.
    */
   on_behalf_of?: string;
 }

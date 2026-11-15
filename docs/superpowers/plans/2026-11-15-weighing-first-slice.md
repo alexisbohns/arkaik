@@ -8,11 +8,13 @@
 
 **Tech Stack:** TypeScript (`@arkaik/schema`, `arkaik` CLI, `arkaik-mcp`), zod 4, Next.js 16 / React 19 app (TanStack Query provider layer, Dexie), Postgres-backed hosted graph API, plain-Node test harnesses (`ts.transpileModule` loaders, no test framework).
 
-**Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan never touches those two files** (the doc edits below go to `docs/spec/*.md` and `docs/hosted-projects.md`).
+**Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan touches `docs/README.md` never, and the RFC only where an owner decision changed what it says** (Part 4 Task 4.6 Step 2c: the `on_behalf_of` sources, D14); the other doc edits go to `docs/spec/*.md` and `docs/hosted-projects.md`.
 
-**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — except Part 4's `on_behalf_of` additions, which are marked *not yet run* wherever they appear.** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
+**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
 
-**Not yet run: `on_behalf_of` in Part 4** (Part 3's were run: the planner, the `isOpaqueId` guard, the `invalid_on_behalf_of` refusal and the route's token stamp all passed `test:weighing-events`, `test:graph` and `test:weighing-provider` unchanged). The owner's decision to record whom a scorer acts for (D14) was folded into this plan after the run above, in a worktree with no `node_modules`, so none of the suites could be executed against it. Every added line in Part 4 is marked *not yet run*. They are small and follow the code beside them, but the Part 4 implementer must run `test:mcp` and treat a red check there as the plan's bug, not theirs.
+**Part 4's `on_behalf_of` was run too** (`test:mcp`, 126 checks in `weighing-tools.test.js`, 29 of them the source chain, its opt-out and its timeout; `test:weighing-events` for the widened guard). Writing them against the real code changed three things the plan had wrong or silent about: the repo-mode source is a chain (env, then `git config arkaik.user`, then `git config user.name`), not the env var alone (owner decision, D14); Part 3's guard refused whitespace and so would have refused a git author name; and the MCP suite has to isolate git from the machine it runs on (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`), or "none set" depends on whose laptop it is (the isolation also drops `GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and `GIT_CONFIG_KEY_n`/`VALUE_n`, so a surrounding git hook or CI runner cannot steer it).
+
+**Part 4 review round (applied on top).** The planner gained three rules the tools lean on (a small Part 3 change, made in Part 4): `model`, `run` and `commit` are capped at 200 characters (`WEIGHING_WRITE_LIMITS.fieldChars`); `evidence` must be non-blank after trimming; and a positioning's `anchors` must be an object of `{ level on the scale: non-empty words }` and its weights finite. `isValidOnBehalfOf` also refuses U+FF20, U+FE6B and `\p{Cf}` characters. `positioningWeights` (Part 2) is the one rule for a weight and the view carries it, so `get_matrix` no longer re-implements the default. `assess` no longer range-checks `level` itself (the planner says `level_out_of_range`), refuses a draft or unknown matrix in the tool, and a hosted refusal carries the same `refusals` as a repo one. `save_positioning` passes weights and anchors through as given. And D14 gained an opt-out (`-`), below.
 
 ---
 
@@ -41,7 +43,7 @@ Slice 1 = no new species, no nesting, no opportunities, no caps. `schema_version
 | D11 | **A third MCP tool, `save_positioning`.** The brief names two. Without it an agent on a *hosted* project has no way to draft a positioning (in a repo it could edit a file). It is the last task of Part 4 and self-contained — **Owner: keep (decided).** Agents may draft and activate a positioning; a human can revert it (see R17 for what the journal records of a save). | DISCUSSION: "an agent drafts it from the landing page". |
 | D12 | **`ValuePicker` keeps the author's pick order** (last task of Part 5). Today it re-sorts `metadata.values` into the model's canonical order on every change, so for any acceptance edited in the app the seeding rule "first value = +3" would read the *tier order*, not the author's intent. See Risk R1. | The seeding rule reads order; the only editor destroys it. **Owner: keep (decided).** |
 | D13 | **Publik:** `stripWeighing` + `?include_weighing=true`; CLI `arkaik push --include-weighing` (default: deleted before packing); `arkaik pack --no-weighing` deletes the section. A separate opt-in, as quality is separate from the journal. | Kritik precedent, one for one. |
-| D14 | **`WeighingScorer.on_behalf_of?: string`: whom a scorer acts for.** Optional. Stamped by the writer **where identity is known**: a hosted token write stamps the token owner's user id (`String(caller.userId)`); a session, the browser provider and a repo-mode MCP session stamp nothing unless told (`ARKAIK_ON_BEHALF_OF`). An opaque user id or handle, **never an email**, because sidecars are committed to repos: the planner refuses an email-shaped value. A caller cannot send it, because it sits inside `scorer`, which the parser already refuses. Part 1 carries the field, Part 3 the stamping and the guard, Part 4 the MCP source. | The owner: recording who a scorer acts for is "very important". `scorer.id` says what acted (`arkaik-agent`), not for whom, so a person driving an agent was indistinguishable from any other. **Supersedes the coarse-label half of R11.** |
+| D14 | **`WeighingScorer.on_behalf_of?: string`: whom a scorer acts for.** Optional. Stamped by the writer **where identity is known**: a hosted token write stamps the token owner's user id (`String(caller.userId)`); a session and the browser provider stamp nothing; a **repo-mode MCP session stamps the first usable of `ARKAIK_ON_BEHALF_OF` (trimmed), `git config arkaik.user` (read in the repo root), `git config user.name` (the git author name)**, so most local scores say who they were made for, and none is stamped only when no source is set (an unattended CI run). **Opt-out: `-` as `ARKAIK_ON_BEHALF_OF` or as `git config arkaik.user` means "record nobody"** — nothing is stamped and the chain stops (git's name is not read); an empty value is just "not set" and falls through. A git that hangs costs one 1.5 s wait (a timeout on `arkaik.user` ends the chain). **Never the git email**: `user.email` is not a source, and an email-shaped value in any source is skipped (the next source is tried), not refused, so scoring still works. A user id, a handle or a display name, **never an email**, because sidecars are committed to repos: the planner refuses any value containing an `@` (or U+FF20, U+FE6B), a control or invisible format character, or over 128 characters. A caller cannot send it, because it sits inside `scorer`, which the parser already refuses. Part 1 carries the field, Part 3 the stamping and the guard, Part 4 the MCP sources. | The owner: recording who a scorer acts for is "very important". `scorer.id` says what acted (`arkaik-agent`), not for whom, so a person driving an agent was indistinguishable from any other. **Supersedes the coarse-label half of R11.** |
 | D15 | **Import never blocks: only the containers are strict.** `weighing` must be an object and each of `sets` / `matrices` / `assessments` an array; everything inside parses, whatever it holds. A list item may be anything (a `null` row), every leaf is `z.unknown()` (a string `level`, a confidence of 4, a scorer that is a string, a numeric `evidence`, a mistyped `role` or `status`), and even the keys a record is addressed by (`matrix`/`subject`/`criterion`/`ts`; a set's `id`/`version`; a matrix's `id`/`set`/`subjects`) are optional. "Cannot be addressed" means a reader skips the row and the validator warns — never that the import is refused. Readers go through `resolveWeighing` (well-formed sets and matrices; unusable criteria dropped) and `readWeighingAssessments`, and the record types describe a well-formed record except `scorer` (optional), a positioning's `scale` (optional: it uses its ruler's, `weighingScaleOf`), the section's lists (optional) and `status` (a string). **Status is read one way: absent or `"active"` is active, any other present value is a draft** (`isActiveWeighingSet`), so a mistyped draft never feeds a roll-up. "The first wins" counts only well-formed duplicates. | The RFC: validation is warnings only, never import-blocking. A section is filled at scale by agents and scorers, so one bad cell must not refuse a whole project. The departure from `QualitySectionSchema` is deliberate. Writers (the planner, the event parser) stay strict about what they will WRITE. |
 
 ### Not in slice 1 (so nothing below builds it)
@@ -471,9 +473,9 @@ export interface WeighingScorer extends Record<string, unknown> {
   /** The model behind an agent, when it says. */
   model?: string;
   /**
-   * Whom the scorer acts for, when the writer knows: an opaque user id or
-   * handle, NEVER an email (sidecars are committed to repos). Stamped by the
-   * writer, never sent by a caller.
+   * Whom the scorer acts for, when the writer knows: an opaque user id, a
+   * handle or a display name (a git author name), NEVER an email (sidecars are
+   * committed to repos). Stamped by the writer, never sent by a caller.
    */
   on_behalf_of?: string;
 }
@@ -1108,7 +1110,7 @@ export const WeighingScorerSchema = z
     kind: leaf("Who judged: human, agent or rule. A human's level beats an agent's, which beats a rule's. Any value parses; the validator warns on another kind."),
     id: leaf("A person's handle, an agent's name, or a seeding rule's id."),
     model: leaf("The model behind an agent, when it says."),
-    on_behalf_of: leaf("Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known."),
+    on_behalf_of: leaf("Whom the scorer acts for: a user id, a handle or a display name, never an email. Stamped by the writer where identity is known."),
   })
   .catchall(z.unknown())
   .meta({ id: "WeighingScorer", description: "Provenance of one assessment." }) as unknown as z.ZodType<WeighingScorer>;
@@ -2726,6 +2728,22 @@ Append to `packages/schema/src/weighing-derive.ts`:
 ```ts
 // --- The context -------------------------------------------------------------
 
+/**
+ * The weight each element of a positioning stands on, by id. **The one rule**
+ * for what a weight is: the first criterion with an id wins; 0 means "this
+ * element does not count"; anything that is not a finite, non-negative number
+ * means "no weight said" (1). The roll-up and every reader of a positioning
+ * (the MCP `get_matrix`) read weights through this, so they cannot disagree.
+ */
+export function positioningWeights(set: Pick<WeighingCriteriaSet, "criteria">): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const criterion of set.criteria) {
+    if (weights.has(criterion.id)) continue; // the first wins
+    weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
+  }
+  return weights;
+}
+
 /** The matrix, its set, the stored cells and the active positioning, resolved once. */
 export interface WeighingContext {
   matrix: WeighingMatrix;
@@ -2775,13 +2793,7 @@ export function buildWeighingContext(
       : resolved.sets.find((candidate) => candidate.id === matrix.positioning && candidate.role === "positioning");
   let positioning: WeighingContext["positioning"] = null;
   if (positioningSet !== undefined && isActiveWeighingSet(positioningSet)) {
-    const weights = new Map<string, number>();
-    for (const criterion of positioningSet.criteria) {
-      if (weights.has(criterion.id)) continue; // the first wins
-      // 0 means "this element does not count"; anything that is not a finite, non-negative number means "no weight said" (1).
-      weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
-    }
-    positioning = { set: positioningSet, weights };
+    positioning = { set: positioningSet, weights: positioningWeights(positioningSet) };
   }
   return { matrix, set, byCell, positioningSet, positioning };
 }
@@ -3005,6 +3017,14 @@ check("a set with the positioning role under another id is not the matrix's posi
 const weights = buildWeighingContext({ sets: [positioning("active", [{ id: "connects", weight: 0 }, { id: "informs", weight: Infinity }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }])] }).positioning.weights;
 check("a weight of 0 means 0; a non-finite or negative weight reads as 1; the first duplicate wins", weights.get("connects") === 0 && weights.get("informs") === 1 && weights.get("organizes") === 1);
 
+const wview = (status, criteria) => deriveWeighing([consent], { sets: [positioning(status, criteria)] });
+const dupes = [{ id: "connects", weight: 0 }, { id: "informs" }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }];
+check(
+  "the view hands over the positioning's weights with the same rule as the roll-up: default 1, 0 is 0, the first duplicate wins",
+  [wview("active", dupes), wview("draft", dupes)].every((v) => eq(Object.fromEntries(v.positioning.weights), { connects: 0, informs: 1, organizes: 1 })),
+);
+check("…for a draft too, which feeds no roll-up but is still shown", wview("draft", dupes).positioning.active === false);
+
 // Guesswork on every number
 const guessy = ac("AC-guessy", ["connects"], { platforms: ["web", "ios"], metadata: { gherkin: "g", values: ["connects"], platformStatuses: { web: "live", ios: "development" } } });
 const guessSec = { sets: [positioning("active", [{ id: "connects", weight: 2 }, { id: "reduces-effort", weight: 3 }])], assessments: [row(guessy, "connects", 3, { confidence: 2 }), row(guessy, "reduces-effort", -3, { scorer: agent, confidence: 0 }), row(guessy, "reduces-anxiety", -3, { scorer: agent, confidence: 2 })] };
@@ -3133,8 +3153,8 @@ export interface ElementMass {
 export interface WeighingView {
   matrix: WeighingMatrix;
   set: WeighingCriteriaSet;
-  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference. */
-  positioning: { set: WeighingCriteriaSet; active: boolean } | null;
+  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference; `weights` is {@link positioningWeights} of it, a draft's too. */
+  positioning: { set: WeighingCriteriaSet; active: boolean; weights: Map<string, number> } | null;
   promises: PromiseWeighing[];
   /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
   elements: Record<string, ElementMass>;
@@ -3239,7 +3259,7 @@ export function deriveWeighing(
   return {
     matrix: ctx.matrix,
     set: ctx.set,
-    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null },
+    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null, weights: positioningWeights(ctx.positioningSet) },
     promises,
     elements,
     totals: {
@@ -3359,6 +3379,7 @@ const {
   foldWeighingEvents,
   parseWeighingEventInputs,
   planWeighingEvents,
+  WEIGHING_WRITE_LIMITS,
   WEIGHING_FOLD_TYPES,
   JOURNAL_EVENT_SCHEMAS,
   KnownJournalEventSchema,
@@ -3575,14 +3596,26 @@ const MAX_EVENTS = 50;
  * What one writer may put in one journal row. Enforced by {@link planWeighingEvents},
  * so every writer shares them; the hosted route also caps the whole body.
  */
-export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 } as const;
+export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 } as const;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
-const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
+/**
+ * D14: what `scorer.on_behalf_of` may hold — an opaque user id, a handle or a
+ * person's display name (a git author name: "Anne-Claire Dupré"), never an
+ * email, because a sidecar is committed to a repo. So: non-blank, 128
+ * characters at most, no control or invisible format characters (`\p{Cc}`,
+ * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text —
+ * except U+200C and U+200D, the zero-width non-joiner and joiner, which spell
+ * names in many scripts and emoji sequences),
+ * and **no `@` anywhere** — the ASCII one and its look-alikes (U+FF20 full-width,
+ * U+FE6B small) — which refuses "me@example.com" and "Alexis <me@example.com>" alike.
+ *
+ * Exported so the MCP server can skip a candidate the planner would refuse.
+ */
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/\p{Cc}|(?![\u200c\u200d])\p{Cf}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -3678,6 +3711,19 @@ const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKin
 check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
 check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
 check("an email is refused: sidecars are committed to repos", planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: "me@example.com" })).refusals?.[0].reason === "invalid_on_behalf_of");
+const behalfOutcome = (value) => planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: value })).ok === true;
+check(
+  "a git author name is accepted: spaces, accents, a hyphen, an apostrophe, non-Latin script",
+  ["Alexis Bohns", "Anne-Claire Dupré", "José O'Brien", "李 雷", "alexisbohns", "u_1842"].every(behalfOutcome),
+);
+check(
+  "anything with an @ is refused, whatever its shape",
+  ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
+);
+check("a look-alike @ is refused too: the full-width and the small commercial at", ["me＠example.com", "me﹫example.com", "＠alexis"].every((value) => !behalfOutcome(value)));
+check("an invisible format character is refused (a zero-width space, a bidi override, a byte-order mark)", ["Alexis\u200bBohns", "\u202eAlexis", "Alexis\u202eBohns", "\ufeffAlexis", "\u2066Alexis"].every((value) => !behalfOutcome(value)));
+check("…but the zero-width joiner and non-joiner are names: a ZWJ emoji sequence, Persian and Indic spellings", ["Alex 👩\u200d💻", "می\u200cخواهم", "क्\u200dष", "Anne\u200dClaire"].every(behalfOutcome));
+check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
 check("an unknown subject is refused", refused([assess({ subject: "AC-nope" })]).refusals?.[0].reason === "unknown_subject");
@@ -3718,6 +3764,12 @@ check("50 refs are accepted", planWeighingEvents(undefined, [NODE], [assess({ re
 check("51 refs are refused", reasonOf([assess({ refs: Array.from({ length: 51 }, (_, i) => `R-${i}`) })]) === "invalid_entry");
 check("a ref of 200 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: ["r".repeat(200)] })], ctx()).ok === true);
 check("a ref of 201 characters is refused", reasonOf([assess({ refs: ["r".repeat(201)] })]) === "invalid_entry");
+for (const field of ["model", "run", "commit"]) {
+  check(`${field} of exactly 200 characters is accepted`, planWeighingEvents(undefined, [NODE], [assess({ [field]: "m".repeat(200) })], ctx({ scorerKind: "agent" })).ok === true);
+  check(`${field} of 201 characters is refused`, reasonOf([assess({ [field]: "m".repeat(201) })]) === "invalid_entry");
+}
+check("the caps are named: evidence, refs, ref and the model/run/commit fields", eq(WEIGHING_WRITE_LIMITS, { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 }));
+check("evidence that is blank after trimming is refused", ["   ", "\n\t "].every((evidence) => reasonOf([assess({ evidence })]) === "invalid_entry") && planWeighingEvents(undefined, [NODE], [assess({ evidence: " fine " })], ctx()).ok === true);
 
 // The model is the agent's own account of itself: a human session has none to claim.
 check("a human's scorer drops a supplied model", !("model" in planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx()).assessments[0].scorer));
@@ -3742,6 +3794,16 @@ const positioning = (over = {}) => ({
 const saved = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning() }], ctx());
 check("a positioning plans one set.saved event", saved.ok === true && saved.events.length === 1 && saved.events[0].type === "weighing.set.saved" && saved.events[0].set.id === "positioning");
 check("the saved set validates against its strict schema", KnownJournalEventSchema.safeParse(saved.events[0]).success);
+const setWith = (criteria) => planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria }) }], ctx());
+check("anchors keyed by levels on the scale, with words, are accepted", setWith([{ id: "connects", anchors: { "3": "a", "0": "b", "-3": "c" } }]).ok === true);
+check(
+  "anchors that are not an object of words are refused, not fixed",
+  [["not an object"], ["a", "b"], null, 5].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"),
+);
+check("an anchor on a level off the scale, or not a level, or not written canonically, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }, { "03": "x" }, { "-0": "x" }, { "+3": "x" }, { "00": "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("an anchor whose words are empty or not a string is refused", [{ "3": "" }, { "3": "  " }, { "3": 3 }, { "3": null }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("a criterion that is not an object is refused", [null, 5, "connects"].every((entry) => setWith([entry]).refusals?.[0].reason === "invalid_set"));
+check("a weight that is not a number is refused as given", ["3", true, NaN, Infinity].every((weight) => setWith([{ id: "connects", weight }]).refusals?.[0].reason === "invalid_set"));
 check("a positioning with an unknown element is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "teleports" }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("a weight of 0 is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "connects", weight: 0 }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("only the positioning can be saved in this slice", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ id: "my-set", role: undefined }) }], ctx()).refusals?.[0].reason === "invalid_set");
@@ -3753,7 +3815,7 @@ check("a positioning extending nothing is refused", planWeighingEvents(undefined
 Run: `node tests/schema/weighing-events.test.js`
 Expected: FAIL — `TypeError: planWeighingEvents is not a function`.
 
-> **Run in Part 3 (D14).** The planner gains `ctx.onBehalfOf`, one refusal reason (`invalid_on_behalf_of`) and a small `isOpaqueId` guard that rejects an email-shaped value; the three checks at the end of Step 1 pass as written, and Task 3.3 adds two more pinning that the stamp survives the fold.
+> **Run in Part 3 (D14), widened in Part 4.** The planner gains `ctx.onBehalfOf`, one refusal reason (`invalid_on_behalf_of`) and a small guard that rejects an email-shaped value; the three checks at the end of Step 1 pass as written, and Task 3.3 adds two more pinning that the stamp survives the fold. **Part 4 changed the guard** (now the exported `isValidOnBehalfOf`; it was the private `isOpaqueId`): the first version refused whitespace, so a git author name such as "Anne-Claire Dupré" could not be stamped, and the repo-mode MCP source (Part 4) reads exactly that. It now refuses what cannot be a name — an `@` anywhere, a control character, blank or over 128 characters — and the three extra checks in the block above pin it.
 
 - [x] **Step 3: Append the planner**
 
@@ -3786,8 +3848,9 @@ export interface WeighingPlanContext {
   scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
    * Whom the scorer acts for, when the writer knows (D14): the token
-   * owner's user id on the hosted route, whatever the MCP server was told in a
-   * repo. An opaque id or handle, never an email. Absent otherwise.
+   * owner's user id on the hosted route, in a repo the MCP server's first usable
+   * of the env var, `arkaik.user` and the git author name. A user id, a handle
+   * or a name, never an email ({@link isValidOnBehalfOf}). Absent otherwise.
    */
   onBehalfOf?: string;
   /** Defaults to now. */
@@ -3813,12 +3876,15 @@ function assessmentProblem(entry: Record<string, unknown>): string | undefined {
   if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
     return "confidence must be an integer 0-3";
   }
+  const { evidenceChars, refs, refChars, fieldChars } = WEIGHING_WRITE_LIMITS;
   for (const field of ["matrix", "run", "commit", "model"] as const) {
     if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return `${field} must be a non-empty string when present`;
   }
-  const { evidenceChars, refs, refChars } = WEIGHING_WRITE_LIMITS;
+  for (const field of ["run", "commit", "model"] as const) {
+    if (typeof entry[field] === "string" && entry[field].length > fieldChars) return `${field} must be at most ${fieldChars} characters`;
+  }
   if (entry.evidence !== undefined) {
-    if (!isNonEmptyString(entry.evidence)) return "evidence must be a non-empty string when present";
+    if (!isNonEmptyString(entry.evidence) || entry.evidence.trim() === "") return "evidence must be a non-blank string when present";
     if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
   }
   if (entry.refs !== undefined) {
@@ -3893,8 +3959,20 @@ export function planWeighingEvents(
         if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
           return refuse("invalid_set", `"${String(criterion?.id)}" is not an element of ${ruler.id}`);
         }
-        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !(criterion.weight > 0))) {
+        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !Number.isFinite(criterion.weight) || !(criterion.weight > 0))) {
           return refuse("invalid_set", `the weight for "${criterion.id}" must be a number above 0 — leave the element out to leave it unpositioned`);
+        }
+        if (criterion.anchors !== undefined) {
+          // What each level means in the product's words: { "<level>": "words" }, levels on the ruler's scale.
+          const { min, max } = weighingScaleOf(ruler, resolved);
+          const anchors: unknown = criterion.anchors;
+          if (!isObject(anchors)) return refuse("invalid_set", `the anchors for "${criterion.id}" must be an object of level -> words`);
+          for (const [level, words] of Object.entries(anchors)) {
+            if (!/^-?\d+$/.test(level) || String(Number(level)) !== level || Number(level) < min || Number(level) > max) {
+              return refuse("invalid_set", `an anchor for "${criterion.id}" is keyed "${level}", which is not a level from ${min} to ${max}`);
+            }
+            if (typeof words !== "string" || words.trim() === "") return refuse("invalid_set", `the anchor for "${criterion.id}" at level ${level} must be non-empty words`);
+          }
         }
       }
       if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
@@ -3938,9 +4016,9 @@ export function planWeighingEvents(
       return refuse("level_out_of_range", `level ${input.level} is outside ${scale.min}..${scale.max}`);
     }
 
-    if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
+    if (ctx.onBehalfOf !== undefined && !isValidOnBehalfOf(ctx.onBehalfOf)) {
       // D14.
-      return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
+      return refuse("invalid_on_behalf_of", "on_behalf_of is a user id, a handle or a name (no control characters, at most 128 characters), never an email — sidecars are committed to repos");
     }
 
     const ts = now.toISOString();
@@ -6170,7 +6248,7 @@ The two `weighing.*` types follow the same rule — facts, not state: the weighi
 - [x] **Step 3c: `docs/spec/services.md`** — after the `POST /api/graph/projects/{id}/quality/events` row of the route table add:
 
 ````markdown
-| `POST /api/graph/projects/{id}/weighing/events` | `graph:write` (no narrower scope: an assessment outranks the ones before it) | Journal-only weighing events, two whitelisted types: `weighing.assessment.recorded` and `weighing.set.saved` (docs/rfcs/weighing.md) — no snapshot change, no version bump. Every entry goes through `planWeighingEvents`, the gate the browser provider and the MCP tools share; all-or-nothing (atomic in the store too: one transaction), refusals name each entry's `index`, `reason` and `detail`. The planner holds every structural rule — an integer level, a confidence 0-3, `evidence` at most 2,000 characters, `refs` at most 50 of 200 — and the body is capped at 256 KB (`413` past it). The scorer is **stamped from the caller** — a session is `human`, a token `agent` acting on behalf of its owner (`scorer.on_behalf_of`, an opaque user id) — and a body carrying `scorer`, `basis` or `ts` is a 400. The project `GET` folds these events over `snapshot.weighing`, and the bundle ETag's count covers them (`BUNDLE_FOLD_TYPES`) |
+| `POST /api/graph/projects/{id}/weighing/events` | `graph:write` (no narrower scope: an assessment outranks the ones before it) | Journal-only weighing events, two whitelisted types: `weighing.assessment.recorded` and `weighing.set.saved` (docs/rfcs/weighing.md) — no snapshot change, no version bump. Every entry goes through `planWeighingEvents`, the gate the browser provider and the MCP tools share; all-or-nothing (atomic in the store too: one transaction), refusals name each entry's `index`, `reason` and `detail`. The planner holds every structural rule — an integer level, a confidence 0-3, `evidence` non-blank and at most 2,000 characters, `refs` at most 50 of 200, `model` / `run` / `commit` at most 200 each — and the body is capped at 256 KB (`413` past it). The scorer is **stamped from the caller** — a session is `human`, a token `agent` acting on behalf of its owner (`scorer.on_behalf_of`, an opaque user id) — and a body carrying `scorer`, `basis` or `ts` is a 400. The project `GET` folds these events over `snapshot.weighing`, and the bundle ETag's count covers them (`BUNDLE_FOLD_TYPES`) |
 ````
 
 - [x] **Step 3d: `docs/spec/toolchain.md`** — replace the two table rows and add two detail rows:
@@ -6244,16 +6322,16 @@ gh stack submit --auto
 **What the tools promise** (and the tests pin):
 
 - `get_matrix` also returns `skipped` — `{ kind, id?, role?, index }` for every stored set or matrix the resolver dropped (malformed, a built-in redefined, a duplicate id) — plus a note, only when there is one. `get_matrix` reports served and cost per promise **never netted**, `positioned` only for an *active* positioning, `kept_share`, `guesswork`, the four claim flags, `stale` and `review`, and says — in `notes` — when every figure is a seeded guess or when the positioning is a draft. With `subject` it returns one promise's every cell plus the scale's anchors and the confidence anchors: what an agent reads before it scores.
-- `assess` has **no scorer argument** (an agent is stamped `agent`; the most it may say about itself is `model`; a repo-mode session stamps `scorer.on_behalf_of` only when it was told whose it is, via `ARKAIK_ON_BEHALF_OF`, and a hosted one lets the server stamp the token owner: D14, not yet run), requires `evidence` above confidence 0, refuses unknown elements, levels off the scale and non-acceptance subjects with the planner's reason, stamps the set's version and the subject's fingerprint, and — when a human's level already stands for the cell — says so and that the agent's is recorded beside it (and that the cell is on the review list if they differ by 2 or more).
+- `assess` has **no scorer argument** (an agent is stamped `agent`; the most it may say about itself is `model`; a repo-mode session stamps `scorer.on_behalf_of` from the first usable of `ARKAIK_ON_BEHALF_OF`, `git config arkaik.user` and `git config user.name` — never the email, an email-shaped value is skipped, and `-` in the first two records nobody — and a hosted one lets the server stamp the token owner: D14), requires non-blank `evidence` above confidence 0, refuses a draft or unknown matrix in the tool ("This matrix is a draft and feeds no roll-up; activate it first."), checks only that `level` is a whole number and leaves unknown elements, levels off the scale and non-acceptance subjects to the planner, whose reason (`unknown_criterion`, `level_out_of_range`, `unknown_subject`, …) comes back as `refusals` in a repo and hosted alike, stamps the set's version and the subject's fingerprint, and — when a human's level already stands for the cell — says so and that the agent's is recorded beside it (and that the cell is on the review list if they differ by 2 or more).
 - Repo mode upserts `docs/weighing/assessments/<matrix>.json` and writes **nothing to the journal**; hosted mode sends no `scorer`, `basis` or `ts` (the route would 400 it).
-- `save_positioning` defaults to `status: "draft"` and replaces the positioning whole.
+- `save_positioning` defaults to `status: "draft"` and replaces the positioning whole. It passes `weight` and `anchors` through as given: the planner refuses a bad one (`invalid_set`); the tool corrects nothing.
 
 ### Task 4.1: The store seam
 
 **Files:**
 - Modify: `packages/mcp/src/store.ts`, `packages/mcp/src/remote-store.ts`
 
-- [ ] **Step 1: Add `appendWeighingEvents?` to the `Store` interface and implement it on the remote store**
+- [x] **Step 1: Add `appendWeighingEvents?` to the `Store` interface and implement it on the remote store**
 
 The input type is `@arkaik/schema`'s own `WeighingEventInput` — unlike Kritik's `HostedQualityInput` it lives in the package this server already bundles, so there is no structural copy to keep in lockstep.
 
@@ -6323,7 +6401,9 @@ The input type is `@arkaik/schema`'s own `WeighingEventInput` — unlike Kritik'
 +        };
 +        if (e.status === 422 && e.body?.error === "refused" && e.body.refusals) {
 +          const detail = e.body.refusals.map((r) => `entry ${r.index}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`).join("; ");
-+          throw new Error(`Weighing events refused — ${detail}`);
++          // Carried structured, as `appendQualityEvents` does, so a tool can answer with the same
++          // `refusals` a repo refusal carries and an agent branches on one shape.
++          throw Object.assign(new Error(`Weighing events refused — ${detail}`), { refusals: e.body.refusals });
 +        }
 +        throw err;
 +      }
@@ -6333,12 +6413,12 @@ The input type is `@arkaik/schema`'s own `WeighingEventInput` — unlike Kritik'
  
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit -p .`
 Expected: silent.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/mcp/src/store.ts packages/mcp/src/remote-store.ts
@@ -6351,7 +6431,7 @@ git commit -m "feat(weighing): the Store seam for hosted weighing events (part 4
 - Create: `tests/mcp/weighing-tools.test.js`
 - Modify: `tests/mcp/run-mcp-tests.js`, `package.json`
 
-- [ ] **Step 1: Write the stdio test**
+- [x] **Step 1: Write the stdio test**
 
 It spawns the built server over a tmpdir repo (the sidecars) and over a stub of the hosted API (events), and finishes by running the built CLI's `pack` over what the agent wrote — so an agent's file and the CLI's fold are proven to be the same thing.
 
@@ -6375,7 +6455,7 @@ It spawns the built server over a tmpdir repo (the sidecars) and over a stub of 
 const { spawn, spawnSync } = require("child_process");
 const http = require("node:http");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
-const { tmpdir } = require("os");
+const { devNull, tmpdir } = require("os");
 const path = require("path");
 const readline = require("readline");
 
@@ -6422,16 +6502,47 @@ const NODES = [
 const BUNDLE = { schema_version: 3, project: { id: "demo", title: "Demo", created_at: ISO, updated_at: ISO }, nodes: NODES, edges: [] };
 const CREATED = NODES.map((n, i) => JSON.stringify({ id: `01A${i}`, ts: ISO, type: "node.created", node_id: n.id, species: n.species, title: n.title }));
 
-/** Spawn a server over a fresh tmpdir repo (or hosted, with extra args); returns an rpc client. */
-function startSession(extraArgs = [], env = {}) {
+/**
+ * A copy of `env` that git cannot be steered by: no global or system config, and none of the variables
+ * that redirect it (an outer `git commit` hook or a CI runner sets some of them), so what a test says
+ * about git config is about the config the test wrote. Both the fixture's git and the server's.
+ */
+function isolatedGitEnv(env = process.env) {
+  const out = { ...env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" };
+  for (const key of Object.keys(out)) {
+    if (["GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"].includes(key) || /^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(key)) delete out[key];
+  }
+  return out;
+}
+
+/** Run git in `cwd`, throwing on failure — fixture setup only. */
+function git(cwd, ...args) {
+  const done = spawnSync("git", args, { cwd, encoding: "utf8", env: isolatedGitEnv() });
+  if (done.status !== 0) throw new Error(`git ${args.join(" ")}: ${done.stderr}`);
+}
+
+/**
+ * Spawn a server over a fresh tmpdir repo (or hosted, with extra args); returns an rpc client.
+ *
+ * `gitConfig` makes the tmpdir a git repo with those LOCAL config values (e.g. `{ "user.name": "…" }`).
+ * The server's git is isolated from this machine's: no global or system config is read, and an inherited
+ * ARKAIK_ON_BEHALF_OF is dropped, so "none set" really is none. `env` is applied on top.
+ */
+function startSession(extraArgs = [], env = {}, gitConfig = undefined) {
   const dir = mkdtempSync(path.join(tmpdir(), "arkaik-mcp-weighing-"));
   mkdirSync(path.join(dir, "docs", "arkaik"), { recursive: true });
   const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
   writeFileSync(bundlePath, JSON.stringify(BUNDLE, null, 2));
   writeFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), `${CREATED.join("\n")}\n`);
+  const isolated = isolatedGitEnv();
+  delete isolated.ARKAIK_ON_BEHALF_OF;
+  if (gitConfig !== undefined) {
+    git(dir, "init", "-q");
+    for (const [key, value] of Object.entries(gitConfig)) git(dir, "config", "--local", key, value);
+  }
 
   const args = extraArgs.length > 0 ? extraArgs : ["--bundle", bundlePath];
-  const child = spawn(process.execPath, [SERVER, ...args], { stdio: ["pipe", "pipe", "pipe"], cwd: dir, env: { ...process.env, ...env } });
+  const child = spawn(process.execPath, [SERVER, ...args], { stdio: ["pipe", "pipe", "pipe"], cwd: dir, env: { ...isolated, ...env } });
   const lines = readline.createInterface({ input: child.stdout });
   const pending = new Map();
   let nextId = 1;
@@ -6489,6 +6600,8 @@ async function main() {
     const names = (listed.result?.tools ?? []).map((t) => t.name);
     check("the catalog lists get_matrix, assess and save_positioning", ["get_matrix", "assess", "save_positioning"].every((n) => names.includes(n)), names.join());
     const assessDef = listed.result.tools.find((t) => t.name === "assess");
+    check("assess's description tells what a repo session writes about its author, and the opt-out", /git author name/.test(assessDef.description) && /arkaik\.user/.test(assessDef.description) && /nobody/.test(assessDef.description), assessDef.description.slice(-400));
+    check("model, run and commit are capped at 200 in the input schema", ["model", "run", "commit"].every((k) => assessDef.inputSchema.properties[k].maxLength === 200));
     check("assess takes no scorer — an agent cannot claim to be a human", assessDef !== undefined && !("scorer" in assessDef.inputSchema.properties) && !("kind" in assessDef.inputSchema.properties));
     check("assess's level is the signed scale", assessDef !== undefined && assessDef.inputSchema.properties.level.minimum === -3 && assessDef.inputSchema.properties.level.maximum === 3);
 
@@ -6513,32 +6626,35 @@ async function main() {
     check("a bad sort is an error", (await repo.call("get_matrix", { sort: "vibes" })).isError);
 
     // --- assess: validator-gated, agent-stamped -----------------------------------
+    // The planner owns every value rule, so a refusal carries ITS reason (a repo's and a hosted one's alike).
     const bad = [
-      ["an unknown element", { subject: "AC-consent", criterion: "teleports", level: 1, confidence: 0 }],
-      ["a level of 4", { subject: "AC-consent", criterion: "connects", level: 4, confidence: 0 }],
-      ["a view as the subject", { subject: "V-home", criterion: "connects", level: 1, confidence: 0 }],
-      ["a missing acceptance", { subject: "AC-gone", criterion: "connects", level: 1, confidence: 0 }],
-      ["evidence missing above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2 }],
+      ["an unknown element", { subject: "AC-consent", criterion: "teleports", level: 1, confidence: 0 }, "unknown_criterion"],
+      ["a level of 4", { subject: "AC-consent", criterion: "connects", level: 4, confidence: 0 }, "level_out_of_range"],
+      ["a level of -4", { subject: "AC-consent", criterion: "connects", level: -4, confidence: 0 }, "level_out_of_range"],
+      ["a view as the subject", { subject: "V-home", criterion: "connects", level: 1, confidence: 0 }, "unknown_subject"],
+      ["a missing acceptance", { subject: "AC-gone", criterion: "connects", level: 1, confidence: 0 }, "unknown_subject"],
+      ["a model of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, model: "m".repeat(201) }, "invalid_entry"],
+      ["a run of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, run: "r".repeat(201) }, "invalid_entry"],
+      ["a commit of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, commit: "c".repeat(201) }, "invalid_entry"],
+      ["evidence of 2001 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 1, evidence: "e".repeat(2001) }, "invalid_entry"],
+      ["evidence that is only whitespace", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, evidence: "   " }, "invalid_entry"],
+      ["evidence missing above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2 }, undefined],
+      ["whitespace evidence above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2, evidence: "  \n" }, undefined],
+      ["a level that is not an integer", { subject: "AC-consent", criterion: "connects", level: 1.5, confidence: 0 }, undefined],
+      ["an unknown matrix", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, matrix: "nope" }, undefined],
     ];
-    for (const [label, args] of bad) {
+    for (const [label, args, reason] of bad) {
       const res = await repo.call("assess", args);
       check(`assess refuses ${label}`, res.isError, res.text.slice(0, 160));
+      if (reason !== undefined) check(`…with the planner's reason, ${reason}`, res.json.refusals?.[0]?.reason === reason, res.text.slice(0, 240));
     }
     check("…and wrote nothing", !existsSync(path.join(repo.dir, "docs", "weighing")));
 
     const scored = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2, evidence: "the Then clause removes one worry (accidental consent), not the page's overall anxiety", model: "claude" });
     check("assess records a judgement", !scored.isError && scored.json.assessment.level === 1, scored.text.slice(0, 300));
     check("the scorer is stamped an agent, with the model", scored.json.assessment.scorer.kind === "agent" && scored.json.assessment.scorer.model === "claude");
-    // D14, not yet run: absent unless known, stamped when the session was told.
-    check("on_behalf_of is absent unless the session was told whose it is", !("on_behalf_of" in scored.json.assessment.scorer));
-    const told = startSession([], { ARKAIK_ON_BEHALF_OF: "u_1842" });
-    try {
-      await told.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
-      const behalf = await told.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
-      check("…and stamped when it was told", !behalf.isError && behalf.json.assessment.scorer.on_behalf_of === "u_1842", behalf.text.slice(0, 200));
-    } finally {
-      told.stop();
-    }
+    // D14: with nothing set anywhere the field is absent (the tmpdir is not a git repo, and no global config is read).
+    check("on_behalf_of is absent when nothing says whose it is", !("on_behalf_of" in scored.json.assessment.scorer), JSON.stringify(scored.json.assessment.scorer));
     check("the basis is stamped: fingerprint and the set's version", /^fp1-/.test(scored.json.assessment.basis.fingerprint) && scored.json.assessment.basis.set_version === "1.0.0");
     check("the reply carries the level's anchor", typeof scored.json.anchor === "string" && scored.json.anchor.length > 0);
     const file = repo.readJson("docs", "weighing", "assessments", "value.json");
@@ -6582,6 +6698,8 @@ async function main() {
     const again = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 0, confidence: 2, evidence: "I disagree" });
     check("an agent that disagrees is told a human's level stands", again.json.notes?.some((n) => /human's level already stands/.test(n) && /review/.test(n)), JSON.stringify(again.json.notes));
     check("…and the human's row is still on disk", repo.readJson("docs", "weighing", "assessments", "value.json").assessments.some((a) => a.scorer?.kind === "human" && a.level === 3));
+    const near = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 2, confidence: 2, evidence: "close to theirs" });
+    check("an agent one level off a human is told theirs stands, but is NOT told the cell is on the review list", near.json.notes?.some((n) => /human's level already stands/.test(n)) && !near.json.notes.some((n) => /review/.test(n)), JSON.stringify(near.json.notes));
 
     // --- positioning ----------------------------------------------------------------------------------
     const draft = await repo.call("save_positioning", { elements: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "removes a worry the user names", 0: "nothing to do with worry" } }, { id: "connects" }] });
@@ -6590,6 +6708,22 @@ async function main() {
     const drafted = await repo.call("get_matrix");
     check("a draft feeds no roll-up: no positioned figure, and it says so", drafted.json.promises.every((x) => x.positioned === null) && drafted.json.notes.some((n) => /draft/.test(n)));
     check("…but get_matrix shows the draft", drafted.json.positioning.status === "draft" && drafted.json.positioning.elements.length === 2);
+    const dup = await repo.call("save_positioning", { elements: [{ id: "connects", weight: 2 }, { id: "connects", weight: 5 }, { id: "informs" }] });
+    check("a duplicated element is saved as given (the planner does not fix it)", !dup.isError && dup.json.positioning.criteria.length === 3);
+    const dupRead = (await repo.call("get_matrix")).json.positioning.elements;
+    check("get_matrix reads weights through the derivation's rule: the first duplicate wins, a missing weight is 1", dupRead.length === 2 && dupRead[0].weight === 2 && dupRead[1].id === "informs" && dupRead[1].weight === 1, JSON.stringify(dupRead));
+    const refusedSets = [
+      ["a weight given as a string", [{ id: "connects", weight: "3" }]],
+      ["a negative weight", [{ id: "connects", weight: -1 }]],
+      ["anchors on a level off the scale", [{ id: "connects", anchors: { 9: "x" } }]],
+      ["anchors that are not words", [{ id: "connects", anchors: { 3: 7 } }]],
+      ["an element that is not an object", [null]],
+    ];
+    for (const [label, elements] of refusedSets) {
+      const res = await repo.call("save_positioning", { elements });
+      check(`save_positioning refuses ${label}, passed through as given`, res.isError && res.json.refusals?.[0]?.reason === "invalid_set", res.text.slice(0, 200));
+    }
+    check("…and a refused save left the saved positioning as it was", repo.readJson("docs", "weighing", "sets", "positioning.json").criteria.length === 3);
     const active = await repo.call("save_positioning", { status: "active", elements: [{ id: "reduces-anxiety", weight: 3 }, { id: "connects" }] });
     check("saving it active replaces it whole", !active.isError && repo.readJson("docs", "weighing", "sets", "positioning.json").status === "active");
     const positioned = (await repo.call("get_matrix", { subject: "AC-consent" })).json.promise.positioned;
@@ -6606,6 +6740,72 @@ async function main() {
     repo.stop();
   }
 
+  // --- on_behalf_of in a repo (D14): ARKAIK_ON_BEHALF_OF, then arkaik.user, then user.name; never an email -----
+  const behalfOf = async (env, gitConfig) => {
+    const session = startSession([], env, gitConfig);
+    try {
+      await session.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+      const res = await session.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
+      if (res.isError) return `ERROR ${res.text.slice(0, 200)}`;
+      const scorer = res.json.assessment.scorer;
+      // The record on disk is what gets committed, so read the sidecar, not just the reply.
+      const onDisk = session.readJson("docs", "weighing", "assessments", "value.json").assessments[0].scorer;
+      return JSON.stringify(scorer) === JSON.stringify(onDisk) ? scorer.on_behalf_of : `MISMATCH ${JSON.stringify(scorer)} vs ${JSON.stringify(onDisk)}`;
+    } finally {
+      session.stop();
+    }
+  };
+  const ALL = { "arkaik.user": "Local Handle", "user.name": "Anne-Claire Dupré", "user.email": "anne@example.com" };
+  check("ARKAIK_ON_BEHALF_OF wins over git config", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "  u_1842  " }, ALL)) === "u_1842");
+  check("with no env var, arkaik.user wins over user.name", (await behalfOf({}, ALL)) === "Local Handle");
+  check("with only user.name set, the git author name is used — spaces and accents intact", (await behalfOf({}, { "user.name": "Anne-Claire Dupré", "user.email": "anne@example.com" })) === "Anne-Claire Dupré");
+  check("with only arkaik.user set, that is used", (await behalfOf({}, { "arkaik.user": "alexisbohns" })) === "alexisbohns");
+  check("with none set, the field is absent", (await behalfOf({}, {})) === undefined);
+  check("…also in a git repo that has an email but no name: user.email is never a source", (await behalfOf({}, { "user.email": "anne@example.com" })) === undefined);
+  check("a blank env var is not set: it falls through", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "   " }, { "user.name": "Anne" })) === "Anne");
+  check("an email in the env var is skipped, not stamped: the next source is used", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "me@example.com" }, { "arkaik.user": "Local Handle", "user.name": "Anne" })) === "Local Handle");
+  check("an email in arkaik.user is skipped too: user.name is used", (await behalfOf({}, { "arkaik.user": "me@example.com", "user.name": "Anne" })) === "Anne");
+  check("an email-shaped user.name is skipped, and with nothing left the field is absent — scoring still works", (await behalfOf({}, { "user.name": "Anne <anne@example.com>" })) === undefined);
+  // The opt-out: "-" means "record nobody" and stops the chain; an empty value still falls through.
+  check("ARKAIK_ON_BEHALF_OF=- records nobody, whatever git says", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "-" }, ALL)) === undefined);
+  check("…also with surrounding whitespace", (await behalfOf({ ARKAIK_ON_BEHALF_OF: " - " }, ALL)) === undefined);
+  check("git config arkaik.user - records nobody: user.name is not consulted", (await behalfOf({}, { "arkaik.user": "-", "user.name": "Anne-Claire Dupré" })) === undefined);
+  check("git config user.name - is not a name either", (await behalfOf({}, { "user.name": "-" })) === undefined);
+  check("an empty arkaik.user is not set: it falls through to user.name", (await behalfOf({}, { "arkaik.user": "", "user.name": "Anne" })) === "Anne");
+  check("a value that merely contains a dash is a name like any other", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "-x" }, {})) === "-x" && (await behalfOf({}, { "user.name": "Anne-Claire" })) === "Anne-Claire");
+  check("an email in every source leaves the field absent and the score recorded", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "a@b.co" }, { "arkaik.user": "c@d.co", "user.name": "e@f.co" })) === undefined);
+
+  // A git that hangs costs at most one short timeout, and arkaik.user timing out ends the chain (user.name is not tried).
+  const fakeBin = mkdtempSync(path.join(tmpdir(), "arkaik-fake-git-"));
+  const fakeLog = path.join(fakeBin, "calls.log");
+  writeFileSync(path.join(fakeBin, "git"), '#!/bin/sh\necho "$@" >> "$FAKE_GIT_LOG"\nexec sleep 20\n', { mode: 0o755 });
+  const slow = startSession([], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`, FAKE_GIT_LOG: fakeLog });
+  try {
+    await slow.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+    const began = Date.now();
+    const res = await slow.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
+    check("a git that hangs does not block scoring: the score is recorded with nobody stamped", !res.isError && !("on_behalf_of" in res.json.assessment.scorer), res.text.slice(0, 200));
+    check("…within a couple of seconds", Date.now() - began < 5000, `${Date.now() - began} ms`);
+    const calls = readFileSync(fakeLog, "utf8").trim().split("\n");
+    check("…and a timed-out arkaik.user ends the chain: user.name was never asked", calls.length === 1 && /arkaik\.user/.test(calls[0]), calls.join(" | "));
+  } finally {
+    slow.stop();
+    rmSync(fakeBin, { recursive: true, force: true });
+  }
+
+  // --- a claimed element scored negative: claim_contradicted, and only that flag ---------------------
+  const flags = startSession();
+  try {
+    await flags.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+    await flags.call("assess", { subject: "AC-invite", criterion: "connects", level: -2, confidence: 1, evidence: "the invite link exposes the inviter's number" });
+    const promise = (await flags.call("get_matrix", { subject: "AC-invite" })).json.promise;
+    check("a claimed element scored negative raises claim_contradicted, and nothing else", promise.flags.claim_contradicted.join() === "connects" && Object.entries(promise.flags).every(([name, ids]) => name === "claim_contradicted" || ids.length === 0), JSON.stringify(promise.flags));
+    check("…it costs what it claimed to serve", promise.cost === 0.67 && promise.served === 0, JSON.stringify(promise));
+    check("filter=flagged lists it", (await flags.call("get_matrix", { filter: "flagged" })).json.promises.map((x) => x.node_id).join() === "AC-invite");
+  } finally {
+    flags.stop();
+  }
+
   // --- hosted: the same tools over a stub of the API --------------------------------------------------------
   const received = [];
   let refuse = false;
@@ -6613,7 +6813,7 @@ async function main() {
     ...BUNDLE,
     weighing: {
       sets: [],
-      matrices: [],
+      matrices: [{ id: "draft-m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, status: "draft" }],
       assessments: [{ matrix: "value", subject: "AC-invite", criterion: "connects", level: 2, scorer: { kind: "human", id: "arkaik-app" }, confidence: 2, evidence: "a person", basis: { fingerprint: "fp1-0", set_version: "1.0.0" }, ts: "2026-11-14T10:00:00.000Z" }],
     },
   };
@@ -6639,7 +6839,7 @@ async function main() {
   });
   await new Promise((resolve) => stub.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${stub.address().port}`;
-  const hosted = startSession(["--remote", "--project", "demo"], { ARKAIK_TOKEN: "t", ARKAIK_URL: baseUrl });
+  const hosted = startSession(["--remote", "--project", "demo"], { ARKAIK_TOKEN: "t", ARKAIK_URL: baseUrl, ARKAIK_ON_BEHALF_OF: "u_1842" }, { "arkaik.user": "Local Handle", "user.name": "Anne" });
   try {
     await hosted.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
 
@@ -6651,6 +6851,7 @@ async function main() {
     const sent = received[0].events[0];
     check("…of the right type and fields", sent.type === "weighing.assessment.recorded" && sent.subject === "AC-consent" && sent.criterion === "reduces-anxiety" && sent.level === -2 && sent.confidence === 2 && sent.model === "claude");
     check("…with NO scorer, basis or ts — the server stamps them", !("scorer" in sent) && !("basis" in sent) && !("ts" in sent), JSON.stringify(sent));
+    check("…and no on_behalf_of either, whatever the environment or git config say: the server stamps the token's owner", !JSON.stringify(sent).includes("on_behalf_of"), JSON.stringify(sent));
     check("the reply is the server's stamped event", res.json.assessment.scorer.kind === "agent" && res.json.assessment.basis.fingerprint === "fp1-server");
     check("no human level stands for that cell, so there is no note", res.json.notes === undefined);
     check("nothing was written to disk", !existsSync(path.join(hosted.dir, "docs", "weighing")));
@@ -6658,12 +6859,20 @@ async function main() {
     const note = await hosted.call("assess", { subject: "AC-invite", criterion: "connects", level: 0, confidence: 1, evidence: "reads as touching only" });
     check("hosted assess tells an agent a human's level stands", note.json.notes?.some((n) => /human's level already stands/.test(n)), JSON.stringify(note.json.notes));
 
+    const before = received.length;
+    const drafted = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0, matrix: "draft-m" });
+    check("assess against a draft matrix is refused in the tool, with the reason", drafted.isError && /This matrix is a draft and feeds no roll-up; activate it first\./.test(drafted.json.message), drafted.text.slice(0, 200));
+    const unknownMatrix = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0, matrix: "nope" });
+    check("…and against an unknown one", unknownMatrix.isError && /nope/.test(unknownMatrix.json.message), unknownMatrix.text.slice(0, 200));
+    check("…and nothing was posted for either", received.length === before);
+
     const pos = await hosted.call("save_positioning", { elements: [{ id: "connects", weight: 2 }] });
     check("hosted save_positioning posts a weighing.set.saved draft", !pos.isError && received.at(-1).events[0].type === "weighing.set.saved" && received.at(-1).events[0].set.status === "draft");
 
     refuse = true;
     const refused = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
     check("a server refusal surfaces with its reason", refused.isError && /unknown_criterion/.test(refused.text), refused.text.slice(0, 300));
+    check("…as the same structured refusals a repo's refusal carries", refused.json.refusals?.[0]?.reason === "unknown_criterion" && refused.json.refusals[0].index === 0, JSON.stringify(refused.json.refusals));
   } finally {
     hosted.stop();
     stub.close();
@@ -6682,7 +6891,7 @@ main().catch((error) => {
 });
 ```
 
-- [ ] **Step 2: Update the catalog assertion and chain the suite**
+- [x] **Step 2: Update the catalog assertion and chain the suite**
 
 ```diff
 --- a/tests/mcp/run-mcp-tests.js
@@ -6711,12 +6920,12 @@ main().catch((error) => {
 
 In `package.json`, change the end of `"test:mcp"` from `… && node tests/mcp/kritik-tools.test.js",` to `… && node tests/mcp/kritik-tools.test.js && node tests/mcp/weighing-tools.test.js",`.
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `npm run test:mcp`
 Expected: FAIL — `FAIL: tools/list exposes the 33-tool catalog` (30 listed) and `FAIL: catalog includes get_matrix` (then the weighing suite fails at its first check). No tool exists yet.
 
-- [ ] **Step 4: Do not commit yet.** A stack part must be green when it is pushed; the test and the three tools are committed together at the end of Task 4.5.
+- [x] **Step 4: Do not commit yet.** A stack part must be green when it is pushed; the test and the three tools are committed together at the end of Task 4.5.
 
 ### Task 4.3: `get_matrix`
 
@@ -6724,7 +6933,7 @@ Expected: FAIL — `FAIL: tools/list exposes the 33-tool catalog` (30 listed) an
 - Create: `packages/mcp/src/weighing-tools.ts`
 - Modify: `packages/mcp/src/tools.ts`
 
-- [ ] **Step 1: Create the file with the header, the helpers and `get_matrix`**
+- [x] **Step 1: Create the file with the header, the helpers and `get_matrix`**
 
 The file ends with the catalog's `return` and closing brace; the next two tasks insert the other two tools **above** `  return { tools, handlers };`.
 
@@ -6756,10 +6965,13 @@ The file ends with the catalog's `return` and closing brace; the next two tasks 
  * an argument, because a human's level wins every cell and a caller must not be
  * able to claim to be one. What an agent may say about itself is `model`.
  *
- * **On whose behalf (D14, not yet run).** Hosted, the server stamps
- * `scorer.on_behalf_of` from the token. In a repository nothing identifies a
- * person, so it is absent unless the session was told: `ARKAIK_ON_BEHALF_OF`,
- * an opaque user id or handle, never an email.
+ * **On whose behalf (D14).** Hosted, the server stamps `scorer.on_behalf_of`
+ * from the token, and this module sends nothing. In a repository nothing but
+ * the checkout identifies a person, so {@link resolveOnBehalfOf} reads the
+ * first usable of: `ARKAIK_ON_BEHALF_OF`, `git config arkaik.user`, `git config
+ * user.name` (the git author name, never `user.email`). Anything email-shaped
+ * is skipped, not refused — scoring still works — and with none left the field
+ * is absent, as in an unattended CI run.
  */
 
 import {
@@ -6771,6 +6983,8 @@ import {
   WEIGHING_SET_SAVED,
   buildWeighingContext,
   deriveWeighing,
+  isActiveWeighingSet,
+  isValidOnBehalfOf,
   planWeighingEvents,
   resolveWeighing,
   sortPromises,
@@ -6794,6 +7008,7 @@ import {
   weighingAssessmentsPath,
   weighingSetPath,
 } from "@arkaik/schema/src/cli/weighing-files";
+import { execFile } from "node:child_process";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import { MCP_ACTOR, type LoadedGraph, type Store } from "./store";
 
@@ -6808,6 +7023,65 @@ export interface WeighingToolContext {
 }
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
+
+/** How long one `git config` may take: it reads a file, so a longer wait means git is hung (a network home, a lock) and `assess` must not wait on it. */
+const GIT_CONFIG_TIMEOUT_MS = 1500;
+
+/**
+ * `git config --get <key>` read in `root`. No shell. `value` is `undefined` for
+ * every failure (no git, no repo, not set, empty); `timedOut` says git was
+ * killed for taking too long, which the caller treats as "stop asking".
+ */
+function gitConfigValue(root: string, key: string): Promise<{ value?: string; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    try {
+      execFile("git", ["config", "--get", key], { cwd: root, timeout: GIT_CONFIG_TIMEOUT_MS }, (error, stdout) => {
+        if (error !== null) return resolve({ timedOut: (error as { killed?: boolean }).killed === true });
+        const value = String(stdout).trim();
+        resolve({ ...(value === "" ? {} : { value }), timedOut: false });
+      });
+    } catch {
+      resolve({ timedOut: false });
+    }
+  });
+}
+
+/** The opt-out: this as `ARKAIK_ON_BEHALF_OF` or `git config arkaik.user` means "record nobody". */
+export const ON_BEHALF_OF_NOBODY = "-";
+
+/**
+ * D14, repo mode: whom this session scores for. The first usable of
+ *
+ * 1. `ARKAIK_ON_BEHALF_OF`, trimmed;
+ * 2. `git config arkaik.user`, read in the repo root;
+ * 3. `git config user.name`, the git author name.
+ *
+ * **Never the email**: `user.email` is not a source, and a value that is
+ * email-shaped (or otherwise refused by the planner's guard, {@link isValidOnBehalfOf})
+ * in any of the three is skipped — the next source is tried, so scoring still
+ * works. `undefined` when none is usable (an unattended CI run). Read per call,
+ * so a config change mid-session is honoured; the env var, when usable, costs no
+ * process.
+ *
+ * **The opt-out.** A sidecar is committed, so the default writes the git author
+ * name into a repo's history. `-` (see {@link ON_BEHALF_OF_NOBODY}) in
+ * `ARKAIK_ON_BEHALF_OF` or `arkaik.user` means "record nobody": nothing is
+ * stamped and the chain stops, so the git name is not read. An EMPTY value is
+ * not that — it is "not set", and falls through. A git that times out
+ * ({@link GIT_CONFIG_TIMEOUT_MS}) ends the chain too: no second wait for `user.name`.
+ */
+export async function resolveOnBehalfOf(root: string, env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
+  const fromEnv = env.ARKAIK_ON_BEHALF_OF?.trim();
+  if (fromEnv === ON_BEHALF_OF_NOBODY) return undefined;
+  if (fromEnv !== undefined && isValidOnBehalfOf(fromEnv)) return fromEnv;
+  for (const key of ["arkaik.user", "user.name"]) {
+    const { value, timedOut } = await gitConfigValue(root, key);
+    if (timedOut) return undefined;
+    if (key === "arkaik.user" && value === ON_BEHALF_OF_NOBODY) return undefined;
+    if (value !== undefined && value !== ON_BEHALF_OF_NOBODY && isValidOnBehalfOf(value)) return value;
+  }
+  return undefined;
+}
 
 function requireString(args: Record<string, unknown>, key: string): string {
   const value = args[key];
@@ -6898,8 +7172,6 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     handlers[definition.name] = handler;
   };
 
-  /** D14, not yet run: whom this session acts for, when it has been told. Absent otherwise; the planner refuses an email-shaped value. */
-  const onBehalfOf = process.env.ARKAIK_ON_BEHALF_OF?.trim() || undefined;
 
   const load = async (): Promise<LoadedGraph> => {
     try {
@@ -6924,7 +7196,9 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     try {
       return await ctx.store.appendWeighingEvents(inputs);
     } catch (error) {
-      throw new ToolError((error as Error).message);
+      // The remote store attaches the server's structured refusals; carry them as a repo refusal does.
+      const refusals = (error as { refusals?: unknown }).refusals;
+      throw new ToolError((error as Error).message, refusals !== undefined ? { refusals } : undefined);
     }
   };
 
@@ -6955,12 +7229,16 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       const view = deriveWeighing(nodes, section, matrixId);
       if (view === undefined) throw new ToolError(`No usable matrix "${matrixId}" (unknown, or a draft — a draft feeds no roll-up). The built-in one is "${VALUE_MATRIX_ID}".`);
 
+      // The weights are the derivation's own (`positioningWeights`: default 1, 0 is 0, the first duplicate wins), never a second copy of that rule.
       const positioning =
         view.positioning === null
           ? null
           : {
               status: view.positioning.active ? "active" : "draft",
-              elements: view.positioning.set.criteria.map((criterion) => ({ id: criterion.id, weight: typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1, ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}) })),
+              elements: [...view.positioning.weights].map(([id, weight]) => {
+                const anchors = view.positioning?.set.criteria.find((criterion) => criterion.id === id)?.anchors;
+                return { id, weight, ...(anchors !== undefined ? { anchors } : {}) };
+              }),
             };
       // What the resolver dropped (a malformed saved positioning, a duplicate id): said, not silent.
       const { skipped } = resolveWeighing(section);
@@ -7030,7 +7308,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
 }
 ```
 
-- [ ] **Step 2: Register the catalog**
+- [x] **Step 2: Register the catalog**
 
 ```diff
 --- a/packages/mcp/src/tools.ts
@@ -7059,7 +7337,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
  }
 ```
 
-- [ ] **Step 3: Run the suite**
+- [x] **Step 3: Run the suite**
 
 Run: `npm run test:mcp`
 Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool catalog` — two tools still missing), `catalog includes get_matrix` passes, and in `weighing-tools.test.js` the `get_matrix` checks `PASS:` (seeds, `kept share`, `a subject read returns every cell with its scorer`, the three refusals) while `FAIL: assess takes no scorer …` fires; the run then crashes at the first `assess` call with `TypeError: Cannot read properties of undefined (reading 'level')` — `assess` is not registered.
@@ -7069,7 +7347,7 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
 **Files:**
 - Modify: `packages/mcp/src/weighing-tools.ts`
 
-- [ ] **Step 1: Insert `assess`** immediately above `  return { tools, handlers };`
+- [x] **Step 1: Insert `assess`** immediately above `  return { tools, handlers };`
 
 ```ts
   // ---- Write ----------------------------------------------------------------
@@ -7078,7 +7356,7 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
     {
       name: "assess",
       description:
-        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the scale's anchors, not from memory. 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, when the server was told, whose hands you are), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
+        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the scale's anchors, not from memory. 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, where it can tell, whose hands you are — in a repository that is your git author name, read from `ARKAIK_ON_BEHALF_OF`, then `git config arkaik.user`, then `git config user.name`, and written into the committed sidecar; set `arkaik.user` to `-` to record nobody), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
       inputSchema: {
         type: "object",
         properties: {
@@ -7088,9 +7366,9 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
           confidence: { type: "integer", enum: [0, 1, 2, 3] },
           evidence: { type: "string", maxLength: 2000, description: "Markdown, at most 2,000 characters. Required when confidence is above 0." },
           refs: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 50, description: "Ids cited: nodes, journal events, findings. At most 50, each at most 200 characters." },
-          model: { type: "string", description: "The model you are, when you know." },
-          run: { type: "string", description: "The audit or session this score belongs to." },
-          commit: { type: "string" },
+          model: { type: "string", maxLength: 200, description: "The model you are, when you know. At most 200 characters." },
+          run: { type: "string", maxLength: 200, description: "The audit or session this score belongs to. At most 200 characters." },
+          commit: { type: "string", maxLength: 200 },
           matrix: { type: "string", description: `Default: ${VALUE_MATRIX_ID}.` },
         },
         required: ["subject", "criterion", "level", "confidence"],
@@ -7100,10 +7378,12 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
     async (args) => {
       const subject = requireString(args, "subject");
       const criterion = requireString(args, "criterion");
-      const level = requireInt(args, "level", -3, 3);
+      // Only that it is a whole number: the range is the planner's to judge (it says `level_out_of_range`, with the scale).
+      const level = args.level;
+      if (typeof level !== "number" || !Number.isInteger(level)) throw new ToolError("`level` is required and must be an integer (the scale is -3 to +3).");
       const confidence = requireInt(args, "confidence", 0, 3);
       const evidence = optionalString(args, "evidence");
-      if (confidence > 0 && evidence === undefined) {
+      if (confidence > 0 && (evidence === undefined || evidence.trim() === "")) {
         throw new ToolError("`evidence` is required above confidence 0 — a score without a citation is an opinion, not an assessment. Say what you read, or score at confidence 0.");
       }
       const refs = Array.isArray(args.refs) ? (args.refs as unknown[]).filter((ref): ref is string => typeof ref === "string" && ref !== "") : undefined;
@@ -7125,16 +7405,24 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
       const section = sectionOf(graph);
       const nodes = graph.nodes as Node[];
 
+      // The matrix must be one a roll-up reads: a draft feeds none, so a score against it would be recorded and then count for nothing.
+      const matrixId = input.matrix ?? VALUE_MATRIX_ID;
+      const view = buildWeighingContext(section, matrixId);
+      if (view === undefined) {
+        const matrix = resolveWeighing(section).matrices.find((candidate) => candidate.id === matrixId);
+        if (matrix === undefined) throw new ToolError(`No matrix "${matrixId}". The built-in one is "${VALUE_MATRIX_ID}".`);
+        if (!isActiveWeighingSet(matrix)) throw new ToolError("This matrix is a draft and feeds no roll-up; activate it first.");
+        throw new ToolError(`Matrix "${matrixId}" names the set "${matrix.set}", which is not available.`);
+      }
       // What the cell reads before this write, so the reply can say whose level stands.
-      const view = buildWeighingContext(section, input.matrix);
       const node = nodes.find((candidate) => candidate.id === subject);
-      const before = view !== undefined && node !== undefined ? weighPromise(node, view).cells.find((cell) => cell.criterion === criterion) : undefined;
+      const before = node !== undefined ? weighPromise(node, view).cells.find((cell) => cell.criterion === criterion) : undefined;
 
       const notes: string[] = [];
       if (before?.source === "stored" && before.scorer.kind === "human") {
         notes.push("A human's level already stands for this cell and keeps winning — yours is recorded beside it" + (Math.abs(before.level - level) >= 2 ? ", and the cell now sits on the review list (you differ by 2 or more)." : "."));
       }
-      const anchor = view === undefined ? undefined : weighingScaleOf(view.set).anchors[String(level)];
+      const anchor = weighingScaleOf(view.set).anchors[String(level)];
 
       if (ctx.qualityRoot === undefined) {
         const events = await appendHosted([input]);
@@ -7142,6 +7430,7 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
         return { assessment: recorded, ...(anchor !== undefined ? { anchor } : {}), events, ...(notes.length > 0 ? { notes } : {}) };
       }
 
+      const onBehalfOf = await resolveOnBehalfOf(ctx.qualityRoot);
       const plan = planWeighingEvents(section, nodes, [input], { actor: MCP_ACTOR, scorerKind: "agent", ...(onBehalfOf !== undefined ? { onBehalfOf } : {}) });
       if (!plan.ok) throw new ToolError(`Assessment refused — ${plan.refusals.map((r) => `${r.reason}: ${r.detail}`).join("; ")}`, { refusals: plan.refusals });
       const row = plan.assessments[0];
@@ -7164,7 +7453,7 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
   );
 ```
 
-- [ ] **Step 2: Run the suite**
+- [x] **Step 2: Run the suite**
 
 Run: `npm run test:mcp`
 Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upsert, replacement, staleness, the human-beats-agent note and the filters `PASS:`; the run then fails at `save_positioning` (`TypeError … reading 'status'` — not registered yet).
@@ -7174,7 +7463,7 @@ Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upser
 **Files:**
 - Modify: `packages/mcp/src/weighing-tools.ts`
 
-- [ ] **Step 1: Insert `save_positioning`** immediately above `  return { tools, handlers };`
+- [x] **Step 1: Insert `save_positioning`** immediately above `  return { tools, handlers };`
 
 ```ts
   tool(
@@ -7225,11 +7514,17 @@ Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upser
         role: "positioning",
         status,
         extends: `${ruler.id}@${ruler.version.split(".")[0]}`,
-        criteria: (args.elements as Record<string, unknown>[]).map((entry) => ({
-          id: String(entry.id),
-          ...(typeof entry.weight === "number" ? { weight: entry.weight } : {}),
-          ...(typeof entry.anchors === "object" && entry.anchors !== null ? { anchors: entry.anchors as Record<string, string> } : {}),
-        })),
+        // Passed through AS GIVEN: a weight that is a string, an anchor off the scale or an entry that is not an
+        // object is the planner's to refuse (`invalid_set`, with the reason), not this tool's to quietly fix.
+        criteria: (args.elements as unknown[]).map((entry) =>
+          typeof entry === "object" && entry !== null && !Array.isArray(entry)
+            ? ({
+                id: (entry as Record<string, unknown>).id,
+                ...((entry as Record<string, unknown>).weight !== undefined ? { weight: (entry as Record<string, unknown>).weight } : {}),
+                ...((entry as Record<string, unknown>).anchors !== undefined ? { anchors: (entry as Record<string, unknown>).anchors } : {}),
+              } as WeighingCriteriaSet["criteria"][number])
+            : (entry as WeighingCriteriaSet["criteria"][number]),
+        ),
       };
       const input: WeighingEventInput = { type: WEIGHING_SET_SAVED, set };
 
@@ -7250,17 +7545,17 @@ Expected: the `assess` refusals, the stamped scorer and basis, the sidecar upser
   );
 ```
 
-- [ ] **Step 2: Run the suite**
+- [x] **Step 2: Run the suite**
 
 Run: `npm run test:mcp`
-Expected: every suite green — `tools/list exposes the 33-tool catalog`, `All MCP server tests passed`, `All MCP journal-baseline tests passed`, `All remote-store checks passed.`, `All MCP version checks passed.`, `All Kritik MCP tests passed`, `All weighing tool tests passed.` (66 `PASS:` lines).
+Expected: every suite green — `tools/list exposes the 33-tool catalog`, `All MCP server tests passed`, `All MCP journal-baseline tests passed`, `All remote-store checks passed.`, `All MCP version checks passed.`, `All Kritik MCP tests passed`, `All weighing tool tests passed.` (126 `PASS:` lines).
 
-- [ ] **Step 3: Lint and type-check**
+- [x] **Step 3: Lint and type-check**
 
 Run: `npx tsc --noEmit -p . && npx eslint packages/mcp/src`
 Expected: silent.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/mcp/src/weighing-tools.ts packages/mcp/src/tools.ts tests/mcp/weighing-tools.test.js tests/mcp/run-mcp-tests.js package.json
@@ -7272,11 +7567,11 @@ git commit -m "feat(weighing): get_matrix, assess and save_positioning over MCP 
 **Files:**
 - Modify: `packages/mcp/package.json`, `package-lock.json`, `docs/spec/mcp.md`, `docs/hosted-projects.md`
 
-- [ ] **Step 1: Bump the server** (its tool catalog grew; the owner publishes by hand)
+- [x] **Step 1: Bump the server** (its tool catalog grew; the owner publishes by hand)
 
 In `packages/mcp/package.json` set `"version": "0.11.0"`; in `package-lock.json` change the `"packages/mcp"` entry's `"version": "0.10.0"` to `"0.11.0"`. `tests/mcp/version.test.js` reads the built server's announced version.
 
-- [ ] **Step 2: `docs/spec/mcp.md`**
+- [x] **Step 2: `docs/spec/mcp.md`**
 
 Immediately **before** `## Write Path (dual-write, validator-gated)` insert:
 
@@ -7287,27 +7582,45 @@ Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/w
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
-| `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?`, `refs?`, `model?`, `run?`, `commit?`, `matrix?` | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
-| `save_positioning` | `elements` (`[{ id, weight?, anchors? }]`), `status?` (default `draft`), `title?` | The positioning — a criteria set naming the elements the product stands on, each with a weight and, optionally, what each level means in the product's own words. Replaces the previous one whole. A **draft feeds no roll-up**; draft one from the landing page or a brainstorm and leave it for a person to read | repo: none (`docs/weighing/sets/positioning.json`); hosted: `weighing.set.saved` |
+| `get_matrix` | `matrix?`, `subject?`, `sort?` (`served` \| `cost` \| `positioned` \| `title`), `filter?` (`flagged` \| `stale` \| `review` \| `unassessed`), `limit?` | The value matrix. Per promise: `served` (Σ positive levels ÷ 3) and `cost` (Σ\|negative levels\| ÷ 3) — **never netted** —, `positioned` (the same over the elements an *active* positioning stands on, each × its weight; `null` for none or a draft), `kept_share`, `guesswork` (the share resting on confidence-0 cells; `positioned` has its own, and each element and the totals carry `{ promised, kept, cost }`), `flags` (`claim_not_supported`, `claim_contradicted`, `unclaimed_value`, `unclaimed_cost` — a partition), `stale` and `review`. A cell nobody scored reads at a **seeded** level (first claimed value +3, second +2, the rest +1; scorer `rule`, confidence 0; negatives never) — a guess, never a score — and `notes` says when everything is one. A human's level beats an agent's beats a seed. `skipped` lists any stored set or matrix the resolver dropped. With `subject`: that promise's every cell with scorer, confidence, evidence and `others`, plus the scale's and the confidence's anchors. Without: the promises plus per-element promised / kept / cost masses and totals | — |
+| `assess` | `subject`, `criterion`, `level`, `confidence`, `evidence?` (≤ 2,000 characters, not blank), `refs?` (≤ 50, each ≤ 200), `model?`, `run?`, `commit?` (each ≤ 200), `matrix?` (one a roll-up reads: a draft matrix is refused) | The stamped assessment (scorer `agent`, the set's version, the subject's fingerprint). `evidence` is required above confidence 0. Re-scoring replaces in place (`replaced_level`). `notes` says when a human's level already stands for the cell and the agent's sits beside it. There is deliberately **no scorer argument** — a human's level wins every cell, so a caller must not be able to claim to be one | repo: none (`docs/weighing/assessments/<matrix>.json` is the record); hosted: `weighing.assessment.recorded` |
+| `save_positioning` | `elements` (`[{ id, weight?, anchors? }]`), `status?` (default `draft`), `title?` | The positioning — a criteria set naming the elements the product stands on, each with a weight and, optionally, what each level means in the product's own words. Replaces the previous one whole. Weights and anchors are passed through as given, so the planner refuses a weight that is not a number above 0 or an anchor not keyed by a level on the scale (`invalid_set`) instead of the tool correcting it. A **draft feeds no roll-up**; draft one from the landing page or a brainstorm and leave it for a person to read | repo: none (`docs/weighing/sets/positioning.json`); hosted: `weighing.set.saved` |
 
 **Repo and hosted behave alike.** In a repo the sidecars under `docs/weighing/` are read fresh and written by the tool; hosted, the server's folded section is the read and the events are the write, and nothing lands on disk. The hosted route stamps the scorer from the token (`agent`) and refuses a body that carries one.
+
+**On whose behalf (`scorer.on_behalf_of`).** An assessment records whom the agent acted for.
+
+- **Hosted:** the server stamps the token's owner (a user id). The MCP server sends nothing, whatever its environment says.
+- **In a repo:** `assess` stamps the first usable of, in order: (1) `ARKAIK_ON_BEHALF_OF`, trimmed; (2) `git config arkaik.user`, read in the repo root; (3) `git config user.name`, the git author name. So most local scores say who they were made for with no setup.
+- **Privacy, and the opt-out.** In a repo, your git author name is written into the committed `docs/weighing/` sidecars (and into a Publik publication that opts into weighing). Set `git config arkaik.user <handle>` to use another name, or `-` to record nobody. `-` as `ARKAIK_ON_BEHALF_OF` or as `arkaik.user` stamps nothing and stops the chain (git's name is not read); an *empty* value is just "not set" and falls through.
+- **Never an email.** `user.email` is not a source, and a value that is email-shaped (anything containing `@`) in any source is *skipped*, not refused: the next source is tried, and scoring still works. The field is a user id, a handle or a display name, at most 128 characters with no control or invisible format characters (ZWJ and ZWNJ allowed); sidecars are committed to repos.
+- **Absent when none is set**, as in an unattended CI run: the row is still written, without the key. Git is run without a shell (`git config --get <key>`) with a 1.5 s timeout, and any failure (no git, not a repo, not set) means "not set"; a timeout on `arkaik.user` ends the chain, so a hung git costs one short wait, not two. The value is read on every `assess`, so a config change mid-session is honoured.
+
+It never changes who wins a cell: only the scorer's kind does.
 ````
 
-In the same file, change the `### Quality tools (Kritik)` neighbour nothing else; and wherever the doc states the tool total (search for "16 graph" / "30"), update to include the three weighing tools (the suite's catalog assertion is now 33).
+In the same file, in `### Repo bundle`, immediately after the numbered list of discovery steps, add the table `| Environment | Used for |` with the rows `ARKAIK_BUNDLE` (the bundle path) and `ARKAIK_ON_BEHALF_OF` (repo mode only: whom `assess` records, first of three sources; `-` records nobody; hosted ignores it) — the exact text is in `docs/spec/mcp.md`. Change nothing else: the doc states no tool total (the suite's catalog assertion is the count, now 33). In `## Testing`, immediately before `## Non-Goals (v1)`, add:
 
-- [ ] **Step 2b: `docs/hosted-projects.md`** — Part 3 left the MCP pointer out of its "Weighing on a hosted project" subsection (the tools did not exist yet). In that subsection, between the paragraph that begins "**The scorer is stamped by the server**" and the one that begins "Nothing lands in the repository", add:
+````markdown
+`tests/mcp/weighing-tools.test.js` covers the weighing tools over a tmpdir repo and a stub of the hosted API, and finishes by running the built CLI's `pack` over what an agent wrote. Its `on_behalf_of` cases use a temp git repo with local config and run the server with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so "none set" never depends on the machine's own git identity.
+````
+
+**RFC.** `docs/rfcs/weighing.md` carries the same chain in its "On whose behalf" paragraph (§ 7), its decision row 13 and its `assess` row in the MCP table (§ 15): Task 4.6 Step 2c edits them.
+
+- [x] **Step 2b: `docs/hosted-projects.md`** — Part 3 left the MCP pointer out of its "Weighing on a hosted project" subsection (the tools did not exist yet). In that subsection, between the paragraph that begins "**The scorer is stamped by the server**" and the one that begins "Nothing lands in the repository", add:
 
 ```markdown
-Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing.
+Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md § Weighing tools](spec/mcp.md#weighing-tools). The MCP server sends no scorer and no `on_behalf_of`; the token owner is stamped here.
 ```
 
-- [ ] **Step 3: Gate**
+- [x] **Step 2c: `docs/rfcs/weighing.md`** — the owner decided that the repo-mode source of `on_behalf_of` is a chain, not the env var alone (D14). Three edits, each a sentence: the decision row 13 (add "the token owner's id on a hosted write, the git author name (or an override) in a repo"); the "On whose behalf" paragraph in § 7 (after "A session is the person, so it stamps nothing." say that in a repo the MCP server reads the first usable of `ARKAIK_ON_BEHALF_OF`, `git config arkaik.user` and `git config user.name`, that a writer finding none leaves it absent, and that the value is "a user id, a handle or a display name, never an email" — the git email is not a source and an email-shaped value is skipped); and the `assess` row of the § 15 table (replace "Takes scorer, confidence, evidence" with "Takes confidence, evidence (no scorer — it is stamped)", and add the chain). `docs/spec/services.md` and the plan's Part 3 docs block also name the new caps (`model`/`run`/`commit` at most 200, `evidence` non-blank).
 
-Run: `npm run generate && git status --short` (expected: no artifact changes), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider`, `npm run test:cli`, `npm run test:mcp`, `npm run test:docs-visibility`.
+- [x] **Step 3: Gate**
+
+Run: `npm run generate && git status --short` (expected: no artifact changes), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider`, `npm run test:journal`, `npm run test:quality`, `npm run test:publik-strip`, `npm run test:cli`, `npm run test:mcp`, `npm run test:docs-visibility`, and `actionlint` over `.github/workflows` (nothing in this part touches a workflow, so it is a formality). `test:graph` only if the part touched the hosted route or the store (it does not).
 Expected: all exit 0.
 
-- [ ] **Step 4: Commit and submit**
+- [x] **Step 4: Commit and submit** (committed; `gh stack submit` is run once for the whole stack, not per part)
 
 ```bash
 git add packages/mcp/package.json package-lock.json docs/spec/mcp.md docs/hosted-projects.md
@@ -8437,7 +8750,7 @@ suggested:
 - **R-F2 — the published JSON Schema no longer says what an author should write.** D15 made every leaf `z.unknown()`, so `public/schema/project-bundle.json` documents descriptions but enforces and types nothing. Follow-up: publish a strict authoring JSON Schema (the shapes as written, no `unknown` leaves) beside the permissive import one.
 
 - **R10 — restore replaces the hosted journal.** An assessment written hosted (or in a browser project) is an *event*; `arkaik restore` PUTs a bundle and journal from the repo, so hosted-only assessments vanish unless the repo's `docs/weighing/` carries them. The existing `--allow-history-loss` guard catches a journal that *shrinks*; nothing writes hosted events *back* into `docs/weighing/`. A `pull`-style verb is out of slice. Same story for a browser project exported to a repo: its events travel in `journal[]`, not as sidecars. **The count-based history guard does NOT reliably protect these events** (a repo journal as long as the hosted one passes it while still erasing them), and `restore`'s help, `docs/spec/toolchain.md` and `docs/hosted-projects.md` say so. **The owner wants `arkaik restore` to append by default and to overwrite only behind an explicit flag; that is filed as issue #624 (critical) and is deliberately not part of slice 1.** Until it lands, this risk stands as written: slice 1's `restore` folds the repo's sidecars and replaces the hosted journal.
-- **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person.
+- **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person. **In a repo the MCP server stamps the git author name by default (D14), so a sidecar committed to a public repo names its author. It is the name git already writes into every commit of that repo, and `ARKAIK_ON_BEHALF_OF` or `git config arkaik.user` overrides it. The owner's opt-out is `-` in either, which records nobody; `docs/spec/mcp.md` and the `assess` tool description say so in one plain sentence.**
 - **R12 — no page sorts by served/cost yet.** The brief calls them "the derived sort keys"; slice 1 ships them in the panel and in `get_matrix` (`sort`), and `sortPromises` is exported for the next slice's pages. Acceptances/Pyramid are untouched.
 - **R13 — `qualityEventCount` now counts weighing events.** The validator field keeps its name to avoid a rename across `etag.ts`, `store.ts` and four tests; its doc comment says so. A follow-up rename is cheap.
 - **R14 — not run here:** `npm run build` (Turbopack refused the scratch copy's symlinked `node_modules`) and any browser pass over `WeighingGroup` / `PositioningPanel`. Task 5.7 step 3 is the checklist for the second; the first is a CI gate.
@@ -8490,7 +8803,7 @@ suggested:
 ```ts
 // P1 — packages/schema/src/weighing.ts, weighing-library.ts, weighing-schemas.ts, weighing-validate.ts
 type WeighingScorerKind = "human" | "agent" | "rule";                    // authority order; `rule` is never stored
-interface WeighingScorer { kind: WeighingScorerKind; id: string; model?: string; on_behalf_of?: string }  // on_behalf_of: opaque id or handle, never an email (D14)
+interface WeighingScorer { kind: WeighingScorerKind; id: string; model?: string; on_behalf_of?: string }  // on_behalf_of: a user id, handle or display name, never an email (D14)
 interface WeighingAssessment { matrix; subject; criterion; level: number /* -3..3 */; scorer?: WeighingScorer /* absent on a hand-edited row */; confidence: 0|1|2|3;
                        evidence?; refs?; basis?: { fingerprint?; commit?; set_version: string }; run?; ts }
 interface WeighingCriteriaSet { id; version; title?; subject?; scale?: { min; max; anchors } /* a positioning may omit it */; groups?; criteria: WeighingCriterion[];
@@ -8519,7 +8832,7 @@ type WeighingEventInput =
   | { type: "weighing.assessment.recorded"; matrix?; subject; criterion; level; confidence; evidence?; refs?; run?; commit?; model? }
   | { type: "weighing.set.saved"; set: WeighingCriteriaSet }
 function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string }          // the HTTP shape only: refuses scorer/basis/ts, copies known fields, judges NO value (the planner does, for every writer)
-const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 }             // enforced by planWeighingEvents
+const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 }             // enforced by planWeighingEvents
 function planWeighingEvents(section, nodes, inputs, { actor, scorerKind: "human"|"agent", onBehalfOf?, now? }):
   | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }   // reason adds "invalid_entry" (shape, caps); never throws; the model survives only on an agent's scorer
 function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold; replaces a stored row (and a set, against the last event folded for its id) only if the event's ts is >= its ts; skips rule rows

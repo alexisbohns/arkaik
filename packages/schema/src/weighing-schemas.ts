@@ -53,7 +53,7 @@ export const WeighingScorerSchema = z
     kind: leaf("Who judged: human, agent or rule. A human's level beats an agent's, which beats a rule's. Any value parses; the validator warns on another kind."),
     id: leaf("A person's handle, an agent's name, or a seeding rule's id."),
     model: leaf("The model behind an agent, when it says."),
-    on_behalf_of: leaf("Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known."),
+    on_behalf_of: leaf("Whom the scorer acts for: a user id, a handle or a display name, never an email. Stamped by the writer where identity is known."),
   })
   .catchall(z.unknown())
   .meta({ id: "WeighingScorer", description: "Provenance of one assessment." }) as unknown as z.ZodType<WeighingScorer>;

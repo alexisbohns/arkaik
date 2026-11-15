@@ -1605,7 +1605,7 @@
           "description": "The model behind an agent, when it says."
         },
         "on_behalf_of": {
-          "description": "Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known."
+          "description": "Whom the scorer acts for: a user id, a handle or a display name, never an email. Stamped by the writer where identity is known."
         }
       },
       "additionalProperties": {},

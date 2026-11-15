@@ -379,6 +379,8 @@ A hosted project has no `docs/weighing/` directory. Its weighing state is the `w
 
 **The scorer is stamped by the server, never read from the body.** A signed-in session writes as a person; a token writes as an agent and also records `scorer.on_behalf_of`, the token owner's user id (an opaque number, never an email), so the record says whose hands the agent was. A person's level beats an agent's for the same cell, and the agent's is kept beside it, which is why a token cannot claim to be one. The server also stamps a fingerprint of the acceptance (title, Gherkin, values) so a later edit marks the score stale, and the full version of the value set it was read against.
 
+Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md § Weighing tools](spec/mcp.md#weighing-tools). The MCP server sends no scorer and no `on_behalf_of`; the token owner is stamped here.
+
 Nothing lands in the repository: the journal events are the whole record.
 
 **Mind `arkaik restore`.** It replaces the hosted journal, so an assessment recorded only on the hosted project (or in a browser project) is erased by a restore unless the repository's `docs/weighing/` carries it. The history guard compares event *counts*, so it does **not** reliably catch this: a repo journal as long as the hosted one passes it. Take the backup `restore` writes first, and see issue #624 (restore appends by default), which is the real fix.
