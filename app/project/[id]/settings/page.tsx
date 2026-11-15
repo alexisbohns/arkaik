@@ -10,6 +10,7 @@ import { PageShell } from "@/components/layout/PageShell";
 import { PageSurface } from "@/components/layout/PageSurface";
 import { DisplayPreferencesPanel } from "@/components/settings/DisplayPreferencesPanel";
 import { FederationPanel } from "@/components/settings/FederationPanel";
+import { PositioningPanel } from "@/components/settings/PositioningPanel";
 import { ProductManagerPanel } from "@/components/settings/ProductManagerPanel";
 import { RepoLinksPanel } from "@/components/settings/RepoLinksPanel";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,17 @@ export default function ProjectSettingsPage() {
                 reassignment a deletion offers both need it, and nothing else
                 on this page does. */}
             <ProductManagerPanel projectId={id} project={project} updateProject={updateProject} />
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Positioning</h2>
+              <p className="text-sm text-muted-foreground">
+                {/* One expression, for the reason the Display preferences note gives. */}
+                {`The elements of value ${title} stands on, how much, and what each level means in your own words. A promise is weighed against these; a draft weighs nothing until you activate it.`}
+              </p>
+            </div>
+            <PositioningPanel projectId={id} />
           </section>
 
           <section className="flex flex-col gap-3">

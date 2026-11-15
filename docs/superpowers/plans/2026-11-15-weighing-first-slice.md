@@ -8241,7 +8241,7 @@ git commit -m "feat(weighing): weigh a promise from its panel — a signed level
 - Create: `components/settings/PositioningPanel.tsx`
 - Modify: `app/project/[id]/settings/page.tsx`
 
-- [ ] **Step 1: Write the panel**
+- [x] **Step 1: Write the panel**
 
 ```tsx
 "use client";
@@ -8456,7 +8456,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
 }
 ```
 
-- [ ] **Step 2: Mount it between Products and Display preferences**
+- [x] **Step 2: Mount it between Products and Display preferences**
 
 ```diff
 --- a/app/project/[id]/settings/page.tsx
@@ -8489,12 +8489,12 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
                  {/* One expression rather than text around `{title}`: the JSX compiler
 ```
 
-- [ ] **Step 3: Run the checks**
+- [x] **Step 3: Run the checks**
 
 Run: `npm run test:weighing-panel && npx tsc --noEmit -p . && npx eslint components/settings app`
 Expected: the editor and Settings checks `PASS:`; only the History check still `FAIL:`; `tsc` and `eslint` silent.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/settings/PositioningPanel.tsx "app/project/[id]/settings/page.tsx"
