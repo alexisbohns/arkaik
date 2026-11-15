@@ -166,9 +166,9 @@ interface ProjectBundle {
 }
 
 interface WeighingSection extends Record<string, unknown> {
-  sets: WeighingCriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored
-  matrices: WeighingMatrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored)
-  assessments: WeighingAssessment[];    // latest per (matrix × subject × criterion × scorer kind)
+  sets?: WeighingCriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored. Absent = []
+  matrices?: WeighingMatrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored). Absent = []
+  assessments?: WeighingAssessment[];    // latest per (matrix × subject × criterion × scorer kind). Absent = []
 }
 
 interface WeighingAssessment extends Record<string, unknown> {
@@ -176,7 +176,70 @@ interface WeighingAssessment extends Record<string, unknown> {
   subject: string;              // an acceptance id
   criterion: string;            // an element of value, e.g. "reduces-anxiety"
   level: number;                // -3..+3, whole numbers. 0 = weighed and unrelated. A blank cell is the ABSENCE of the row
-  scorer: { kind: "human" | "agent" | "rule"; id: string; model?: string; on_behalf_of?: string };
+  scorer?: { kind: "human" | "agent" | "rule"; id: string; model?: string; on_behalf_of?: string };  // absent on a hand-edited row: it wins no cell, and the validator warns
+  confidence: 0 | 1 | 2 | 3;    // guess · inferred · evidenced · verified
+  evidence?: string;            // markdown
+  refs?: string[];
+  basis?: { fingerprint?: string; commit?: string; set_version: string };
+  run?: string;
+  ts: string;
+}
+```
+
+**The built-in library.** `value-contribution` (the 30 elements of value in their four tiers, each level −3..+3 described in words) and the `value` matrix (every acceptance against that set) ship in `@arkaik/schema` and are pinned by version, as Kritik's pack is. A project cannot redefine them (`validateBundle` warns).
+
+**Signed, never netted.** +3 is core, +2 supports clearly, +1 touches, 0 is unrelated (weighed, and found to have nothing to do with it — no row at all means nobody has weighed it yet), −1 a small friction, −2 works against it, −3 costs it at its core. A promise's *served* (sum of positive levels ÷ 3) and *cost* (sum of |negative levels| ÷ 3) are derived separately and never combined: "serves 1.0 · costs 0.67", never "0.33".
+
+**Who judged.** A human's level beats an agent's, which beats a rule's; the latest wins within a kind. The section keeps one row per cell *per scorer kind*, so both sit side by side. A `rule` is the **seeding rule** — the first claimed value in `metadata.values` reads +3, the second +2, every other +1, confidence 0, negatives never — and it is computed on read, never stored (a stored `rule` row is a warning). `scorer.on_behalf_of` is optional and says whom the scorer acts for: an opaque user id or handle, never an email, because sidecars are committed to repos. A hosted token write stamps the token owner's id; a writer that does not know stamps nothing.
+
+**Staleness is computed, never stored.** An assessment records what its scorer looked at: `basis.fingerprint` is a hash of the acceptance's title, Gherkin and values (whitespace-normalised) — **not its status**, which is joined at read time — and `basis.set_version` the set's full version. A cell is stale when the fingerprint no longer matches or the set's major moved. Staleness flags a cell; it never changes which scorer wins.
+
+**The positioning is a criteria set.** In slice 1 its id is fixed: `sets` may hold one set with `id: "positioning"`, `role: "positioning"`, `extends: "value-contribution@1"` and `status?: "draft" | "active"` (absent = active). Each criterion is `{ id, weight?, anchors? }`: how much the product stands on the element (absent = 1) and what each level means in the product's own words. A **draft feeds no roll-up**.
+
+**Storage follows Kritik's rule exactly.** In a repository the sidecars under `docs/weighing/` — `sets/<set-id>.json` and `assessments/<matrix-id>.json` (`{ "matrix", "assessments": [] }`) — are canonical, and `arkaik pack` / `arkaik restore` fold them into this key; `docs/arkaik/bundle.json` is never rewritten to carry it. On a hosted project, and in a browser project, an assessment is a journal event (`weighing.assessment.recorded`) and a saved positioning is `weighing.set.saved`; every read folds them over the stored section latest-wins ([journal.md](journal.md)). `--no-weighing` opts out of the fold on `pack` and `restore`.
+
+**Import never blocks, and the shapes are looser than Kritik's on purpose.** `QualitySectionSchema` refuses a malformed quality record; `WeighingSectionSchema` does not. A weighing section is filled at scale by agents and scorers, so one bad cell must never block importing a project. **Only the containers are strict: `weighing` must be an object, and each of `sets`, `matrices` and `assessments` — if present — must be an array.** Everything inside parses, whatever it holds:
+
+- an item in a list may be anything (a `null` row, a number) and is skipped by every reader;
+- every leaf is accepted as any value: a level of `"2"` or 3.5, a confidence of 4, a scorer that is a string or has no kind or id, a numeric `evidence`, `refs` that is a string, a `set_version` that is a number, a weight that is a string, a scale with no anchors, a status of `"Draft"`, a mistyped `role`;
+- the keys a row is addressed by (`matrix`, `subject`, `criterion`, `ts` on an assessment; `id`, `version`, `subject` on a set; `id`, `set`, `subjects` on a matrix) are optional too — a record that lacks them **cannot be addressed**, which means the readers skip it and the validator warns, never that the import is refused;
+- values survive a round trip untouched: nothing is coerced, stripped or defaulted.
+
+The validator warns on each of these (`weighing-assessment-shape`, `-assessment-ts`, `-level-range`, `-confidence-range`, `-scorer-missing`, `-evidence-type`, `-refs-type`, `-basis-shape`, `-set-shape`, `-matrix-shape`, `-scale-shape`, `-criterion-shape`, `-section-shape`, …). **A reader goes through `resolveWeighing` (sets and matrices that pass their shape guard) and `readWeighingAssessments` (rows with string keys)** instead of reading the stored lists directly; both skip rather than throw.
+
+**Status.** `status` on a set or matrix is any value in storage. Readers follow one rule: **absent or `"active"` is active, and any other present value — `"draft"`, `"Draft"`, `"archived"`, a non-string — counts as a draft**, so a draft feeds no roll-up even if its status is mistyped (`isActiveWeighingSet`). The validator warns on anything but `draft` and `active` (`weighing-set-status`).
+
+**A positioning may have no `scale`.** It then uses its `extends` ruler's scale (`weighingScaleOf`); every other set needs one. A set needs a string `id` and `version` and a `criteria` array to be used at all.
+
+**"The first wins" is true.** For two sets (or matrices) with one id, the first *well-formed* one wins and the later one is ignored with a `weighing-duplicate-set` (`-matrix`) warning; a malformed earlier entry never shadows a good later one, and is not counted as a duplicate.
+
+**Validation is warnings only** (never import-blocking, per the leniency doctrine): an unknown or retired `criterion_id`, a surface absent from the profile, a duplicate score for one cell, an assessment with no evidence, a risk value outside 1-5, a `quality.*` event with no `actor`, a `quality.finding.resolved` or `quality.finding.accepted` for a finding nothing ever opened.
+
+**Publik withholds it by default.** A quality section lists open, unfixed findings with the file paths to reach them, so `POST /api/publik` strips it exactly as it strips the journal, and for a sharper reason. `?include_quality=true` opts in; opting into the journal never implies it.
+
+
+## Weighing
+
+A project MAY carry a `weighing` section: the weighing layer's own state ([docs/rfcs/weighing.md](../rfcs/weighing.md)) — how much each promise is worth, according to whom, and how sure. It is a top-level section for the reason `quality` is: criteria are library content, not product anatomy, and 30 elements times every acceptance would drown a product graph.
+
+```ts
+interface ProjectBundle {
+  // ... unchanged
+  weighing?: WeighingSection;   // additive; schema_version stays 3
+}
+
+interface WeighingSection extends Record<string, unknown> {
+  sets?: WeighingCriteriaSet[];          // the project's OWN sets — its positioning. The built-in value set is library content, not stored. Absent = []
+  matrices?: WeighingMatrix[];           // the project's own matrices; empty in slice 1 (the built-in `value` matrix is not stored). Absent = []
+  assessments?: WeighingAssessment[];    // latest per (matrix × subject × criterion × scorer kind). Absent = []
+}
+
+interface WeighingAssessment extends Record<string, unknown> {
+  matrix: string;               // "value"
+  subject: string;              // an acceptance id
+  criterion: string;            // an element of value, e.g. "reduces-anxiety"
+  level: number;                // -3..+3, whole numbers. 0 = weighed and unrelated. A blank cell is the ABSENCE of the row
+  scorer?: { kind: "human" | "agent" | "rule"; id: string; model?: string; on_behalf_of?: string };  // absent on a hand-edited row: it wins no cell, and the validator warns
   confidence: 0 | 1 | 2 | 3;    // guess · inferred · evidenced · verified
   evidence?: string;            // markdown
   refs?: string[];
