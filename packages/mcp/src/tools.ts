@@ -39,6 +39,7 @@ import {
 } from "@arkaik/schema";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import { buildKritikCatalog } from "./kritik-tools";
+import { buildWeighingCatalog } from "./weighing-tools";
 import type { LoadedGraph as StoreLoadedGraph, Store, WriteResult } from "./store";
 
 interface ToolContext {
@@ -766,6 +767,14 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   const kritik = buildKritikCatalog(ctx);
   tools.push(...kritik.tools);
   Object.assign(handlers, kritik.handlers);
+
+  // The weighing layer's tools (docs/rfcs/weighing.md): the same shape as the
+  // quality namespace above — a self-contained module over the docs/weighing/
+  // sidecars in a repo and the hosted events route otherwise, reached through
+  // the same validated gate every other writer uses.
+  const weighing = buildWeighingCatalog(ctx);
+  tools.push(...weighing.tools);
+  Object.assign(handlers, weighing.handlers);
 
   return { tools, handlers };
 }

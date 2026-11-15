@@ -90,7 +90,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
  * characters at most, no control characters, and **no `@` anywhere** — that
  * refuses "me@example.com" and "Alexis <me@example.com>" alike.
  */
-const isOpaqueId = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !value.includes("@") && !/\p{Cc}/u.test(value);
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !value.includes("@") && !/\p{Cc}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -167,8 +167,9 @@ export interface WeighingPlanContext {
   scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
    * Whom the scorer acts for, when the writer knows (D14): the token
-   * owner's user id on the hosted route, whatever the MCP server was told in a
-   * repo. An opaque id or handle, never an email. Absent otherwise.
+   * owner's user id on the hosted route, in a repo the MCP server's first usable
+   * of the env var, `arkaik.user` and the git author name. A user id, a handle
+   * or a name, never an email ({@link isValidOnBehalfOf}). Absent otherwise.
    */
   onBehalfOf?: string;
   /** Defaults to now. */
@@ -319,7 +320,7 @@ export function planWeighingEvents(
       return refuse("level_out_of_range", `level ${input.level} is outside ${scale.min}..${scale.max}`);
     }
 
-    if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
+    if (ctx.onBehalfOf !== undefined && !isValidOnBehalfOf(ctx.onBehalfOf)) {
       // D14.
       return refuse("invalid_on_behalf_of", "on_behalf_of is a user id, a handle or a name (no control characters, at most 128 characters), never an email — sidecars are committed to repos");
     }

@@ -1,0 +1,363 @@
+#!/usr/bin/env node
+
+/**
+ * The weighing tool catalog over stdio (docs/rfcs/weighing.md) — `get_matrix`,
+ * `assess` and `save_positioning`, against a tmpdir repo (the sidecars under
+ * `docs/weighing/`) and against a stub of the hosted API (events).
+ *
+ * What this covers that tests/schema/weighing-*.test.js cannot: that an agent
+ * gets the same answers through MCP as the schema derives, that `assess` goes
+ * through the same validator-gated gate as every other writer, that an agent is
+ * stamped an agent whatever it says, and that what an agent writes in a repo is
+ * what `arkaik pack` folds into the bundle.
+ *
+ * Run via `npm run test:mcp` (builds `arkaik` and `arkaik-mcp` first).
+ */
+
+const { spawn, spawnSync } = require("child_process");
+const http = require("node:http");
+const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
+const { devNull, tmpdir } = require("os");
+const path = require("path");
+const readline = require("readline");
+
+const ROOT = path.join(__dirname, "..", "..");
+const SERVER = path.join(ROOT, "packages", "mcp", "dist", "index.js");
+const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
+
+if (!existsSync(SERVER) || !existsSync(CLI)) {
+  console.error("arkaik-mcp / arkaik are not built. Run: npm run build -w arkaik -w arkaik-mcp (test:mcp does this).");
+  process.exit(1);
+}
+
+let failures = 0;
+function check(name, cond, detail = "") {
+  if (cond) console.log(`PASS: ${name}`);
+  else {
+    failures++;
+    console.log(`FAIL: ${name}${detail ? ` — ${detail}` : ""}`);
+  }
+}
+
+const ISO = "2026-01-01T00:00:00.000Z";
+const NODES = [
+  {
+    id: "AC-consent",
+    project_id: "demo",
+    species: "acceptance",
+    title: "You agree to the terms knowingly, not by accident",
+    status: "development",
+    platforms: ["web", "ios"],
+    metadata: { gherkin: "Given the consent page\nWhen I tick both boxes\nThen the button wakes", values: ["reduces-risk", "reduces-anxiety"], platformStatuses: { web: "live", ios: "development" } },
+  },
+  {
+    id: "AC-invite",
+    project_id: "demo",
+    species: "acceptance",
+    title: "Accept an invite",
+    status: "live",
+    platforms: ["web"],
+    metadata: { gherkin: "Given a link\nWhen I tap it\nThen we connect", values: ["connects"] },
+  },
+  { id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] },
+];
+const BUNDLE = { schema_version: 3, project: { id: "demo", title: "Demo", created_at: ISO, updated_at: ISO }, nodes: NODES, edges: [] };
+const CREATED = NODES.map((n, i) => JSON.stringify({ id: `01A${i}`, ts: ISO, type: "node.created", node_id: n.id, species: n.species, title: n.title }));
+
+/** Run git in `cwd`, throwing on failure — fixture setup only. */
+function git(cwd, ...args) {
+  const done = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (done.status !== 0) throw new Error(`git ${args.join(" ")}: ${done.stderr}`);
+}
+
+/**
+ * Spawn a server over a fresh tmpdir repo (or hosted, with extra args); returns an rpc client.
+ *
+ * `gitConfig` makes the tmpdir a git repo with those LOCAL config values (e.g. `{ "user.name": "…" }`).
+ * The server's git is isolated from this machine's: no global or system config is read, and an inherited
+ * ARKAIK_ON_BEHALF_OF is dropped, so "none set" really is none. `env` is applied on top.
+ */
+function startSession(extraArgs = [], env = {}, gitConfig = undefined) {
+  const dir = mkdtempSync(path.join(tmpdir(), "arkaik-mcp-weighing-"));
+  mkdirSync(path.join(dir, "docs", "arkaik"), { recursive: true });
+  const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
+  writeFileSync(bundlePath, JSON.stringify(BUNDLE, null, 2));
+  writeFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), `${CREATED.join("\n")}\n`);
+  const isolated = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" };
+  delete isolated.ARKAIK_ON_BEHALF_OF;
+  if (gitConfig !== undefined) {
+    git(dir, "init", "-q");
+    for (const [key, value] of Object.entries(gitConfig)) git(dir, "config", "--local", key, value);
+  }
+
+  const args = extraArgs.length > 0 ? extraArgs : ["--bundle", bundlePath];
+  const child = spawn(process.execPath, [SERVER, ...args], { stdio: ["pipe", "pipe", "pipe"], cwd: dir, env: { ...isolated, ...env } });
+  const lines = readline.createInterface({ input: child.stdout });
+  const pending = new Map();
+  let nextId = 1;
+  lines.on("line", (line) => {
+    if (!line.trim()) return;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const waiter = pending.get(message.id);
+    if (waiter) {
+      pending.delete(message.id);
+      waiter(message);
+    }
+  });
+  const request = (method, params) =>
+    new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      setTimeout(() => reject(new Error(`timeout on ${method}`)), 15000).unref?.();
+    });
+  const call = async (name, args = {}) => {
+    const response = await request("tools/call", { name, arguments: args });
+    const text = response.result?.content?.[0]?.text ?? "";
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { message: text };
+    }
+    return { isError: response.result?.isError === true, json, text };
+  };
+  return {
+    dir,
+    bundlePath,
+    request,
+    call,
+    readJson: (...parts) => JSON.parse(readFileSync(path.join(dir, ...parts), "utf8")),
+    stop: () => {
+      child.kill();
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function main() {
+  const repo = startSession();
+  try {
+    await repo.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+
+    const listed = await repo.request("tools/list");
+    const names = (listed.result?.tools ?? []).map((t) => t.name);
+    check("the catalog lists get_matrix, assess and save_positioning", ["get_matrix", "assess", "save_positioning"].every((n) => names.includes(n)), names.join());
+    const assessDef = listed.result.tools.find((t) => t.name === "assess");
+    check("assess takes no scorer — an agent cannot claim to be a human", assessDef !== undefined && !("scorer" in assessDef.inputSchema.properties) && !("kind" in assessDef.inputSchema.properties));
+    check("assess's level is the signed scale", assessDef !== undefined && assessDef.inputSchema.properties.level.minimum === -3 && assessDef.inputSchema.properties.level.maximum === 3);
+
+    // --- get_matrix with nothing assessed: seeds, honestly labelled --------------
+    const first = await repo.call("get_matrix");
+    check("get_matrix answers with nothing stored", !first.isError, first.text.slice(0, 200));
+    check("it judges the two acceptances, not the view", first.json.totals.promises === 2, JSON.stringify(first.json.totals));
+    check("nothing is assessed, and it says every figure is a guess", first.json.totals.assessed === 0 && first.json.notes.some((n) => /seeded/.test(n)), JSON.stringify(first.json.notes));
+    check("all of it is guesswork", first.json.totals.guesswork.promised === 1);
+    const consent = first.json.promises.find((p) => p.node_id === "AC-consent");
+    check("served is seeded from claim order: +3 and +2 over 3 = 1.67", consent.served === 1.67 && consent.cost === 0, JSON.stringify(consent));
+    check("kept share is live platforms over applicable ones", consent.kept_share === 0.5);
+    check("no positioning, no positioned figure", consent.positioned === null && first.json.positioning === null);
+    check("a list row carries no cells; the subject read does", consent.cells === undefined);
+    check("nothing stored was dropped, so there is no skipped list", first.json.skipped === undefined);
+
+    const one = await repo.call("get_matrix", { subject: "AC-consent" });
+    check("a subject read returns every cell with its scorer", one.json.promise.cells.length === 2 && one.json.promise.cells.every((c) => c.source === "seed" && c.scorer.kind === "rule" && c.confidence === 0));
+    check("…and the scale's anchors, so the agent scores against words", one.json.scale.anchors["-3"] && one.json.scale.anchors["3"] && one.json.confidence_anchors["0"]);
+    check("a view is not a subject", (await repo.call("get_matrix", { subject: "V-home" })).isError);
+    check("an unknown matrix is an error", (await repo.call("get_matrix", { matrix: "nope" })).isError);
+    check("a bad sort is an error", (await repo.call("get_matrix", { sort: "vibes" })).isError);
+
+    // --- assess: validator-gated, agent-stamped -----------------------------------
+    const bad = [
+      ["an unknown element", { subject: "AC-consent", criterion: "teleports", level: 1, confidence: 0 }],
+      ["a level of 4", { subject: "AC-consent", criterion: "connects", level: 4, confidence: 0 }],
+      ["a view as the subject", { subject: "V-home", criterion: "connects", level: 1, confidence: 0 }],
+      ["a missing acceptance", { subject: "AC-gone", criterion: "connects", level: 1, confidence: 0 }],
+      ["evidence missing above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2 }],
+    ];
+    for (const [label, args] of bad) {
+      const res = await repo.call("assess", args);
+      check(`assess refuses ${label}`, res.isError, res.text.slice(0, 160));
+    }
+    check("…and wrote nothing", !existsSync(path.join(repo.dir, "docs", "weighing")));
+
+    const scored = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2, evidence: "the Then clause removes one worry (accidental consent), not the page's overall anxiety", model: "claude" });
+    check("assess records a judgement", !scored.isError && scored.json.assessment.level === 1, scored.text.slice(0, 300));
+    check("the scorer is stamped an agent, with the model", scored.json.assessment.scorer.kind === "agent" && scored.json.assessment.scorer.model === "claude");
+    // D14: with nothing set anywhere the field is absent (the tmpdir is not a git repo, and no global config is read).
+    check("on_behalf_of is absent when nothing says whose it is", !("on_behalf_of" in scored.json.assessment.scorer), JSON.stringify(scored.json.assessment.scorer));
+    check("the basis is stamped: fingerprint and the set's version", /^fp1-/.test(scored.json.assessment.basis.fingerprint) && scored.json.assessment.basis.set_version === "1.0.0");
+    check("the reply carries the level's anchor", typeof scored.json.anchor === "string" && scored.json.anchor.length > 0);
+    const file = repo.readJson("docs", "weighing", "assessments", "value.json");
+    check("it upserts docs/weighing/assessments/value.json — the sidecar is the record", file.matrix === "value" && file.assessments.length === 1);
+    check("…and writes nothing to the journal", !readFileSync(path.join(repo.dir, "docs", "arkaik", "journal.jsonl"), "utf8").includes("weighing."));
+
+    const cost = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-effort", level: -1, confidence: 1, evidence: "two boxes before the button wakes" });
+    check("a negative level is a cost, and an unclaimed one", !cost.isError && cost.json.assessment.level === -1);
+    const rescored = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 2, confidence: 2, evidence: "second reading" });
+    check("re-scoring replaces in place and reports the old level", rescored.json.replaced_level === 1);
+    check("…leaving two rows, not three", repo.readJson("docs", "weighing", "assessments", "value.json").assessments.length === 2);
+
+    // --- the read now reflects it -------------------------------------------------------
+    const after = await repo.call("get_matrix", { subject: "AC-consent" });
+    const p = after.json.promise;
+    check("served and cost are never netted: +3 seed, +2 scored, −1 scored", p.served === 1.67 && p.cost === 0.33, JSON.stringify(p));
+    check("a scored claim reads at the scorer's level", p.cells.find((c) => c.criterion === "reduces-anxiety").level === 2 && p.cells.find((c) => c.criterion === "reduces-anxiety").source === "stored");
+    check("the unclaimed cost is flagged", p.flags.unclaimed_cost.join() === "reduces-effort");
+    check("guesswork is only the seeded reduces-risk cell now", p.guesswork.served === 0.6, String(p.guesswork.served));
+    check("assessed is one promise", (await repo.call("get_matrix")).json.totals.assessed === 1);
+
+    // --- staleness: edit the promise, the score goes stale ---------------------------------
+    await repo.call("update_node", { node_id: "AC-consent", patch: { title: "You agree to the terms, knowingly" } });
+    const stale = await repo.call("get_matrix", { subject: "AC-consent" });
+    check("editing the title marks the scored cells stale", stale.json.promise.stale.sort().join() === "reduces-anxiety,reduces-effort", JSON.stringify(stale.json.promise.stale));
+    check("…without changing their level", stale.json.promise.cells.find((c) => c.criterion === "reduces-anxiety").level === 2);
+    check("filter=stale lists it", (await repo.call("get_matrix", { filter: "stale" })).json.promises.map((x) => x.node_id).join() === "AC-consent");
+    check("filter=unassessed lists the other", (await repo.call("get_matrix", { filter: "unassessed" })).json.promises.map((x) => x.node_id).join() === "AC-invite");
+    check("filter=flagged lists the one with an unclaimed cost", (await repo.call("get_matrix", { filter: "flagged" })).json.promises.map((x) => x.node_id).join() === "AC-consent");
+
+    // --- a human's file is never overwritten by an agent ---------------------------------------
+    const filePath = path.join(repo.dir, "docs", "weighing", "assessments", "value.json");
+    const onDisk = JSON.parse(readFileSync(filePath, "utf8"));
+    onDisk.assessments.push({ matrix: "value", subject: "AC-consent", criterion: "reduces-anxiety", level: 3, scorer: { kind: "human", id: "alexis" }, confidence: 3, evidence: "I wrote it", basis: { fingerprint: "fp1-0", set_version: "1.0.0" }, ts: "2026-11-15T09:00:00.000Z" });
+    writeFileSync(filePath, JSON.stringify(onDisk, null, 2));
+    const afterHuman = await repo.call("get_matrix", { subject: "AC-consent" });
+    const cell = afterHuman.json.promise.cells.find((c) => c.criterion === "reduces-anxiety");
+    check("a human's level beats the agent's", cell.level === 3 && cell.scorer.kind === "human");
+    check("…and the agent's rides beside it", cell.others?.[0]?.level === 2);
+    check("…and the cell is on the review list only when they differ by 2 or more (3 vs 2: not)", !cell.review);
+    const again = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 0, confidence: 2, evidence: "I disagree" });
+    check("an agent that disagrees is told a human's level stands", again.json.notes?.some((n) => /human's level already stands/.test(n) && /review/.test(n)), JSON.stringify(again.json.notes));
+    check("…and the human's row is still on disk", repo.readJson("docs", "weighing", "assessments", "value.json").assessments.some((a) => a.scorer?.kind === "human" && a.level === 3));
+
+    // --- positioning ----------------------------------------------------------------------------------
+    const draft = await repo.call("save_positioning", { elements: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "removes a worry the user names", 0: "nothing to do with worry" } }, { id: "connects" }] });
+    check("save_positioning writes a draft by default", !draft.isError && draft.json.positioning.status === "draft" && draft.json.notes.some((n) => /draft/.test(n)), draft.text.slice(0, 200));
+    check("…to docs/weighing/sets/positioning.json", repo.readJson("docs", "weighing", "sets", "positioning.json").criteria.length === 2);
+    const drafted = await repo.call("get_matrix");
+    check("a draft feeds no roll-up: no positioned figure, and it says so", drafted.json.promises.every((x) => x.positioned === null) && drafted.json.notes.some((n) => /draft/.test(n)));
+    check("…but get_matrix shows the draft", drafted.json.positioning.status === "draft" && drafted.json.positioning.elements.length === 2);
+    const active = await repo.call("save_positioning", { status: "active", elements: [{ id: "reduces-anxiety", weight: 3 }, { id: "connects" }] });
+    check("saving it active replaces it whole", !active.isError && repo.readJson("docs", "weighing", "sets", "positioning.json").status === "active");
+    const positioned = (await repo.call("get_matrix", { subject: "AC-consent" })).json.promise.positioned;
+    check("an active positioning gives positioned figures: anxiety 3/3 × weight 3", positioned.served === 3 && positioned.cost === 0, JSON.stringify(positioned));
+    check("a positioning naming a non-element is refused", (await repo.call("save_positioning", { elements: [{ id: "teleports" }] })).isError);
+    check("a weight of 0 is refused", (await repo.call("save_positioning", { elements: [{ id: "connects", weight: 0 }] })).isError);
+
+    // --- what the agent wrote is what pack folds ---------------------------------------------------------
+    const packed = spawnSync(process.execPath, [CLI, "pack", repo.bundlePath], { encoding: "utf8", cwd: repo.dir });
+    const out = JSON.parse(packed.stdout);
+    check("arkaik pack folds the agent's file into bundle.weighing", out.weighing?.assessments?.length === 3 && out.weighing.sets[0].id === "positioning", packed.stderr);
+    check("validate_bundle reports no error for the repo", (await repo.call("validate_bundle")).json.errors?.length === 0);
+  } finally {
+    repo.stop();
+  }
+
+  // --- on_behalf_of in a repo (D14): ARKAIK_ON_BEHALF_OF, then arkaik.user, then user.name; never an email -----
+  const behalfOf = async (env, gitConfig) => {
+    const session = startSession([], env, gitConfig);
+    try {
+      await session.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+      const res = await session.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
+      if (res.isError) return `ERROR ${res.text.slice(0, 200)}`;
+      const scorer = res.json.assessment.scorer;
+      // The record on disk is what gets committed, so read the sidecar, not just the reply.
+      const onDisk = session.readJson("docs", "weighing", "assessments", "value.json").assessments[0].scorer;
+      return JSON.stringify(scorer) === JSON.stringify(onDisk) ? scorer.on_behalf_of : `MISMATCH ${JSON.stringify(scorer)} vs ${JSON.stringify(onDisk)}`;
+    } finally {
+      session.stop();
+    }
+  };
+  const ALL = { "arkaik.user": "Local Handle", "user.name": "Anne-Claire Dupré", "user.email": "anne@example.com" };
+  check("ARKAIK_ON_BEHALF_OF wins over git config", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "  u_1842  " }, ALL)) === "u_1842");
+  check("with no env var, arkaik.user wins over user.name", (await behalfOf({}, ALL)) === "Local Handle");
+  check("with only user.name set, the git author name is used — spaces and accents intact", (await behalfOf({}, { "user.name": "Anne-Claire Dupré", "user.email": "anne@example.com" })) === "Anne-Claire Dupré");
+  check("with only arkaik.user set, that is used", (await behalfOf({}, { "arkaik.user": "alexisbohns" })) === "alexisbohns");
+  check("with none set, the field is absent", (await behalfOf({}, {})) === undefined);
+  check("…also in a git repo that has an email but no name: user.email is never a source", (await behalfOf({}, { "user.email": "anne@example.com" })) === undefined);
+  check("a blank env var is not set: it falls through", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "   " }, { "user.name": "Anne" })) === "Anne");
+  check("an email in the env var is skipped, not stamped: the next source is used", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "me@example.com" }, { "arkaik.user": "Local Handle", "user.name": "Anne" })) === "Local Handle");
+  check("an email in arkaik.user is skipped too: user.name is used", (await behalfOf({}, { "arkaik.user": "me@example.com", "user.name": "Anne" })) === "Anne");
+  check("an email-shaped user.name is skipped, and with nothing left the field is absent — scoring still works", (await behalfOf({}, { "user.name": "Anne <anne@example.com>" })) === undefined);
+  check("an email in every source leaves the field absent and the score recorded", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "a@b.co" }, { "arkaik.user": "c@d.co", "user.name": "e@f.co" })) === undefined);
+
+  // --- hosted: the same tools over a stub of the API --------------------------------------------------------
+  const received = [];
+  let refuse = false;
+  const HOSTED = {
+    ...BUNDLE,
+    weighing: {
+      sets: [],
+      matrices: [],
+      assessments: [{ matrix: "value", subject: "AC-invite", criterion: "connects", level: 2, scorer: { kind: "human", id: "arkaik-app" }, confidence: 2, evidence: "a person", basis: { fingerprint: "fp1-0", set_version: "1.0.0" }, ts: "2026-11-14T10:00:00.000Z" }],
+    },
+  };
+  const stub = http.createServer((req, res) => {
+    const json = (status, body) => {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (req.method === "GET" && req.url === "/api/graph/projects/demo") return json(200, { bundle: HOSTED, version: "v1" });
+    if (req.method === "GET" && req.url === "/api/graph/projects/demo/journal") return json(200, { journal: [] });
+    if (req.method === "POST" && req.url === "/api/graph/projects/demo/weighing/events") {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        received.push(body);
+        if (refuse) return json(422, { error: "refused", message: "entry 0: unknown_criterion", refusals: [{ index: 0, reason: "unknown_criterion", detail: '"teleports" is not in set "value-contribution"' }] });
+        return json(200, { events: body.events.map((e, i) => ({ id: `01H${i}`, ts: "2026-11-15T10:00:00.000Z", actor: "arkaik-agent", ...e, ...(e.type === "weighing.assessment.recorded" ? { scorer: { kind: "agent", id: "arkaik-agent", ...(e.model ? { model: e.model } : {}) }, basis: { fingerprint: "fp1-server", set_version: "1.0.0" } } : {}) })) });
+      });
+      return;
+    }
+    json(404, { error: "not_found" });
+  });
+  await new Promise((resolve) => stub.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${stub.address().port}`;
+  const hosted = startSession(["--remote", "--project", "demo"], { ARKAIK_TOKEN: "t", ARKAIK_URL: baseUrl, ARKAIK_ON_BEHALF_OF: "u_1842" }, { "arkaik.user": "Local Handle", "user.name": "Anne" });
+  try {
+    await hosted.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+
+    const read = await hosted.call("get_matrix", { subject: "AC-invite" });
+    check("hosted get_matrix reads the section the server folded", read.json.promise.cells[0].scorer.kind === "human" && read.json.promise.cells[0].level === 2, read.text.slice(0, 200));
+
+    const res = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: -2, confidence: 2, evidence: "a hypothetical health-data consent", model: "claude" });
+    check("hosted assess posts exactly one assessment entry", !res.isError && received.length === 1 && received[0].events.length === 1, res.text.slice(0, 300));
+    const sent = received[0].events[0];
+    check("…of the right type and fields", sent.type === "weighing.assessment.recorded" && sent.subject === "AC-consent" && sent.criterion === "reduces-anxiety" && sent.level === -2 && sent.confidence === 2 && sent.model === "claude");
+    check("…with NO scorer, basis or ts — the server stamps them", !("scorer" in sent) && !("basis" in sent) && !("ts" in sent), JSON.stringify(sent));
+    check("…and no on_behalf_of either, whatever the environment or git config say: the server stamps the token's owner", !JSON.stringify(sent).includes("on_behalf_of"), JSON.stringify(sent));
+    check("the reply is the server's stamped event", res.json.assessment.scorer.kind === "agent" && res.json.assessment.basis.fingerprint === "fp1-server");
+    check("no human level stands for that cell, so there is no note", res.json.notes === undefined);
+    check("nothing was written to disk", !existsSync(path.join(hosted.dir, "docs", "weighing")));
+
+    const note = await hosted.call("assess", { subject: "AC-invite", criterion: "connects", level: 0, confidence: 1, evidence: "reads as touching only" });
+    check("hosted assess tells an agent a human's level stands", note.json.notes?.some((n) => /human's level already stands/.test(n)), JSON.stringify(note.json.notes));
+
+    const pos = await hosted.call("save_positioning", { elements: [{ id: "connects", weight: 2 }] });
+    check("hosted save_positioning posts a weighing.set.saved draft", !pos.isError && received.at(-1).events[0].type === "weighing.set.saved" && received.at(-1).events[0].set.status === "draft");
+
+    refuse = true;
+    const refused = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
+    check("a server refusal surfaces with its reason", refused.isError && /unknown_criterion/.test(refused.text), refused.text.slice(0, 300));
+  } finally {
+    hosted.stop();
+    stub.close();
+  }
+
+  if (failures > 0) {
+    console.log(`\n${failures} weighing tool test(s) failed.`);
+    process.exit(1);
+  }
+  console.log("\nAll weighing tool tests passed.");
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
