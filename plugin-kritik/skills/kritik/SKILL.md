@@ -333,7 +333,7 @@ canonical; this is how they reach a reader who is not standing in the repo.
 ```
 arkaik pack --out packed.json   # a single file to drag into the app
 arkaik open                     # the same bundle, handed to the importer
-arkaik restore                  # hosted project — destructive; read its --help
+arkaik restore                  # hosted project — appends; read its --help
 ```
 
 All three fold `docs/quality/` into the bundle's `quality` section by default,
@@ -387,7 +387,7 @@ Any of the non-folding notices may be followed by a second, indented line:
 
 That means the fold found nothing to project, but the bundle you handed the
 verb already had a `quality` section, so **that one was sent**. It is how
-`arkaik restore <backup-path>` puts back the quality half of what it is
+`arkaik restore --replace <backup-path>` puts back the quality half of what it is
 undoing. If you did not intend it, `--no-quality` removes it.
 
 ## Between audits
@@ -627,12 +627,14 @@ never commits a list of the product's defects. The
 `docs/quality/` and a journal sidecar, so don't use them for this pass.
 
 Those hosted scores and recordings live only in the hosted journal. A later
-`arkaik restore` replaces that journal wholesale with the repo's, so it loses
-every hosted score and recording the repo's journal doesn't carry, and its
-history-loss guard only counts events, so it won't always stop it. **Never
-run `arkaik restore` over a hosted re-audit in progress** (`kritik_scope`
-shows an `open_audit`), and before any restore, tell the human it drops the
-hosted scores and recordings the repo's journal doesn't carry.
+`arkaik restore` appends by default, so it keeps them. `arkaik restore
+--replace` does not: it replaces that journal wholesale with the repo's,
+losing every hosted score and recording the repo's journal doesn't carry, and
+its history-loss guard only counts events, so it won't always stop it.
+**Never run `arkaik restore --replace` over a hosted re-audit in progress**
+(`kritik_scope` shows an `open_audit`), and before any `--replace`, tell the
+human it drops the hosted scores and recordings the repo's journal doesn't
+carry.
 
 You are still reading code, so you need the product's code at hand, at the
 commit that holds the fixes (usually the up-to-date default branch). That does not

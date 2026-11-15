@@ -375,7 +375,12 @@ async function main() {
     format: "esm",
     legalComments: "none",
   });
-  const { runRestore, reportRestore, DEFAULT_API_BASE } = await import(pathToFileURL(RESTORE_BUNDLE).href);
+  const restoreModule = await import(pathToFileURL(RESTORE_BUNDLE).href);
+  const { reportRestore, DEFAULT_API_BASE, mergeForAppend, describeAppendSummary } = restoreModule;
+  // Every case below this line, up to the append section, was written when restore REPLACED the
+  // hosted project. That is `--replace` now (#624), so they run with it; the append default has
+  // its own section near the end, which calls `restoreModule.runRestore` directly.
+  const runRestore = (options) => restoreModule.runRestore({ replace: true, ...options });
 
   check("DEFAULT_API_BASE is https://arkaik.app", DEFAULT_API_BASE === "https://arkaik.app", DEFAULT_API_BASE);
 
@@ -1717,6 +1722,157 @@ async function main() {
     }
   }
 
+
+  // -------------------------------------------------------------------------
+  // Append, the default (#624): the local bundle is laid over the hosted
+  // export, so nothing that exists only on the host can be lost.
+  // -------------------------------------------------------------------------
+  {
+    const appendRestore = (options) => restoreModule.runRestore(options);
+
+    // A hosted project that moved ahead of the repo: an event, a node, an edge, a setting, a
+    // quality section and a weighing score the local bundle has never seen.
+    const HOSTED_ONLY_EVENT = { id: "01J9ZK4E4N00000000000000H1", ts: "2026-02-01T00:00:00.000Z", actor: "app", type: "node.created", node_id: "V-app", species: "view", title: "App-made" };
+    const hostedScore = { matrix: "value", subject: "AC-a", criterion: "VE-saves-time", scorer: { kind: "human", on_behalf_of: "ada" }, level: 2, ts: "2026-02-02T00:00:00.000Z" };
+    const sharedScoreOld = { matrix: "value", subject: "AC-b", criterion: "VE-saves-time", scorer: { kind: "agent" }, level: 1, ts: "2026-01-01T00:00:00.000Z" };
+    const sharedScoreNew = { ...sharedScoreOld, level: 3, ts: "2026-03-01T00:00:00.000Z" };
+    const HOSTED_AHEAD = {
+      ...HOSTED_EXPORT,
+      project: { ...HOSTED_EXPORT.project, title: "Hosted title", metadata: { ref_policy: { strict: true }, view_card_variant: "small" } },
+      nodes: [
+        { id: "V-old", project_id: "demo", species: "view", title: "Old (renamed in app)", status: "live", platforms: ["web"] },
+        { id: "V-app", project_id: "demo", species: "view", title: "App-made", status: "live", platforms: ["web"] },
+      ],
+      edges: [{ id: "E-app", source_id: "V-app", target_id: "V-old", relation: "composes" }],
+      journal: [...HOSTED_EXPORT.journal, HOSTED_ONLY_EVENT],
+      quality: HOSTED_EXPORT_WITH_QUALITY.quality,
+      weighing: { sets: [{ id: "positioning", version: "1.0.0", criteria: [] }], assessments: [hostedScore, sharedScoreNew] },
+    };
+
+    // 1. The pure merge, part by part.
+    {
+      const local = {
+        ...makeLocalBundle(),
+        project: { ...makeLocalBundle().project, metadata: { view_card_variant: "large" } },
+        journal: [SIDECAR_EVENT, { ...HOSTED_EXPORT.journal[0], actor: "local copy" }],
+        weighing: { assessments: [sharedScoreOld] },
+      };
+      const { bundle, kept } = mergeForAppend(HOSTED_AHEAD, local);
+      const ids = (items) => items.map((item) => item.id);
+      check("append merge: local nodes first, then hosted-only ones", JSON.stringify(ids(bundle.nodes)) === JSON.stringify(["V-old", "V-new", "V-app"]), JSON.stringify(ids(bundle.nodes)));
+      check("append merge: a shared node id takes the local record", bundle.nodes[0].title === "Old", bundle.nodes[0].title);
+      check("append merge: the hosted-only edge is kept", JSON.stringify(ids(bundle.edges)) === JSON.stringify(["E-app"]), JSON.stringify(bundle.edges));
+      check(
+        "append merge: the journal is the union, ordered by time",
+        JSON.stringify(ids(bundle.journal)) === JSON.stringify([HOSTED_EXPORT.journal[0].id, SIDECAR_EVENT.id, HOSTED_ONLY_EVENT.id]),
+        JSON.stringify(ids(bundle.journal)),
+      );
+      check("append merge: a shared event id keeps the hosted copy", bundle.journal[0].actor === "human", bundle.journal[0].actor);
+      check("append merge: the local project fields win", bundle.project.title === "Demo", bundle.project.title);
+      check(
+        "append merge: metadata keeps hosted-only keys, local values win",
+        bundle.project.metadata.ref_policy?.strict === true && bundle.project.metadata.view_card_variant === "large",
+        JSON.stringify(bundle.project.metadata),
+      );
+      check("append merge: the hosted quality section is kept when the local bundle has none", bundle.quality === HOSTED_AHEAD.quality);
+      check("append merge: a hosted-only weighing set is kept", JSON.stringify(ids(bundle.weighing.sets)) === JSON.stringify(["positioning"]), JSON.stringify(bundle.weighing));
+      const levels = Object.fromEntries(bundle.weighing.assessments.map((a) => [a.subject, a.level]));
+      check("append merge: a hosted-only weighing score is kept", levels["AC-a"] === 2, JSON.stringify(levels));
+      check("append merge: on a shared weighing cell the later score wins, wherever it lives", levels["AC-b"] === 3, JSON.stringify(levels));
+      check(
+        "append merge: the summary counts what only the host had",
+        kept.nodes === 1 && kept.edges === 1 && kept.events === 1 && kept.qualityKept === true &&
+          JSON.stringify(kept.metadataKeys) === JSON.stringify(["ref_policy"]) && kept.weighingRows === 3,
+        JSON.stringify(kept),
+      );
+      check("append merge: the summary line names each kind", /1 node, 1 edge, 1 journal event, project settings \(ref_policy\), the quality section, 3 weighing rows/.test(describeAppendSummary(kept)), describeAppendSummary(kept));
+      check("append merge: the inputs are not mutated", HOSTED_AHEAD.nodes.length === 2 && local.nodes.length === 2 && local.journal.length === 2);
+
+      const localQuality = { ...local, quality: { findings: [] } };
+      check("append merge: a local quality section wins", mergeForAppend(HOSTED_AHEAD, localQuality).bundle.quality === localQuality.quality);
+      const noSections = mergeForAppend(HOSTED_EXPORT, makeLocalBundle());
+      check("append merge: no section on either side stays absent", !("quality" in noSections.bundle) && !("weighing" in noSections.bundle), JSON.stringify(Object.keys(noSections.bundle)));
+      check("append merge: nothing hosted-only reads as such", /held nothing your bundle lacks/.test(describeAppendSummary(mergeForAppend(HOSTED_EXPORT, { ...makeLocalBundle(), journal: HOSTED_EXPORT.journal }).kept)));
+      const garbled = mergeForAppend({ ...HOSTED_EXPORT, journal: [{ ts: "nope", type: "x" }, ...HOSTED_EXPORT.journal] }, { ...makeLocalBundle(), journal: [SIDECAR_EVENT] });
+      check("append merge: an id-less event is kept, and an unparseable time sorts last", garbled.bundle.journal.length === 3 && garbled.bundle.journal[2].ts === "nope", JSON.stringify(garbled.bundle.journal));
+    }
+
+    // 2. End to end: everything that would have tripped a --replace guard now simply survives.
+    {
+      const { dir, bundlePath } = fixture({ sidecarEvents: [] }); // an EMPTY local journal: the history guard's trigger
+      let putBody;
+      const httpClient = makeMockHttpClient((url, init) => {
+        if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
+        if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+        if (url.endsWith("/bundle")) {
+          putBody = JSON.parse(init.body);
+          return jsonResponse(200, { version: "8", delta: { nodesRemoved: 0, edgesRemoved: 0 } });
+        }
+        throw new Error(`unexpected URL ${url}`);
+      });
+      const result = await appendRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+      check("append: no guard refuses — nothing can be lost", result.ok === true && result.status === 200, JSON.stringify(result));
+      check("append: the result says it appended", result.mode === "append", result.mode);
+      check("append: a backup is still taken", backupsIn(dir).length === 1, backupsIn(dir));
+      check("append: the PUT keeps every hosted node", ["V-old", "V-new", "V-app"].every((id) => putBody.bundle.nodes.some((n) => n.id === id)), JSON.stringify(putBody?.bundle.nodes));
+      check("append: the PUT keeps the hosted journal", putBody.bundle.journal.length === 2, JSON.stringify(putBody?.bundle.journal));
+      check("append: the PUT keeps the hosted settings", putBody.bundle.project.metadata?.ref_policy?.strict === true, JSON.stringify(putBody?.bundle.project));
+      check("append: the PUT keeps the hosted quality section", Array.isArray(putBody.bundle.quality?.findings) && putBody.bundle.quality.findings.length === 3);
+      check("append: the PUT keeps the hosted weighing scores", putBody.bundle.weighing?.assessments?.length === 2, JSON.stringify(putBody?.bundle.weighing));
+      const lines = captureConsoleLog(() => reportRestore(result));
+      check("append: the report says what it kept", lines.some((l) => /^Append: kept what only the hosted project had/.test(l)), JSON.stringify(lines));
+      check("append: the undo hint says --replace", lines.some((l) => l.includes(`arkaik restore --replace ${result.backupPath}`)), JSON.stringify(lines));
+    }
+
+    // 3. --no-quality / --no-weighing under append: "don't send mine" keeps theirs.
+    {
+      const { dir, bundlePath } = fixture();
+      let putBody;
+      const httpClient = makeMockHttpClient((url, init) => {
+        if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
+        if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+        putBody = JSON.parse(init.body);
+        return jsonResponse(200, { version: "8", delta: {} });
+      });
+      const result = await appendRestore({ path: bundlePath, noQuality: true, noWeighing: true, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+      check("append + --no-quality: proceeds without --allow-quality-loss", result.ok === true && result.status === 200, JSON.stringify(result));
+      check("append + --no-quality: the hosted section rides along", putBody.bundle.quality === undefined ? false : putBody.bundle.quality.findings.length === 3);
+      check("append + --no-weighing: the hosted section rides along", putBody.bundle.weighing?.assessments?.length === 2);
+    }
+
+    // 4. An append dry run fetches the export (the merge needs it) but takes no backup.
+    {
+      const { dir, bundlePath } = fixture();
+      let putUrl, putBody;
+      const httpClient = makeMockHttpClient((url, init) => {
+        if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
+        if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+        putUrl = url;
+        putBody = JSON.parse(init.body);
+        return jsonResponse(200, { version: "7", delta: { nodesRemoved: 0 }, dryRun: true });
+      });
+      const result = await appendRestore({ path: bundlePath, dryRun: true, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+      check("append dry run: ok", result.ok === true && result.status === 200, JSON.stringify(result));
+      check("append dry run: three calls, the PUT a preview", httpClient.calls.length === 3 && /\?dryRun=1$/.test(putUrl), JSON.stringify(httpClient.calls.map((c) => c.url)));
+      check("append dry run: previews the MERGED bundle", putBody.bundle.nodes.some((n) => n.id === "V-app"), JSON.stringify(putBody?.bundle.nodes));
+      check("append dry run: no backup", backupsIn(dir).length === 0, backupsIn(dir));
+      const lines = captureConsoleLog(() => reportRestore(result));
+      check("append dry run: the footer does not promise guards an append never runs", !lines.some((l) => /guards/.test(l)) && lines.some((l) => /Append:/.test(l)), JSON.stringify(lines));
+    }
+
+    // 5. An append dry run that cannot read the export refuses, and says why in its own words.
+    {
+      const { dir, bundlePath } = fixture();
+      const httpClient = makeMockHttpClient((url) => {
+        if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
+        return jsonResponse(500, {});
+      });
+      const result = await appendRestore({ path: bundlePath, dryRun: true, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+      check("append dry run, export fails: refuses before any PUT", result.ok === false && httpClient.calls.length === 2, JSON.stringify(result));
+      check("append dry run, export fails: names the merge, not a backup", /needs it to merge/.test(result.fatal || "") && !/backup/.test(result.fatal || ""), result.fatal);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // CLI-level: argv parsing / exit codes / --help, spawned — every case here
   // fails before any network call would be attempted.
@@ -1725,6 +1881,8 @@ async function main() {
     const help = runCli(["restore", "--help"]);
     check("restore --help exits 0", help.status === 0 && /arkaik restore/.test(help.stdout), help.stdout);
     check("help documents --dry-run", /--dry-run/.test(help.stdout));
+    check("help documents --replace", /--replace/.test(help.stdout));
+    check("help says restore appends by default", /APPENDS/.test(help.stdout), help.stdout);
     check("help documents --allow-history-loss", /--allow-history-loss/.test(help.stdout));
     check("help documents --allow-deletions", /--allow-deletions/.test(help.stdout));
     check("help documents --no-quality", /--no-quality/.test(help.stdout));
@@ -1740,6 +1898,19 @@ async function main() {
       "--audit with --no-quality is refused at argv, before any network call",
       contradiction.status === 1 && /contradict each other/.test(`${contradiction.stdout}${contradiction.stderr}`),
       `${contradiction.stdout}\n${contradiction.stderr}`,
+    );
+
+    for (const flag of ["--allow-history-loss", "--allow-deletions", "--allow-quality-loss", "--allow-metadata-loss"]) {
+      const lone = runCli(["restore", flag]);
+      check(`${flag} without --replace is refused at argv`, lone.status === 1 && /only applies with --replace/.test(lone.stderr), `${lone.status}\n${lone.stderr}`);
+    }
+    const replaceNoToken = { ...process.env };
+    delete replaceNoToken.ARKAIK_TOKEN;
+    const withReplace = spawnSync(process.execPath, [CLI, "restore", "--replace", "--allow-deletions"], { encoding: "utf8", cwd: fixture().dir, env: replaceNoToken });
+    check(
+      "--replace --allow-deletions passes argv (fails later, on the missing token)",
+      withReplace.status === 1 && /ARKAIK_TOKEN/.test(withReplace.stderr) && !/only applies/.test(withReplace.stderr),
+      withReplace.stderr,
     );
 
     const badFlag = runCli(["restore", "--nope"]);

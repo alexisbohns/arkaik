@@ -176,7 +176,7 @@ export interface FoldQualityResult {
  *
  * "Leave the bundle untouched" is literal, and it is the half that used to go
  * unsaid: a section the bundle ALREADY CARRIED survives a failed fold and
- * ships. That is deliberate — it is what makes `arkaik restore <backup-path>`
+ * ships. That is deliberate — it is what makes `arkaik restore --replace <backup-path>`
  * put back the quality half of what it is undoing — but reporting it as
  * "none to fold" told the operator the opposite of what happened. So every
  * non-folding return says which of the two it was, and `carriedSection` is

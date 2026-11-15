@@ -66,7 +66,7 @@ arkaik bootstrap slice w1-<area>           # what one agent reads
 arkaik bootstrap merge
 arkaik validate docs/arkaik/bundle.json    # the gate — warning-clean
 arkaik restore --dry-run                   # hosted only
-arkaik restore                             # hosted only — destructive; see below
+arkaik restore                             # hosted only — appends; see below
 arkaik init --remove-bootstrap             # the skill has done its job
 ```
 
@@ -170,32 +170,52 @@ unit instead of starting over.
 
 If the repo is linked to a hosted project (`docs/arkaik/arkaik.json` — see
 [Hosted Projects](hosted-projects.md)), `arkaik restore` lands the bootstrapped
-bundle there. **Restore is the one destructive verb the CLI offers**: it
-replaces the hosted project's snapshot *and* its journal wholesale, in one
-transaction. Three rails make it safe enough to use:
+bundle there, in one transaction.
+
+**Restore appends by default.** It fetches the hosted project and merges the
+local bundle into it before sending: every event, node, edge, project setting,
+quality section and weighing score that exists only on the hosted project is
+kept, and where both sides hold the same id the local record wins. Nothing on
+the hosted project is removed, so a project someone kept editing in the app
+while the bootstrap ran comes through whole.
+
+**`--replace` is the destructive verb.** It swaps the hosted snapshot *and*
+journal for the local ones wholesale, removing whatever the local bundle
+lacks. You need it to undo a restore, and almost never otherwise. Four
+guards refuse a loss you have not typed out (below).
+
+Three rails hold in either mode:
 
 - **It always backs up first.** Before sending anything, restore exports the
   current hosted state — journal included — to
   `docs/arkaik/.backups/<timestamp>-bundle.json`, verifies the file reads
   back, and refuses to proceed if it cannot. The server keeps no pre-image,
-  so this file is the only undo: `arkaik restore <backup-path>` reverses a
-  restore you regret.
+  so this file is the only undo: `arkaik restore --replace <backup-path>`
+  reverses a restore you regret.
 - **It is `If-Match`-gated and owner-only.** A concurrent edit gets a `412`,
   never a silent overwrite — re-run to read the current state and decide
   again. And the token must own the project, not merely hold a write scope.
 - **`--dry-run` is an exact preview.** The server runs the same validation,
   version, and tier gates a real write would and returns the node/edge/event
-  delta; nothing is written and no backup is taken.
+  delta; nothing is written and no backup is taken. An append's preview is of
+  the merged bundle, so it fetches the hosted export too.
 
-One more guard: if the outbound journal has fewer events than the hosted one,
-restore refuses — that shape usually means a missing `journal.jsonl`, not an
-intended rewrite. `--allow-history-loss` is the deliberate override.
+Under `--replace`, four guards refuse a loss until you pass its `--allow-*`
+flag (each flag is refused without `--replace`, since an append loses
+nothing):
 
-And another: `project.metadata` is replaced wholesale, so if the local bundle
-lacks a setting the hosted project has — products, custom maps, `ref_policy`,
-`pollen` — restore refuses and names the keys. Those are edited in the app and
-rarely reach the repo bundle; copy them in from `GET .../export`, or pass
-`--allow-metadata-loss` if they really are meant to go.
+- **History** (`--allow-history-loss`): the outbound journal has fewer events
+  than the hosted one. That usually means a missing `journal.jsonl`, not an
+  intended rewrite.
+- **Deletions** (`--allow-deletions`): the local bundle drops hosted nodes or
+  edges, named by id.
+- **Quality** (`--allow-quality-loss`): the hosted project has a quality
+  section and the outbound bundle has none.
+- **Settings** (`--allow-metadata-loss`): `project.metadata` would lose keys
+  the hosted project has (products, custom maps, `ref_policy`, `pollen`).
+
+None of them runs under `--dry-run`, which never reads the export in replace
+mode.
 
 ## When the run is done
 

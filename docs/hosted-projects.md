@@ -383,7 +383,7 @@ Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save
 
 Nothing lands in the repository: the journal events are the whole record.
 
-**Mind `arkaik restore`.** It replaces the hosted journal, so an assessment recorded only on the hosted project (or in a browser project) is erased by a restore unless the repository's `docs/weighing/` carries it. The history guard compares event *counts*, so it does **not** reliably catch this: a repo journal as long as the hosted one passes it. Take the backup `restore` writes first, and see issue #624 (restore appends by default), which is the real fix.
+**`arkaik restore` keeps them.** A restore appends by default: the hosted journal and weighing section are merged with the repository's, so an assessment recorded only on the hosted project survives, and on a cell both sides scored the later score wins. Only `arkaik restore --replace` swaps the journal wholesale and can erase them; its history guard compares event *counts*, so it does **not** reliably catch that. Take the backup `restore` writes first.
 
 ## 4. Set up the GitHub App (once per deployment)
 

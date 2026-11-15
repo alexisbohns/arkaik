@@ -416,7 +416,7 @@ function packIn(dir, args = []) {
 
 // `foldQualitySection` only ever SETS `bundle.quality`; it never clears one.
 // So when there is nothing to fold, whatever the source file carried ships.
-// That is deliberate — it is what lets `arkaik restore <backup-path>` put back
+// That is deliberate — it is what lets `arkaik restore --replace <backup-path>` put back
 // the quality half of what it is undoing — but it used to be reported as
 // "none to fold", which says the opposite of what happened.
 {
