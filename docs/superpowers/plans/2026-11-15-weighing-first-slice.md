@@ -1493,7 +1493,7 @@ The library carries its own copy of the 30 labels and definitions (the MCP serve
 **Files:**
 - Modify: `tests/app/value-icons.test.js`
 
-- [ ] **Step 1: Add the checks**
+- [x] **Step 1: Add the checks**
 
 ```diff
 --- a/tests/app/value-icons.test.js
@@ -1524,16 +1524,16 @@ The library carries its own copy of the 30 labels and definitions (the MCP serve
  console.log("\nAll value-icon tests passed.");
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `npm run test:value-icons`
 Expected: `PASS: the weighing library's element names match lib/config/values.ts labels (no drift)`, the definitions line, then `All value-icon tests passed.`
 
-- [ ] **Step 3: Prove the pin bites (then undo)**
+- [x] **Step 3: Prove the pin bites (then undo)**
 
 Temporarily change `"Saves time"` to `"Saves times"` in `packages/schema/src/weighing-library.ts`, run `npm run test:value-icons`, and expect `FAIL: the weighing library's element names match … — saves-time`. Revert the edit.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/app/value-icons.test.js
