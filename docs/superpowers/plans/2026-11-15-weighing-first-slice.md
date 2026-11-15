@@ -8506,7 +8506,7 @@ git commit -m "feat(weighing): write the product's positioning in Settings — a
 **Files:**
 - Modify: `components/journal/describe-event.ts`
 
-- [ ] **Step 1: Word the two events** (they printed their raw type before)
+- [x] **Step 1: Word the two events** (they printed their raw type before)
 
 ```diff
 --- a/components/journal/describe-event.ts
@@ -8544,12 +8544,12 @@ git commit -m "feat(weighing): write the product's positioning in Settings — a
        const where = platform ? PLATFORM_LABELS[platform as keyof typeof PLATFORM_LABELS] ?? platform : "?";
 ```
 
-- [ ] **Step 2: Run the contract test**
+- [x] **Step 2: Run the contract test**
 
 Run: `npm run test:weighing-panel && npx tsc --noEmit -p .`
 Expected: `All weighing-panel tests passed.` — all of them.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/journal/describe-event.ts

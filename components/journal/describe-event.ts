@@ -67,6 +67,8 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "quality.finding.resolved": CircleCheck,
   "quality.finding.accepted": ShieldCheck,
   "quality.signal.tripped": Radar,
+  "weighing.assessment.recorded": Scale,
+  "weighing.set.saved": Scale,
   "screenshot.recorded": ImagePlus,
   "screenshot.removed": ImageMinus,
 };
@@ -209,6 +211,20 @@ export function describeJournalEvent(
       const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
       const commit = str(event.commit);
       return { icon, text: `Signal tripped: ${where}`, meta: [str(event.signal), commit ? `at ${commit.slice(0, 7)}` : undefined].filter(Boolean).join(" · ") };
+    }
+    case "weighing.assessment.recorded": {
+      const level = typeof event.level === "number" ? `${event.level > 0 ? "+" : ""}${event.level}` : "?";
+      const scorer = event.scorer as { kind?: unknown } | undefined;
+      return {
+        icon,
+        text: `${resolveTitle(event.subject, nodesById)}: ${str(event.criterion) ?? "?"} weighed ${level}`,
+        meta: [typeof scorer?.kind === "string" ? `by ${scorer.kind}` : undefined, typeof event.confidence === "number" ? `confidence ${event.confidence}` : undefined].filter(Boolean).join(" · "),
+      };
+    }
+    case "weighing.set.saved": {
+      const set = event.set as { status?: unknown; criteria?: unknown[] } | undefined;
+      const count = Array.isArray(set?.criteria) ? set.criteria.length : 0;
+      return { icon, text: `Positioning saved: ${count} element${count === 1 ? "" : "s"}`, meta: set?.status === undefined || set.status === "active" ? "active" : "draft" };
     }
     case "screenshot.recorded": {
       const platform = str(event.platform);
