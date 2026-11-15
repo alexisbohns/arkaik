@@ -1656,7 +1656,7 @@ git commit -m "docs(weighing): the bundle format's weighing section (part 1/5)"
 
 ### Task 1.8: Gate and push Part 1
 
-- [ ] **Step 1: Run the gate**
+- [x] **Step 1: Run the gate**
 
 Run, in order: `npm run generate && git diff --exit-code -- public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/skills/arkaik plugin-kritik lib/landing/generated` (exit 0 — everything is committed), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:journal`, `npm run test:quality`, `npm run test:weighing`, `npm run test:publik-strip`, `npm run test:value-icons`.
 Expected: every command exits 0. (`lint` prints the two pre-existing `<img>` warnings in `ShotPreviewDialog.tsx` and no errors.)
