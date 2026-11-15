@@ -10,7 +10,7 @@
 
 **Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan touches `docs/README.md` never, and the RFC only where an owner decision changed what it says** (Part 4 Task 4.6 Step 2c: the `on_behalf_of` sources, D14); the other doc edits go to `docs/spec/*.md` and `docs/hosted-projects.md`.
 
-**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
+**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check). **Part 5 was then compiled and run for real** (it is the one part whose code had never been compiled): `build` passes and the browser pass is recorded in Task 5.7. It differed from the draft in two controls only (Part 5, Tasks 5.3 and 5.4, Step 1b).
 
 **Part 4's `on_behalf_of` was run too** (`test:mcp`, 126 checks in `weighing-tools.test.js`, 29 of them the source chain, its opt-out and its timeout; `test:weighing-events` for the widened guard). Writing them against the real code changed three things the plan had wrong or silent about: the repo-mode source is a chain (env, then `git config arkaik.user`, then `git config user.name`), not the env var alone (owner decision, D14); Part 3's guard refused whitespace and so would have refused a git author name; and the MCP suite has to isolate git from the machine it runs on (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`), or "none set" depends on whose laptop it is (the isolation also drops `GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and `GIT_CONFIG_KEY_n`/`VALUE_n`, so a surrounding git hook or CI runner cannot steer it).
 
@@ -7921,6 +7921,7 @@ import {
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { PanelSection } from "@/components/panels/PanelSection";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import type { Node } from "@/lib/data/types";
@@ -8163,29 +8164,33 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
 
         {!readOnly && addable.length > 0 && (
           <PanelSection title="Add an element">
-            <select
-              data-weighing-add
-              aria-label="Add an element of value"
-              className="border-input bg-transparent h-9 w-full rounded-md border px-3 text-sm"
+            {/* The app's own Select, held at "" so it is a menu of actions and never shows a choice:
+                picking an element opens a blank row for it, and the row leaves the list. */}
+            <Select
               value=""
-              onChange={(event) => {
-                const id = event.currentTarget.value;
+              onValueChange={(id) => {
                 if (id !== "") setExtra((current) => [...current, id]);
               }}
             >
-              <option value="">Choose an element…</option>
-              {(ctx.set.groups ?? []).map((group) => (
-                <optgroup key={group.id} label={group.title}>
-                  {addable
-                    .filter((criterion) => criterion.group === group.id)
-                    .map((criterion) => (
-                      <option key={criterion.id} value={criterion.id}>
-                        {criterion.name ?? criterion.id}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
+              <SelectTrigger data-weighing-add aria-label="Add an element of value">
+                <SelectValue placeholder="Choose an element…" />
+              </SelectTrigger>
+              <SelectContent>
+                {(ctx.set.groups ?? []).map((group) => {
+                  const inGroup = addable.filter((criterion) => criterion.group === group.id);
+                  return inGroup.length === 0 ? null : (
+                    <SelectGroup key={group.id}>
+                      <SelectLabel>{group.title}</SelectLabel>
+                      {inGroup.map((criterion) => (
+                        <SelectItem key={criterion.id} value={criterion.id}>
+                          {criterion.name ?? criterion.id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </PanelSection>
         )}
       </div>
@@ -8193,6 +8198,8 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   );
 }
 ```
+
+- [x] **Step 1b: What compiled differently from the first draft** — the code above is the file as it shipped. One change: "Add an element" is the app's own `Select` (`components/ui/select.tsx`, held at `value=""` so it is a menu of actions and never shows a choice), not a native `<select>` with a bespoke border — the baseline reuses what the app has instead of inventing a control. `data-weighing-add` moved onto its trigger.
 
 - [x] **Step 2: Mount it beside the other acceptance groups**
 
@@ -8260,6 +8267,7 @@ import {
 } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import { useWeighing } from "@/lib/hooks/useWeighing";
@@ -8400,7 +8408,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
               return (
                 <div key={criterion.id} data-positioning-element={criterion.id} data-on={row.on ? "true" : "false"} className="flex flex-col gap-2">
                   <label className="flex items-center gap-2 text-sm font-medium">
-                    <input type="checkbox" checked={row.on} onChange={(event) => patch(criterion.id, { on: event.currentTarget.checked })} />
+                    <Checkbox checked={row.on} onCheckedChange={(checked) => patch(criterion.id, { on: checked === true })} />
                     {criterion.name ?? criterion.id}
                     <span className="text-xs font-normal text-muted-foreground">{criterion.definition}</span>
                   </label>
@@ -8455,6 +8463,8 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
   );
 }
 ```
+
+- [x] **Step 1b: What compiled differently from the first draft** — the code above is the file as it shipped. One change: each element's checkbox is the app's `Checkbox` (`components/ui/checkbox.tsx`, Radix) inside its `<label>`, not a bare `<input type="checkbox">`.
 
 - [x] **Step 2: Mount it between Products and Display preferences**
 
@@ -8655,7 +8665,7 @@ git commit -m "fix(values): the picker keeps the order values were chosen in —
 **Files:**
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: CI steps** — after the "Value icon resolution tests" step in `ci.yml`:
+- [x] **Step 1: CI steps** — after the "Value icon resolution tests" step in `ci.yml`:
 
 ```yaml
       # The weighing UI's contract, read off the source: PanelGroup/PanelSection
@@ -8668,30 +8678,36 @@ git commit -m "fix(values): the picker keeps the order values were chosen in —
         run: npm run test:value-order
 ```
 
-- [ ] **Step 2: Gate**
+- [x] **Step 2: Gate**
 
 Run: `npm run generate && git status --short` (no artifact change in this part), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider && npm run test:weighing-panel && npm run test:value-order`, `npm run test:panel-semantics && npm run test:project-panels && npm run test:product-scope && npm run test:platform-variants-gates && npm run test:panel-stack && npm run test:panel-preferences`, `npm run test:provider && npm run test:project-queries && npm run test:quality-fold`, `npm run test:cli`, `npm run test:mcp`.
 Expected: all exit 0.
 
-- [ ] **Step 3: Look at it** (nothing above renders a component; this is the only step that does)
+- [x] **Step 3: Look at it** (nothing above renders a component; this is the only step that does). Done with Playwright, not by hand:
 
 ```bash
-# A stale dev server fakes hydration mismatches — restart it, do not trust a running one.
-PORT=4242 npm run dev
+# A stale dev server fakes hydration mismatches — start a fresh one for this worktree.
+cp /Users/alexis/code/arkaik/.env.local .        # gitignored; needed for the dev server
+PORT=4651 npx next dev --port 4651 &
+# in the scratch Playwright dir: import a bundle through /projects' file input, once
+node pw/import.mjs profile-weighing pebbles-ac.json 4651 pebbles-ac
 ```
-In a browser (or with the project's playwright setup — memory note: import a bundle through the `/projects` file input): import `seed/pebbles.json`; open the project, open any acceptance's panel. Check, and write down what you see rather than assuming:
 
-1. A **Value** group with "What it adds up to" (serves/costs/kept/"resting on guesses" at 100% on a project nobody has scored) and one row per claimed value, each labelled "Guess, from the order of the claimed values".
-2. Click `+2` on the first row: the row's label becomes "A person: arkaik-app, confidence 1", the guess share drops, and the figures update without a reload. Reload the page: it persisted.
-3. Click `−1` on another element via "Add an element": a "Unclaimed cost" flag appears.
-4. Edit the acceptance's title in the same panel: the scored rows show the **stale** badge.
-5. Settings → Positioning: tick two elements, set a weight, **Save as draft**: the panel now says the positioning is a draft and "Of what we stand on" does **not** appear; **Save and activate**: it appears.
-6. The History page lists "…weighed +2 · by human · confidence 1" and "Positioning saved: 2 elements".
-7. The public self-map (`/project/<seed id>`) shows the form read-only-or-erroring gracefully: choosing a level there toasts "cannot record assessments" (the seed sandbox has no journal) — it must not crash the panel.
+Open `/project/pebbles-ac/acceptances?node=AC-registration-consent` (`?node=` is how a panel is addressed). Check, and write down what you see rather than assuming — **what it showed** (1440 px, 400 px and dark; the console stayed clean: no errors, no hydration warnings):
+
+1. A **Value** group with "What it adds up to" and one row per claimed value. On the untouched acceptance: serves 1.67, costs 0.00, kept 100%, "100% of what it serves" resting on guesses; `reduces-risk` seeded at +3 and `reduces-anxiety` at +2, each "Guess, from the order of the claimed values, confidence 0".
+2. Click `+2` on the first row: the label becomes "A person: arkaik-app, confidence 1", the guess share drops to 50% and serves to 1.33, without a reload.
+3. "Add an element" → Saves time, then `−1` (`aria-label` uses U+2212), then evidence: stored, confidence 1; costs 0.33, "0% of what it costs" resting on guesses, and the flag "Unclaimed cost: Saves time". **Reload: all of it persisted**, evidence included.
+4. Edit the acceptance's title in the same panel: both scored rows show the **stale** badge; the seeded row does not (a seed has no basis to go stale from).
+5. Settings → Positioning: tick Reduces risk and Reduces anxiety, weight 3, a +3 sentence, **Save as draft**: `data-positioning-status="draft"`, the draft note shows, and on the acceptance "Of what we stand on" is **absent** with "The positioning is a draft, so nothing is weighed against it yet." **Save and activate**: status `active`, and the acceptance reads "Of what we stand on: serves 3.33 · costs 0.00". Reloading Settings re-seeds the form from what was saved (two elements, the sentence).
+6. **The History page is `/project/<id>/history`** (not the Changelog, which lists deliverables) and lists "…: saves-time weighed -1 · by human · confidence 1", "…weighed +2…" and "Positioning saved: 2 elements". A node's own History group does **not** list a weighing event: the events carry `subject`, not `node_id` (R16).
+7. The public self-map (`/project/arkaik-self-map/acceptances?node=AC-public-map-undeletable`): the form renders and is **not** read-only there (the seed provider offers a save path); choosing a level toasts "Project arkaik-self-map cannot record assessments." and the panel stays up.
+
+400 px: no horizontal overflow on the acceptance panel or on Settings. Dark: both read correctly on the existing tokens.
 
 If any of 1–7 is wrong, fix it in this part before opening the PR.
 
-- [ ] **Step 4: Commit, submit, and put the Lab Note in the PR body**
+- [ ] **Step 4: Commit, submit, and put the Lab Note in the PR body** (the commit is done; submitting and the PR body belong to whoever opens the PR)
 
 ```bash
 git add .github/workflows/ci.yml
@@ -8700,23 +8716,23 @@ gh stack submit --auto
 gh pr list --head weighing/5-panel --json number --jq '.[0].number'      # → <N>
 ```
 
-Edit the PR body (`gh pr edit <N> --body-file body.md`) so it contains a section whose heading **starts with** `## Lab Note` and exactly one `yaml` fence — every title and summary double-quoted, `fr` an adaptation in the informal "tu", `nodes:` ids that exist in this project's graph (they do: all five are in `seed/arkaik-self-map.json`):
+Edit the PR body (`gh pr edit <N> --body-file body.md`) so it contains a section whose heading **starts with** `## Lab Note` and exactly one `yaml` fence — every title and summary double-quoted, `fr` an adaptation in the informal "tu", `nodes:` ids that exist in this project's graph (they do: all five are in `seed/arkaik-self-map.json` — the panel, the acceptance editor the picker feeds, Settings, History, and the MCP tool catalog the stack also changed):
 
 ````markdown
 ## What this ships
 
-The first slice of weighing: a promise can now say which values it serves and which it costs, how sure you are, and why — from its panel — and the product can write down what it stands on. (Parts 1–4 of the stack are the schema, the derivation, the storage and the MCP tools underneath.)
+The first slice of weighing: a promise can now say which values it serves and which it costs, how sure you are, and why — from its panel — and the product can write down what it stands on, in Settings. The value picker now keeps the order you chose values in, because the first one is the one the promise is most about. (Parts 1–4 of the stack are the schema, the derivation, the storage and the MCP tools underneath.)
 
 ## Lab Note
 
 ```yaml
 en:
   title: "Weigh what each promise is worth"
-  summary: "Open any promise and rate each value it touches from −3 to +3 — what it serves and what it costs, kept apart, with how sure you are and why. Your call always wins over a guess, and a draft positioning weighs nothing until you say so."
+  summary: "Open any promise and score each value it touches from −3 to +3: what it serves and what it costs, kept apart, with how sure you are and why. Your score beats a guess or an agent's, and what your product stands on lives in Settings, as a draft until you say so."
 fr:
   title: "Pèse ce que vaut chaque promesse"
-  summary: "Ouvre une promesse et note chaque valeur qu'elle touche de −3 à +3 : ce qu'elle apporte et ce qu'elle coûte, sans les mélanger, avec ton degré de certitude et ta raison. Ton avis passe toujours avant une estimation, et un positionnement en brouillon ne pèse rien tant que tu ne l'actives pas."
-nodes: [V-node-detail-panel, F-edit-acceptance, V-project-settings, V-mcp-tool-catalog, F-audit-value-coverage]
+  summary: "Ouvre une promesse et note chaque valeur qu'elle touche de −3 à +3 : ce qu'elle apporte et ce qu'elle coûte, sans les mélanger, avec ton degré de certitude et ta raison. Ton avis passe avant une estimation ou celui d'un agent, et ce sur quoi ton produit s'appuie se règle dans les Réglages, en brouillon tant que tu ne l'actives pas."
+nodes: [V-node-detail-panel, F-edit-acceptance, V-project-settings, V-history, V-mcp-tool-catalog]
 suggested:
   molecule: arkaik
   type: feature
@@ -8753,7 +8769,7 @@ suggested:
 - **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person. **In a repo the MCP server stamps the git author name by default (D14), so a sidecar committed to a public repo names its author. It is the name git already writes into every commit of that repo, and `ARKAIK_ON_BEHALF_OF` or `git config arkaik.user` overrides it. The owner's opt-out is `-` in either, which records nobody; `docs/spec/mcp.md` and the `assess` tool description say so in one plain sentence.**
 - **R12 — no page sorts by served/cost yet.** The brief calls them "the derived sort keys"; slice 1 ships them in the panel and in `get_matrix` (`sort`), and `sortPromises` is exported for the next slice's pages. Acceptances/Pyramid are untouched.
 - **R13 — `qualityEventCount` now counts weighing events.** The validator field keeps its name to avoid a rename across `etag.ts`, `store.ts` and four tests; its doc comment says so. A follow-up rename is cheap.
-- **R14 — not run here:** `npm run build` (Turbopack refused the scratch copy's symlinked `node_modules`) and any browser pass over `WeighingGroup` / `PositioningPanel`. Task 5.7 step 3 is the checklist for the second; the first is a CI gate.
+- **R14 — now run (Part 5):** `npm run build` passes in the real worktree, and the browser pass over `WeighingGroup` / `PositioningPanel` was done with Playwright (Task 5.7 step 3 records what it showed). Two things it settled: the History page is `/project/<id>/history`, and a node's own History group does not list weighing events (R16).
 - **R15 — local Node 26 vs CI Node 20.** Nothing here `require`s a `.ts` file; the loaders transpile. The new CLI/MCP suites spawn built `dist` artifacts, which are plain JS.
 - **R16 — the History page** shows a weighing event only in the unfiltered feed (no family claims `weighing.*`, as for `quality.*`). Task 5.5 gives it words; a "Weighing" family chip is out of slice.
 - **R18 — forged human rows through a bundle write.** "No caller can claim to be a human" (D4) holds only on `POST …/weighing/events`, where the server stamps the scorer. A whole-bundle `PUT` (`arkaik restore`) and an import carry whatever scorers the bundle holds, so a caller with `graph:write` can store `scorer.kind: "human"` rows, and a human's level wins every cell. Provenance here is a record, not an access control. Slice 1 narrows what it can: `foldWeighingEvents` skips `rule`-scored events (D3: a rule row is never stored) and replaces a stored row only by time. Recorded as RFC § 18 question 16; closing it needs a provenance-checked restore, which belongs with issue #624.

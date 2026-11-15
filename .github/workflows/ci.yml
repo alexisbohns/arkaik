@@ -349,6 +349,15 @@ jobs:
       - name: Value icon resolution tests
         run: npm run test:value-icons
 
+      # The weighing UI's contract, read off the source: PanelGroup/PanelSection
+      # only, data hooks, numbers from the schema, no scorer sent, mount points,
+      # a draft-by-default positioning editor.
+      - name: Weighing panel contract tests (source-asserting)
+        run: npm run test:weighing-panel
+
+      - name: Value claim-order tests (the picker keeps the order values were chosen in)
+        run: npm run test:value-order
+
       - name: Acceptance matrix util tests
         run: npm run test:acceptance-matrix
 
