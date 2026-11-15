@@ -423,7 +423,7 @@ The list of stale and unscored cells is the work list for a re-audit, as `kritik
 
 | Situation | What it means | What the page says | Flag |
 |---|---|---|---|
-| Claimed, no assessment | Nobody has looked yet | "Claimed". Counted, not weighed. | none |
+| Claimed, no assessment | Nobody has looked yet | "Seeded": a guess from claim order (confidence 0), weighed and labelled as a guess. | none |
 | Claimed, assessed +2 or +3 | The claim holds | A served level | none |
 | Claimed, assessed 0 or +1 | The claim is stronger than the promise | "Claim not supported" | `claim_not_supported` |
 | Claimed, assessed negative | The promise costs what it claims to serve | "Claim contradicted" | `claim_contradicted` |
