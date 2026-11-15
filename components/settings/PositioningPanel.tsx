@@ -179,6 +179,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
                       <Textarea
                         aria-label={`${criterion.name ?? criterion.id}: what +3 means for us`}
                         placeholder="+3 means, in our words…"
+                        title={criterion.anchors?.["3"] === undefined ? undefined : `The ruler's +3: ${criterion.anchors["3"]}`}
                         rows={2}
                         value={row.top}
                         onChange={(event) => patch(criterion.id, { top: event.currentTarget.value })}
@@ -193,6 +194,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
                       <Textarea
                         aria-label={`${criterion.name ?? criterion.id}: what −3 means for us`}
                         placeholder="−3 means, in our words…"
+                        title={criterion.anchors?.["-3"] === undefined ? undefined : `The ruler's −3: ${criterion.anchors["-3"]}`}
                         rows={2}
                         value={row.bottom}
                         onChange={(event) => patch(criterion.id, { bottom: event.currentTarget.value })}
