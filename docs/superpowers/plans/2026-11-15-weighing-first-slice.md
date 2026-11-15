@@ -10,7 +10,7 @@
 
 **Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan touches `docs/README.md` never, and the RFC only where an owner decision changed what it says** (Part 4 Task 4.6 Step 2c: the `on_behalf_of` sources, D14); the other doc edits go to `docs/spec/*.md` and `docs/hosted-projects.md`.
 
-**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
+**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — and Part 4's, when Part 4 was implemented (with one change to Part 3's guard, recorded in D14 and Part 4's deviations).** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check). **Part 5 was then compiled and run for real** (it is the one part whose code had never been compiled): `build` passes and the browser pass is recorded in Task 5.7. It differed from the draft in two controls only (Part 5, Tasks 5.3 and 5.4, Step 1b).
 
 **Part 4's `on_behalf_of` was run too** (`test:mcp`, 126 checks in `weighing-tools.test.js`, 29 of them the source chain, its opt-out and its timeout; `test:weighing-events` for the widened guard). Writing them against the real code changed three things the plan had wrong or silent about: the repo-mode source is a chain (env, then `git config arkaik.user`, then `git config user.name`), not the env var alone (owner decision, D14); Part 3's guard refused whitespace and so would have refused a git author name; and the MCP suite has to isolate git from the machine it runs on (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`), or "none set" depends on whose laptop it is (the isolation also drops `GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and `GIT_CONFIG_KEY_n`/`VALUE_n`, so a surrounding git hook or CI runner cannot steer it).
 
@@ -7655,7 +7655,7 @@ gh stack submit --auto
 - Create: `tests/app/weighing-panel.test.js`, `tests/app/value-order.test.js`
 - Modify: `package.json`, `.gitignore`
 
-- [ ] **Step 1: Write the source-asserting test**
+- [x] **Step 1: Write the source-asserting test**
 
 A file that does not exist yet reads as empty, so each missing piece is a `FAIL`, not a crash.
 
@@ -7684,6 +7684,7 @@ A file that does not exist yet reads as empty, so each missing piece is a `FAIL`
 
 const fs = require("fs");
 const path = require("path");
+const ts = require("typescript");
 
 const ROOT = path.join(__dirname, "..", "..");
 /** A file that does not exist yet reads as empty, so a missing piece is a FAIL, not a crash. */
@@ -7704,6 +7705,18 @@ function check(name, cond, detail = "") {
   }
 }
 
+/** The pure merge, loaded without a build directory: transpiled and evaluated in place. It imports nothing. */
+function loadHelper() {
+  const source = read("lib", "utils", "weighing-input.ts");
+  if (source === "") return {};
+  const { outputText } = ts.transpileModule(source, { fileName: "weighing-input.ts", compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
+  const mod = { exports: {} };
+  new Function("module", "exports", outputText)(mod, mod.exports);
+  return mod.exports;
+}
+const helper = loadHelper();
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 const group = read("components", "panels", "WeighingGroup.tsx");
 const positioning = read("components", "settings", "PositioningPanel.tsx");
 const hook = read("lib", "hooks", "useWeighing.ts");
@@ -7719,12 +7732,53 @@ for (const hookName of ["data-weighing", "data-weighing-element", "data-weighing
 }
 check("the numbers come from the schema's derivation", /buildWeighingContext/.test(group) && /weighPromise/.test(group) && /from "@arkaik\/schema"/.test(group));
 check("the form never sends a scorer — the writer stamps it", !/\bscorer\s*:\s*\{/.test(group) && !/\bbasis\s*:/.test(group));
-check("a write is one weighing.assessment.recorded through record()", /WEIGHING_ASSESSMENT_RECORDED/.test(group) && /await record\(\[input\]\)/.test(group));
+check("a write is one weighing.assessment.recorded through record()", /WEIGHING_ASSESSMENT_RECORDED/.test(group) && /await record\(\[\{ type: WEIGHING_ASSESSMENT_RECORDED/.test(group));
 check("a refused write is a toast, and the list re-reads either way", /toast\.error/.test(group) && /finally/.test(group));
-check("a first human score defaults to confidence 1, never a silent guess", /mine\?\.confidence \?\? 1/.test(group));
-check("a person never inherits an agent's evidence", /cell\?\.source === "stored" && cell\.scorer\.kind === "human"/.test(group));
+check("the merge, not the form, decides what a first human score carries", /assessmentFieldsFor/.test(group));
 check("the claimed elements are listed first, then 'Add an element'", /Add an element/.test(group) && /claimed/.test(group));
 check("a read-only panel offers no controls", /readOnly/.test(group) && /data-weighing-readonly/.test(group));
+
+// --- the write is a merge, serialized per row (the stale-closure bug) --------------------
+const humanCell = (over = {}) => ({ level: 1, confidence: 1, source: "stored", scorer: { kind: "human" }, evidence: "old words", ...over });
+const agentCell = (over = {}) => ({ level: 2, confidence: 2, source: "stored", scorer: { kind: "agent" }, evidence: "the agent's reading", ...over });
+const seedCell = { level: 3, confidence: 0, source: "seed", scorer: { kind: "rule" } };
+const { assessmentFieldsFor, evidenceChanged, intentOf, currentIntent } = helper;
+check("the merge helper exists, with no runtime import", typeof assessmentFieldsFor === "function" && !/^import (?!type)/m.test(read("lib", "utils", "weighing-input.ts")));
+if (typeof assessmentFieldsFor === "function") {
+  // Reproduction 1: type evidence, click a confidence. The blur saves A; the click builds B from the SAME stale cell.
+  const afterBlur = intentOf(assessmentFieldsFor(humanCell(), undefined, { evidence: "typed words" }));
+  check("a confidence click after typing keeps the typed evidence", assessmentFieldsFor(humanCell(), afterBlur, { confidence: 2 })?.evidence === "typed words");
+  // Reproduction 2: click +3, click a confidence before the refetch lands.
+  const afterLevel = intentOf(assessmentFieldsFor(humanCell(), undefined, { level: 3 }));
+  check("a confidence click after a level click keeps the new level", assessmentFieldsFor(humanCell(), afterLevel, { confidence: 2 })?.level === 3);
+  check("a level click after typing keeps the typed evidence", eq(assessmentFieldsFor(humanCell(), afterBlur, { level: -1 }), { level: -1, confidence: 1, evidence: "typed words" }));
+  check("the gesture's own field beats what the row last said", assessmentFieldsFor(humanCell(), afterLevel, { level: -2 })?.level === -2);
+  check("a blank row has nothing to write until a level is chosen", assessmentFieldsFor(undefined, undefined, { confidence: 2 }) === undefined && assessmentFieldsFor(undefined, undefined, { evidence: "x" }) === undefined);
+  check("a confidence held on a blank row goes out with the level", eq(assessmentFieldsFor(undefined, { confidence: 3 }, { level: -1 }), { level: -1, confidence: 3 }));
+  check("a first score defaults to confidence 1", assessmentFieldsFor(undefined, undefined, { level: 1 })?.confidence === 1);
+  check("a person never inherits an agent's evidence or confidence", eq(assessmentFieldsFor(agentCell(), undefined, { level: 2 }), { level: 2, confidence: 1 }));
+  check("choosing on a guess records the person's own score at that level", eq(assessmentFieldsFor(seedCell, undefined, { level: 3 }), { level: 3, confidence: 1 }));
+  check("an evidence typed over a guess is kept with it", assessmentFieldsFor(seedCell, undefined, { evidence: "I read it" })?.evidence === "I read it");
+  check("blank evidence is omitted, never sent", !("evidence" in assessmentFieldsFor(humanCell(), undefined, { evidence: "   " })));
+  check("clearing the evidence beats the stored one, and sticks", !("evidence" in assessmentFieldsFor(humanCell(), intentOf({ level: 1, confidence: 1 }), { confidence: 2 })));
+  check("a patch carrying undefined never overwrites a value", assessmentFieldsFor(humanCell(), undefined, { level: undefined, confidence: 2 })?.level === 1);
+  check("the cell is not mutated", (() => { const c = humanCell(); assessmentFieldsFor(c, undefined, { level: 3 }); return eq(c, humanCell()); })());
+  check("a blur with the same text is not worth a write", evidenceChanged(humanCell(), undefined, "old words") === false);
+  check("…nor one that only repeats what was just sent", evidenceChanged(humanCell(), afterBlur, "typed words") === false);
+  check("…but different text is", evidenceChanged(humanCell(), afterBlur, "more words") === true);
+  check("…and an empty box over an agent's evidence is no change", evidenceChanged(agentCell(), undefined, "") === false);
+  check("currentIntent reads the person's own confidence only", currentIntent(agentCell(), undefined).confidence === undefined);
+}
+
+const evidenceBox = (group.match(/<Textarea\b[\s\S]*?\/>/) ?? [""])[0];
+check("the evidence box saves on blur, never per keystroke", /onBlur=/.test(evidenceBox) && !/onChange=/.test(evidenceBox));
+check("a write reads the box's live value, not the cached cell", /textareas\.current/.test(group) && /\.value/.test(group));
+check("every write is built by the merge, after the previous one settled", /assessmentFieldsFor\(/.test(group) && /queues\.current/.test(group) && /\.then\(/.test(group));
+check("a failed write gives back what the row last said", /lastSent\.current/.test(group) && /\.delete\(|\.set\(criterion, before\)/.test(group));
+check("pending is per row, and no strip is disabled by it", /data-pending/.test(group) && !/<SegmentedControl[^>]*disabled/.test(group));
+check("the evidence of a score that is not the person's is shown", /data-weighing-evidence/.test(group));
+check("both strips carry a visible label", />\s*Level\s*</.test(group) && />\s*How sure\s*</.test(group));
+check("each confidence option explains itself", /CONFIDENCE_ANCHORS\[level\]/.test(group) && /title/.test(read("components", "ui", "segmented-control.tsx")));
 
 // --- where it is mounted --------------------------------------------------------
 check("NodeDetailPanel mounts the group for acceptances only", /node\.species === "acceptance" && <WeighingGroup/.test(detail));
@@ -7746,6 +7800,8 @@ check("Settings mounts it, in the project's own words", /<PositioningPanel proje
 
 // --- History ----------------------------------------------------------------------------
 check("History words both weighing events instead of printing a raw type", /case "weighing\.assessment\.recorded"/.test(describe) && /case "weighing\.set\.saved"/.test(describe));
+check("History names the element and writes a minus as one", /VALUE_CONTRIBUTION_SET/.test(describe) && /\\u2212|−/.test(describe) && /with evidence/.test(describe));
+check("the static malformed notice is not a live region", !/data-positioning-malformed role="status"/.test(positioning) && !/role="status"/.test(positioning));
 
 if (failures > 0) {
   console.log(`\n${failures} weighing-panel test(s) failed.`);
@@ -7754,7 +7810,7 @@ if (failures > 0) {
 console.log("\nAll weighing-panel tests passed.");
 ```
 
-- [ ] **Step 2: Write the order helper's test**
+- [x] **Step 2: Write the order helper's test**
 
 ```js
 #!/usr/bin/env node
@@ -7814,7 +7870,7 @@ if (failures > 0) {
 console.log("\nAll value-order tests passed.");
 ```
 
-- [ ] **Step 3: Scripts and ignore line**
+- [x] **Step 3: Scripts and ignore line**
 
 In `package.json`, after `"test:weighing-provider"` add:
 
@@ -7825,7 +7881,7 @@ In `package.json`, after `"test:weighing-provider"` add:
 
 In `.gitignore`, after `/tests/app/.test-build-arkademy/` add `/tests/app/.test-build-value-order/`.
 
-- [ ] **Step 4: Run both to verify they fail**
+- [x] **Step 4: Run both to verify they fail**
 
 Run: `npm run test:weighing-panel; npm run test:value-order`
 Expected: `weighing-panel` prints a `FAIL:` for every check (none of the files exist) and `1x weighing-panel test(s) failed.`; `value-order` fails with `ENOENT … lib/utils/value-order.ts`.
@@ -7835,7 +7891,7 @@ Expected: `weighing-panel` prints a `FAIL:` for every check (none of the files e
 **Files:**
 - Create: `lib/hooks/useWeighing.ts`
 
-- [ ] **Step 1: Write the hook**
+- [x] **Step 1: Write the hook**
 
 ```ts
 "use client";
@@ -7881,12 +7937,12 @@ export function useWeighing(projectId: string) {
 }
 ```
 
-- [ ] **Step 2: Run the contract test**
+- [x] **Step 2: Run the contract test**
 
 Run: `npm run test:weighing-panel`
 Expected: the three `useWeighing …` checks now `PASS:`; the rest still `FAIL:`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/app/weighing-panel.test.js tests/app/value-order.test.js package.json .gitignore lib/hooks/useWeighing.ts
@@ -7899,12 +7955,12 @@ git commit -m "feat(weighing): useWeighing, and the contract the panel must keep
 - Create: `components/panels/WeighingGroup.tsx`
 - Modify: `components/panels/NodeDetailPanel.tsx`
 
-- [ ] **Step 1: Write the group**
+- [x] **Step 1: Write the group**
 
 ```tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   CONFIDENCE_ANCHORS,
@@ -7915,17 +7971,18 @@ import {
   weighPromise,
   type EffectiveCell,
   type WeighingCriterion,
-  type WeighingEventInput,
 } from "@arkaik/schema";
 
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { PanelSection } from "@/components/panels/PanelSection";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import type { Node } from "@/lib/data/types";
 import { useProjectId } from "@/lib/hooks/useProjectId";
 import { useWeighing } from "@/lib/hooks/useWeighing";
+import { assessmentFieldsFor, evidenceChanged, intentOf, type RowIntent } from "@/lib/utils/weighing-input";
 
 /**
  * An acceptance's weight: a signed level (−3 to +3) for each element of value it
@@ -7955,6 +8012,16 @@ import { useWeighing } from "@/lib/hooks/useWeighing";
  * `record` — the same gate an agent's `assess` goes through. A refused write
  * (the gate's reasons) is a toast, and the list re-reads either way, so the
  * controls never show a level the journal does not hold.
+ *
+ * **A write is a merge, and writes to one row go one at a time.** The `cell` a
+ * handler closes over is the last render's, so two quick gestures on a row (type
+ * evidence, click a confidence — the click blurs the box first; or click +3, then
+ * a confidence before the refetch) would each rebuild the row from the same stale
+ * cell and the later one would put the earlier one's fields back. So each row
+ * remembers what it last said (`lastSent`), `assessmentFieldsFor` merges
+ * cell < last said < this gesture (`lib/utils/weighing-input.ts`, tested), the
+ * evidence is read off the box itself, and a row's writes are chained so each is
+ * computed after the one before settled. Nothing is disabled to get there.
  */
 
 interface WeighingGroupProps {
@@ -7963,8 +8030,13 @@ interface WeighingGroupProps {
   readOnly?: boolean;
 }
 
-const LEVEL_OPTIONS = WEIGHING_LEVELS.map((level) => ({ id: String(level), label: level > 0 ? `+${level}` : level < 0 ? `−${-level}` : "0" }));
-const CONFIDENCE_OPTIONS = CONFIDENCE_LEVELS.map((level) => ({ id: String(level), label: String(level) }));
+// A bare "2" says little: each option carries its anchor as a tooltip and a description.
+const CONFIDENCE_OPTIONS = CONFIDENCE_LEVELS.map((level) => ({ id: String(level), label: String(level), title: CONFIDENCE_ANCHORS[level] }));
+
+/** A level as a person reads it: a real minus, an explicit plus. */
+const signed = (level: number) => (level > 0 ? `+${level}` : level < 0 ? `−${-level}` : "0");
+
+const LEVEL_OPTIONS = WEIGHING_LEVELS.map((level) => ({ id: String(level), label: signed(level) }));
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const num = (value: number) => (Math.round(value * 100) / 100).toFixed(2);
@@ -7982,7 +8054,15 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   const weighed = useMemo(() => (ctx === undefined ? undefined : weighPromise(node, ctx)), [ctx, node]);
   // Elements the person has opened a blank row for; nothing is written until a level is chosen.
   const [extra, setExtra] = useState<string[]>([]);
-  const [pending, setPending] = useState<string | null>(null);
+  // Rows with a write queued or in flight — per row, never one slot for the whole form.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  // The confidence a person picked on a row that has no level yet, shown while it waits for one.
+  const [held, setHeld] = useState<Readonly<Record<string, number>>>({});
+  // Per row: the evidence boxes (read live), what the row last said, the tail of its write chain, how many writes are in it.
+  const textareas = useRef(new Map<string, HTMLTextAreaElement>());
+  const lastSent = useRef(new Map<string, RowIntent>());
+  const queues = useRef(new Map<string, Promise<void>>());
+  const inFlight = useRef(new Map<string, number>());
 
   if (ctx === undefined || weighed === undefined) return null;
 
@@ -7991,29 +8071,59 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
   const blank = extra.filter((id) => !shown.has(id));
   const addable = ctx.set.criteria.filter((criterion) => !shown.has(criterion.id) && !extra.includes(criterion.id));
 
-  async function save(criterion: string, cell: EffectiveCell | undefined, patch: { level?: number; confidence?: number; evidence?: string }) {
-    // What a person has already said about this cell — never an agent's evidence, which is not theirs to inherit.
-    const mine = cell?.source === "stored" && cell.scorer.kind === "human" ? cell : undefined;
-    const level = patch.level ?? cell?.level;
-    if (level === undefined) return;
-    const evidence = patch.evidence ?? mine?.evidence;
-    const input: WeighingEventInput = {
-      type: WEIGHING_ASSESSMENT_RECORDED,
-      subject: node.id,
-      criterion,
-      level,
-      confidence: patch.confidence ?? mine?.confidence ?? 1,
-      ...(evidence !== undefined && evidence.trim() !== "" ? { evidence } : {}),
+  /**
+   * Queue one write for a row. Its fields are worked out when its turn comes —
+   * after the write before it settled — from the cell the gesture saw, what the
+   * row last said and what this gesture changes. `onlyIfEvidenceChanged` is the
+   * blur's: a blur that left the text as it was is not a write.
+   */
+  function write(criterion: string, cell: EffectiveCell | undefined, patch: RowIntent, onlyIfEvidenceChanged = false) {
+    inFlight.current.set(criterion, (inFlight.current.get(criterion) ?? 0) + 1);
+    setPending((current) => new Set(current).add(criterion));
+    const task = async () => {
+      const before = lastSent.current.get(criterion);
+      if (onlyIfEvidenceChanged && !evidenceChanged(cell, before, patch.evidence ?? "")) return;
+      // The box's live text rides along with every level or confidence write: what is typed is never lost to a click.
+      const live = textareas.current.get(criterion)?.value;
+      const fields = assessmentFieldsFor(cell, before, { ...(live === undefined ? {} : { evidence: live }), ...patch });
+      if (fields === undefined) return; // a blank row is written once it has a level
+      lastSent.current.set(criterion, intentOf(fields));
+      try {
+        await record([{ type: WEIGHING_ASSESSMENT_RECORDED, subject: node.id, criterion, ...fields }]);
+        setExtra((current) => current.filter((id) => id !== criterion));
+      } catch (error) {
+        // Refused: the row did not say that, so the next write must not build on it.
+        if (before === undefined) lastSent.current.delete(criterion);
+        else lastSent.current.set(criterion, before);
+        toast.error(error instanceof Error ? error.message : "Could not record that assessment.");
+      }
     };
-    setPending(criterion);
-    try {
-      await record([input]);
-      setExtra((current) => current.filter((id) => id !== criterion));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not record that assessment.");
-    } finally {
-      setPending(null);
+    const tail = (queues.current.get(criterion) ?? Promise.resolve()).then(task).finally(() => {
+      const left = (inFlight.current.get(criterion) ?? 1) - 1;
+      if (left > 0) {
+        inFlight.current.set(criterion, left);
+        return;
+      }
+      inFlight.current.delete(criterion);
+      queues.current.delete(criterion);
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(criterion);
+        return next;
+      });
+    });
+    queues.current.set(criterion, tail);
+  }
+
+  function chooseConfidence(criterion: string, cell: EffectiveCell | undefined, confidence: number) {
+    const said = lastSent.current.get(criterion);
+    // A row with no level, and none on its way: hold the pick and send it with the level.
+    if (cell === undefined && said?.level === undefined && !inFlight.current.has(criterion)) {
+      lastSent.current.set(criterion, { ...said, confidence });
+      setHeld((current) => ({ ...current, [criterion]: confidence }));
+      return;
     }
+    write(criterion, cell, { confidence });
   }
 
   const rows: { criterion: WeighingCriterion; cell: EffectiveCell | undefined }[] = [
@@ -8080,112 +8190,155 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
         <PanelSection title="Elements of value">
           {rows.length === 0 ? (
             <p data-weighing-empty className="text-sm text-muted-foreground">
-              This promise claims no value and nobody has scored one. Add the first element below.
+              This promise claims no value and nobody has scored one.{readOnly ? "" : " Add the first element below."}
             </p>
           ) : (
             <ul className="flex flex-col gap-4">
-              {rows.map(({ criterion, cell }) => (
-                <li
-                  key={criterion.id}
-                  data-weighing-element={criterion.id}
-                  data-source={cell?.source ?? "blank"}
-                  data-level={cell?.level ?? ""}
-                  data-stale={cell?.stale ? "true" : "false"}
-                  className="flex flex-col gap-2"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{criterion.name ?? criterion.id}</span>
-                    {cell?.claimed && <Badge variant="outline">claimed</Badge>}
-                    {cell?.stale && (
-                      <Badge data-weighing-stale variant="secondary">
-                        stale: the promise changed since this was scored
-                      </Badge>
-                    )}
-                    {cell?.review && (
-                      <Badge data-weighing-review variant="secondary">
-                        a person and an agent differ: review
-                      </Badge>
-                    )}
-                  </div>
-                  {cell !== undefined && (
-                    <p data-weighing-scorer className="text-xs text-muted-foreground">
-                      {scorerLabel(cell)}, confidence {cell.confidence}
-                    </p>
-                  )}
-                  {readOnly ? (
-                    <p data-weighing-readonly className="text-sm">
-                      {cell === undefined ? "Not scored" : `Level ${cell.level > 0 ? "+" : ""}${cell.level}`}
-                    </p>
-                  ) : (
-                    <>
-                      <SegmentedControl
-                        ariaLabel={`${criterion.name ?? criterion.id}: level`}
-                        options={LEVEL_OPTIONS}
-                        value={cell === undefined ? "" : String(cell.level)}
-                        onChange={(value) => void save(criterion.id, cell, { level: Number(value) })}
-                      />
-                      <SegmentedControl
-                        ariaLabel={`${criterion.name ?? criterion.id}: confidence`}
-                        options={CONFIDENCE_OPTIONS}
-                        value={cell === undefined ? "" : String(cell.confidence)}
-                        onChange={(value) => void save(criterion.id, cell, { confidence: Number(value) })}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {cell === undefined ? "Choose a level to score this element." : CONFIDENCE_ANCHORS[cell.confidence]}
+              {rows.map(({ criterion, cell }) => {
+                const label = criterion.name ?? criterion.id;
+                // A score that is not the person's: an agent's, or the guess. Choosing here records their own.
+                const notMine = cell !== undefined && (cell.source === "seed" || cell.scorer.kind !== "human");
+                return (
+                  <li
+                    key={criterion.id}
+                    data-weighing-element={criterion.id}
+                    data-source={cell?.source ?? "blank"}
+                    data-level={cell?.level ?? ""}
+                    data-stale={cell?.stale ? "true" : "false"}
+                    data-pending={pending.has(criterion.id) ? "true" : "false"}
+                    aria-busy={pending.has(criterion.id)}
+                    className="flex flex-col gap-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{label}</span>
+                      {cell?.claimed && <Badge variant="outline">claimed</Badge>}
+                      {cell?.stale && (
+                        <Badge
+                          data-weighing-stale
+                          variant="secondary"
+                          title="Choose the level again — even the one already chosen — to score it against the promise as it reads now."
+                        >
+                          stale: the promise changed since this was scored
+                        </Badge>
+                      )}
+                      {cell?.review && (
+                        <Badge data-weighing-review variant="secondary">
+                          a person and an agent differ: review
+                        </Badge>
+                      )}
+                    </div>
+                    {cell !== undefined && (
+                      <p data-weighing-scorer className="text-xs text-muted-foreground">
+                        {scorerLabel(cell)}, confidence {cell.confidence}
                       </p>
-                      <Textarea
-                        // Re-mounts when the stored evidence changes, so an agent's refresh or this person's own save shows.
-                        key={`${criterion.id}:${cell?.evidence ?? ""}`}
-                        aria-label={`${criterion.name ?? criterion.id}: evidence`}
-                        placeholder="Why this level? Cite what you read."
-                        defaultValue={cell?.scorer.kind === "human" ? cell.evidence : undefined}
-                        disabled={pending === criterion.id || cell === undefined}
-                        rows={2}
-                        onBlur={(event) => {
-                          const next = event.currentTarget.value;
-                          if (cell !== undefined && next !== (cell.scorer.kind === "human" ? (cell.evidence ?? "") : "")) {
-                            void save(criterion.id, cell, { evidence: next });
-                          }
-                        }}
-                      />
-                    </>
-                  )}
-                  {cell !== undefined && cell.others.length > 0 && (
-                    <p data-weighing-others className="text-xs text-muted-foreground">
-                      {cell.others.map((row) => `${row.scorer?.kind === "agent" ? "An agent" : "A person"} reads ${row.level > 0 ? "+" : ""}${row.level} (confidence ${row.confidence})`).join("; ")}
-                    </p>
-                  )}
-                </li>
-              ))}
+                    )}
+                    {/* The reasons behind a score that is not the person's: it has no box of its own to sit in. A read-only panel shows every one. */}
+                    {cell?.source === "stored" && cell.evidence !== undefined && cell.evidence.trim() !== "" && (readOnly || cell.scorer.kind !== "human") && (
+                      <p data-weighing-evidence className="text-xs whitespace-pre-wrap">
+                        <span className="font-medium">Evidence:</span> {cell.evidence}
+                      </p>
+                    )}
+                    {readOnly ? (
+                      <p data-weighing-readonly className="text-sm">
+                        {cell === undefined ? "Not scored" : `Level ${signed(cell.level)}`}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground" aria-hidden="true">
+                            Level
+                          </span>
+                          <SegmentedControl
+                            ariaLabel={`${label}: level`}
+                            options={LEVEL_OPTIONS}
+                            value={cell === undefined ? "" : String(cell.level)}
+                            onChange={(value) => write(criterion.id, cell, { level: Number(value) })}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-muted-foreground" aria-hidden="true">
+                            How sure
+                          </span>
+                          <SegmentedControl
+                            ariaLabel={`${label}: confidence`}
+                            options={CONFIDENCE_OPTIONS}
+                            value={cell === undefined ? (held[criterion.id] === undefined ? "" : String(held[criterion.id])) : String(cell.confidence)}
+                            onChange={(value) => chooseConfidence(criterion.id, cell, Number(value))}
+                          />
+                        </div>
+                        {cell === undefined ? (
+                          <p data-weighing-hint className="text-xs text-muted-foreground">
+                            Choose a level to score this element.
+                          </p>
+                        ) : (
+                          <>
+                            {notMine && (
+                              <p data-weighing-hint className="text-xs text-muted-foreground">
+                                {cell.source === "seed"
+                                  ? "Choosing a level here records your own score, in place of the guess."
+                                  : "Choosing a level here records your own score, which outranks the agent's."}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">{CONFIDENCE_ANCHORS[cell.confidence]}</p>
+                          </>
+                        )}
+                        <Textarea
+                          // Re-mounts when the stored evidence changes, so an agent's refresh or this person's own save shows.
+                          key={`${criterion.id}:${cell?.evidence ?? ""}`}
+                          ref={(element) => {
+                            if (element === null) textareas.current.delete(criterion.id);
+                            else textareas.current.set(criterion.id, element);
+                          }}
+                          aria-label={`${label}: evidence`}
+                          placeholder="Why this level? Cite what you read."
+                          defaultValue={cell?.scorer.kind === "human" ? cell.evidence : undefined}
+                          rows={2}
+                          // Saves on blur, never per keystroke; the box is the source of truth for its own text, so a level or confidence write reads it live.
+                          onBlur={(event) => write(criterion.id, cell, { evidence: event.currentTarget.value }, true)}
+                        />
+                      </>
+                    )}
+                    {cell !== undefined && cell.others.length > 0 && (
+                      <p data-weighing-others className="text-xs text-muted-foreground">
+                        {cell.others.map((row) => `${row.scorer?.kind === "agent" ? "An agent" : "A person"} reads ${signed(row.level)} (confidence ${row.confidence})`).join("; ")}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </PanelSection>
 
         {!readOnly && addable.length > 0 && (
           <PanelSection title="Add an element">
-            <select
-              data-weighing-add
-              aria-label="Add an element of value"
-              className="border-input bg-transparent h-9 w-full rounded-md border px-3 text-sm"
+            {/* The app's own Select, held at "" so it is a menu of actions and never shows a choice:
+                picking an element opens a blank row for it, and the row leaves the list. */}
+            <Select
               value=""
-              onChange={(event) => {
-                const id = event.currentTarget.value;
+              onValueChange={(id) => {
                 if (id !== "") setExtra((current) => [...current, id]);
               }}
             >
-              <option value="">Choose an element…</option>
-              {(ctx.set.groups ?? []).map((group) => (
-                <optgroup key={group.id} label={group.title}>
-                  {addable
-                    .filter((criterion) => criterion.group === group.id)
-                    .map((criterion) => (
-                      <option key={criterion.id} value={criterion.id}>
-                        {criterion.name ?? criterion.id}
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
+              <SelectTrigger data-weighing-add aria-label="Add an element of value">
+                <SelectValue placeholder="Choose an element…" />
+              </SelectTrigger>
+              <SelectContent>
+                {(ctx.set.groups ?? []).map((group) => {
+                  const inGroup = addable.filter((criterion) => criterion.group === group.id);
+                  return inGroup.length === 0 ? null : (
+                    <SelectGroup key={group.id}>
+                      <SelectLabel>{group.title}</SelectLabel>
+                      {inGroup.map((criterion) => (
+                        <SelectItem key={criterion.id} value={criterion.id}>
+                          {criterion.name ?? criterion.id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </PanelSection>
         )}
       </div>
@@ -8194,7 +8347,9 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
 }
 ```
 
-- [ ] **Step 2: Mount it beside the other acceptance groups**
+- [x] **Step 1b: What compiled differently from the first draft** — the code above is the file as it shipped. One change: "Add an element" is the app's own `Select` (`components/ui/select.tsx`, held at `value=""` so it is a menu of actions and never shows a choice), not a native `<select>` with a bespoke border — the baseline reuses what the app has instead of inventing a control. `data-weighing-add` moved onto its trigger.
+
+- [x] **Step 2: Mount it beside the other acceptance groups**
 
 ```diff
 --- a/components/panels/NodeDetailPanel.tsx
@@ -8221,14 +8376,14 @@ export function WeighingGroup({ node, readOnly = false }: WeighingGroupProps) {
              key={`pv-${node.id}-${initialPlatform ?? ""}`}
 ```
 
-- [ ] **Step 3: Run the checks that read panel source**
+- [x] **Step 3: Run the checks that read panel source**
 
 Run: `npm run test:weighing-panel && npm run test:panel-semantics && npm run test:project-panels && npm run test:product-scope && npm run test:platform-variants-gates && npm run test:panel-stack && npx tsc --noEmit -p . && npx eslint components/panels lib/hooks`
 Expected: the form and mount checks of `weighing-panel` `PASS:` (the editor, Settings and History checks still `FAIL:`); the four existing source-asserting suites pass; `tsc` and `eslint` silent.
 
-- [ ] **Step 3b: Note for the next person** — `WeighingGroup` keys the evidence `Textarea` on the stored evidence (`key={`${criterion.id}:${cell?.evidence ?? ""}`}`) so a refetch re-mounts it with the saved text; it autosaves on blur only when the text changed. That is a baseline, not a design: the tweaker may well want a Save button instead.
+- [x] **Step 3b: Note for the next person** — `WeighingGroup` keys the evidence `Textarea` on the stored evidence (`key={`${criterion.id}:${cell?.evidence ?? ""}`}`) so a refetch re-mounts it with the saved text; it autosaves on blur only when the text changed. That is a baseline, not a design: the tweaker may well want a Save button instead.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/panels/WeighingGroup.tsx components/panels/NodeDetailPanel.tsx
@@ -8241,7 +8396,7 @@ git commit -m "feat(weighing): weigh a promise from its panel — a signed level
 - Create: `components/settings/PositioningPanel.tsx`
 - Modify: `app/project/[id]/settings/page.tsx`
 
-- [ ] **Step 1: Write the panel**
+- [x] **Step 1: Write the panel**
 
 ```tsx
 "use client";
@@ -8260,6 +8415,7 @@ import {
 } from "@arkaik/schema";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
 import { useWeighing } from "@/lib/hooks/useWeighing";
@@ -8380,7 +8536,7 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
   return (
     <div data-positioning data-positioning-status={status} className="flex flex-col gap-4">
       {malformed && (
-        <p data-positioning-malformed role="status" className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+        <p data-positioning-malformed className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
           Your saved positioning is malformed and is ignored. Saving will replace it.
         </p>
       )}
@@ -8399,11 +8555,20 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
               if (row === undefined) return null;
               return (
                 <div key={criterion.id} data-positioning-element={criterion.id} data-on={row.on ? "true" : "false"} className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <input type="checkbox" checked={row.on} onChange={(event) => patch(criterion.id, { on: event.currentTarget.checked })} />
-                    {criterion.name ?? criterion.id}
-                    <span className="text-xs font-normal text-muted-foreground">{criterion.definition}</span>
-                  </label>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={row.on}
+                        aria-describedby={`positioning-definition-${criterion.id}`}
+                        onCheckedChange={(checked) => patch(criterion.id, { on: checked === true })}
+                      />
+                      {criterion.name ?? criterion.id}
+                    </label>
+                    {/* Outside the label, so the element's name is the checkbox's name and its definition its description. */}
+                    <span id={`positioning-definition-${criterion.id}`} className="text-xs font-normal text-muted-foreground">
+                      {criterion.definition}
+                    </span>
+                  </div>
                   {row.on && (
                     <div className="flex flex-col gap-2 pl-6">
                       <SegmentedControl
@@ -8456,7 +8621,9 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
 }
 ```
 
-- [ ] **Step 2: Mount it between Products and Display preferences**
+- [x] **Step 1b: What compiled differently from the first draft** — the code above is the file as it shipped. One change: each element's checkbox is the app's `Checkbox` (`components/ui/checkbox.tsx`, Radix) inside its `<label>`, not a bare `<input type="checkbox">`.
+
+- [x] **Step 2: Mount it between Products and Display preferences**
 
 ```diff
 --- a/app/project/[id]/settings/page.tsx
@@ -8489,12 +8656,12 @@ export function PositioningPanel({ projectId }: { projectId: string }) {
                  {/* One expression rather than text around `{title}`: the JSX compiler
 ```
 
-- [ ] **Step 3: Run the checks**
+- [x] **Step 3: Run the checks**
 
 Run: `npm run test:weighing-panel && npx tsc --noEmit -p . && npx eslint components/settings app`
 Expected: the editor and Settings checks `PASS:`; only the History check still `FAIL:`; `tsc` and `eslint` silent.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/settings/PositioningPanel.tsx "app/project/[id]/settings/page.tsx"
@@ -8506,7 +8673,7 @@ git commit -m "feat(weighing): write the product's positioning in Settings — a
 **Files:**
 - Modify: `components/journal/describe-event.ts`
 
-- [ ] **Step 1: Word the two events** (they printed their raw type before)
+- [x] **Step 1: Word the two events** (they printed their raw type before)
 
 ```diff
 --- a/components/journal/describe-event.ts
@@ -8544,12 +8711,12 @@ git commit -m "feat(weighing): write the product's positioning in Settings — a
        const where = platform ? PLATFORM_LABELS[platform as keyof typeof PLATFORM_LABELS] ?? platform : "?";
 ```
 
-- [ ] **Step 2: Run the contract test**
+- [x] **Step 2: Run the contract test**
 
 Run: `npm run test:weighing-panel && npx tsc --noEmit -p .`
 Expected: `All weighing-panel tests passed.` — all of them.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/journal/describe-event.ts
@@ -8564,7 +8731,7 @@ The seeding rule reads the order of `metadata.values`; `ValuePicker` — the onl
 - Create: `lib/utils/value-order.ts`
 - Modify: `components/values/ValuePicker.tsx`
 
-- [ ] **Step 1: The helper**
+- [x] **Step 1: The helper**
 
 ```ts
 /**
@@ -8594,7 +8761,7 @@ export function keepClaimOrder<T extends string>(
 }
 ```
 
-- [ ] **Step 2: Use it in the picker**
+- [x] **Step 2: Use it in the picker**
 
 ```diff
 --- a/components/values/ValuePicker.tsx
@@ -8638,12 +8805,12 @@ export function keepClaimOrder<T extends string>(
    function toggle(id: ValueId) {
 ```
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 Run: `npm run test:value-order && npx tsc --noEmit -p . && npx eslint components/values lib/utils`
 Expected: `All value-order tests passed.`; `tsc` and `eslint` silent.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add lib/utils/value-order.ts components/values/ValuePicker.tsx
@@ -8655,7 +8822,7 @@ git commit -m "fix(values): the picker keeps the order values were chosen in —
 **Files:**
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: CI steps** — after the "Value icon resolution tests" step in `ci.yml`:
+- [x] **Step 1: CI steps** — after the "Value icon resolution tests" step in `ci.yml`:
 
 ```yaml
       # The weighing UI's contract, read off the source: PanelGroup/PanelSection
@@ -8668,30 +8835,36 @@ git commit -m "fix(values): the picker keeps the order values were chosen in —
         run: npm run test:value-order
 ```
 
-- [ ] **Step 2: Gate**
+- [x] **Step 2: Gate**
 
 Run: `npm run generate && git status --short` (no artifact change in this part), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider && npm run test:weighing-panel && npm run test:value-order`, `npm run test:panel-semantics && npm run test:project-panels && npm run test:product-scope && npm run test:platform-variants-gates && npm run test:panel-stack && npm run test:panel-preferences`, `npm run test:provider && npm run test:project-queries && npm run test:quality-fold`, `npm run test:cli`, `npm run test:mcp`.
 Expected: all exit 0.
 
-- [ ] **Step 3: Look at it** (nothing above renders a component; this is the only step that does)
+- [x] **Step 3: Look at it** (nothing above renders a component; this is the only step that does). Done with Playwright, not by hand:
 
 ```bash
-# A stale dev server fakes hydration mismatches — restart it, do not trust a running one.
-PORT=4242 npm run dev
+# A stale dev server fakes hydration mismatches — start a fresh one for this worktree.
+cp /Users/alexis/code/arkaik/.env.local .        # gitignored; needed for the dev server
+PORT=4651 npx next dev --port 4651 &
+# in the scratch Playwright dir: import a bundle through /projects' file input, once
+node pw/import.mjs profile-weighing pebbles-ac.json 4651 pebbles-ac
 ```
-In a browser (or with the project's playwright setup — memory note: import a bundle through the `/projects` file input): import `seed/pebbles.json`; open the project, open any acceptance's panel. Check, and write down what you see rather than assuming:
 
-1. A **Value** group with "What it adds up to" (serves/costs/kept/"resting on guesses" at 100% on a project nobody has scored) and one row per claimed value, each labelled "Guess, from the order of the claimed values".
-2. Click `+2` on the first row: the row's label becomes "A person: arkaik-app, confidence 1", the guess share drops, and the figures update without a reload. Reload the page: it persisted.
-3. Click `−1` on another element via "Add an element": a "Unclaimed cost" flag appears.
-4. Edit the acceptance's title in the same panel: the scored rows show the **stale** badge.
-5. Settings → Positioning: tick two elements, set a weight, **Save as draft**: the panel now says the positioning is a draft and "Of what we stand on" does **not** appear; **Save and activate**: it appears.
-6. The History page lists "…weighed +2 · by human · confidence 1" and "Positioning saved: 2 elements".
-7. The public self-map (`/project/<seed id>`) shows the form read-only-or-erroring gracefully: choosing a level there toasts "cannot record assessments" (the seed sandbox has no journal) — it must not crash the panel.
+Open `/project/pebbles-ac/acceptances?node=AC-registration-consent` (`?node=` is how a panel is addressed). Check, and write down what you see rather than assuming — **what it showed** (1440 px, 400 px and dark; the console stayed clean: no errors, no hydration warnings):
+
+1. A **Value** group with "What it adds up to" and one row per claimed value. On the untouched acceptance: serves 1.67, costs 0.00, kept 100%, "100% of what it serves" resting on guesses; `reduces-risk` seeded at +3 and `reduces-anxiety` at +2, each "Guess, from the order of the claimed values, confidence 0".
+2. Click `+2` on the first row: the label becomes "A person: arkaik-app, confidence 1", the guess share drops to 50% and serves to 1.33, without a reload.
+3. "Add an element" → Saves time, then `−1` (`aria-label` uses U+2212), then evidence: stored, confidence 1; costs 0.33, "0% of what it costs" resting on guesses, and the flag "Unclaimed cost: Saves time". **Reload: all of it persisted**, evidence included.
+4. Edit the acceptance's title in the same panel: both scored rows show the **stale** badge; the seeded row does not (a seed has no basis to go stale from).
+5. Settings → Positioning: tick Reduces risk and Reduces anxiety, weight 3, a +3 sentence, **Save as draft**: `data-positioning-status="draft"`, the draft note shows, and on the acceptance "Of what we stand on" is **absent** with "The positioning is a draft, so nothing is weighed against it yet." **Save and activate**: status `active`, and the acceptance reads "Of what we stand on: serves 3.33 · costs 0.00". Reloading Settings re-seeds the form from what was saved (two elements, the sentence).
+6. **The History page is `/project/<id>/history`** (not the Changelog, which lists deliverables) and lists "…: saves-time weighed -1 · by human · confidence 1", "…weighed +2…" and "Positioning saved: 2 elements". A node's own History group does **not** list a weighing event: the events carry `subject`, not `node_id` (R16).
+7. The public self-map (`/project/arkaik-self-map/acceptances?node=AC-public-map-undeletable`): the form renders and is **not** read-only there (the seed provider offers a save path); choosing a level toasts "Project arkaik-self-map cannot record assessments." and the panel stays up.
+
+400 px: no horizontal overflow on the acceptance panel or on Settings. Dark: both read correctly on the existing tokens.
 
 If any of 1–7 is wrong, fix it in this part before opening the PR.
 
-- [ ] **Step 4: Commit, submit, and put the Lab Note in the PR body**
+- [ ] **Step 4: Commit, submit, and put the Lab Note in the PR body** (the commit is done; submitting and the PR body belong to whoever opens the PR)
 
 ```bash
 git add .github/workflows/ci.yml
@@ -8700,23 +8873,23 @@ gh stack submit --auto
 gh pr list --head weighing/5-panel --json number --jq '.[0].number'      # → <N>
 ```
 
-Edit the PR body (`gh pr edit <N> --body-file body.md`) so it contains a section whose heading **starts with** `## Lab Note` and exactly one `yaml` fence — every title and summary double-quoted, `fr` an adaptation in the informal "tu", `nodes:` ids that exist in this project's graph (they do: all five are in `seed/arkaik-self-map.json`):
+Edit the PR body (`gh pr edit <N> --body-file body.md`) so it contains a section whose heading **starts with** `## Lab Note` and exactly one `yaml` fence — every title and summary double-quoted, `fr` an adaptation in the informal "tu", `nodes:` ids that exist in this project's graph (they do: all five are in `seed/arkaik-self-map.json` — the panel, the acceptance editor the picker feeds, Settings, History, and the MCP tool catalog the stack also changed):
 
 ````markdown
 ## What this ships
 
-The first slice of weighing: a promise can now say which values it serves and which it costs, how sure you are, and why — from its panel — and the product can write down what it stands on. (Parts 1–4 of the stack are the schema, the derivation, the storage and the MCP tools underneath.)
+The first slice of weighing: a promise can now say which values it serves and which it costs, how sure you are, and why — from its panel — and the product can write down what it stands on, in Settings. The value picker now keeps the order you chose values in, because the first one is the one the promise is most about. (Parts 1–4 of the stack are the schema, the derivation, the storage and the MCP tools underneath.)
 
 ## Lab Note
 
 ```yaml
 en:
   title: "Weigh what each promise is worth"
-  summary: "Open any promise and rate each value it touches from −3 to +3 — what it serves and what it costs, kept apart, with how sure you are and why. Your call always wins over a guess, and a draft positioning weighs nothing until you say so."
+  summary: "Open any promise and score each value it touches from −3 to +3: what it serves and what it costs, kept apart, with how sure you are and why. Your score beats a guess or an agent's, and what your product stands on lives in Settings, as a draft until you say so."
 fr:
   title: "Pèse ce que vaut chaque promesse"
-  summary: "Ouvre une promesse et note chaque valeur qu'elle touche de −3 à +3 : ce qu'elle apporte et ce qu'elle coûte, sans les mélanger, avec ton degré de certitude et ta raison. Ton avis passe toujours avant une estimation, et un positionnement en brouillon ne pèse rien tant que tu ne l'actives pas."
-nodes: [V-node-detail-panel, F-edit-acceptance, V-project-settings, V-mcp-tool-catalog, F-audit-value-coverage]
+  summary: "Ouvre une promesse et note chaque valeur qu'elle touche de −3 à +3 : ce qu'elle apporte et ce qu'elle coûte, sans les mélanger, avec ton degré de certitude et ta raison. Ton avis passe avant une estimation ou celui d'un agent, et ce sur quoi ton produit s'appuie se règle dans les Réglages, en brouillon tant que tu ne l'actives pas."
+nodes: [V-node-detail-panel, F-edit-acceptance, V-project-settings, V-history, V-mcp-tool-catalog]
 suggested:
   molecule: arkaik
   type: feature
@@ -8725,6 +8898,20 @@ suggested:
 ````
 
 (`atom:` is left out on purpose — never guess a slug.) Parts 1–4's bodies carry **no** Lab Note section; if the advisory reminder comments on them, add the `no-lab-note` label. After pushing, **read the comments on every PR in the stack**: the reminder clears its own comment once the body is fixed, and a malformed note (`en.title is required`) fails the post-on-merge job loudly.
+
+### Task 5.8: The Part 5 review round — a write is a merge, serialized per row
+
+**What the review found (Critical).** `WeighingGroup`'s handlers closed over the last render's `cell`, so two quick gestures on a row each rebuilt the row from the same stale cell and the later write put the earlier one's fields back: (1) type evidence, click a confidence — the click blurs the box first, the blur saves A with the typed text, then the click saves B with the cached cell's OLD evidence, and B wins; (2) click +3, then a confidence before the refetch — B carries the old level.
+
+**The fix.** `lib/utils/weighing-input.ts` (new, pure, no runtime import, so no alias table sees it): `assessmentFieldsFor(cell, lastSent, patch)` merges `cell < what the row last said < this gesture`, `intentOf`, `currentIntent`, `evidenceChanged`. In `WeighingGroup`: per-row `lastSent` (restored if the write is refused), the evidence box read live through a ref on every level/confidence write, a per-row promise chain so each write is computed after the one before settled, and a per-row `pending` set (`data-pending`) instead of one slot. Nothing is disabled. The blur is skipped when the text did not change. A confidence picked on a blank row is held (and shown) and goes out with the level.
+
+**Also in this round:** the evidence of a score that is not the person's (an agent's) is shown in a `data-weighing-evidence` paragraph, and a read-only panel always shows it; rows say what choosing does ("Choosing a level here records your own score…"); the stale badge says re-choosing the level re-scores it; both strips carry a visible label ("Level", "How sure") and each confidence option carries its anchor as a `title` (`SegmentedControl` gained an optional `title` per option); the read-only empty state no longer points at a control that is not there; the static malformed notice lost `role="status"`; a positioning element's definition sits outside its `<label>` and describes the checkbox (`aria-describedby`); History names the element ("Simplifies", from the built-in set), spells a negative with U+2212, and adds "with evidence" whenever the event carries evidence (the event does not say what changed, so it is not detected).
+
+**Tests.** `tests/app/weighing-panel.test.js` now also loads the helper (transpiled in place, no build dir) and pins both reproductions ("a confidence click after typing keeps the typed evidence", "a confidence click after a level click keeps the new level", "a level click after typing keeps the typed evidence", a held confidence, no inherited agent evidence, no blank evidence), plus source pins: the evidence box has `onBlur=` and no `onChange=`, the box is read live, writes are chained, pending is per row and disables no strip.
+
+- [x] **Step 1:** write the failing tests (helper unit tests first, then the source pins), then the helper and the form; `npm run test:weighing-panel`, `test:panel-semantics`, `test:project-panels`, `test:product-scope`, `test:platform-variants-gates`, `tsc`, `eslint`.
+- [x] **Step 2:** the browser pass again (fresh profile, port 4651): evidence typed then a confidence clicked in the same task survives, immediately and after a reload; +3 then a confidence in the same task keeps +3; an agent's evidence (injected into the browser journal) renders with its hint; a confidence held on a blank row goes out with the level; no console errors.
+- [x] **Step 3:** commit `fix(weighing): a write is a merge, serialized per row …`.
 
 ---
 
@@ -8749,11 +8936,12 @@ suggested:
 - **R-F1 — stored elements are typed as well-formed.** `WeighingSection.sets` / `matrices` / `assessments` are typed as arrays of well-formed records although storage may hold anything in them (D15). Readers are safe because they go through `resolveWeighing` / `readWeighingAssessments`, but nothing in the types forces that. Follow-up: type the stored elements `unknown[]` so a direct read does not compile.
 - **R-F2 — the published JSON Schema no longer says what an author should write.** D15 made every leaf `z.unknown()`, so `public/schema/project-bundle.json` documents descriptions but enforces and types nothing. Follow-up: publish a strict authoring JSON Schema (the shapes as written, no `unknown` leaves) beside the permissive import one.
 
+- **Follow-ups from the Part 5 review (not slice 1):** (F1) clearing a score needs a retract event — a stored human row can be changed but never removed; (F2) a `canRecord` signal from the provider so a project that cannot record (the public seed sandbox) hides its controls instead of toasting on use; (F3) removing a positioning (it can be replaced, never deleted); (F4) reordering the claim chips in `ValuePicker` — the order is a claim now and the only way to change it is to remove and re-add; (F5) a criterion the library no longer knows is dropped silently when the positioning is saved.
 - **R10 — restore replaces the hosted journal.** An assessment written hosted (or in a browser project) is an *event*; `arkaik restore` PUTs a bundle and journal from the repo, so hosted-only assessments vanish unless the repo's `docs/weighing/` carries them. The existing `--allow-history-loss` guard catches a journal that *shrinks*; nothing writes hosted events *back* into `docs/weighing/`. A `pull`-style verb is out of slice. Same story for a browser project exported to a repo: its events travel in `journal[]`, not as sidecars. **The count-based history guard does NOT reliably protect these events** (a repo journal as long as the hosted one passes it while still erasing them), and `restore`'s help, `docs/spec/toolchain.md` and `docs/hosted-projects.md` say so. **The owner wants `arkaik restore` to append by default and to overwrite only behind an explicit flag; that is filed as issue #624 (critical) and is deliberately not part of slice 1.** Until it lands, this risk stands as written: slice 1's `restore` folds the repo's sidecars and replaces the hosted journal.
 - **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person. **In a repo the MCP server stamps the git author name by default (D14), so a sidecar committed to a public repo names its author. It is the name git already writes into every commit of that repo, and `ARKAIK_ON_BEHALF_OF` or `git config arkaik.user` overrides it. The owner's opt-out is `-` in either, which records nobody; `docs/spec/mcp.md` and the `assess` tool description say so in one plain sentence.**
 - **R12 — no page sorts by served/cost yet.** The brief calls them "the derived sort keys"; slice 1 ships them in the panel and in `get_matrix` (`sort`), and `sortPromises` is exported for the next slice's pages. Acceptances/Pyramid are untouched.
 - **R13 — `qualityEventCount` now counts weighing events.** The validator field keeps its name to avoid a rename across `etag.ts`, `store.ts` and four tests; its doc comment says so. A follow-up rename is cheap.
-- **R14 — not run here:** `npm run build` (Turbopack refused the scratch copy's symlinked `node_modules`) and any browser pass over `WeighingGroup` / `PositioningPanel`. Task 5.7 step 3 is the checklist for the second; the first is a CI gate.
+- **R14 — now run (Part 5):** `npm run build` passes in the real worktree, and the browser pass over `WeighingGroup` / `PositioningPanel` was done with Playwright (Task 5.7 step 3 records what it showed). Two things it settled: the History page is `/project/<id>/history`, and a node's own History group does not list weighing events (R16).
 - **R15 — local Node 26 vs CI Node 20.** Nothing here `require`s a `.ts` file; the loaders transpile. The new CLI/MCP suites spawn built `dist` artifacts, which are plain JS.
 - **R16 — the History page** shows a weighing event only in the unfiltered feed (no family claims `weighing.*`, as for `quality.*`). Task 5.5 gives it words; a "Weighing" family chip is out of slice.
 - **R18 — forged human rows through a bundle write.** "No caller can claim to be a human" (D4) holds only on `POST …/weighing/events`, where the server stamps the scorer. A whole-bundle `PUT` (`arkaik restore`) and an import carry whatever scorers the bundle holds, so a caller with `graph:write` can store `scorer.kind: "human"` rows, and a human's level wins every cell. Provenance here is a record, not an access control. Slice 1 narrows what it can: `foldWeighingEvents` skips `rule`-scored events (D3: a rule row is never stored) and replaces a stored row only by time. Recorded as RFC § 18 question 16; closing it needs a provenance-checked restore, which belongs with issue #624.

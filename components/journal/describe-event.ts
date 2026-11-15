@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   Radar,
 } from "lucide-react";
+import { VALUE_CONTRIBUTION_SET } from "@arkaik/schema";
 import type { JournalEvent, Node } from "@/lib/data/types";
 import { SPECIES } from "@/lib/config/species";
 import { STATUSES } from "@/lib/config/statuses";
@@ -46,6 +47,8 @@ const DECISION_STATUS_LABEL: Record<string, string> = Object.fromEntries(
   DECISION_STATUSES.map((s) => [s.id, s.label]),
 );
 const PLATFORM_LABEL = PLATFORM_LABELS as Record<string, string>;
+/** The built-in value set's element names, so a weighed row says "Saves time" and not `saves-time`. */
+const VALUE_ELEMENT_NAME = new Map(VALUE_CONTRIBUTION_SET.criteria.map((criterion) => [criterion.id, criterion.name ?? criterion.id] as const));
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
   "node.created": CirclePlus,
@@ -67,6 +70,8 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   "quality.finding.resolved": CircleCheck,
   "quality.finding.accepted": ShieldCheck,
   "quality.signal.tripped": Radar,
+  "weighing.assessment.recorded": Scale,
+  "weighing.set.saved": Scale,
   "screenshot.recorded": ImagePlus,
   "screenshot.removed": ImageMinus,
 };
@@ -209,6 +214,31 @@ export function describeJournalEvent(
       const where = `${str(event.criterion_id) ?? "?"} on ${str(event.surface) ?? "?"}`;
       const commit = str(event.commit);
       return { icon, text: `Signal tripped: ${where}`, meta: [str(event.signal), commit ? `at ${commit.slice(0, 7)}` : undefined].filter(Boolean).join(" · ") };
+    }
+    case "weighing.assessment.recorded": {
+      // A real minus, an explicit plus — the form's own spelling of a level.
+      const level = typeof event.level === "number" ? (event.level > 0 ? `+${event.level}` : event.level < 0 ? `\u2212${-event.level}` : "0") : "?";
+      const scorer = event.scorer as { kind?: unknown } | undefined;
+      const criterion = str(event.criterion);
+      // The event does not say what changed, so evidence is named whenever it came with the score: a row that only
+      // re-states a level, or only adds the reasons, still reads as what it is.
+      const withEvidence = typeof event.evidence === "string" && event.evidence.trim() !== "";
+      return {
+        icon,
+        text: `${resolveTitle(event.subject, nodesById)}: ${criterion === undefined ? "?" : VALUE_ELEMENT_NAME.get(criterion) ?? criterion} weighed ${level}`,
+        meta: [
+          typeof scorer?.kind === "string" ? `by ${scorer.kind}` : undefined,
+          typeof event.confidence === "number" ? `confidence ${event.confidence}` : undefined,
+          withEvidence ? "with evidence" : undefined,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    }
+    case "weighing.set.saved": {
+      const set = event.set as { status?: unknown; criteria?: unknown[] } | undefined;
+      const count = Array.isArray(set?.criteria) ? set.criteria.length : 0;
+      return { icon, text: `Positioning saved: ${count} element${count === 1 ? "" : "s"}`, meta: set?.status === undefined || set.status === "active" ? "active" : "draft" };
     }
     case "screenshot.recorded": {
       const platform = str(event.platform);

@@ -6,7 +6,7 @@ order: 92
 
 # RFC: Weighing: promises, journeys and value
 
-> Status: **Accepted design, not implemented.** 2026-11-15. The product owner and the lead settled the model below in a design discussion; no schema, code or interface has shipped. The model is cut into three slices in [§ 17](#17-shipping-order), each its own release.
+> Status: **Accepted; slice 1 implemented** (the weighing section, the signed value matrix, the panel form, positioning, and the MCP tools `get_matrix`, `assess` and `save_positioning`). Slices 2 and 3 are not implemented. 2026-11-15. The product owner and the lead settled the model below in a design discussion. The model is cut into three slices in [§ 17](#17-shipping-order), each its own release.
 >
 > Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. Shapes marked **(proposal)** are the lead's working choice for a detail the discussion did not settle. Pebbles ids are real (from `pbbls/docs/arkaik/bundle.json`) unless marked proposal or hypothetical.
 >
@@ -936,7 +936,7 @@ Approved. Each slice is its own release. Nothing in slice 1 needs a new species,
 
 | Slice | Ships | New species or edges | Why this order |
 |---|---|---|---|
-| **1. The weighing section** | `bundle.weighing`: CriteriaSet, Matrix, Assessment (scorer with an optional `on_behalf_of`, confidence, basis and fingerprint), following Kritik's files. The signed value matrix: acceptances by the 30 elements (stories do not exist yet), −3 to +3, positive levels seeded from the order of `values` as guesses, negatives never seeded. A form in the acceptance panel. Positioning as a criteria set. MCP `get_matrix` and `assess`. **Served and cost per promise** as the derived sort keys. | **None** | It is the piece every other layer reuses. Old readers ignore it safely. It gives the three pages a sort key at once. |
+| **1. The weighing section** | `bundle.weighing`: CriteriaSet, Matrix, Assessment (scorer with an optional `on_behalf_of`, confidence, basis and fingerprint), following Kritik's files. The signed value matrix: acceptances by the 30 elements (stories do not exist yet), −3 to +3, positive levels seeded from the order of `values` as guesses, negatives never seeded. A form in the acceptance panel. Positioning as a criteria set. MCP `get_matrix`, `assess` and `save_positioning`. **Served and cost per promise** as the derived sort keys. | **None** | It is the piece every other layer reuses. Old readers ignore it safely. It gives the three pages a sort key at once. |
 | **2. Stories, opportunities and caps** | `composes` acceptance to acceptance. Species `opportunity`, edge `addresses` with confidence. Caps, with states. | Species `opportunity`. Edges: `composes` pair, `addresses`. | One schema release, because they change the closed species and edge-pair tables, and caps need needs and stories to exist. |
 | **3. Outcomes and Options Matrices** | Species `outcome`, edge `serves`. Option C placeholders for direct links. Options Matrices attached to decisions. | Species `outcome`. Edge `serves`. | Needs slice 2. |
 

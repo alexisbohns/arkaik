@@ -7,6 +7,12 @@ export interface SegmentedControlOption<T extends string> {
   id: T;
   label: string;
   icon?: LucideIcon;
+  /**
+   * What the option means, for a label too short to say it (a bare "2"): shown
+   * as the native tooltip and exposed as the button's description. Optional;
+   * the button's name stays `label`.
+   */
+  title?: string;
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -69,6 +75,7 @@ export function SegmentedControl<T extends string>({
             aria-pressed={active}
             // Explicit, because a collapsed option has no text left to name it.
             aria-label={option.label}
+            title={option.title}
             onClick={() => onChange(option.id)}
             className="inline-flex cursor-pointer items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap outline-none"
           >

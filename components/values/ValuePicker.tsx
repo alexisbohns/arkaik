@@ -5,6 +5,7 @@ import { CheckIcon, XIcon } from "lucide-react";
 
 import type { ValueId } from "@arkaik/schema";
 import { VALUES, VALUE_TIERS_CONFIG } from "@/lib/config/values";
+import { keepClaimOrder } from "@/lib/utils/value-order";
 import { VALUE_ICON_COMPONENTS } from "@/lib/config/value-icons";
 import { cn } from "@/lib/utils";
 
@@ -39,9 +40,10 @@ const TIER_ORDER = VALUE_TIERS_CONFIG.map((tier) => tier.id);
  * matches on the label and on the definition, and empty tiers simply do not
  * render.
  *
- * `onChange` re-derives the array from `VALUES` order rather than appending, so
- * the stored list reads in the model's canonical order no matter what order the
- * values were picked in — the behaviour the chip grid had, kept.
+ * `onChange` keeps the order the values were picked in: the first is the one the
+ * promise is most about, and the weighing layer reads it that way. (It used to
+ * re-derive the array from `VALUES` order, the chip grid's behaviour, which made
+ * that order the model's and not the author's.)
  */
 export function ValuePicker({ selected, onChange }: ValuePickerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -127,7 +129,13 @@ export function ValuePicker({ selected, onChange }: ValuePickerProps) {
   }, [open]);
 
   function commit(next: Set<ValueId>) {
-    onChange(VALUES.filter((value) => next.has(value.id)).map((value) => value.id));
+    onChange(
+      keepClaimOrder(
+        selected,
+        next,
+        VALUES.map((value) => value.id),
+      ),
+    );
   }
 
   function toggle(id: ValueId) {
