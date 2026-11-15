@@ -2619,7 +2619,7 @@ git commit -m "feat(weighing): seeding and the level a cell reads at (part 2/5)"
 **Files:**
 - Modify: `packages/schema/src/weighing-derive.ts`, `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` line in `tests/schema/weighing-derive.test.js`:
 
@@ -2689,12 +2689,12 @@ check(
 );
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: buildWeighingContext is not a function`.
 
-- [ ] **Step 3: Append the context and the promise sections**
+- [x] **Step 3: Append the context and the promise sections**
 
 Append to `packages/schema/src/weighing-derive.ts`:
 
@@ -2858,12 +2858,12 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: `PASS: the schema's platform resolution agrees with lib/utils/platform-status.ts getNodePlatformStatuses` among the new checks, ending `All weighing-derive tests passed.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts tests/schema/weighing-derive.test.js

@@ -103,6 +103,70 @@ check("a row with no basis is never stale", resolve([row(node, "connects", 2, { 
 check("a human and an agent two levels apart go on the review list", resolve([row(node, "connects", 3), row(node, "connects", 1, { scorer: agent })]).review === true);
 check("one level apart does not", resolve([row(node, "connects", 3), row(node, "connects", 2, { scorer: agent })]).review === false);
 
+// --- One promise: served and cost, never netted -----------------------------
+
+const consent = ac("AC-consent", ["reduces-risk", "reduces-anxiety"], { platforms: ["web", "ios", "android"], status: "development", metadata: { gherkin: "g", values: ["reduces-risk", "reduces-anxiety"], platformStatuses: { web: "live", ios: "releasing", android: "development" } } });
+const section = {
+  sets: [],
+  matrices: [],
+  assessments: [
+    row(consent, "reduces-risk", 3),
+    row(consent, "reduces-anxiety", 1),
+    row(consent, "reduces-effort", -1, { scorer: agent, confidence: 1 }),
+  ],
+};
+const ctx = buildWeighingContext(section);
+const w = weighPromise(consent, ctx);
+check("served is the sum of positive levels over 3", near(w.served, 4 / 3), String(w.served));
+check("cost is the sum of |negative| levels over 3", near(w.cost, 1 / 3), String(w.cost));
+check("served and cost are never netted", !near(w.served - w.cost, w.served) && w.cost > 0);
+check("the claimed elements come first, in claim order, then the rest", eq(w.cells.map((c) => c.criterion), ["reduces-risk", "reduces-anxiety", "reduces-effort"]));
+check("an unclaimed negative is flagged as an unclaimed cost", eq(w.flags.unclaimed_cost, ["reduces-effort"]));
+check("a claim assessed at +3 is supported; one assessed at +1 is not (the consent page claims anxiety, delivers a touch)", eq(w.flags.claim_not_supported, ["reduces-anxiety"]) && w.flags.unclaimed_value.length === 0);
+check("no positioning means no positioned variant", w.positioned === null);
+check("kept share is live platforms over applicable ones", near(w.kept_share, 1 / 3), String(w.kept_share));
+check("the fingerprint rides along", w.fingerprint === acceptanceFingerprint(consent));
+
+const hollow = ac("AC-hollow", ["connects", "informs"]);
+const hw = weighPromise(hollow, buildWeighingContext({ assessments: [row(hollow, "connects", 1), row(hollow, "organizes", 2)] }));
+check("claimed but assessed at 1 or less: the claim is not supported", eq(hw.flags.claim_not_supported, ["connects"]));
+check("not claimed but assessed at 1 or more: an unclaimed value", eq(hw.flags.unclaimed_value, ["organizes"]));
+check("a claimed element nobody assessed is only seeded — no flag", !hw.flags.claim_not_supported.includes("informs") && hw.cells.find((c) => c.criterion === "informs").source === "seed");
+const zeroed = weighPromise(hollow, buildWeighingContext({ assessments: [row(hollow, "connects", 0)] }));
+check("a stored 0 suppresses the seed and flags the claim", zeroed.cells.find((c) => c.criterion === "connects").level === 0 && zeroed.flags.claim_not_supported.includes("connects"));
+
+// --- Positioning ------------------------------------------------------------
+
+const positioning = (status, criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@1", ...(status ? { status } : {}), criteria });
+const stands = [{ id: "reduces-risk", weight: 3 }, { id: "reduces-effort" }];
+const positioned = weighPromise(consent, buildWeighingContext({ ...section, sets: [positioning("active", stands)] }));
+check("an active positioning gives a positioned variant: only its elements, each times its weight", positioned.positioned && near(positioned.positioned.served, (3 / 3) * 3) && near(positioned.positioned.cost, (1 / 3) * 1), JSON.stringify(positioned.positioned));
+check("a positioning with no status is active", weighPromise(consent, buildWeighingContext({ ...section, sets: [positioning(undefined, stands)] })).positioned !== null);
+const draft = buildWeighingContext({ ...section, sets: [positioning("draft", stands)] });
+check("a draft positioning feeds no roll-up", weighPromise(consent, draft).positioned === null);
+check("…but the context still knows it is there", draft.positioningSet !== undefined && draft.positioning === null);
+check("a mistyped status counts as a draft too, so it feeds no roll-up", ["Draft", "archived", 5].every((status) => weighPromise(consent, buildWeighingContext({ ...section, sets: [positioning(status, stands)] })).positioned === null));
+check("rows a reader cannot address, or with a non-numeric level, are skipped and never throw", (() => {
+  const junk = [null, 5, { matrix: "value" }, { ...row(hollow, "connects", 3), level: "3" }, { ...row(hollow, "connects", 3), scorer: undefined }, { ...row(hollow, "connects", 3), criterion: 7 }];
+  const ctx = buildWeighingContext({ assessments: junk });
+  return weighPromise(hollow, ctx).cells.every((cell) => cell.source === "seed");
+})());
+check("the plain served and cost do not depend on the positioning", near(positioned.served, w.served) && near(positioned.cost, w.cost));
+
+// --- Kept share and the existing platform seam ------------------------------
+
+check("a promise that applies nowhere has no kept share", keptShare(ac("AC-n", [], { platforms: [] })) === null);
+check("every platform live is 1", keptShare(ac("AC-l", [], { platforms: ["web", "ios"] })) === 1);
+check("nothing live is 0", keptShare(ac("AC-d", [], { status: "development" })) === 0);
+const nodes3 = [consent, ac("AC-p", [], { platforms: ["web", "ios"], status: "backlog", metadata: { platformStatuses: { ios: "live" } } }), ac("AC-q", [], { platforms: ["android"], status: "releasing" })];
+check(
+  "the schema's platform resolution agrees with lib/utils/platform-status.ts getNodePlatformStatuses",
+  nodes3.every((n) => {
+    const app = getNodePlatformStatuses(n);
+    return n.platforms.every((p) => app[p] === resolvePlatformStatus(n, p));
+  }),
+);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 fs.rmSync(STATUS_BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
