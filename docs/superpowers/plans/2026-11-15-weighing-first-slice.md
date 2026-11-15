@@ -4080,7 +4080,7 @@ git commit -m "feat(weighing): foldWeighingEvents — latest wins per cell and s
 - Create: `tests/cli/weighing.test.js`
 - Modify: `package.json`, `.gitignore`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/cli/weighing.test.js` (drives the built CLI for `pack`, an esbuild-bundled `push.ts` with a mock `httpClient` for the network half — the techniques `quality-section-fold.test.js` and `push.test.js` already use; nothing reaches a network):
 
@@ -4291,18 +4291,18 @@ main().catch((error) => {
 });
 ```
 
-- [ ] **Step 2: Wire it into `test:cli` and ignore its build dir**
+- [x] **Step 2: Wire it into `test:cli` and ignore its build dir**
 
 In `package.json`, change the end of the `"test:cli"` script from `… && node tests/cli/kritik-plan-record.test.js",` to `… && node tests/cli/kritik-plan-record.test.js && node tests/cli/weighing.test.js",`.
 
 In `.gitignore`, after the `/packages/cli/.test-build-quality/` line add `/packages/cli/.test-build-weighing/`.
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `npm run build -w arkaik && node tests/cli/weighing.test.js`
 Expected: FAIL — `FAIL: pack folds the assessments of every scorer kind` (the CLI does not know `docs/weighing/` yet) and the checks that follow it.
 
-- [ ] **Step 4: Write the sidecar files module**
+- [x] **Step 4: Write the sidecar files module**
 
 ```ts
 /**
@@ -4414,7 +4414,7 @@ export function loadMatrixAssessments(root: string, matrixId: string): WeighingA
 }
 ```
 
-- [ ] **Step 5: Write the CLI's fold and export it through `arkaik/io`**
+- [x] **Step 5: Write the CLI's fold and export it through `arkaik/io`**
 
 ```ts
 /**
@@ -4490,7 +4490,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
    journalLineErrorLines,
 ```
 
-- [ ] **Step 6: `pack` folds, `--no-weighing` deletes**
+- [x] **Step 6: `pack` folds, `--no-weighing` deletes**
 
 ```diff
 --- a/packages/cli/src/commands/pack.ts
@@ -4652,7 +4652,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
    }
 ```
 
-- [ ] **Step 7: `push` withholds, `--include-weighing` opts in**
+- [x] **Step 7: `push` withholds, `--include-weighing` opts in**
 
 ```diff
 --- a/packages/cli/src/commands/push.ts
@@ -4779,7 +4779,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
        reportPush(result);
 ```
 
-- [ ] **Step 8: `restore` carries it**
+- [x] **Step 8: `restore` carries it**
 
 ```diff
 --- a/packages/cli/src/commands/restore.ts
@@ -4878,12 +4878,12 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
      audit,
 ```
 
-- [ ] **Step 9: Run the CLI suites**
+- [x] **Step 9: Run the CLI suites**
 
 Run: `npm run test:cli && npm run test:bootstrap && npx tsc --noEmit -p . && npx eslint packages`
 Expected: `All weighing CLI tests passed.` (27 `PASS:` lines) and every other CLI suite green (the bootstrap restore suite exercises `restore`); `tsc` and `eslint` silent.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add packages/schema/src/cli/weighing-files.ts packages/cli/src/lib/weighing-io.ts packages/cli/src/io.ts packages/cli/src/commands/pack.ts packages/cli/src/commands/push.ts packages/cli/src/commands/restore.ts tests/cli/weighing.test.js package.json .gitignore
