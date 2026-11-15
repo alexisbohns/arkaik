@@ -2289,7 +2289,7 @@ Then read the PR's comments; if the Lab Note reminder comments, add the `no-lab-
 - Modify: `packages/schema/src/index.ts`
 - Create: `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/schema/weighing-derive.test.js` (preamble, the first two sections, epilogue). Tasks 2.2 and 2.3 insert more sections **above** the final `fs.rmSync(…)` lines.
 
@@ -2408,12 +2408,12 @@ if (failures > 0) {
 console.log("\nAll weighing-derive tests passed.");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: seedLevelAt is not a function`.
 
-- [ ] **Step 3: Write the first half of `weighing-derive.ts`**
+- [x] **Step 3: Write the first half of `weighing-derive.ts`**
 
 Create `packages/schema/src/weighing-derive.ts` with the module header (imports included — later tasks use them), the seeding section and the one-cell section:
 
@@ -2598,16 +2598,16 @@ export function resolveCell(
 }
 ```
 
-- [ ] **Step 4: Export it**
+- [x] **Step 4: Export it**
 
 In `packages/schema/src/index.ts`, after `export * from "./weighing-validate";` add `export * from "./weighing-derive";`.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `node tests/schema/weighing-derive.test.js && npx tsc --noEmit -p .`
 Expected: the seeding and cell checks `PASS:`, ending `All weighing-derive tests passed.`; `tsc` silent. (Lint is run at the end of the part: the header imports names the next tasks use.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts packages/schema/src/index.ts tests/schema/weighing-derive.test.js
