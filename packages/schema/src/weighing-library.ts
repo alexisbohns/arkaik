@@ -14,7 +14,19 @@
 
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
 import type { WeighingCriteriaSet, WeighingMatrix, WeighingSection } from "./weighing";
-import { splitSetRef } from "./weighing";
+import { majorOf, splitSetRef } from "./weighing";
+
+/**
+ * Freeze a value and everything under it. The built-ins are shared by every
+ * reader in the process; a caller that mutated one would change it for all.
+ */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as object)) deepFreeze(child);
+  }
+  return value;
+}
 
 export const VALUE_SET_ID = "value-contribution";
 export const VALUE_SET_VERSION = "1.0.0";
@@ -27,7 +39,7 @@ export const VALUE_SCALE_ANCHORS: Readonly<Record<string, string>> = {
   "3": "Core. The promise exists for this; take it away and the value goes.",
   "2": "Supports clearly. The user would notice it missing.",
   "1": "Touches. A side effect of the promise, not its purpose.",
-  "0": "Unrelated. Leave the cell blank; a stored 0 says it was weighed and found unrelated.",
+  "0": "Unrelated: weighed and found to have nothing to do with it. (No row means nobody has weighed it yet.)",
   "-1": "Small friction. It costs this value a little.",
   "-2": "Works against it. The user notices the cost.",
   "-3": "Costs it at its core. The user feels the opposite.",
@@ -80,7 +92,7 @@ const VALUE_TEXT: Readonly<Record<ValueId, { name: string; definition: string }>
 };
 
 /** The 30 elements as criteria, in `VALUE_IDS` order, grouped by tier. */
-export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = {
+export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = deepFreeze({
   id: VALUE_SET_ID,
   version: VALUE_SET_VERSION,
   title: "Elements of value",
@@ -94,17 +106,17 @@ export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = {
     question: `Does this promise serve, or cost, "${VALUE_TEXT[id].name}"?`,
     definition: VALUE_TEXT[id].definition,
   })),
-};
+});
 
 /** The built-in matrix: every acceptance, judged against the elements of value. */
-export const VALUE_MATRIX: WeighingMatrix = {
+export const VALUE_MATRIX: WeighingMatrix = deepFreeze({
   id: VALUE_MATRIX_ID,
   title: "Value",
   set: `${VALUE_SET_ID}@1`,
   subjects: { kind: "query", species: "acceptance" },
   positioning: POSITIONING_SET_ID,
   status: "active",
-};
+});
 
 export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET];
 export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
@@ -115,26 +127,50 @@ export interface ResolvedWeighing {
   matrices: WeighingMatrix[];
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** A set a reader can use: an id, a criteria array and a scale object. */
+export function isWeighingSetShape(set: unknown): set is WeighingCriteriaSet {
+  return isObject(set) && typeof set.id === "string" && Array.isArray(set.criteria) && isObject(set.scale);
+}
+
+/** A matrix a reader can use: an id, a set ref and a subjects object. */
+export function isWeighingMatrixShape(matrix: unknown): matrix is WeighingMatrix {
+  return isObject(matrix) && typeof matrix.id === "string" && typeof matrix.set === "string" && isObject(matrix.subjects);
+}
+
 /**
  * The effective sets and matrices: the built-ins, then the project's own.
  * A project entry that reuses a built-in's id is ignored — a pinned set is
  * never redefined (`validateBundle` warns) — and later duplicates lose to
- * earlier ones, matching every other first-wins read in this package.
+ * earlier ones, matching every other first-wins read in this package. An entry
+ * a reader could not use (a matrix with no set, a set with no criteria or
+ * scale) is skipped rather than thrown on; the validator warns about it
+ * (`weighing-set-shape`, `weighing-matrix-shape`).
  */
 export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" | "matrices">> | null): ResolvedWeighing {
   const sets: WeighingCriteriaSet[] = [...BUILT_IN_SETS];
   const matrices: WeighingMatrix[] = [...BUILT_IN_MATRICES];
   for (const set of Array.isArray(section?.sets) ? section.sets : []) {
-    if (typeof set?.id === "string" && !sets.some((s) => s.id === set.id)) sets.push(set);
+    if (isWeighingSetShape(set) && !sets.some((s) => s.id === set.id)) sets.push(set);
   }
   for (const matrix of Array.isArray(section?.matrices) ? section.matrices : []) {
-    if (typeof matrix?.id === "string" && !matrices.some((m) => m.id === matrix.id)) matrices.push(matrix);
+    if (isWeighingMatrixShape(matrix) && !matrices.some((m) => m.id === matrix.id)) matrices.push(matrix);
   }
   return { sets, matrices };
 }
 
-/** The set a `value-contribution@1` ref names, if the resolved library holds it. */
+/**
+ * The set a `value-contribution@1` ref names, if the resolved library holds it
+ * **at that major**: a ref to `@2` of a set that is at `1.x` is not the same
+ * ruler, and levels are comparable only within a major. A ref with no `@` names
+ * the set at whatever major it is. The validator tells the two failures apart
+ * (`weighing-unknown-set` / `weighing-set-ref-major`).
+ */
 export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): WeighingCriteriaSet | undefined {
-  const { id } = splitSetRef(ref);
-  return resolved.sets.find((set) => set.id === id);
+  const { id, major } = splitSetRef(ref);
+  const set = resolved.sets.find((candidate) => candidate.id === id);
+  if (set === undefined) return undefined;
+  return major === undefined || majorOf(set.version) === major ? set : undefined;
 }

@@ -25,7 +25,10 @@
  * Everything here is lenient and total. A set that left the section, a level
  * outside the scale, a stray scorer — none of them throw; they degrade to a
  * blank cell and a `validateBundle()` warning, because a hand-edited weighing
- * section must never fail an import or a CI gate.
+ * section must never fail an import or a CI gate. That includes the zod
+ * shapes: they are looser than Kritik's on purpose (a section is filled at
+ * scale by agents and scorers, so one bad cell must not block importing the
+ * project), and the validator owns every judgement about a value.
  */
 
 import type { Node } from "./bundle";
@@ -66,8 +69,10 @@ export const SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent", "r
 export const STORED_SCORER_KINDS: readonly WeighingScorerKind[] = ["human", "agent"];
 
 /** 3 human, 2 agent, 1 rule — higher wins a cell. */
-export function scorerRank(kind: WeighingScorerKind): number {
-  return SCORER_KINDS.length - SCORER_KINDS.indexOf(kind);
+export function scorerRank(kind: string | undefined): number {
+  const index = SCORER_KINDS.indexOf(kind as WeighingScorerKind);
+  // A kind nobody defined (a hand-edited sidecar) ranks below a rule, so it can never win a cell.
+  return index === -1 ? 0 : SCORER_KINDS.length - index;
 }
 
 export interface WeighingScorer extends Record<string, unknown> {
@@ -79,7 +84,7 @@ export interface WeighingScorer extends Record<string, unknown> {
   /**
    * Whom the scorer acts for, when the writer knows: an opaque user id or
    * handle, NEVER an email (sidecars are committed to repos). Stamped by the
-   * writer, never sent by a caller. Not yet run.
+   * writer, never sent by a caller.
    */
   on_behalf_of?: string;
 }
@@ -215,7 +220,8 @@ export function cellKey(matrix: string, subject: string, criterion: string): str
 
 /** One stored row per cell per scorer kind — a human's level and an agent's sit side by side. */
 export function assessmentKey(a: Pick<WeighingAssessment, "matrix" | "subject" | "criterion" | "scorer">): string {
-  return `${cellKey(a.matrix, a.subject, a.criterion)}\u0000${a.scorer.kind}`;
+  // `?.`: a hand-edited row may have no scorer (the validator warns); keying must not throw on it.
+  return `${cellKey(a.matrix, a.subject, a.criterion)}\u0000${a.scorer?.kind ?? ""}`;
 }
 
 /** `value-contribution@1` → `{ id: "value-contribution", major: "1" }`. A ref with no `@` has no major. */
@@ -295,7 +301,7 @@ export function sortWeighingAssessments(assessments: readonly WeighingAssessment
       by(a.matrix, b.matrix) ||
       by(a.subject, b.subject) ||
       by(a.criterion, b.criterion) ||
-      scorerRank(b.scorer.kind) - scorerRank(a.scorer.kind)
+      scorerRank(b.scorer?.kind) - scorerRank(a.scorer?.kind)
     );
   });
 }

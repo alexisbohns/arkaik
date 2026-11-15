@@ -15,15 +15,20 @@
 import {
   BUILT_IN_MATRICES,
   BUILT_IN_SETS,
+  POSITIONING_SET_ID,
+  isWeighingMatrixShape,
+  isWeighingSetShape,
   resolveWeighing,
   setOfRef,
 } from "./weighing-library";
 import {
   WEIGHING_ASSESSMENT_RECORDED,
   WEIGHING_SET_SAVED,
+  SCORER_KINDS,
+  STORED_SCORER_KINDS,
   assessmentKey,
   majorOf,
-  STORED_SCORER_KINDS,
+  splitSetRef,
   type WeighingSection,
 } from "./weighing";
 
@@ -56,6 +61,27 @@ export function validateWeighingSection(
     const assessments = Array.isArray(section.assessments) ? section.assessments : [];
     const resolved = resolveWeighing(section as Partial<WeighingSection>);
 
+    /**
+     * Resolve a set ref, and say why when it does not: the set is not in the
+     * library at all, or it is but at another major (levels are comparable only
+     * within a major). Warns once, at `path`, and returns the set or undefined.
+     */
+    const resolveRef = (ref: string, path: string, who: string, unknownRule: string) => {
+      const set = setOfRef(resolved, ref);
+      if (set !== undefined) return set;
+      const named = resolved.sets.find((candidate) => candidate.id === splitSetRef(ref).id);
+      if (named !== undefined) {
+        warn(path, "weighing-set-ref-major", `${who} names ${ref}, but "${named.id}" is at ${named.version} — levels are comparable only within a major, so the ref resolves to nothing`);
+      } else {
+        warn(path, unknownRule, `${who} names set "${ref}", which is neither built in nor in this section`);
+      }
+      return undefined;
+    };
+    // The ids a matrix points its positioning at — the one id a positioning set may carry.
+    const positioningIds = new Set(
+      resolved.matrices.map((matrix) => matrix.positioning).filter((id): id is string => typeof id === "string"),
+    );
+
     // Pinned built-ins are library content: a project cannot redefine them.
     const seenSets = new Set<string>();
     sets.forEach((entry, index) => {
@@ -67,10 +93,29 @@ export function validateWeighingSection(
         warn(`${path}.id`, "weighing-duplicate-set", `Duplicate set id "${entry.id}" — the first wins`);
       }
       seenSets.add(entry.id);
+      if (!isWeighingSetShape(entry)) {
+        warn(path, "weighing-set-shape", `Set "${entry.id}" has no criteria array or no scale object — it is ignored`);
+      }
+
+      // A positioning is found by its id (docs/rfcs/weighing.md § 9): slice 1 fixes it
+      // at the id the matrices point to, so a renamed one would silently never apply.
+      if (entry.role === "positioning" && !positioningIds.has(entry.id)) {
+        warn(`${path}.id`, "weighing-positioning-id", `A positioning set must have the id "${POSITIONING_SET_ID}" (the one a matrix points at) — "${entry.id}" would never be applied`);
+      } else if (entry.role !== "positioning" && entry.id === POSITIONING_SET_ID) {
+        warn(`${path}.role`, "weighing-positioning-id", `Set "${POSITIONING_SET_ID}" is where a matrix looks for its positioning, but it has no role "positioning" — it would never be applied`);
+      }
 
       if (entry.role === "positioning") {
-        const ruler = typeof entry.extends === "string" ? setOfRef(resolved, entry.extends) : undefined;
-        const known = new Set((ruler?.criteria ?? []).map((criterion) => criterion.id));
+        const ruler =
+          typeof entry.extends === "string"
+            ? resolveRef(entry.extends, `${path}.extends`, `Positioning "${entry.id}"`, "weighing-positioning-unknown-ruler")
+            : undefined;
+        if (typeof entry.extends !== "string") {
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${entry.id}" does not say which set it re-weights — set extends to e.g. value-contribution@1`);
+        } else if (ruler !== undefined && ruler.role === "positioning") {
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${entry.id}" extends "${entry.extends}", which is itself a positioning — it must extend a criteria set such as value-contribution@1`);
+        }
+        const known = new Set(ruler !== undefined && ruler.role !== "positioning" ? ruler.criteria.map((criterion) => criterion?.id) : []);
         (Array.isArray(entry.criteria) ? entry.criteria : []).forEach((criterion, at) => {
           if (!isObject(criterion)) return;
           const cpath = `${path}.criteria[${at}]`;
@@ -94,8 +139,10 @@ export function validateWeighingSection(
         warn(`${path}.id`, "weighing-duplicate-matrix", `Duplicate matrix id "${entry.id}" — the first wins`);
       }
       seenMatrices.add(entry.id);
-      if (typeof entry.set === "string" && setOfRef(resolved, entry.set) === undefined) {
-        warn(`${path}.set`, "weighing-unknown-set", `Matrix "${entry.id}" names set "${entry.set}", which is neither built in nor in this section`);
+      if (!isWeighingMatrixShape(entry)) {
+        warn(path, "weighing-matrix-shape", `Matrix "${entry.id}" has no set ref or no subjects object — it is ignored`);
+      } else {
+        resolveRef(entry.set, `${path}.set`, `Matrix "${entry.id}"`, "weighing-unknown-set");
       }
     });
 
@@ -108,8 +155,9 @@ export function validateWeighingSection(
       if (matrix === undefined) {
         warn(`${path}.matrix`, "weighing-unknown-matrix", `${label}: matrix "${String(entry.matrix)}" is not defined`);
       }
+      // A matrix whose ref resolves to nothing was already warned about once, at the matrix.
       const set = matrix === undefined ? undefined : setOfRef(resolved, matrix.set);
-      const criterion = set?.criteria.find((candidate) => candidate.id === entry.criterion);
+      const criterion = set?.criteria.find((candidate) => candidate?.id === entry.criterion);
       if (set !== undefined && criterion === undefined) {
         warn(`${path}.criterion`, "weighing-unknown-criterion", `${label}: criterion "${String(entry.criterion)}" is not in set "${set.id}"`);
       }
@@ -127,6 +175,8 @@ export function validateWeighingSection(
       const scorer = isObject(entry.scorer) ? entry.scorer : undefined;
       if (scorer === undefined || typeof scorer.kind !== "string" || typeof scorer.id !== "string" || scorer.id === "") {
         warn(`${path}.scorer`, "weighing-scorer-missing", `${label}: no scorer — human, agent and rule levels become indistinguishable`);
+      } else if (!(SCORER_KINDS as readonly string[]).includes(scorer.kind)) {
+        warn(`${path}.scorer.kind`, "weighing-scorer-kind", `${label}: scorer kind "${scorer.kind}" is not one of ${SCORER_KINDS.join(", ")} — it ranks below every other scorer`);
       } else if (!(STORED_SCORER_KINDS as readonly string[]).includes(scorer.kind)) {
         warn(`${path}.scorer.kind`, "weighing-rule-stored", `${label}: scorer kind "${scorer.kind}" is never stored — a seeding rule is computed on read`);
       }

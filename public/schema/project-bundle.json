@@ -1335,13 +1335,8 @@
           }
         }
       },
-      "required": [
-        "sets",
-        "matrices",
-        "assessments"
-      ],
       "additionalProperties": {},
-      "description": "The project's weighing state (docs/rfcs/weighing.md) — its own criteria sets (a positioning), matrices and assessments. The built-in value set is library content, not stored; served, cost and kept share are derived, never stored."
+      "description": "The project's weighing state (docs/rfcs/weighing.md) — its own criteria sets (a positioning), matrices and assessments. The built-in value set is library content, not stored; served, cost and kept share are derived, never stored. Each list may be absent; a reader treats it as empty."
     },
     "WeighingCriteriaSet": {
       "type": "object",
@@ -1396,9 +1391,7 @@
       "required": [
         "id",
         "version",
-        "subject",
-        "scale",
-        "criteria"
+        "subject"
       ],
       "additionalProperties": {},
       "description": "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another."
@@ -1501,8 +1494,8 @@
           "type": "string"
         },
         "set": {
-          "type": "string",
-          "description": "The set's id and major, e.g. value-contribution@1."
+          "description": "The set's id and major, e.g. value-contribution@1.",
+          "type": "string"
         },
         "subjects": {
           "anyOf": [
@@ -1585,9 +1578,7 @@
         }
       },
       "required": [
-        "id",
-        "set",
-        "subjects"
+        "id"
       ],
       "additionalProperties": {},
       "description": "A criteria set applied to a list of subjects."
@@ -1605,33 +1596,15 @@
           "type": "string"
         },
         "level": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "description": "A whole number on the set's scale. 0 means unrelated. No half points."
+          "type": "number",
+          "description": "A whole number on the set's scale. 0 means unrelated. No half points — but any number parses; the validator warns on one off the scale."
         },
         "scorer": {
+          "description": "Who judged. Required in practice: without it a human, an agent and a rule are indistinguishable, so the validator warns.",
           "$ref": "#/$defs/WeighingScorer"
         },
         "confidence": {
-          "anyOf": [
-            {
-              "type": "number",
-              "const": 0
-            },
-            {
-              "type": "number",
-              "const": 1
-            },
-            {
-              "type": "number",
-              "const": 2
-            },
-            {
-              "type": "number",
-              "const": 3
-            }
-          ],
+          "type": "number",
           "description": "0 guess · 1 inferred · 2 evidenced · 3 verified."
         },
         "evidence": {
@@ -1658,9 +1631,6 @@
               "type": "string"
             }
           },
-          "required": [
-            "set_version"
-          ],
           "additionalProperties": {}
         },
         "run": {
@@ -1675,7 +1645,6 @@
         "subject",
         "criterion",
         "level",
-        "scorer",
         "confidence",
         "ts"
       ],
@@ -1687,16 +1656,11 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": [
-            "human",
-            "agent",
-            "rule"
-          ],
-          "description": "Who judged. A human's level beats an agent's, which beats a rule's."
+          "description": "Who judged: human, agent or rule. A human's level beats an agent's, which beats a rule's. Any string parses; the validator warns on another kind."
         },
         "id": {
-          "type": "string",
-          "description": "A person's handle, an agent's name, or a seeding rule's id."
+          "description": "A person's handle, an agent's name, or a seeding rule's id.",
+          "type": "string"
         },
         "model": {
           "description": "The model behind an agent, when it says.",
@@ -1708,8 +1672,7 @@
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "additionalProperties": {},
       "description": "Provenance of one assessment."
