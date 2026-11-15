@@ -5,10 +5,21 @@
  * life-wide; the negatives mirror them. 0 is the scale's own anchor ("weighed,
  * unrelated") and is not repeated here.
  *
- * **A draft.** Written in the Jev weighing POC (2026-11-15). Only the positive
- * Informs ladder is the owner's wording; the other 29 positive ladders and every
- * negative one were drafted by an agent and wait for the owner's review. Plain
- * sentences with no parentheses, because a probabilistic scorer reads them as is.
+ * **Reviewed by the owner (2026-11-15).** Drafted in the Jev weighing POC, then
+ * accepted, edited or re-proposed one element at a time. The rules that came out
+ * of the review:
+ *  - No examples in a rung: a scorer would match a promise against the example
+ *    instead of weighing its reach.
+ *  - Nothing the promise cannot show: no comparison with other products, no
+ *    "the best they have used".
+ *  - A negative ladder starts at "gets in the way of / keeps the person from" the
+ *    value and ends at causing its opposite, rather than "removes" or "harms".
+ *  - "In this domain" is dropped where the rung reads as well without it.
+ *  - A +1 or -1 rung must be something a scorer cannot read into any promise:
+ *    "a first step" fired on the sign-in promises, and "harder to reach" missed
+ *    the consent wall that "a barrier" finds (Jev runs, 2026-11-15).
+ * Plain sentences with no parentheses, because a probabilistic scorer reads them
+ * as is.
  *
  * Library content: zod-free and fs-free, and frozen.
  */
@@ -22,7 +33,7 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "-1": "Costs the person a little time on one task inside the product.",
     "1": "Saves a little time on one task inside the product.",
     "2": "Saves time on tasks the person does regularly in this domain.",
-    "3": "Gives the person back hours of their life, the way online banking replaced trips to the bank.",
+    "3": "Gives the person back hours of their life.",
   },
   simplifies: {
     "-3": "Makes a part of the person's life confusing or hard to manage.",
@@ -30,7 +41,7 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "-1": "Adds a step or a choice inside the product.",
     "1": "Removes a step or a choice inside the product.",
     "2": "Makes a whole task in this domain clearly simpler.",
-    "3": "Makes a complicated part of the person's life simple, the way a single search box replaced browsing directories.",
+    "3": "Makes a complicated part of the person's life simple.",
   },
   "makes-money": {
     "-3": "Costs the person a meaningful part of their income.",
@@ -46,7 +57,7 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "-1": "Exposes the person to a small mistake or loss inside the product.",
     "1": "Guards against a small mistake or loss inside the product.",
     "2": "Protects against a serious loss or error in this domain.",
-    "3": "Protects against a major loss in the person's life, the way insurance or a full backup does.",
+    "3": "Protects against a major loss in the person's life.",
   },
   organizes: {
     "-3": "Brings disorder to a large part of the person's life.",
@@ -54,7 +65,7 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "-1": "Leaves a few things in disorder inside the product.",
     "1": "Keeps a few things in order inside the product.",
     "2": "Keeps everything in this domain in order and easy to find.",
-    "3": "Brings order to a large part of the person's life, the way a calendar does.",
+    "3": "Brings order to a large part of the person's life.",
   },
   integrates: {
     "-3": "Pulls separate parts of the person's life further apart.",
@@ -74,10 +85,10 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
   },
   "reduces-effort": {
     "-3": "Puts a heavy burden of work on the person's life.",
-    "-2": "Adds repetitive work to a task the person does regularly in this domain.",
+    "-2": "Makes a whole task clearly more demanding.",
     "-1": "Adds a little effort to one task inside the product.",
     "1": "Saves a little effort on one task inside the product.",
-    "2": "Takes the repetitive work out of a task the person does regularly in this domain.",
+    "2": "Makes a whole task clearly less demanding.",
     "3": "Lifts a heavy burden of work off the person's life.",
   },
   "avoids-hassles": {
@@ -86,7 +97,7 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "-1": "Adds a small annoyance inside the product.",
     "1": "Avoids a small annoyance inside the product.",
     "2": "Avoids an annoyance that keeps coming back in this domain.",
-    "3": "Takes a whole kind of annoyance out of the person's life, the way a GPS ended getting lost.",
+    "3": "Takes a whole kind of annoyance out of the person's life.",
   },
   "reduces-cost": {
     "-3": "Costs the person a significant amount of money over their life.",
@@ -98,25 +109,25 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
   },
   quality: {
     "-3": "Craft so poor the person would call it the worst they have used.",
-    "-2": "The product does its job in this domain clearly worse than the usual alternatives.",
-    "-1": "Something inside the product works noticeably badly.",
-    "1": "Something inside the product works noticeably well.",
-    "2": "The product does its job in this domain clearly better than the usual alternatives.",
+    "-2": "The product feels unreliable and poorly made throughout.",
+    "-1": "Something inside the product feels unreliable or half-made.",
+    "1": "Something inside the product feels robust.",
+    "2": "The product feels dependable and well crafted throughout.",
     "3": "Craft so good the person would call it the best they have used.",
   },
   variety: {
-    "-3": "Closes off a breadth of choice the person had elsewhere.",
-    "-2": "Narrows the choice in this domain.",
-    "-1": "Removes a few meaningful options inside the product.",
-    "1": "Offers a few meaningful options inside the product.",
-    "2": "Offers a wide and meaningful choice in this domain.",
-    "3": "Opens a breadth of choice the person could not get anywhere else.",
+    "-3": "Locks the person into a narrow range of choices in their life.",
+    "-2": "Limits the person to a narrow range of choices.",
+    "-1": "Does not offer enough options inside the product.",
+    "1": "Offers the person a few options inside the product.",
+    "2": "Offers the person a wide choice.",
+    "3": "Offers the person a breadth of choice they can shape to their own life.",
   },
   "sensory-appeal": {
     "-3": "A sensory experience the person avoids.",
     "-2": "The product looks, sounds or feels bad and the person dislikes using it.",
-    "-1": "An unpleasant detail the person notices in the moment.",
-    "1": "A pleasant detail the person notices in the moment.",
+    "-1": "A look, a sound or a feel the person would point to as unpleasant.",
+    "1": "A look, a sound or a feel the person would point to as pleasant.",
     "2": "The product looks, sounds or feels good and the person enjoys using it.",
     "3": "A sensory experience the person seeks out for its own sake.",
   },
@@ -129,25 +140,25 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "3": "Informs the person deeply and efficiently about the service area or domain.",
   },
   "reduces-anxiety": {
-    "-3": "Gives the person a lasting worry in their life.",
+    "-3": "Leaves the person anxious about something important in their life.",
     "-2": "Stirs up a worry the person has in this domain.",
     "-1": "Adds a small worry inside the product.",
     "1": "Removes a small worry inside the product.",
     "2": "Calms a worry the person has in this domain.",
-    "3": "Takes a lasting worry out of the person's life.",
+    "3": "Brings the person lasting peace of mind about something important.",
   },
   "rewards-me": {
-    "-3": "Takes away rewards the person values as much as the product itself.",
-    "-2": "Takes away perks the person regularly values.",
-    "-1": "Takes away a small perk the person had.",
+    "-3": "Does not give rewards the person values as much as the product itself.",
+    "-2": "Does not give the perks the person regularly expects.",
+    "-1": "Does not give a small perk where the person would expect one.",
     "1": "Gives the person a small perk for engaging.",
     "2": "Gives the person regular perks they value.",
     "3": "Gives the person rewards they value as much as the product itself.",
   },
   nostalgia: {
-    "-3": "Destroys a cherished memory for good.",
-    "-2": "Loses or overwrites a good memory of the past.",
-    "-1": "Puts a pleasant memory at slight risk.",
+    "-3": "Ruins a cherished memory for good.",
+    "-2": "Clearly tarnishes a good memory of the past.",
+    "-1": "Dulls a pleasant memory of the past.",
     "1": "Faintly recalls a pleasant memory of the past.",
     "2": "Clearly brings back a good memory of the past.",
     "3": "Brings back a cherished past in a vivid and deeply felt way.",
@@ -177,9 +188,9 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "3": "Lastingly improves the person's physical or mental well-being.",
   },
   "therapeutic-value": {
-    "-3": "Deepens something that hurts the person.",
+    "-3": "Causes the person lasting emotional hurt.",
     "-2": "Makes a difficult feeling harder for the person to work through.",
-    "-1": "Reopens a small emotional sore.",
+    "-1": "Gets in the way of a moment of emotional relief.",
     "1": "Gives a small moment of emotional relief.",
     "2": "Helps the person work through a difficult feeling.",
     "3": "Supports real healing of something that hurts the person.",
@@ -193,68 +204,68 @@ const LADDERS: Record<ValueId, Record<string, string>> = {
     "3": "Delight the person would seek out and tell others about.",
   },
   attractiveness: {
-    "-3": "Changes how unattractive the person feels in general.",
+    "-3": "Leaves the person feeling unattractive in their everyday life.",
     "-2": "Clearly makes the person feel less attractive.",
     "-1": "Makes the person feel slightly worse about how they look.",
     "1": "Makes the person feel slightly better about how they look.",
     "2": "Clearly makes the person feel more attractive.",
-    "3": "Changes how attractive the person feels in general.",
+    "3": "Leaves the person feeling attractive in their everyday life.",
   },
   "provides-access": {
-    "-3": "Shuts the person out of something that matters in their life.",
-    "-2": "Cuts the person off from a service or from people in this domain that they could otherwise reach.",
-    "-1": "Puts a feature inside the product behind a barrier or closes it off.",
-    "1": "Opens a feature inside the product.",
-    "2": "Gives access to a service or to people in this domain that the person could not easily reach.",
-    "3": "Gives access to something that matters in the person's life and that they could not get otherwise.",
+    "-3": "Makes something that matters in the person's life much harder to reach.",
+    "-2": "Makes services, people, knowledge or capabilities harder to reach.",
+    "-1": "Puts a barrier in front of a feature inside the product.",
+    "1": "Lowers a barrier to a feature inside the product.",
+    "2": "Makes services, people, knowledge or capabilities easier to reach.",
+    "3": "Makes something that matters in the person's life much easier to reach.",
   },
   "provides-hope": {
     "-3": "Leaves the person believing their life cannot get better.",
-    "-2": "Gives the person a reason to doubt that things in this domain can improve.",
-    "-1": "Plants a small doubt.",
-    "1": "Gives a small reason for optimism.",
-    "2": "Gives a real reason to believe things in this domain can improve.",
+    "-2": "Gives the person a reason to doubt that things can improve.",
+    "-1": "Gets in the way of the person's hope.",
+    "1": "Gives the person a glimmer of hope.",
+    "2": "Gives a real reason to believe that things can improve.",
     "3": "Gives a lasting belief that the person's life can get better.",
   },
   "self-actualization": {
-    "-3": "Pushes the person away from who they want to be.",
-    "-2": "Clear drift away from who the person wants to be.",
-    "-1": "A small step away from who the person wants to be.",
+    "-3": "A drift away from who the person wants to be.",
+    "-2": "A step away from who the person wants to be.",
+    "-1": "Keeps the person from becoming who they want to be.",
     "1": "A small step toward who the person wants to be.",
     "2": "Clear progress toward who the person wants to be.",
     "3": "Helps the person become who they want to be.",
   },
   motivation: {
-    "-3": "Drains the person's drive toward goals that matter in their life.",
-    "-2": "Saps the person's energy toward a goal in this domain.",
-    "-1": "A small drag on the person's drive.",
-    "1": "A small nudge to act.",
-    "2": "Energizes the person toward a goal in this domain.",
+    "-3": "Drains the person's energy toward goals that matter in their life.",
+    "-2": "A drag on the person's drive.",
+    "-1": "Discourages the person from starting.",
+    "1": "Gives the person a spark of motivation.",
+    "2": "Keeps the person energized toward a goal.",
     "3": "Sustains the person's drive toward goals that matter in their life.",
   },
   heirloom: {
-    "-3": "Loses something meaningful that was meant to be passed on across time.",
-    "-2": "Lets something meaningful be lost within years.",
-    "-1": "Puts something worth keeping at slight risk.",
+    "-3": "Prevents something meaningful from being passed on to others.",
+    "-2": "Prevents something meaningful from being preserved for years.",
+    "-1": "Gets in the way of keeping something worth keeping.",
     "1": "Keeps something worth keeping for a while.",
     "2": "Preserves something meaningful for years.",
     "3": "Holds something meaningful enough to be passed on to others across time.",
   },
   "affiliation-belonging": {
     "-3": "Cuts the person off from a group that matters deeply to who they are.",
-    "-2": "Leaves the person out of a group in this domain.",
-    "-1": "A feeling of being slightly left out of something small.",
-    "1": "A feeling of being part of something small.",
-    "2": "Makes the person part of a group in this domain.",
+    "-2": "Keeps the person from becoming part of a group or community.",
+    "-1": "Gets in the way of feeling part of something meaningful.",
+    "1": "A feeling of being part of something meaningful.",
+    "2": "Makes the person part of a group or community.",
     "3": "Makes the person part of a group that matters deeply to who they are.",
   },
   "self-transcendence": {
-    "-3": "Works against something larger than the person themselves.",
-    "-2": "Harms others in a meaningful way.",
-    "-1": "Does a small harm to others.",
-    "1": "Does a small good for others.",
-    "2": "Helps others in a meaningful way.",
-    "3": "Contributes to something larger than the person themselves.",
+    "-3": "Keeps the person from contributing to major or meaningful causes.",
+    "-2": "Keeps the person from making a lasting difference for other people or causes.",
+    "-1": "Keeps the person from giving something real to others.",
+    "1": "Lets the person give something real to others at a human scale.",
+    "2": "Lets the person make a lasting difference for other people or causes.",
+    "3": "Lets the person contribute to major or meaningful causes.",
   },
 };
 
