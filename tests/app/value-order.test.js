@@ -2,8 +2,8 @@
 
 /**
  * The order of `metadata.values` is a claim (lib/utils/value-order.ts): the
- * weighing layer seeds the first value at +3 and the second at +2, so the value
- * picker must keep the order the author picked them in.
+ * weighing panel lists claims in it and the promise's fingerprint hashes it, so
+ * the value picker must keep the order the author picked them in.
  *
  * Loads the one-file util with `ts.transpileModule` — it imports nothing.
  */

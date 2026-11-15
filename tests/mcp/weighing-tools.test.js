@@ -174,7 +174,7 @@ async function main() {
     check("nothing is assessed, and it says every figure is a guess", first.json.totals.assessed === 0 && first.json.notes.some((n) => /seeded/.test(n)), JSON.stringify(first.json.notes));
     check("all of it is guesswork", first.json.totals.guesswork.promised === 1);
     const consent = first.json.promises.find((p) => p.node_id === "AC-consent");
-    check("served is seeded from claim order: +3 and +2 over 3 = 1.67", consent.served === 1.67 && consent.cost === 0, JSON.stringify(consent));
+    check("served is seeded at +1 per claim, whatever the order: (1 + 1) / 3 = 0.67", consent.served === 0.67 && consent.cost === 0, JSON.stringify(consent));
     check("kept share is live platforms over applicable ones", consent.kept_share === 0.5);
     check("no positioning, no positioned figure", consent.positioned === null && first.json.positioning === null);
     check("a list row carries no cells; the subject read does", consent.cells === undefined);
@@ -183,6 +183,9 @@ async function main() {
     const one = await repo.call("get_matrix", { subject: "AC-consent" });
     check("a subject read returns every cell with its scorer", one.json.promise.cells.length === 2 && one.json.promise.cells.every((c) => c.source === "seed" && c.scorer.kind === "rule" && c.confidence === 0));
     check("…and the scale's anchors, so the agent scores against words", one.json.scale.anchors["-3"] && one.json.scale.anchors["3"] && one.json.confidence_anchors["0"]);
+    const anxietyElement = one.json.elements?.find((e) => e.id === "reduces-anxiety");
+    check("…and every element's question and reach ladder", one.json.elements?.length === 30 && typeof anxietyElement?.question === "string" && typeof anxietyElement?.anchors?.["1"] === "string" && typeof anxietyElement?.anchors?.["-3"] === "string", JSON.stringify(anxietyElement));
+    check("probabilities stay out of a subject read unless asked", one.json.promise.cells.every((c) => !("p_serves" in c) && !("p_costs" in c)));
     check("a view is not a subject", (await repo.call("get_matrix", { subject: "V-home" })).isError);
     check("an unknown matrix is an error", (await repo.call("get_matrix", { matrix: "nope" })).isError);
     check("a bad sort is an error", (await repo.call("get_matrix", { sort: "vibes" })).isError);
@@ -217,8 +220,8 @@ async function main() {
     check("the scorer is stamped an agent, with the model", scored.json.assessment.scorer.kind === "agent" && scored.json.assessment.scorer.model === "claude");
     // D14: with nothing set anywhere the field is absent (the tmpdir is not a git repo, and no global config is read).
     check("on_behalf_of is absent when nothing says whose it is", !("on_behalf_of" in scored.json.assessment.scorer), JSON.stringify(scored.json.assessment.scorer));
-    check("the basis is stamped: fingerprint and the set's version", /^fp1-/.test(scored.json.assessment.basis.fingerprint) && scored.json.assessment.basis.set_version === "1.0.0");
-    check("the reply carries the level's anchor", typeof scored.json.anchor === "string" && scored.json.anchor.length > 0);
+    check("the basis is stamped: fingerprint and the set's version", /^fp1-/.test(scored.json.assessment.basis.fingerprint) && scored.json.assessment.basis.set_version === "2.0.0");
+    check("the reply carries the level's anchor — the element's own ladder, not the scale's generic words", scored.json.anchor === anxietyElement.anchors["1"] && scored.json.anchor !== one.json.scale.anchors["1"], String(scored.json.anchor));
     const file = repo.readJson("docs", "weighing", "assessments", "value.json");
     check("it upserts docs/weighing/assessments/value.json — the sidecar is the record", file.matrix === "value" && file.assessments.length === 1);
     check("…and writes nothing to the journal", !readFileSync(path.join(repo.dir, "docs", "arkaik", "journal.jsonl"), "utf8").includes("weighing."));
@@ -232,10 +235,10 @@ async function main() {
     // --- the read now reflects it -------------------------------------------------------
     const after = await repo.call("get_matrix", { subject: "AC-consent" });
     const p = after.json.promise;
-    check("served and cost are never netted: +3 seed, +2 scored, −1 scored", p.served === 1.67 && p.cost === 0.33, JSON.stringify(p));
+    check("served and cost are never netted: +1 seed, +2 scored, −1 scored", p.served === 1 && p.cost === 0.33, JSON.stringify(p));
     check("a scored claim reads at the scorer's level", p.cells.find((c) => c.criterion === "reduces-anxiety").level === 2 && p.cells.find((c) => c.criterion === "reduces-anxiety").source === "stored");
     check("the unclaimed cost is flagged", p.flags.unclaimed_cost.join() === "reduces-effort");
-    check("guesswork is only the seeded reduces-risk cell now", p.guesswork.served === 0.6, String(p.guesswork.served));
+    check("guesswork is only the seeded reduces-risk cell now", p.guesswork.served === 0.33, String(p.guesswork.served));
     check("assessed is one promise", (await repo.call("get_matrix")).json.totals.assessed === 1);
 
     // --- staleness: edit the promise, the score goes stale ---------------------------------
@@ -298,6 +301,19 @@ async function main() {
     const out = JSON.parse(packed.stdout);
     check("arkaik pack folds the agent's file into bundle.weighing", out.weighing?.assessments?.length === 3 && out.weighing.sets[0].id === "positioning", packed.stderr);
     check("validate_bundle reports no error for the repo", (await repo.call("validate_bundle")).json.errors?.length === 0);
+
+    // --- probabilities: a probabilistic scorer's certainty, stored sparingly --------------------------
+    const offRange = await repo.call("assess", { subject: "AC-invite", criterion: "simplifies", level: 1, confidence: 1, evidence: "one tap", p_serves: 1.4 });
+    check("a probability off 0..1 is refused with the planner's reason", offRange.isError && offRange.json.refusals?.[0]?.reason === "invalid_entry", offRange.text.slice(0, 200));
+    const unsure = await repo.call("assess", { subject: "AC-invite", criterion: "simplifies", level: 1, confidence: 1, evidence: "one tap instead of a form", model: "jev-1.14.0", p_serves: 0.55, p_costs: 0.2 });
+    check("assess records p_serves and p_costs on the row", !unsure.isError && unsure.json.assessment.p_serves === 0.55 && unsure.json.assessment.p_costs === 0.2, unsure.text.slice(0, 300));
+    const invite = (await repo.call("get_matrix", { subject: "AC-invite" })).json.promise;
+    const simplifies = invite.cells.find((c) => c.criterion === "simplifies");
+    check("an unsure level is marked uncertain, and the promise lists it", simplifies.uncertain === true && invite.uncertain.join() === "simplifies", JSON.stringify(simplifies));
+    check("…its numbers stay out unless asked", !("p_serves" in simplifies));
+    const withP = (await repo.call("get_matrix", { subject: "AC-invite", probabilities: true })).json.promise.cells.find((c) => c.criterion === "simplifies");
+    check("probabilities: true adds them", withP.p_serves === 0.55 && withP.p_costs === 0.2);
+    check("filter=uncertain lists it", (await repo.call("get_matrix", { filter: "uncertain" })).json.promises.map((x) => x.node_id).join() === "AC-invite");
   } finally {
     repo.stop();
   }
@@ -375,7 +391,7 @@ async function main() {
     ...BUNDLE,
     weighing: {
       sets: [],
-      matrices: [{ id: "draft-m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, status: "draft" }],
+      matrices: [{ id: "draft-m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" }, status: "draft" }],
       assessments: [{ matrix: "value", subject: "AC-invite", criterion: "connects", level: 2, scorer: { kind: "human", id: "arkaik-app" }, confidence: 2, evidence: "a person", basis: { fingerprint: "fp1-0", set_version: "1.0.0" }, ts: "2026-11-14T10:00:00.000Z" }],
     },
   };

@@ -59,7 +59,7 @@ async function main() {
   check("getProject folds the event into a weighing section", after.weighing?.assessments?.length === 1);
   const row = after.weighing?.assessments?.[0];
   check("the browser is a person: the scorer is stamped human", row.scorer.kind === "human");
-  check("the basis is read off the stored node: fingerprint and set version", /^fp1-/.test(row.basis.fingerprint) && row.basis.set_version === "1.0.0");
+  check("the basis is read off the stored node: fingerprint and set version", /^fp1-/.test(row.basis.fingerprint) && row.basis.set_version === "2.0.0");
   check("the level, confidence and evidence are the caller's", row.level === 2 && row.confidence === 2 && row.evidence === "the title says so");
 
   const stored = await db.projects.get(PROJECT);
@@ -73,7 +73,7 @@ async function main() {
   check("a later write replaces the cell", rescored.length === 1 && rescored[0].level === -1);
 
   // --- a positioning ---------------------------------------------------------
-  const positioning = { id: "positioning", version: "1.0.0", subject: "acceptance", scale: { min: -3, max: 3, anchors: {} }, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "connects", weight: 3 }] };
+  const positioning = { id: "positioning", version: "1.0.0", subject: "acceptance", scale: { min: -3, max: 3, anchors: {} }, role: "positioning", status: "draft", extends: "value-contribution@2", criteria: [{ id: "connects", weight: 3 }] };
   await localProvider.appendWeighingEvents(PROJECT, [{ type: "weighing.set.saved", set: positioning }]);
   const withSet = (await localProvider.getProject(PROJECT)).weighing;
   check("a saved positioning folds into sets", withSet?.sets?.length === 1 && withSet.sets[0].status === "draft");

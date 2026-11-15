@@ -111,7 +111,9 @@ One meaning per word. "New" means the model does not have it today. "Derived" me
 | **Leaf** | An acceptance with no children. It carries the Gherkin and the platform statuses. A quick win is a lone leaf. | Derived | |
 | **Journey** | A flow. A promise belongs to the journeys its `covers` edges reach. | Exists | Species `flow` |
 | **Value element** | One of 30 reasons a promise can matter, in 4 tiers (functional, emotional, life-changing, social impact). | Exists | `VALUE_IDS` in `packages/schema/src/ids.ts`, labels in `lib/config/values.ts` |
-| **Opportunity** | A need, pain or wish in the user's voice, with evidence. | New | Species `opportunity`, `OPP-` |
+| **Opportunity** | A need, pain or wish in the user's voice, with evidence. Said **"need"** to a human, the way an acceptance is a promise (owner, 2026-11-15). | New | Species `opportunity`, `OPP-` |
+| **Need** | The same thing as an opportunity, said to a human. `opportunity` stays the word in the schema. | New | A label, not an entity |
+| **Feedback** | One real-life occurrence of one or several needs: evidence, dated and sourced (a `request.filed` event, say), linked to needs many-to-many. Not weighed itself; it adds evidence and frequency to a need's size. | New | Slice 2 |
 | **Outcome** | A measurable change in what people do, that the team wants. | New | Species `outcome`, `OUT-` |
 | **Solution** | A story that answers an opportunity. It is a role, drawn as an `addresses` edge. | New | Edge, no species |
 | **Hollow need** | An unnamed opportunity, created when a promise is linked straight to an outcome. A person or an agent names it later. | New | An `opportunity` node flagged as unnamed |
@@ -356,7 +358,7 @@ interface CriteriaSet {
 
 interface Matrix {
   id: string;                 // "value"
-  set: string;                // "value-contribution@1"
+  set: string;                // "value-contribution@2"
   subjects:
     | { kind: "query"; species: SpeciesId }
     | { kind: "list"; items: { id: string; title?: string; node_id?: string }[] };
@@ -377,13 +379,15 @@ interface Assessment {
   basis?: { fingerprint?: string; commit?: string; set_version: string };
   accepted?: { decision: string; level: number };   // § 10
   run?: string;
+  p_serves?: number;          // a probabilistic scorer's certainty that it serves, 0..1 (§ 8, ruler v2)
+  p_costs?: number;           // the same for costs, asked independently
   ts: string;
 }
 ```
 
 ### Rules that complete it
 
-**A missing row and a zero are two different statements.** In Kritik, "not applicable" is an absent row, never a level. Weighing keeps that for criteria that do not apply. In the value matrix, a blank cell means "nobody has assessed this", and an explicit **0** means "assessed, unrelated". Both add nothing to any sum. The difference matters to claim checking: a claimed element assessed at 0 or 1 is "claim not supported" ([below](#claim-and-assessment-are-two-things)), which needs a row that says 0.
+**A missing row and a zero are two different statements.** In Kritik, "not applicable" is an absent row, never a level. Weighing keeps that for criteria that do not apply. In the value matrix, a blank cell means "nobody has assessed this", and an explicit **0** means "assessed, unrelated". Both add nothing to any sum. The difference matters to claim checking: a claimed element assessed at 0 is "claim not supported" ([below](#claim-and-assessment-are-two-things)), which needs a row that says 0.
 
 **Confidence has anchors too.**
 
@@ -394,7 +398,7 @@ interface Assessment {
 | 2 | Evidenced: cites something outside the subject. | A person or agent quoting feedback, a decision, a finding, code. |
 | 3 | Verified: reviewed by a person, measured, or survived a second scorer trying to refute it. | Kritik's `CONFIRMED` verdict is this. |
 
-A probabilistic scorer writes its most likely level and maps its probability onto this scale. Records are `catchall`, so it may keep the full distribution in an extra field.
+A probabilistic scorer writes its most likely level and maps its probability onto this scale. It may also store **`p_serves` and `p_costs`**, its certainty (0 to 1) that the subject serves and that it costs the element, asked independently. Nothing more of a distribution is stored, and no raw scorer answers ride in the bundle. A cell is **uncertain**, and the interface reads it as a range, when the scorer was under 0.7 sure of the direction its level took, or at least 0.3 sure of the other one (the gates the Jev POC found stable). `get_matrix` returns the numbers only when asked. Uncertainty is a marker, never a discount: it changes no sum.
 
 **Provenance and who wins.** The latest assessment per cell *per kind of scorer* is kept, so a human's level and an agent's can sit side by side.
 
@@ -423,9 +427,9 @@ The list of stale and unscored cells is the work list for a re-audit, as `kritik
 
 | Situation | What it means | What the page says | Flag |
 |---|---|---|---|
-| Claimed, no assessment | Nobody has looked yet | "Seeded": a guess from claim order (confidence 0), weighed and labelled as a guess. | none |
-| Claimed, assessed +2 or +3 | The claim holds | A served level | none |
-| Claimed, assessed 0 or +1 | The claim is stronger than the promise | "Claim not supported" | `claim_not_supported` |
+| Claimed, no assessment | Nobody has looked yet | "Seeded": every claim guessed at +1 (confidence 0), weighed and labelled as a guess. | none |
+| Claimed, assessed +1, +2 or +3 | The claim holds. On the reach ruler +1 is a real contribution within the product. | A served level | none |
+| Claimed, assessed 0 | The promise does not touch what it claims | "Claim not supported" | `claim_not_supported` |
 | Claimed, assessed negative | The promise costs what it claims to serve | "Claim contradicted" | `claim_contradicted` |
 | Not claimed, assessed +1 or more | The promise does more than it says | "Unclaimed value" | `unclaimed_value` |
 | Not claimed, assessed negative | The promise costs something it never mentioned | "**Unclaimed cost**" | `unclaimed_cost` |
@@ -465,15 +469,23 @@ Criteria are library content, not product anatomy, so they are not graph nodes e
 
 The owner asked why scoring cannot be negative. A consent page that asks for 16 or older and for health data serves some values (it reduces risk) and costs others (it is worrying).
 
+**The scale measures reach in a person's life** (ruler v2, `value-contribution@2`, 2026-11-15). The first ruler (`@1`) measured how *central* a value was to the promise; the Jev POC (`~/code/arkaik-weighing-jev-poc/MEMO.md`) showed that this inflates every claim to +2 or +3. A value element is global, not scoped to the product: opening an account with any email "avoids hassles" inside the app, but +3 on *avoids hassles* should mean in the person's life, the way a GPS does.
+
 | Level | Meaning |
 |---|---|
-| **+3** | Core. The reason this promise exists. |
-| **+2** | Supports clearly. |
-| **+1** | Touches. A side effect nobody would miss. |
+| **+3** | Life-wide. It gives the person this well beyond the product and its domain. |
+| **+2** | Across the domain. The person gets this in the whole area the product belongs to. |
+| **+1** | Within the product. A real contribution, felt while using it. |
 | **0** | Unrelated. |
-| **−1** | Small friction. |
-| **−2** | Works against it. The user notices. |
-| **−3** | Costs it at its core. The user feels the opposite. |
+| **−1** | Within the product. A small cost, felt while using it. |
+| **−2** | Across the domain. The person notices the loss in the whole area the product belongs to. |
+| **−3** | Life-wide. It leaves the person with the opposite of this in their life. |
+
+- **Each element has its own ladder** (`packages/schema/src/weighing-ladders.ts`): the six non-zero levels of *saves time* run from "costs hours out of the person's life" to "gives back hours of their life, the way online banking replaced trips to the bank". The table above is the fallback. The ladders were drafted in the Jev POC; only the positive *informs* ladder is the owner's wording, and the rest wait for the owner's review.
+- **Informs is asked as "mainly"**: is what this promise mainly gives the person information, rather than an ability, a shortcut, a protection or a feeling? Asked "at least a little", every promise informs the person about the service. This is the wording of one element's question, a measurement fix, not a second dimension.
+- **There is no centrality axis.** "What the promise is mainly for" is not stored. The pyramid is an audit and navigation compass, like Kritik, so absolute reach is what counts (owner, 2026-11-15).
+- **Most promises land at +1.** That is what the definition implies, and it was accepted. +3 is rare by design.
+- **Migration is the major bump.** The built-in matrix reads `@2`. Every level scored against `@1` reads **stale** until re-scored: it still wins its cell and still counts, flagged, like any stale level. `@1` stays in the library, frozen, so a positioning or a project matrix that names it still resolves; a positioning on `@1` raises `weighing-positioning-old-ruler` until it is saved again.
 
 Rules that make it useful:
 
@@ -481,8 +493,8 @@ Rules that make it useful:
 - **Elements read as two-sided bars.** What serves it on one side, what erodes it on the other.
 - **Authors claim intent, so they rarely claim costs.** "Unclaimed cost" is the most valuable output of an agent audit.
 - **Negative levels are never seeded by a rule.** A person or an agent adds them.
-- **Positive levels can be seeded** from the order of `metadata.values`: the first claimed element core (+3), the second supports (+2), every other claimed element touches (+1), never negative. They carry scorer `rule` and confidence 0, and are computed on read, never stored. The first two steps are the rule of the first draft and cover every case in Pebbles, where an acceptance claims at most two elements; the +1 for the rest closes the case of three or more. These are guesses and say so on every number built from them.
-- No data exists on an earlier scale, because nothing of weighing has shipped, so there is no migration. The first draft of this design used 0 to 3. Its positive levels map one to one onto +1 to +3.
+- **Positive levels can be seeded**: every claimed element is guessed at **+1**, within the product, whatever its position in `metadata.values`. On the reach ruler the claim order says what the author thought of first, not how far it reaches. (Under `@1` the first claim seeded +3 and the second +2; that overstated almost every claim.) Seeds carry scorer `rule` (`seed-claimed`) and confidence 0, and are computed on read, never stored. They are guesses and say so on every number built from them.
+- **One cell can both serve and cost.** Sign-in simplifies, yet adds a step. A scorer that asks "serves?" and "costs?" separately finds such cells. Keep one signed level per cell, and read "both" — or a promise that states a feature and its limitation in one line ("you can X, but not Y") — as a **split this promise** signal, which is what stories are for ([§ 5](#5-stories)). One situation per line is an authoring rule. The limitation is not part of the promise: it is a need, or feedback about one, shown beside the promise as "at stake around it", never subtracted.
 
 ### Real examples
 
@@ -635,7 +647,7 @@ Shape **(proposal)**. The three rules are decided. X, the journey cap's threshol
 ]
 ```
 
-A cost of −1 on a live promise is still unexplained ([§ 10](#10-costs-and-decisions)). It does not cap, because the element cap starts at −2. "Owed" means the promise applies on a platform and is not `live` there.
+A cost of −1 on a live promise is still unexplained ([§ 10](#10-costs-and-decisions)). It does not cap, because the element cap starts at −2. **Caps ignore −1** on the reach ruler too (owner, 2026-11-15): −2 now means a cost across the domain, and product-level friction shows in the cost totals, never as a lid. "Owed" means the promise applies on a platform and is not `live` there.
 
 - **The outcome cap lifts at *promised*.** A need stops capping once a chosen story addresses it ([§ 6](#6-opportunities-and-outcomes)). The outcome's state then follows how much is kept.
 - **The journey cap uses the owed share.** It fires when the promises owed on a platform carry at least X% of the journey's served mass on that platform. It counts the whole owed share, so it never ties and no single promise has to be picked as the heaviest. Later, an "essential" mark on a promise could let one critical promise fire the cap alone ([§ 18](#18-open-questions)).
@@ -843,7 +855,7 @@ What this shows that no page shows today:
 
 ### A few rows of the value matrix, on the signed scale
 
-The positive levels below are the discussion's positive levels, unchanged by the move to −3..+3. Plain numbers are seeded from the order of `metadata.values` (rule, confidence 0). **Bold** numbers are an agent's assessment (confidence 1), with the seed it replaces. Nothing is negative: negatives are never seeded, and no agent has audited costs on this slice yet.
+**These rows predate ruler v2** ([§ 8](#8-the-signed-value-scale)): they read levels as centrality and seed by claim order. Under the reach ruler most of them land at +1, and every seed is +1. They are kept as the record of the discussion. The positive levels below are the discussion's positive levels, unchanged by the move to −3..+3. Plain numbers are seeded from the order of `metadata.values` (rule, confidence 0). **Bold** numbers are an agent's assessment (confidence 1), with the seed it replaces. Nothing is negative: negatives are never seeded, and no agent has audited costs on this slice yet.
 
 | Story or promise | connects | affiliation and belonging | reduces anxiety | reduces risk | reduces effort | other | Served | Cost | Kept on |
 |---|---|---|---|---|---|---|---|---|---|

@@ -1622,7 +1622,7 @@ async function main() {
 
     // 5. A positioning is a saved set, latest-wins.
     {
-      const set = { id: "positioning", version: "1.0.0", subject: "acceptance", scale: { min: -3, max: 3, anchors: {} }, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "connects", weight: 3 }] };
+      const set = { id: "positioning", version: "1.0.0", subject: "acceptance", scale: { min: -3, max: 3, anchors: {} }, role: "positioning", status: "draft", extends: "value-contribution@2", criteria: [{ id: "connects", weight: 3 }] };
       const first = await weighPost([{ type: "weighing.set.saved", set }], weighToken.plaintext);
       check("a positioning draft is recorded", first.status === 200, String(first.status));
       await weighPost([{ type: "weighing.set.saved", set: { ...set, status: "active" } }], weighToken.plaintext);

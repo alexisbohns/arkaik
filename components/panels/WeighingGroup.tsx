@@ -36,8 +36,8 @@ import { assessmentFieldsFor, evidenceChanged, intentOf, type RowIntent } from "
  *
  * - The elements the author *claimed* come first, in claim order, then every
  *   other element somebody has scored; the rest wait behind "Add an element".
- * - A cell nobody has scored reads at its **seeded** level and says so: a guess
- *   from the order of `values`, never a score. Choosing a level writes the
+ * - A cell nobody has scored reads at its **seeded** level and says so: every
+ *   claimed value is guessed at +1 (within the product), never a score. Choosing a level writes the
  *   first human assessment and replaces the guess — at confidence 1 ("inferred
  *   from the promise's own text") unless a person says otherwise, because
  *   nobody picking a level on a form means "I guessed".
@@ -82,7 +82,7 @@ const pct = (share: number) => `${Math.round(share * 100)}%`;
 const num = (value: number) => (Math.round(value * 100) / 100).toFixed(2);
 
 function scorerLabel(cell: EffectiveCell): string {
-  if (cell.source === "seed") return "Guess, from the order of the claimed values";
+  if (cell.source === "seed") return "Guess: a claimed value starts at +1, within the product";
   const model = typeof cell.scorer.model === "string" ? ` (${cell.scorer.model})` : "";
   return `${cell.scorer.kind === "human" ? "A person" : "An agent"}: ${cell.scorer.id}${model}`;
 }

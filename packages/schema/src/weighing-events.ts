@@ -38,7 +38,9 @@ import {
 import {
   WEIGHING_ASSESSMENT_RECORDED,
   WEIGHING_SET_SAVED,
+  WEIGHING_PROBABILITY_FIELDS,
   assessmentKey,
+  isWeighingProbability,
   type WeighingAssessment,
   type WeighingConfidence,
   type WeighingCriteriaSet,
@@ -68,6 +70,9 @@ export type WeighingEventInput =
       commit?: string;
       /** The model behind an agent scorer. */
       model?: string;
+      /** A probabilistic scorer's certainty that it serves / costs, 0..1. */
+      p_serves?: number;
+      p_costs?: number;
     }
   | { type: typeof WEIGHING_SET_SAVED; set: WeighingCriteriaSet };
 
@@ -127,7 +132,7 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
         if (stamped in entry) return { error: `events[${index}].${stamped} is stamped by the server — remove it` };
       }
       const known: Record<string, unknown> = {};
-      for (const field of ["matrix", "subject", "criterion", "level", "confidence", "evidence", "refs", "run", "commit", "model"] as const) {
+      for (const field of ["matrix", "subject", "criterion", "level", "confidence", "evidence", "refs", "run", "commit", "model", ...WEIGHING_PROBABILITY_FIELDS] as const) {
         if (entry[field] !== undefined) known[field] = entry[field];
       }
       parsed.push({ type: WEIGHING_ASSESSMENT_RECORDED, ...known } as WeighingEventInput);
@@ -210,6 +215,9 @@ function assessmentProblem(entry: Record<string, unknown>): string | undefined {
     if (!isNonEmptyString(entry.evidence) || entry.evidence.trim() === "") return "evidence must be a non-blank string when present";
     if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
   }
+  for (const field of WEIGHING_PROBABILITY_FIELDS) {
+    if (entry[field] !== undefined && !isWeighingProbability(entry[field])) return `${field} must be a number from 0 to 1 when present`;
+  }
   if (entry.refs !== undefined) {
     if (!Array.isArray(entry.refs) || !entry.refs.every(isNonEmptyString)) return "refs must be an array of non-empty strings when present";
     if (entry.refs.length > refs) return `refs must hold at most ${refs} items`;
@@ -276,7 +284,7 @@ export function planWeighingEvents(
       if (set.id !== POSITIONING_SET_ID || set.role !== "positioning") {
         return refuse("invalid_set", `only the positioning can be saved: id "${POSITIONING_SET_ID}" with role "positioning"`);
       }
-      if (ruler === undefined) return refuse("invalid_set", `a positioning extends a set the library holds (e.g. ${VALUE_SET_ID}@1)`);
+      if (ruler === undefined) return refuse("invalid_set", `a positioning extends a set the library holds (e.g. ${VALUE_SET_ID}@2)`);
       const known = new Set(ruler.criteria.map((criterion) => criterion.id));
       for (const criterion of set.criteria) {
         if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
@@ -366,6 +374,8 @@ export function planWeighingEvents(
         ...(input.commit !== undefined ? { commit: input.commit } : {}),
       },
       ...(input.run !== undefined ? { run: input.run } : {}),
+      ...(input.p_serves !== undefined ? { p_serves: input.p_serves } : {}),
+      ...(input.p_costs !== undefined ? { p_costs: input.p_costs } : {}),
       ts,
     };
     const { ts: _ts, ...payload } = row;

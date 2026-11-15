@@ -33,6 +33,7 @@ export * from "./journal-page";
 export * from "./weighing";
 export * from "./weighing-schemas";
 export * from "./weighing-library";
+export * from "./weighing-ladders";
 export * from "./weighing-validate";
 export * from "./weighing-events";
 export * from "./weighing-derive";

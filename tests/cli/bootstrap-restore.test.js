@@ -1287,7 +1287,7 @@ async function main() {
       subject: "acceptance",
       role: "positioning",
       status: "active",
-      extends: "value-contribution@1",
+      extends: "value-contribution@2",
       criteria: [{ id: "connects", weight: 3 }],
     });
   };

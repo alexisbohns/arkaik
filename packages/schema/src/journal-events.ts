@@ -343,6 +343,8 @@ export const WeighingAssessmentRecordedEventSchema = z
     refs: z.array(z.string()).optional(),
     basis: WeighingAssessmentBasisSchema.optional(),
     run: z.string().optional(),
+    p_serves: z.number().min(0).max(1).optional(),
+    p_costs: z.number().min(0).max(1).optional(),
   })
   .catchall(z.unknown());
 

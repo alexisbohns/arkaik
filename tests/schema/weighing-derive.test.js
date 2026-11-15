@@ -25,7 +25,9 @@ const {
   matrixSubjects,
   sortPromises,
   resolvePlatformStatus,
+  isUncertainCell,
   SEED_SCORER_ID,
+  SEED_LEVEL,
 } = loadSchema();
 const { getNodePlatformStatuses } = loadEffectiveStatus();
 
@@ -61,7 +63,7 @@ const row = (node, criterion, level, over = {}) => ({
   scorer: human,
   confidence: 2,
   evidence: "because",
-  basis: { fingerprint: acceptanceFingerprint(node), set_version: "1.0.0" },
+  basis: { fingerprint: acceptanceFingerprint(node), set_version: "2.0.0" },
   ts: "2026-11-15T10:00:00.000Z",
   ...over,
 });
@@ -69,10 +71,10 @@ const set = VALUE_CONTRIBUTION_SET;
 
 // --- Seeding ----------------------------------------------------------------
 
-check("the first claimed value seeds +3, the second +2, every other +1", eq([0, 1, 2, 3, 9].map(seedLevelAt), [3, 2, 1, 1, 1]));
+check("every claimed value seeds +1, whatever its position — the reach ruler's least claim", eq([0, 1, 2, 3, 9].map(seedLevelAt), [1, 1, 1, 1, 1]) && SEED_LEVEL === 1);
 const four = ac("AC-four", ["connects", "reduces-anxiety", "informs", "organizes"]);
 const seeds = seedAssessments(four, { id: "value" }, set);
-check("a seed is made per claimed element, in claim order", eq(seeds.map((s) => s.criterion), ["connects", "reduces-anxiety", "informs", "organizes"]) && eq(seeds.map((s) => s.level), [3, 2, 1, 1]));
+check("a seed is made per claimed element, in claim order", eq(seeds.map((s) => s.criterion), ["connects", "reduces-anxiety", "informs", "organizes"]) && eq(seeds.map((s) => s.level), [1, 1, 1, 1]));
 check("a seed is a rule at confidence 0", seeds.every((s) => s.scorer.kind === "rule" && s.scorer.id === SEED_SCORER_ID && s.confidence === 0));
 check("a seed is never negative", seeds.every((s) => s.level > 0));
 check("an unknown or repeated value is not seeded", eq(claimedElements(ac("AC-x", ["connects", "teleports", "connects"]), set), ["connects"]));
@@ -81,23 +83,27 @@ check("a promise that claims nothing seeds nothing", seedAssessments(ac("AC-none
 // --- The level a cell reads at ----------------------------------------------
 
 const node = ac("AC-a", ["connects"]);
-const current = { fingerprint: acceptanceFingerprint(node), setVersion: "1.0.0" };
+const current = { fingerprint: acceptanceFingerprint(node), setVersion: "2.0.0" };
 const seed = seedAssessments(node, { id: "value" }, set)[0];
 const resolve = (stored, over = {}) => resolveCell("connects", stored, seed, over.current ?? current, true);
 
-check("with nothing stored a cell reads its seed", resolve([]).source === "seed" && resolve([]).level === 3 && resolve([]).confidence === 0);
+check("with nothing stored a cell reads its seed", resolve([]).source === "seed" && resolve([]).level === 1 && resolve([]).confidence === 0);
 check("an unclaimed, unscored cell is blank", resolveCell("informs", [], undefined, current, false) === undefined);
 check("an agent beats the seed", resolve([row(node, "connects", 1, { scorer: agent })]).level === 1);
 check("a human beats an agent, even a newer one", resolve([row(node, "connects", 2), row(node, "connects", -1, { scorer: agent, ts: "2026-11-16T10:00:00.000Z" })]).level === 2);
 check("the latest row wins within a kind", resolve([row(node, "connects", 1), row(node, "connects", 3, { ts: "2026-11-15T12:00:00.000Z" })]).level === 3);
 check("a stored rule row is ignored — seeds are computed", resolve([row(node, "connects", -3, { scorer: { kind: "rule", id: "x" } })]).source === "seed");
 
-const moved = { fingerprint: "fp1-other", setVersion: "1.0.0" };
+const moved = { fingerprint: "fp1-other", setVersion: "2.0.0" };
 const staleHuman = resolve([row(node, "connects", 2), row(node, "connects", 3, { scorer: agent })], { current: moved });
 check("a moved subject marks the winner stale", staleHuman.stale === true);
 check("…and staleness never changes the winner", staleHuman.level === 2 && staleHuman.scorer.kind === "human");
 check("…the agent's level rides beside it", staleHuman.others.length === 1 && staleHuman.others[0].level === 3);
 check("a new set major marks it stale", resolve([row(node, "connects", 2, { basis: { fingerprint: current.fingerprint, set_version: "0.9.0" } })]).stale === true);
+check("a level scored on the @1 ruler reads stale under @2 — and still wins, as every stale level does", (() => {
+  const cell = weighPromise(node, buildWeighingContext({ assessments: [row(node, "connects", 3, { basis: { fingerprint: acceptanceFingerprint(node), set_version: "1.0.0" } })] })).cells[0];
+  return cell.stale === true && cell.level === 3 && cell.source === "stored";
+})());
 check("a fresh row is not stale", resolve([row(node, "connects", 2)]).stale === false);
 check("a row with no basis is never stale", resolve([row(node, "connects", 2, { basis: undefined })], { current: moved }).stale === false);
 check("a human and an agent two levels apart go on the review list", resolve([row(node, "connects", 3), row(node, "connects", 1, { scorer: agent })]).review === true);
@@ -122,14 +128,14 @@ check("cost is the sum of |negative| levels over 3", near(w.cost, 1 / 3), String
 check("served and cost are never netted: served is exactly 4/3, cost 1/3, and nothing reads their difference (1)", w.served === 4 / 3 && w.cost === 1 / 3 && [w.served, w.cost, w.kept_share, w.guesswork.served, w.guesswork.cost].every((x) => x !== 1) && w.positioned === null);
 check("the claimed elements come first, in claim order, then the rest", eq(w.cells.map((c) => c.criterion), ["reduces-risk", "reduces-anxiety", "reduces-effort"]));
 check("an unclaimed negative is flagged as an unclaimed cost", eq(w.flags.unclaimed_cost, ["reduces-effort"]));
-check("a claim assessed at +3 is supported; one assessed at +1 is not (the consent page claims anxiety, delivers a touch)", eq(w.flags.claim_not_supported, ["reduces-anxiety"]) && w.flags.unclaimed_value.length === 0);
+check("a claim assessed at +3 or at +1 is supported — +1 is a real contribution within the product", w.flags.claim_not_supported.length === 0 && w.flags.unclaimed_value.length === 0);
 check("no positioning means no positioned variant", w.positioned === null);
 check("kept share is live platforms over applicable ones", near(w.kept_share, 1 / 3), String(w.kept_share));
 check("the fingerprint rides along", w.fingerprint === acceptanceFingerprint(consent));
 
 const hollow = ac("AC-hollow", ["connects", "informs"]);
 const hw = weighPromise(hollow, buildWeighingContext({ assessments: [row(hollow, "connects", 1), row(hollow, "organizes", 2)] }));
-check("claimed but assessed at 1 or less: the claim is not supported", eq(hw.flags.claim_not_supported, ["connects"]));
+check("claimed and assessed at +1: the claim holds, no flag", hw.flags.claim_not_supported.length === 0);
 check("not claimed but assessed at 1 or more: an unclaimed value", eq(hw.flags.unclaimed_value, ["organizes"]));
 check("a claimed element nobody assessed is only seeded — no flag", !hw.flags.claim_not_supported.includes("informs") && hw.cells.find((c) => c.criterion === "informs").source === "seed");
 const zeroed = weighPromise(hollow, buildWeighingContext({ assessments: [row(hollow, "connects", 0)] }));
@@ -137,7 +143,7 @@ check("a stored 0 suppresses the seed and flags the claim", zeroed.cells.find((c
 
 // --- Positioning ------------------------------------------------------------
 
-const positioning = (status, criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@1", ...(status ? { status } : {}), criteria });
+const positioning = (status, criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@2", ...(status ? { status } : {}), criteria });
 const stands = [{ id: "reduces-risk", weight: 3 }, { id: "reduces-effort" }];
 const positioned = weighPromise(consent, buildWeighingContext({ ...section, sets: [positioning("active", stands)] }));
 check("an active positioning gives a positioned variant: only its elements, each times its weight", positioned.positioned && near(positioned.positioned.served, (3 / 3) * 3) && near(positioned.positioned.cost, (1 / 3) * 1), JSON.stringify(positioned.positioned));
@@ -178,13 +184,13 @@ const derived = deriveWeighing([a1, a2, gone, view], sec);
 check("the matrix judges acceptances only", derived.promises.length === 3 && !derived.promises.some((p) => p.node_id === "V-home"));
 check("matrixSubjects reads the matrix's query", matrixSubjects([a1, view], derived.matrix).length === 1);
 check("every element of the set has a mass, zeros included", Object.keys(derived.elements).length === 30 && derived.elements.variety.promised === 0);
-check("connects: promised = 3/3 (a1, human) + 3/3 (a2, seed) = 2", near(derived.elements.connects.promised, 2), String(derived.elements.connects.promised));
-check("connects: kept = 1 × 1/2 (a1) + 1 × 1 (a2) = 1.5", near(derived.elements.connects.kept, 1.5), String(derived.elements.connects.kept));
+check("connects: promised = 3/3 (a1, human) + 1/3 (a2, seed) = 4/3", near(derived.elements.connects.promised, 4 / 3), String(derived.elements.connects.promised));
+check("connects: kept = 1 × 1/2 (a1) + 1/3 × 1 (a2) = 5/6", near(derived.elements.connects.kept, 5 / 6), String(derived.elements.connects.kept));
 check("reduces-anxiety carries a cost mass and no promised mass", near(derived.elements["reduces-anxiety"].cost, 2 / 3) && derived.elements["reduces-anxiety"].promised === 0);
-check("an archived promise is weighed but counted nowhere", derived.totals.archived === 1 && near(derived.totals.promised, 2));
+check("an archived promise is weighed but counted nowhere", derived.totals.archived === 1 && near(derived.totals.promised, 4 / 3));
 check("only a1 has a stored cell", derived.totals.assessed === 1);
-check("connects: guesswork is the seeded share — a2's mass over the total", near(derived.elements.connects.guesswork.promised, 0.5), String(derived.elements.connects.guesswork.promised));
-check("the total guesswork share is the same reading across elements", near(derived.totals.guesswork.promised, 0.5));
+check("connects: guesswork is the seeded share — a2's mass over the total, 1 of 4", near(derived.elements.connects.guesswork.promised, 0.25), String(derived.elements.connects.guesswork.promised));
+check("the total guesswork share is the same reading across elements", near(derived.totals.guesswork.promised, 0.25));
 check("a promise built only from seeds is all guesswork", near(derived.promises.find((p) => p.node_id === "AC-2").guesswork.served, 1));
 check("a human-scored promise at confidence 2 is no guesswork", near(derived.promises.find((p) => p.node_id === "AC-1").guesswork.served, 0));
 check("an unknown matrix derives to nothing", deriveWeighing([a1], sec, "nope") === undefined);
@@ -241,7 +247,7 @@ const seededOnly = deriveWeighing([ac("AC-s", ["connects"], { platforms: ["web",
 check("a seeded promise's kept mass is all guesswork too", seededOnly.totals.guesswork.promised === 1 && seededOnly.totals.guesswork.kept === 1 && seededOnly.elements.connects.guesswork.kept === 1);
 
 // Draft matrices feed no roll-up
-const projectMatrix = (status) => ({ id: "m2", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, ...(status === undefined ? {} : { status }) });
+const projectMatrix = (status) => ({ id: "m2", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" }, ...(status === undefined ? {} : { status }) });
 check("a matrix with no status is active", deriveWeighing([a2], { matrices: [projectMatrix()] }, "m2") !== undefined);
 check("a matrix with status active is active", deriveWeighing([a2], { matrices: [projectMatrix("active")] }, "m2") !== undefined);
 check("a draft matrix derives to undefined", deriveWeighing([a2], { matrices: [projectMatrix("draft")] }, "m2") === undefined);
@@ -253,7 +259,7 @@ const cw = weighPromise(claims, buildWeighingContext({
   assessments: [
     row(claims, "connects", -2),       // claimed, negative -> contradicted only
     row(claims, "informs", 0),         // claimed, 0 -> not supported
-    row(claims, "organizes", 1),       // claimed, 1 -> not supported
+    row(claims, "organizes", 1),       // claimed, 1 -> holds on the reach ruler, no flag
     row(claims, "reduces-risk", 2),    // claimed, 2 -> holds, no flag
     row(claims, "variety", 3),         // claimed, 3 -> holds, no flag
     row(claims, "reduces-effort", 1),  // unclaimed +1 -> unclaimed value
@@ -261,7 +267,7 @@ const cw = weighPromise(claims, buildWeighingContext({
     row(claims, "avoids-hassles", 0),  // unclaimed 0 -> nothing
   ],
 }));
-check("claim_not_supported: claimed and the stored winner is 0 or 1", eq(cw.flags.claim_not_supported, ["informs", "organizes"]), JSON.stringify(cw.flags));
+check("claim_not_supported: claimed and the stored winner is 0 — a +1 supports the claim", eq(cw.flags.claim_not_supported, ["informs"]), JSON.stringify(cw.flags));
 check("claim_contradicted: claimed and the stored winner is negative — and only that flag", eq(cw.flags.claim_contradicted, ["connects"]) && !cw.flags.claim_not_supported.includes("connects") && !cw.flags.unclaimed_cost.includes("connects"));
 check("unclaimed_value: not claimed and the stored winner is 1 or more", eq(cw.flags.unclaimed_value, ["reduces-effort"]));
 check("unclaimed_cost: not claimed and the stored winner is negative", eq(cw.flags.unclaimed_cost, ["reduces-anxiety"]));
@@ -281,7 +287,7 @@ check("a ts tie goes to the later row", cellOf(lone, [lrow("connects", 1, tie), 
 check("timestamps compare as times, not text: an offset still orders", cellOf(lone, [lrow("connects", 1, { ts: "2026-11-15T12:00:00.000+02:00" }), lrow("connects", 2, { ts: "2026-11-15T11:00:00.000Z" })]).level === 2);
 check("an unparseable ts is the oldest, whatever its spelling", cellOf(lone, [lrow("connects", 3), lrow("connects", 1, { ts: "yesterday" })]).level === 3 && cellOf(lone, [lrow("connects", 1, { ts: "yesterday" }), lrow("connects", 3)]).level === 3);
 
-const freshAgent = resolveCell("connects", [row(node, "connects", 2, { basis: { fingerprint: "fp1-old", set_version: "1.0.0" } }), row(node, "connects", 3, { scorer: agent })], seed, current, true);
+const freshAgent = resolveCell("connects", [row(node, "connects", 2, { basis: { fingerprint: "fp1-old", set_version: "2.0.0" } }), row(node, "connects", 3, { scorer: agent })], seed, current, true);
 check("a stale human beside a fresh agent: the human still wins, flagged, and the agent (current basis) rides beside it", freshAgent.level === 2 && freshAgent.stale === true && freshAgent.others[0].level === 3 && freshAgent.others[0].basis.fingerprint === current.fingerprint);
 check("evidence is kept only when it is a string", resolve([row(node, "connects", 2, { evidence: 7 })]).evidence === undefined && resolve([row(node, "connects", 2, { evidence: "why" })]).evidence === "why");
 
@@ -289,19 +295,19 @@ const archivedNode = ac("AC-arch", ["connects"], { status: "archived", platforms
 const av = deriveWeighing([archivedNode, a2], { assessments: [row(archivedNode, "reduces-effort", -3), row(archivedNode, "connects", 3)] });
 const ap = av.promises.find((p) => p.node_id === "AC-arch");
 check("an archived promise keeps its cells and flags", ap.cells.length === 2 && eq(ap.flags.unclaimed_cost, ["reduces-effort"]) && near(ap.cost, 1));
-check("…but is excluded from every mass and from the kept total", av.elements["reduces-effort"].cost === 0 && near(av.totals.cost, 0) && near(av.elements.connects.promised, 1) && near(av.elements.connects.kept, 1));
+check("…but is excluded from every mass and from the kept total", av.elements["reduces-effort"].cost === 0 && near(av.totals.cost, 0) && near(av.elements.connects.promised, 1 / 3) && near(av.elements.connects.kept, 1 / 3));
 check("…and from the assessed count", av.totals.assessed === 0 && av.totals.archived === 1);
 
 const driftNode = ac("AC-drift", ["connects", "informs"]);
 const drift = weighPromise(driftNode, buildWeighingContext({ assessments: [
-  row(driftNode, "connects", 3, { basis: { fingerprint: "fp1-old", set_version: "1.0.0" } }),
+  row(driftNode, "connects", 3, { basis: { fingerprint: "fp1-old", set_version: "2.0.0" } }),
   row(driftNode, "informs", 3), row(driftNode, "informs", 0, { scorer: agent }),
 ] }));
 check("the promise lists the stale elements", eq(drift.stale, ["connects"]));
 check("the promise lists the elements a human and an agent disagree on", eq(drift.review, ["informs"]));
 
 const listNodes = [ac("AC-l1", ["connects"]), ac("AC-l2", ["connects"]), ac("AC-l3", ["connects"])];
-const listMatrix = { id: "m-list", set: "value-contribution@1", subjects: { kind: "list", items: [{ node_id: "AC-l1" }, { id: "AC-l2" }, { id: "AC-ghost" }] } };
+const listMatrix = { id: "m-list", set: "value-contribution@2", subjects: { kind: "list", items: [{ node_id: "AC-l1" }, { id: "AC-l2" }, { id: "AC-ghost" }] } };
 check("a list matrix judges the nodes it names, by node_id or id", eq(deriveWeighing(listNodes, { matrices: [listMatrix] }, "m-list").promises.map((p) => p.node_id), ["AC-l1", "AC-l2"]));
 check("a node repeated in the input is judged once, first wins", deriveWeighing([a2, { ...a2, title: "Again" }], undefined).promises.length === 1 && deriveWeighing([a2, { ...a2, title: "Again" }], undefined).promises[0].title === "Promise AC-2");
 
@@ -316,14 +322,37 @@ const sevenRows = sevenNodes.map((n) => row(n, "connects", 1));
 check("sums are of whole levels divided by 3 once, so seven +1 cells read exactly 7/3", deriveWeighing(sevenNodes, { assessments: sevenRows }).totals.promised === 7 / 3);
 
 // Sorting: distinct values
-const s1 = ac("AC-s1", ["informs", "connects", "organizes"]); // seeds 3,2,1
-const s2 = ac("AC-s2", ["connects", "informs"]);              // seeds 3,2
-const s3 = ac("AC-s3", ["connects"]);                         // seeds 3
-const sortSec = { sets: [positioning("active", [{ id: "connects", weight: 1 }, { id: "informs", weight: 2 }])], assessments: [row(s3, "reduces-effort", -3), row(s2, "reduces-effort", -1)] };
+const s1 = ac("AC-s1", ["informs", "connects", "organizes"]); // seeds 1,1,1
+const s2 = ac("AC-s2", ["connects", "informs"]);              // seeds 1,1
+const s3 = ac("AC-s3", ["connects"]);                         // seeds 1
+const sortSec = { sets: [positioning("active", [{ id: "connects", weight: 1 }, { id: "informs", weight: 2 }, { id: "organizes", weight: 3 }])], assessments: [row(s3, "reduces-effort", -3), row(s2, "reduces-effort", -1)] };
 const sv = deriveWeighing([s3, s2, s1], sortSec);
-check("promises sort by served over distinct values: 2, 5/3, 1", eq(sortPromises(sv.promises, "served").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]) && near(sv.promises.find((p) => p.node_id === "AC-s1").served, 2));
+check("promises sort by served over distinct values: 1, 2/3, 1/3", eq(sortPromises(sv.promises, "served").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]) && near(sv.promises.find((p) => p.node_id === "AC-s1").served, 1) && near(sv.promises.find((p) => p.node_id === "AC-s2").served, 2 / 3));
 check("promises sort by cost over distinct values: costliest first, then the rest by title", eq(sortPromises(sv.promises, "cost").map((p) => p.node_id), ["AC-s3", "AC-s2", "AC-s1"]));
-check("promises sort by positioned over distinct values", eq(sortPromises(sv.promises, "positioned").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]));
+check("promises sort by positioned over distinct values: 2, 1, 1/3", eq(sortPromises(sv.promises, "positioned").map((p) => p.node_id), ["AC-s1", "AC-s2", "AC-s3"]) && near(sv.promises.find((p) => p.node_id === "AC-s1").positioned.served, 2) && near(sv.promises.find((p) => p.node_id === "AC-s2").positioned.served, 1));
+
+// --- Probabilities: stored sparingly, read as a range when unsure ------------------
+
+check("a row without probabilities is never uncertain — its confidence already says how sure it is", isUncertainCell({ level: 2 }) === false && isUncertainCell({ level: 0 }) === false);
+check("a clear direction is certain: serves at 0.9, costs at 0.1", isUncertainCell({ level: 1, p_serves: 0.9, p_costs: 0.1 }) === false && isUncertainCell({ level: -2, p_serves: 0.05, p_costs: 0.85 }) === false);
+check("under 0.7 for the direction the level took is uncertain", isUncertainCell({ level: 1, p_serves: 0.65 }) && isUncertainCell({ level: -1, p_costs: 0.5 }));
+check("0.7 is the gate itself, so it is certain", isUncertainCell({ level: 1, p_serves: 0.7 }) === false);
+check("at least 0.3 for the other direction is uncertain — the \"both\" cell", isUncertainCell({ level: 1, p_serves: 0.95, p_costs: 0.3 }) && isUncertainCell({ level: -1, p_serves: 0.8, p_costs: 0.9 }));
+check("a 0 is uncertain when either direction reaches 0.3", isUncertainCell({ level: 0, p_serves: 0.35, p_costs: 0.1 }) && isUncertainCell({ level: 0, p_costs: 0.4 }) && !isUncertainCell({ level: 0, p_serves: 0.2, p_costs: 0.1 }));
+check("a probability off 0..1 or not a number is ignored", isUncertainCell({ level: 1, p_serves: 1.5 }) === false && isUncertainCell({ level: 1, p_serves: "0.2" }) === false && isUncertainCell({ level: 1, p_serves: Number.NaN }) === false);
+const unsure = ac("AC-unsure", ["connects"]);
+const uw = weighPromise(unsure, buildWeighingContext({ assessments: [
+  row(unsure, "connects", 1, { scorer: agent, confidence: 1, p_serves: 0.55, p_costs: 0.1 }),
+  row(unsure, "simplifies", 1, { scorer: agent, confidence: 1, p_serves: 0.95, p_costs: 0.05 }),
+  row(unsure, "informs", 2, { p_serves: 2 }),
+] }));
+const uc = (id) => uw.cells.find((c) => c.criterion === id);
+check("the winner's probabilities ride on the cell, and an unsure one is marked", uc("connects").p_serves === 0.55 && uc("connects").p_costs === 0.1 && uc("connects").uncertain === true);
+check("a sure one is not", uc("simplifies").uncertain === false && uc("simplifies").p_serves === 0.95);
+check("a probability that is not one is not carried", uc("informs").p_serves === undefined && uc("informs").uncertain === false);
+check("the promise lists its uncertain elements", eq(uw.uncertain, ["connects"]));
+check("a seed is never uncertain", weighPromise(unsure, buildWeighingContext(undefined)).cells.every((c) => c.uncertain === false));
+check("uncertainty never changes served or cost — it is a marker, not a discount", near(uw.served, 4 / 3));
 check("a promise with no positioned figure sorts last on positioned", eq(sortPromises([{ node_id: "a", title: "A", served: 9, cost: 0, positioned: null }, { node_id: "b", title: "B", served: 0, cost: 0, positioned: { served: 0 } }], "positioned").map((p) => p.node_id), ["b", "a"]));
 check("equal titles break by node id", eq(sortPromises([{ node_id: "z", title: "Same", served: 1, cost: 0, positioned: null }, { node_id: "y", title: "Same", served: 1, cost: 0, positioned: null }], "served").map((p) => p.node_id), ["y", "z"]));
 check("a missing title sorts as empty", eq(sortPromises([{ node_id: "b", title: "B", served: 0, cost: 0, positioned: null }, { node_id: "a", served: 0, cost: 0, positioned: null }], "title").map((p) => p.node_id), ["a", "b"]));

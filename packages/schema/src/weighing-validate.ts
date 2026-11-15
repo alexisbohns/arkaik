@@ -16,6 +16,7 @@ import {
   BUILT_IN_MATRICES,
   BUILT_IN_SETS,
   POSITIONING_SET_ID,
+  isOlderMajorRef,
   isWeighingMatrixShape,
   isWeighingSetShape,
   resolveWeighing,
@@ -28,7 +29,9 @@ import {
   SCORER_KINDS,
   STORED_SCORER_KINDS,
   assessmentKey,
+  WEIGHING_PROBABILITY_FIELDS,
   isWeighingAssessmentShape,
+  isWeighingProbability,
   majorOf,
   splitSetRef,
   type WeighingSection,
@@ -153,9 +156,12 @@ export function validateWeighingSection(
             ? resolveRef(entry.extends, `${path}.extends`, `Positioning "${String(entry.id)}"`, "weighing-positioning-unknown-ruler")
             : undefined;
         if (typeof entry.extends !== "string") {
-          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" does not say which set it re-weights — set extends to e.g. value-contribution@1`);
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" does not say which set it re-weights — set extends to e.g. value-contribution@2`);
         } else if (ruler !== undefined && ruler.role === "positioning") {
-          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" extends "${entry.extends}", which is itself a positioning — it must extend a criteria set such as value-contribution@1`);
+          warn(`${path}.extends`, "weighing-positioning-unknown-ruler", `Positioning "${String(entry.id)}" extends "${entry.extends}", which is itself a positioning — it must extend a criteria set such as value-contribution@2`);
+        } else if (ruler !== undefined && isOlderMajorRef(resolved, entry.extends)) {
+          // Its weights still apply (elements keep their ids across majors), but its words were written for the old ruler.
+          warn(`${path}.extends`, "weighing-positioning-old-ruler", `Positioning "${String(entry.id)}" extends ${entry.extends}, an older ruler — its weights still apply, but read its level descriptions against ${ruler.id}'s current major and save it again`);
         }
         const known = new Set(ruler !== undefined && ruler.role !== "positioning" ? ruler.criteria.map((criterion) => criterion?.id) : []);
         (Array.isArray(entry.criteria) ? entry.criteria : []).forEach((criterion, at) => {
@@ -248,6 +254,11 @@ export function validateWeighingSection(
         warn(`${path}.evidence`, "weighing-evidence-type", `${label}: evidence must be a markdown string`);
       } else if ((entry.confidence === 2 || entry.confidence === 3) && (entry.evidence === undefined || entry.evidence.trim() === "")) {
         warn(`${path}.evidence`, "weighing-no-evidence", `${label}: confidence ${String(entry.confidence)} claims evidence and cites none`);
+      }
+      for (const field of WEIGHING_PROBABILITY_FIELDS) {
+        if (entry[field] !== undefined && !isWeighingProbability(entry[field])) {
+          warn(`${path}.${field}`, "weighing-probability-shape", `${label}: ${field} must be a number from 0 to 1 — it is ignored`);
+        }
       }
       if (entry.refs !== undefined && !(Array.isArray(entry.refs) && entry.refs.every((ref) => typeof ref === "string"))) {
         warn(`${path}.refs`, "weighing-refs-type", `${label}: refs must be an array of id strings`);

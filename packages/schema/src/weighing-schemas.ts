@@ -97,7 +97,7 @@ export const WeighingCriteriaSetSchema = z
     criteria: documented(z.array(documented(WeighingCriterionSchema))).optional(),
     role: leaf("positioning marks the set a project writes about itself."),
     status: leaf("Absent or active is active; anything else is a draft, which feeds no roll-up."),
-    extends: leaf("A positioning's ruler, e.g. value-contribution@1."),
+    extends: leaf("A positioning's ruler, e.g. value-contribution@2."),
   })
   .catchall(z.unknown())
   .meta({ id: "WeighingCriteriaSet", description: "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another." }) as unknown as z.ZodType<WeighingCriteriaSet>;
@@ -106,7 +106,7 @@ export const WeighingMatrixSchema = z
   .object({
     id: leaf("The matrix's id."),
     title: leaf("A human title."),
-    set: leaf("The set's id and major, e.g. value-contribution@1."),
+    set: leaf("The set's id and major, e.g. value-contribution@2."),
     subjects: documented(
       z.object({ kind: leaf("query or list."), species: leaf("For a query: the species judged."), items: leaf("For a list: the subjects.") }).catchall(z.unknown()),
     ).optional().meta({ description: "What the matrix judges: { kind: query, species } or { kind: list, items }." }),
@@ -137,6 +137,8 @@ export const WeighingAssessmentSchema = z
     refs: leaf("Ids cited: nodes, journal events, findings."),
     basis: documented(WeighingAssessmentBasisSchema).optional().meta({ description: "What the scorer was looking at, so a re-read can tell the score went stale." }),
     run: leaf("The audit or plan the score belongs to."),
+    p_serves: leaf("Optional: a probabilistic scorer's certainty (0 to 1) that the subject serves the element. Certainty, not size. Any value parses; the validator warns on one outside 0..1."),
+    p_costs: leaf("Optional: the same for costs, asked independently, so both can be high."),
     ts: leaf("ISO 8601."),
   })
   .catchall(z.unknown())
