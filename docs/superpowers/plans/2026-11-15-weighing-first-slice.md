@@ -1319,7 +1319,7 @@ git commit -m "feat(weighing): validator warnings — never import-blocking (par
 - Modify: `lib/services/publik.ts`, `app/api/publik/route.ts`
 - Modify: `tests/services/publik-strip.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Apply to `tests/services/publik-strip.test.js` (the diff adds a `weighing` section to the fixture bundle and a block of checks):
 
@@ -1380,12 +1380,12 @@ Apply to `tests/services/publik-strip.test.js` (the diff adds a `weighing` secti
  check("no finding evidence survives the default strip", !JSON.stringify(neither).includes("middleware.ts:12"));
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npm run test:publik-strip`
 Expected: FAIL — `TypeError: stripWeighing is not a function`.
 
-- [ ] **Step 3: Implement the strip and the opt-in**
+- [x] **Step 3: Implement the strip and the opt-in**
 
 ```diff
 --- a/lib/services/publik.ts
@@ -1474,12 +1474,12 @@ Expected: FAIL — `TypeError: stripWeighing is not a function`.
      const { id, ownerKey } = await storeSnapshot(toStore);
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `npm run test:publik-strip && npx tsc --noEmit -p . && npx eslint lib/services/publik.ts app/api/publik/route.ts`
 Expected: `All Publik strip tests passed` (17 `PASS:` lines), `tsc` and `eslint` silent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/services/publik.ts app/api/publik/route.ts tests/services/publik-strip.test.js
