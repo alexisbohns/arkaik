@@ -1416,7 +1416,7 @@
           "description": "Absent or active is active; anything else is a draft, which feeds no roll-up."
         },
         "extends": {
-          "description": "A positioning's ruler, e.g. value-contribution@1."
+          "description": "A positioning's ruler, e.g. value-contribution@2."
         }
       },
       "additionalProperties": {},
@@ -1492,7 +1492,7 @@
           "description": "A human title."
         },
         "set": {
-          "description": "The set's id and major, e.g. value-contribution@1."
+          "description": "The set's id and major, e.g. value-contribution@2."
         },
         "subjects": {
           "description": "What the matrix judges: { kind: query, species } or { kind: list, items }.",
@@ -1584,6 +1584,12 @@
         },
         "run": {
           "description": "The audit or plan the score belongs to."
+        },
+        "p_serves": {
+          "description": "Optional: a probabilistic scorer's certainty (0 to 1) that the subject serves the element. Certainty, not size. Any value parses; the validator warns on one outside 0..1."
+        },
+        "p_costs": {
+          "description": "Optional: the same for costs, asked independently, so both can be high."
         },
         "ts": {
           "description": "ISO 8601."

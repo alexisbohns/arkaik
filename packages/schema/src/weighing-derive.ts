@@ -13,8 +13,9 @@
  * "0.33": netting hides the trade-off the matrix exists to show.
  *
  * **Seeds are computed, not stored.** A claimed value with no assessment reads
- * at a level seeded from the *order* of `metadata.values` (first +3, second +2,
- * the rest +1), scorer `rule`, confidence 0. Negatives are never seeded.
+ * at +1 — "within the product", the least a claim can mean on the reach ruler —
+ * whatever its position in `metadata.values`, scorer `rule`, confidence 0.
+ * Negatives are never seeded.
  *
  * **Every number says how much of it is guesswork** (RFC § 12): alongside each
  * share or mass, the part of it that rests on confidence-0 cells. A confidence
@@ -41,6 +42,8 @@ import {
   acceptanceFingerprint,
   cellKey,
   isActiveWeighingSet,
+  isUncertainCell,
+  isWeighingProbability,
   majorOf,
   readWeighingAssessments,
   type WeighingAssessment,
@@ -52,8 +55,11 @@ import {
 } from "./weighing";
 import { VALUE_MATRIX_ID, resolveWeighing, setOfRef, weighingScaleOf } from "./weighing-library";
 
-/** The seeding rule's scorer id — what a `rule` cell reads as. */
-export const SEED_SCORER_ID = "seed-by-claim-order";
+/** The seeding rule's scorer id — what a `rule` cell reads as. Never stored, so it can change with the rule. */
+export const SEED_SCORER_ID = "seed-claimed";
+
+/** The level every claimed value is guessed at: +1, within the product. */
+export const SEED_LEVEL = 1;
 
 /** The scorer every seed carries. Frozen: every seed (and every cell reading one) shares it. */
 const SEED_SCORER: WeighingScorer = Object.freeze({ kind: "rule", id: SEED_SCORER_ID });
@@ -66,9 +72,16 @@ export type WeighedNode = Pick<Node, "id" | "title" | "species" | "status" | "pl
 
 // --- Seeding -----------------------------------------------------------------
 
-/** First claimed value +3, second +2, every other +1. Positive only — a rule never invents a cost. */
+/**
+ * The seed for the claim at `position`: {@link SEED_LEVEL}, whatever the
+ * position. On the reach ruler the claim order says what the author thought of
+ * first, not how far it reaches, so it no longer sizes the guess. Positive
+ * only — a rule never invents a cost. Kept with its argument so callers need
+ * not change.
+ */
 export function seedLevelAt(position: number): number {
-  return position === 0 ? 3 : position === 1 ? 2 : 1;
+  void position;
+  return SEED_LEVEL;
 }
 
 /** The claimed values of a node that the set knows, deduplicated, in claim order. */
@@ -115,6 +128,13 @@ export interface EffectiveCell {
   source: "stored" | "seed";
   /** The subject or the set moved since the winner looked. Never changes who wins. */
   stale: boolean;
+  /**
+   * Why, when stale: the promise's text moved (`subject`), the ruler's major
+   * moved (`ruler` — every level scored on `value-contribution@1`), or both.
+   * A surface says which, because "re-read the promise" and "re-score on the
+   * new ruler" are different asks.
+   */
+  stale_by?: ("subject" | "ruler")[];
   /** Only when the stored evidence is a string. */
   evidence?: string;
   /** The author claimed this element in `metadata.values`. */
@@ -123,6 +143,11 @@ export interface EffectiveCell {
   others: WeighingAssessment[];
   /** A human and an agent differ by two levels or more. */
   review: boolean;
+  /** The winner's probabilities, when it stored usable ones. */
+  p_serves?: number;
+  p_costs?: number;
+  /** Read the level as a range: the winner's probabilities say it was unsure ({@link isUncertainCell}). Never for a seed. */
+  uncertain: boolean;
 }
 
 /** A row's time in ms. A missing or unparseable `ts` (the validator warns) is the oldest possible. */
@@ -176,13 +201,15 @@ export function resolveCell(
       claimed,
       others: [],
       review: false,
+      uncertain: false,
     };
   }
 
   const basis = winner.basis;
-  const stale =
-    (basis?.fingerprint !== undefined && basis.fingerprint !== current.fingerprint) ||
-    (basis?.set_version !== undefined && majorOf(basis.set_version) !== majorOf(current.setVersion));
+  const staleBy: ("subject" | "ruler")[] = [];
+  if (basis?.fingerprint !== undefined && basis.fingerprint !== current.fingerprint) staleBy.push("subject");
+  if (basis?.set_version !== undefined && majorOf(basis.set_version) !== majorOf(current.setVersion)) staleBy.push("ruler");
+  const stale = staleBy.length > 0;
   const other = winner === human ? agent : undefined;
   return {
     criterion,
@@ -192,10 +219,14 @@ export function resolveCell(
     confidence: confidenceOf(winner.confidence),
     source: "stored",
     stale,
+    ...(stale ? { stale_by: staleBy } : {}),
     ...(typeof winner.evidence === "string" ? { evidence: winner.evidence } : {}),
     claimed,
     others: other === undefined ? [] : [other],
     review: human !== undefined && agent !== undefined && Math.abs(human.level - agent.level) >= 2,
+    ...(isWeighingProbability(winner.p_serves) ? { p_serves: winner.p_serves } : {}),
+    ...(isWeighingProbability(winner.p_costs) ? { p_costs: winner.p_costs } : {}),
+    uncertain: isUncertainCell(winner),
   };
 }
 
@@ -303,7 +334,7 @@ export interface PromiseWeighing {
    * winner raises any (a seeded cell never does).
    */
   flags: {
-    /** Claimed, and the stored winner is 0 or 1: the claim is stronger than the promise. */
+    /** Claimed, and the stored winner is 0: weighed and found unrelated. (+1 is a real contribution on the reach ruler, so it supports the claim.) */
     claim_not_supported: string[];
     /** Claimed, and the stored winner is negative: the promise costs what it claims to serve. */
     claim_contradicted: string[];
@@ -316,6 +347,8 @@ export interface PromiseWeighing {
   stale: string[];
   /** Elements where a human and an agent differ by two levels or more. */
   review: string[];
+  /** Elements whose winning level is uncertain — read as a range ({@link EffectiveCell.uncertain}). */
+  uncertain: string[];
 }
 
 /** Live platforms ÷ applicable platforms, read through the same resolution `getNodePlatformStatuses` uses. */
@@ -359,6 +392,7 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
   const flags: PromiseWeighing["flags"] = { claim_not_supported: [], claim_contradicted: [], unclaimed_value: [], unclaimed_cost: [] };
   const stale: string[] = [];
   const review: string[] = [];
+  const uncertain: string[] = [];
 
   for (const cell of cells) {
     const weight = ctx.positioning?.weights.get(cell.criterion);
@@ -380,10 +414,11 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
     }
     if (cell.stale) stale.push(cell.criterion);
     if (cell.review) review.push(cell.criterion);
+    if (cell.uncertain) uncertain.push(cell.criterion);
     if (cell.source === "stored") {
       if (cell.claimed) {
         if (cell.level < 0) flags.claim_contradicted.push(cell.criterion);
-        else if (cell.level <= 1) flags.claim_not_supported.push(cell.criterion);
+        else if (cell.level === 0) flags.claim_not_supported.push(cell.criterion);
       } else if (cell.level < 0) flags.unclaimed_cost.push(cell.criterion);
       else if (cell.level >= 1) flags.unclaimed_value.push(cell.criterion);
     }
@@ -411,6 +446,7 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
     flags,
     stale,
     review,
+    uncertain,
   };
 }
 

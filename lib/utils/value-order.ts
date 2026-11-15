@@ -1,11 +1,11 @@
 /**
  * The order of an acceptance's `metadata.values` is a claim, not decoration:
- * the first value is the one the promise is most about, and the weighing layer
- * seeds it at +3, the second at +2 and every other at +1 until somebody scores
- * them (docs/rfcs/weighing.md). The value picker used to rebuild the list in the
- * model's canonical order on every change, which made the order the model's and
- * not the author's — for any acceptance edited in the app, the seed would have
- * read the tier a value sits in instead of what the author meant.
+ * the first value is the one the author thought of first. The weighing panel
+ * lists claimed values in that order, and the order is part of the promise's
+ * fingerprint, so a scored cell goes stale when it changes (docs/rfcs/weighing.md).
+ * (It no longer sizes the seed: on the reach ruler every claim is guessed at +1.)
+ * The value picker used to rebuild the list in the model's canonical order on
+ * every change, which made the order the model's and not the author's.
  */
 
 /**

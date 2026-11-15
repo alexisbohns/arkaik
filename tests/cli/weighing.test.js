@@ -58,7 +58,7 @@ const ROW = (over = {}) => ({
   scorer: HUMAN,
   confidence: 2,
   evidence: "the title says so",
-  basis: { fingerprint: "fp1-0", set_version: "1.0.0" },
+  basis: { fingerprint: "fp1-0", set_version: "2.0.0" },
   ts: "2026-11-15T10:00:00.000Z",
   ...over,
 });
@@ -69,7 +69,7 @@ const POSITIONING = {
   scale: { min: -3, max: 3, anchors: {} },
   role: "positioning",
   status: "active",
-  extends: "value-contribution@1",
+  extends: "value-contribution@2",
   criteria: [{ id: "connects", weight: 3 }],
 };
 

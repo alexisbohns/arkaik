@@ -74,7 +74,25 @@ check("a valid assessment plans one event", plan.ok === true && plan.events.leng
 const row = plan.assessments[0];
 check("the scorer is stamped by the caller, with the model", eq(row.scorer, { kind: "agent", id: "arkaik-mcp", model: "claude" }));
 check("the matrix defaults to value", row.matrix === "value");
-check("the basis is read off the graph: fingerprint and the set's full version", row.basis.fingerprint === acceptanceFingerprint(NODE) && row.basis.set_version === "1.0.0");
+check("the basis is read off the graph: fingerprint and the set's full version", row.basis.fingerprint === acceptanceFingerprint(NODE) && row.basis.set_version === "2.0.0");
+
+// Probabilities: what a probabilistic scorer may say about itself, and nothing more of a distribution.
+check("the parser carries p_serves and p_costs through, and drops a stray distribution", (() => {
+  const parsed = parseWeighingEventInputs({ events: [assess({ p_serves: 0.8, p_costs: 0.1, distribution: [0.1, 0.9] })] });
+  return Array.isArray(parsed) && parsed[0].p_serves === 0.8 && parsed[0].p_costs === 0.1 && !("distribution" in parsed[0]);
+})());
+const probable = planWeighingEvents(undefined, [NODE], [assess({ p_serves: 0.62, p_costs: 0 })], ctx({ scorerKind: "agent", actor: "arkaik-mcp" }));
+check("probabilities land on the row and the event, which still validates", probable.ok && probable.assessments[0].p_serves === 0.62 && probable.assessments[0].p_costs === 0 && probable.events[0].p_serves === 0.62 && KnownJournalEventSchema.safeParse(probable.events[0]).success);
+check("an assessment without them stores none", !("p_serves" in row) && !("p_costs" in row));
+{
+  const old = { type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [{ id: "connects" }] } };
+  check("a positioning saved against the older ruler is refused — nothing new is written on @1", planWeighingEvents(undefined, [NODE], [old], ctx()).refusals?.[0].reason === "invalid_set");
+  const onV1 = { matrices: [{ id: "m1", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }] };
+  check("an assessment on a matrix that reads the older ruler is refused", planWeighingEvents(onV1, [NODE], [assess({ matrix: "m1" })], ctx()).refusals?.[0].reason === "unknown_matrix");
+}
+for (const bad of [1.01, -0.1, "0.5", Number.NaN, Infinity]) {
+  check(`a probability of ${String(bad)} is refused`, planWeighingEvents(undefined, [NODE], [assess({ p_costs: bad })], ctx()).refusals?.[0].reason === "invalid_entry");
+}
 check("the row's ts is the event's ts", row.ts === NOW.toISOString() && plan.events[0].ts === NOW.toISOString());
 check("the event carries the assessment flat, with the writer as actor", plan.events[0].type === "weighing.assessment.recorded" && plan.events[0].actor === "arkaik-mcp" && plan.events[0].level === 2 && plan.events[0].scorer.kind === "agent");
 check("the event validates against its strict schema", KnownJournalEventSchema.safeParse(plan.events[0]).success);
@@ -126,8 +144,8 @@ check("refs that are not an array are refused", reasonOf([assess({ refs: "AC-a" 
 check("a non-string run is refused", reasonOf([assess({ run: 5 })]) === "invalid_entry");
 check("an entry that is not an object is refused", reasonOf([null]) === "invalid_entry");
 check("an unknown type is refused", reasonOf([{ type: "quality.finding.resolved" }]) === "invalid_entry");
-check("a set whose criteria are not an array is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: "connects" } }], ctx()).refusals?.[0].reason === "invalid_set");
-check("a set with no version is refused (it would be saved and then silently ignored)", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [] } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set whose criteria are not an array is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@2", criteria: "connects" } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set with no version is refused (it would be saved and then silently ignored)", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", subject: "acceptance", role: "positioning", extends: "value-contribution@2", criteria: [] } }], ctx()).refusals?.[0].reason === "invalid_set");
 check("a set that is not an object is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: null }], ctx()).refusals?.[0].reason === "invalid_set");
 check("one structural refusal still refuses the whole batch, naming its index", eq(planWeighingEvents(undefined, [NODE], [assess(), assess({ confidence: 7 })], ctx()).refusals?.map((r) => r.index), [1]));
 
@@ -161,7 +179,7 @@ const positioning = (over = {}) => ({
   scale: { min: -3, max: 3, anchors: {} },
   role: "positioning",
   status: "draft",
-  extends: "value-contribution@1",
+  extends: "value-contribution@2",
   criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "removes a worry the user names", 0: "nothing to do with worry" } }],
   ...over,
 });

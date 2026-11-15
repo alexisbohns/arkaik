@@ -3,6 +3,14 @@
  * elements of value, in their four tiers, on the signed −3..+3 scale) and the
  * `value` matrix that judges every acceptance against it.
  *
+ * **Two majors, one current.** `value-contribution@2` is the ruler: a level
+ * measures REACH in a person's life (+1 within the product, +2 across the
+ * domain, +3 life-wide), and every element carries its own ladder
+ * ({@link ./weighing-ladders}). `@1` measured how central a value is to the
+ * promise; it stays here, frozen, so a positioning or a project matrix that
+ * still says `@1` resolves — but the built-in matrix reads `@2`, and the major
+ * bump makes every level scored against `@1` stale (docs/rfcs/weighing.md § 8).
+ *
  * Library content, not project state: it is pinned by version and never stored
  * in `bundle.weighing`, the way Kritik's pack is shipped rather than authored
  * (`packages/kritik-library`). A project's own sets — its positioning — live in
@@ -13,6 +21,7 @@
  */
 
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
+import { VALUE_REACH_LADDERS } from "./weighing-ladders";
 import type { WeighingCriteriaSet, WeighingMatrix, WeighingScale, WeighingSection } from "./weighing";
 import { majorOf, splitSetRef } from "./weighing";
 
@@ -29,13 +38,32 @@ function deepFreeze<T>(value: T): T {
 }
 
 export const VALUE_SET_ID = "value-contribution";
-export const VALUE_SET_VERSION = "1.0.0";
+/** The current ruler's version. Levels are comparable only within a major. */
+export const VALUE_SET_VERSION = "2.0.0";
+/** The first ruler, kept frozen so an `@1` ref still resolves. */
+export const VALUE_SET_V1_VERSION = "1.0.0";
 export const VALUE_MATRIX_ID = "value";
 /** The id a project's positioning set carries. */
 export const POSITIONING_SET_ID = "positioning";
 
-/** The scale, every level in words. The anchors a scorer — human or agent — reads before choosing. */
+/**
+ * The scale, every level in words: how far into a person's life the promise
+ * reaches. What a scorer — human or agent — reads before choosing, when the
+ * element's own ladder does not say a level ({@link ./weighing-ladders} says
+ * every level but 0).
+ */
 export const VALUE_SCALE_ANCHORS: Readonly<Record<string, string>> = {
+  "3": "Life-wide. It gives the person this well beyond the product and its domain, in their life.",
+  "2": "Across the domain. The person gets this in the whole area the product belongs to, not only inside it.",
+  "1": "Within the product. A real contribution, felt while using it.",
+  "0": "Unrelated: weighed and found to have nothing to do with it. (No row means nobody has weighed it yet.)",
+  "-1": "Within the product. A small cost, felt while using it.",
+  "-2": "Across the domain. The person notices the loss of this in the whole area the product belongs to.",
+  "-3": "Life-wide. It leaves the person with the opposite of this in their life.",
+};
+
+/** The `@1` scale: how central a value is to the promise. Kept for the frozen `@1` set. */
+export const VALUE_SCALE_V1_ANCHORS: Readonly<Record<string, string>> = {
   "3": "Core. The promise exists for this; take it away and the value goes.",
   "2": "Supports clearly. The user would notice it missing.",
   "1": "Touches. A side effect of the promise, not its purpose.",
@@ -94,14 +122,49 @@ const VALUE_TEXT: Readonly<Record<ValueId, { name: string; definition: string }>
 /** The signed scale the value set (and, by default, a positioning) is read on. */
 const VALUE_SCALE: WeighingScale = { min: -3, max: 3, anchors: { ...VALUE_SCALE_ANCHORS } };
 
-/** The 30 elements as criteria, in `VALUE_IDS` order, grouped by tier. */
+const GROUPS = (Object.keys(TIER_TITLES) as ValueTierId[]).map((id) => ({ id, title: TIER_TITLES[id] }));
+
+/**
+ * The question a scorer answers per element. Informs is the one asked as "mainly":
+ * asked "at least a little", nearly every promise informs the person about the
+ * service (the Jev POC found it on 12 of 12), so it would read as served everywhere.
+ */
+function reachQuestion(id: ValueId): string {
+  if (id === "informs") {
+    return "Is what this promise mainly gives the person information, rather than an ability, a shortcut, a protection or a feeling? Or does it keep them from knowing something? And how far into their life does it reach?";
+  }
+  return `Does this promise serve, or cost, "${VALUE_TEXT[id].name}" for the person? And how far into their life does it reach: within the product, across its domain, or life-wide?`;
+}
+
+/**
+ * The current ruler: the 30 elements as criteria, in `VALUE_IDS` order, grouped
+ * by tier, each with its own reach ladder.
+ */
 export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = deepFreeze({
   id: VALUE_SET_ID,
   version: VALUE_SET_VERSION,
   title: "Elements of value",
   subject: "acceptance",
   scale: VALUE_SCALE,
-  groups: (Object.keys(TIER_TITLES) as ValueTierId[]).map((id) => ({ id, title: TIER_TITLES[id] })),
+  groups: GROUPS,
+  criteria: VALUE_IDS.map((id) => ({
+    id,
+    group: VALUE_TIERS[id],
+    name: VALUE_TEXT[id].name,
+    question: reachQuestion(id),
+    definition: VALUE_TEXT[id].definition,
+    anchors: { ...VALUE_REACH_LADDERS[id] },
+  })),
+});
+
+/** The first ruler (centrality), frozen. Nothing new is scored against it; it resolves so `@1` refs still read. */
+export const VALUE_CONTRIBUTION_SET_V1: WeighingCriteriaSet = deepFreeze({
+  id: VALUE_SET_ID,
+  version: VALUE_SET_V1_VERSION,
+  title: "Elements of value",
+  subject: "acceptance",
+  scale: { min: -3, max: 3, anchors: { ...VALUE_SCALE_V1_ANCHORS } },
+  groups: GROUPS,
   criteria: VALUE_IDS.map((id) => ({
     id,
     group: VALUE_TIERS[id],
@@ -115,13 +178,18 @@ export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = deepFreeze({
 export const VALUE_MATRIX: WeighingMatrix = deepFreeze({
   id: VALUE_MATRIX_ID,
   title: "Value",
-  set: `${VALUE_SET_ID}@1`,
+  set: `${VALUE_SET_ID}@2`,
   subjects: { kind: "query", species: "acceptance" },
   positioning: POSITIONING_SET_ID,
   status: "active",
 });
 
-export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET];
+/**
+ * The current ruler FIRST: a lookup by id alone (a ref with no `@`, a reader
+ * that wants "the value set") finds the current major. {@link setOfRef} picks a
+ * major explicitly.
+ */
+export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET, VALUE_CONTRIBUTION_SET_V1];
 export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
 
 /**
@@ -224,15 +292,28 @@ export function resolveWeighing(section?: Partial<Pick<WeighingSection, "sets" |
 }
 
 /**
- * The set a `value-contribution@1` ref names, if the resolved library holds it
- * **at that major**: a ref to `@2` of a set that is at `1.x` is not the same
- * ruler, and levels are comparable only within a major. A ref with no `@` names
- * the set at whatever major it is. The validator tells the two failures apart
- * (`weighing-unknown-set` / `weighing-set-ref-major`).
+ * The set a `value-contribution@2` ref names, if the resolved library holds it
+ * **at that major**: a ref to `@3` of a set that is at `2.x` is not the same
+ * ruler, and levels are comparable only within a major. The library may hold
+ * one id at several majors (the built-in value set keeps `@1` beside `@2`), so
+ * the ref picks among them. A ref with no `@` names the set at the first major
+ * listed — for a built-in, the current one. The validator tells the two
+ * failures apart (`weighing-unknown-set` / `weighing-set-ref-major`).
  */
 export function setOfRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): WeighingCriteriaSet | undefined {
   const { id, major } = splitSetRef(ref);
-  const set = resolved.sets.find((candidate) => candidate.id === id);
-  if (set === undefined) return undefined;
-  return major === undefined || majorOf(set.version) === major ? set : undefined;
+  return resolved.sets.find((candidate) => candidate.id === id && (major === undefined || majorOf(candidate.version) === major));
+}
+
+/**
+ * Is a ref behind the library's current major of its set? `value-contribution@1`
+ * is, now that `@2` is the ruler: it still resolves, but nothing new is scored
+ * against it. `false` for an unknown set, a ref with no major, or a current one.
+ */
+export function isOlderMajorRef(resolved: Pick<ResolvedWeighing, "sets">, ref: string): boolean {
+  const { id, major } = splitSetRef(ref);
+  const current = resolved.sets.find((candidate) => candidate.id === id);
+  if (current === undefined || major === undefined) return false;
+  const now = Number(majorOf(current.version));
+  return Number.isFinite(now) && Number(major) < now;
 }

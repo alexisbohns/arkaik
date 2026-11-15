@@ -45,7 +45,7 @@ import type { Node } from "./bundle";
 
 // --- Scales ------------------------------------------------------------------
 
-/** The signed value scale: −3 costs it at its core … +3 is core. 0 is "unrelated". */
+/** The signed value scale: −3 costs it life-wide … +3 serves it life-wide (docs/rfcs/weighing.md § 8). 0 is "unrelated". */
 export type WeighingLevel = -3 | -2 | -1 | 0 | 1 | 2 | 3;
 
 export const WEIGHING_LEVELS: readonly WeighingLevel[] = [-3, -2, -1, 0, 1, 2, 3];
@@ -149,7 +149,7 @@ export interface WeighingCriteriaSet extends Record<string, unknown> {
    * ({@link isActiveWeighingSet}).
    */
   status?: string;
-  /** A positioning's ruler: `value-contribution@1`. */
+  /** A positioning's ruler: `value-contribution@2`. */
   extends?: string;
 }
 
@@ -162,7 +162,7 @@ export type WeighingMatrixSubjects =
 export interface WeighingMatrix extends Record<string, unknown> {
   id: string;
   title?: string;
-  /** `value-contribution@1` — the set's id and major. */
+  /** `value-contribution@2` — the set's id and major. */
   set: string;
   subjects: WeighingMatrixSubjects;
   /** The id of the positioning set that re-weights this matrix, when one exists. */
@@ -202,8 +202,45 @@ export interface WeighingAssessment extends Record<string, unknown> {
   basis?: WeighingAssessmentBasis;
   /** The audit or plan the score belongs to. */
   run?: string;
+  /**
+   * A probabilistic scorer's certainty that the subject SERVES the element, 0..1
+   * — certainty, not size: the level says how far it reaches. Optional, and the
+   * only part of a distribution ever stored ({@link isUncertainCell}).
+   */
+  p_serves?: number;
+  /** The same for COSTS. Asked independently of `p_serves`, so both can be high. */
+  p_costs?: number;
   /** ISO 8601. */
   ts: string;
+}
+
+/** The two probabilities an assessment may carry — nothing more of a distribution is stored. */
+export const WEIGHING_PROBABILITY_FIELDS = ["p_serves", "p_costs"] as const;
+
+/** A usable stored probability: a finite number from 0 to 1. Anything else is read as absent (the validator warns). */
+export function isWeighingProbability(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+/** At or above this, a scorer is clear about a direction (the Jev POC's gate: cells there never moved between runs). */
+export const WEIGHING_CLEAR_AT = 0.7;
+/** At or above this, the other direction is not settled either. */
+export const WEIGHING_UNSETTLED_AT = 0.3;
+
+/**
+ * Should a level be read as a range rather than a point? Only when the row
+ * carries probabilities: when the scorer was under {@link WEIGHING_CLEAR_AT} sure
+ * of the direction its level took, or at least {@link WEIGHING_UNSETTLED_AT} sure
+ * of the other one. For a 0, both directions are "the other one". A row without
+ * probabilities (a person's, most agents') is never uncertain by this rule — its
+ * confidence already says how sure it is.
+ */
+export function isUncertainCell(row: { level: number; p_serves?: unknown; p_costs?: unknown }): boolean {
+  const serves = isWeighingProbability(row.p_serves) ? row.p_serves : undefined;
+  const costs = isWeighingProbability(row.p_costs) ? row.p_costs : undefined;
+  const same = row.level > 0 ? serves : row.level < 0 ? costs : undefined;
+  const others = row.level > 0 ? [costs] : row.level < 0 ? [serves] : [serves, costs];
+  return (same !== undefined && same < WEIGHING_CLEAR_AT) || others.some((p) => p !== undefined && p >= WEIGHING_UNSETTLED_AT);
 }
 
 /**
@@ -315,8 +352,8 @@ const squash = (text: string): string => text.replace(/\s+/g, " ").trim();
  * The fingerprint of an acceptance: its title, its Gherkin and its values, in
  * that order, whitespace-normalized. **Not its status** — delivery is a fact
  * joined at read time, not something the scorer judged — and not its
- * platforms, for the same reason. Values keep their order because the order is
- * what the seeding rule reads.
+ * platforms, for the same reason. Values keep their order: it is the author's
+ * claim order, and changing the hash would stale every stored cell for nothing.
  */
 export function acceptanceFingerprint(node: Pick<Node, "title" | "metadata">): string {
   const gherkin = typeof node.metadata?.gherkin === "string" ? node.metadata.gherkin : "";

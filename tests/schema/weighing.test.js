@@ -13,7 +13,10 @@ const {
   VALUE_IDS,
   VALUE_TIERS,
   VALUE_CONTRIBUTION_SET,
+  VALUE_CONTRIBUTION_SET_V1,
   VALUE_MATRIX,
+  isOlderMajorRef,
+  VALUE_REACH_LADDERS,
   VALUE_SET_VERSION,
   POSITIONING_SET_ID,
   resolveWeighing,
@@ -70,27 +73,37 @@ check(
 check("every element has a name and a definition", set.criteria.every((c) => c.name && c.definition));
 check("level 0 means weighed and unrelated, and says a missing row is unweighed", /weighed and found to have nothing to do with it/.test(set.scale.anchors["0"]) && /No row means nobody has weighed it yet/.test(set.scale.anchors["0"]));
 check("the built-ins are deep-frozen — nobody can mutate the shared library", Object.isFrozen(set) && Object.isFrozen(set.criteria) && Object.isFrozen(set.criteria[0]) && Object.isFrozen(set.scale.anchors) && Object.isFrozen(VALUE_MATRIX) && Object.isFrozen(VALUE_MATRIX.subjects));
-check("the set is pinned at 1.0.0", set.version === VALUE_SET_VERSION && VALUE_SET_VERSION === "1.0.0");
-check("the built-in matrix judges every acceptance against value-contribution@1", VALUE_MATRIX.id === "value" && VALUE_MATRIX.set === "value-contribution@1" && VALUE_MATRIX.subjects.kind === "query" && VALUE_MATRIX.subjects.species === "acceptance");
+check("the set is pinned at 2.0.0 — the reach ruler", set.version === VALUE_SET_VERSION && VALUE_SET_VERSION === "2.0.0");
+check(
+  "every element carries its own reach ladder: every level but 0, in words",
+  set.criteria.every((c) => [-3, -2, -1, 1, 2, 3].every((level) => typeof c.anchors?.[String(level)] === "string" && c.anchors[String(level)].trim() !== "") && c.anchors["0"] === undefined),
+);
+check("the scale's anchors speak of reach: +1 within the product, +2 the domain, +3 life-wide", /within the product/i.test(set.scale.anchors["1"]) && /domain/i.test(set.scale.anchors["2"]) && /life-wide/i.test(set.scale.anchors["3"]) && /life-wide/i.test(set.scale.anchors["-3"]));
+check("the Informs ladder is the owner's wording, and it is asked as \"mainly\"", set.criteria.find((c) => c.id === "informs").anchors["2"] === "Informs the person about the service area or domain." && /mainly gives the person information/.test(set.criteria.find((c) => c.id === "informs").question));
+check("the ladders are frozen with the set", Object.isFrozen(set.criteria[0].anchors));
+check("the @1 ruler is kept, frozen, with its own centrality anchors and no ladders", VALUE_CONTRIBUTION_SET_V1.version === "1.0.0" && /^Core\./.test(VALUE_CONTRIBUTION_SET_V1.scale.anchors["3"]) && VALUE_CONTRIBUTION_SET_V1.criteria.every((c) => c.anchors === undefined) && Object.isFrozen(VALUE_CONTRIBUTION_SET_V1));
+check("the built-in matrix judges every acceptance against value-contribution@2", VALUE_MATRIX.id === "value" && VALUE_MATRIX.set === "value-contribution@2" && VALUE_MATRIX.subjects.kind === "query" && VALUE_MATRIX.subjects.species === "acceptance");
 check("the built-in matrix names the positioning set", VALUE_MATRIX.positioning === POSITIONING_SET_ID);
 
 const resolved = resolveWeighing(undefined);
-check("an absent section resolves to the built-ins alone", resolved.sets.length === 1 && resolved.matrices.length === 1);
-check("a ref resolves to its set", setOfRef(resolved, "value-contribution@1")?.id === "value-contribution");
+check("an absent section resolves to the built-ins alone: both majors of the ruler, one matrix", eq(resolved.sets.map((s) => s.version), ["2.0.0", "1.0.0"]) && resolved.matrices.length === 1);
+check("a ref resolves to its set", setOfRef(resolved, "value-contribution@2")?.id === "value-contribution");
 check("an unknown ref resolves to nothing", setOfRef(resolved, "nope@1") === undefined);
-check("a ref at another major resolves to nothing — levels are comparable only within a major", setOfRef(resolved, "value-contribution@2") === undefined && setOfRef(resolved, "value-contribution@1")?.id === "value-contribution");
-check("a ref with no major names the set at whatever major it is", setOfRef(resolved, "value-contribution")?.id === "value-contribution");
+check("a ref picks its major among those the library holds", setOfRef(resolved, "value-contribution@2")?.version === "2.0.0" && setOfRef(resolved, "value-contribution@1")?.version === "1.0.0");
+check("a ref at a major nobody holds resolves to nothing — levels are comparable only within a major", setOfRef(resolved, "value-contribution@3") === undefined);
+check("a ref with no major names the current one", setOfRef(resolved, "value-contribution")?.version === "2.0.0");
+check("@1 is an older major of the ruler; @2, an unknown set and a ref with no major are not", isOlderMajorRef(resolved, "value-contribution@1") && !isOlderMajorRef(resolved, "value-contribution@2") && !isOlderMajorRef(resolved, "nope@1") && !isOlderMajorRef(resolved, "value-contribution"));
 const withOwn = resolveWeighing({
   sets: [{ ...set, version: "9.0.0" }, { id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, criteria: [] }],
   matrices: [],
 });
-check("a project cannot redefine a pinned set", withOwn.sets.find((s) => s.id === "value-contribution").version === "1.0.0");
+check("a project cannot redefine a pinned set", eq(withOwn.sets.filter((s) => s.id === "value-contribution").map((s) => s.version), ["2.0.0", "1.0.0"]));
 check("the project's own sets are layered on", withOwn.sets.some((s) => s.id === "positioning"));
 const matrixOf = (...extra) => resolveWeighing({ sets: [], matrices: extra }).matrices.map((m) => m.id);
 check("a matrix with only an id is skipped, not thrown on", eq(matrixOf({ id: "m" }), ["value"]));
-check("a matrix with no subjects is skipped", eq(matrixOf({ id: "m", set: "value-contribution@1" }), ["value"]));
-check("a well-formed matrix is layered on", eq(matrixOf({ id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }), ["value", "m"]));
-check("a set with no criteria or no scale is skipped", resolveWeighing({ sets: [{ id: "s" }, { id: "t", scale: set.scale }, { id: "u", criteria: [] }], matrices: [] }).sets.length === 1);
+check("a matrix with no subjects is skipped", eq(matrixOf({ id: "m", set: "value-contribution@2" }), ["value"]));
+check("a well-formed matrix is layered on", eq(matrixOf({ id: "m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" } }), ["value", "m"]));
+check("a set with no criteria or no scale is skipped", resolveWeighing({ sets: [{ id: "s" }, { id: "t", scale: set.scale }, { id: "u", criteria: [] }], matrices: [] }).sets.length === 2);
 check("a later well-formed duplicate beats an earlier malformed one", resolveWeighing({ sets: [{ id: "s" }, { id: "s", version: "1.0.0", scale: set.scale, criteria: [] }], matrices: [] }).sets.some((s) => s.id === "s"));
 check(
   "a garbage section never throws, from the resolver or the validator",
@@ -113,7 +126,7 @@ check(
     }
   }),
 );
-check("splitSetRef reads id and major", eq(splitSetRef("value-contribution@1"), { id: "value-contribution", major: "1" }) && splitSetRef("x").major === undefined);
+check("splitSetRef reads id and major", eq(splitSetRef("value-contribution@2"), { id: "value-contribution", major: "2" }) && splitSetRef("x").major === undefined);
 check("majorOf reads a semver major", majorOf("1.4.2") === "1" && majorOf("2") === "2" && majorOf("beta") === undefined);
 
 // --- Keys and ordering ------------------------------------------------------
@@ -176,7 +189,7 @@ check("a partial section parses: each list is optional and a reader treats it as
 check("a matrix with no set or subjects, and a set with no scale or criteria, parse", WeighingSectionSchema.safeParse({ matrices: [{ id: "m" }], sets: [{ id: "s", version: "1.0.0", subject: "acceptance" }] }).success);
 check("unknown keys survive (a scorer's full distribution)", WeighingAssessmentSchema.parse(row({ distribution: [0.1, 0.9] })).distribution?.[1] === 0.9);
 check("a scorer may say whom it acts for: an optional string that survives, and a number still parses", WeighingAssessmentSchema.parse(row({ scorer: { ...agent, on_behalf_of: "u_1842" } })).scorer.on_behalf_of === "u_1842" && WeighingAssessmentSchema.safeParse(row({ scorer: agent })).success && WeighingAssessmentSchema.safeParse(row({ scorer: { ...agent, on_behalf_of: 42 } })).success);
-check("a set parses with its own anchors and weight", WeighingCriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@1", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
+check("a set parses with its own anchors and weight", WeighingCriteriaSetSchema.safeParse({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", status: "draft", extends: "value-contribution@2", criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "Removes a worry the user names" } }] }).success);
 
 const base = {
   schema_version: 3,
@@ -205,7 +218,7 @@ check("a human and an agent row for one cell do not", !warningsFor({ ...section,
 check("an unknown matrix warns", warningsFor({ ...section, assessments: [row({ matrix: "nope" })] }).includes("weighing-unknown-matrix"));
 check("a set major bump warns", warningsFor({ ...section, assessments: [row({ basis: { set_version: "0.9.0" } })] }).includes("weighing-set-major"));
 check("redefining a pinned set warns", warningsFor({ sets: [{ ...set, version: "9.0.0" }], matrices: [], assessments: [] }).includes("weighing-pinned-set-redefined"));
-const positioning = (criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@1", criteria });
+const positioning = (criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@2", criteria });
 check("a positioning naming a non-element warns", warningsFor({ sets: [positioning([{ id: "teleports", weight: 2 }])], matrices: [], assessments: [] }).includes("weighing-positioning-unknown-element"));
 check("a positioning weight of 0 warns", warningsFor({ sets: [positioning([{ id: "connects", weight: 0 }])], matrices: [], assessments: [] }).includes("weighing-positioning-weight"));
 check("a good positioning raises nothing", warningsFor({ sets: [positioning([{ id: "connects", weight: 3 }])], matrices: [], assessments: [] }).filter((r) => r.startsWith("weighing")).length === 0);
@@ -227,13 +240,13 @@ const ownMatrix = (over = {}) => ({ id: "m", set: "rubric@1", subjects: { kind: 
 check("a duplicate set id warns", warningsFor({ sets: [own(), own()], matrices: [], assessments: [] }).includes("weighing-duplicate-set"));
 check("a set with a criterion list and a scale is not a shape problem", !rulesOf({ sets: [own()], matrices: [], assessments: [] }).includes("weighing-set-shape"));
 check("a set with no criteria or scale warns", warningsFor({ sets: [{ id: "s" }], matrices: [], assessments: [] }).includes("weighing-set-shape") && warningsFor({ sets: [own({ scale: undefined })], matrices: [], assessments: [] }).includes("weighing-set-shape"));
-check("redefining the built-in matrix warns", warningsFor({ sets: [], matrices: [ownMatrix({ id: "value", set: "value-contribution@1" })], assessments: [] }).includes("weighing-pinned-matrix-redefined"));
+check("redefining the built-in matrix warns", warningsFor({ sets: [], matrices: [ownMatrix({ id: "value", set: "value-contribution@2" })], assessments: [] }).includes("weighing-pinned-matrix-redefined"));
 check("a duplicate matrix id warns", warningsFor({ sets: [own()], matrices: [ownMatrix(), ownMatrix()], assessments: [] }).includes("weighing-duplicate-matrix"));
 check("a matrix naming a set nothing defines warns", warningsFor({ sets: [], matrices: [ownMatrix()], assessments: [] }).includes("weighing-unknown-set"));
 check("a matrix naming a defined set is clean", rulesOf({ sets: [own()], matrices: [ownMatrix()], assessments: [] }).length === 0);
-check("a matrix with only an id warns, and so does one with no subjects", warningsFor({ sets: [], matrices: [{ id: "m" }], assessments: [] }).includes("weighing-matrix-shape") && warningsFor({ sets: [], matrices: [{ id: "m", set: "value-contribution@1" }], assessments: [] }).includes("weighing-matrix-shape"));
+check("a matrix with only an id warns, and so does one with no subjects", warningsFor({ sets: [], matrices: [{ id: "m" }], assessments: [] }).includes("weighing-matrix-shape") && warningsFor({ sets: [], matrices: [{ id: "m", set: "value-contribution@2" }], assessments: [] }).includes("weighing-matrix-shape"));
 check("a matrix naming another major of a set warns as a major, not as unknown", (() => {
-  const rules = warningsFor({ sets: [], matrices: [ownMatrix({ set: "value-contribution@2" })], assessments: [] });
+  const rules = warningsFor({ sets: [], matrices: [ownMatrix({ set: "value-contribution@3" })], assessments: [] });
   return rules.includes("weighing-set-ref-major") && !rules.includes("weighing-unknown-set");
 })());
 check("an assessment on a retired criterion warns", warningsFor({ sets: [own()], matrices: [ownMatrix()], assessments: [row({ matrix: "m", criterion: "old" })] }).includes("weighing-retired-criterion"));
@@ -250,6 +263,17 @@ check("a positioning extending another major warns as a major", (() => {
   return rules.includes("weighing-set-ref-major") && !rules.includes("weighing-positioning-unknown-ruler");
 })());
 check("a positioning that names its ruler right is clean", rulesOf({ sets: [positioningOf({})], matrices: [], assessments: [] }).length === 0);
+check("a positioning on the older ruler still applies, and says to re-save it", (() => {
+  const rules = rulesOf({ sets: [positioningOf({ extends: "value-contribution@1" })], matrices: [], assessments: [] });
+  return eq(rules, ["weighing-positioning-old-ruler"]);
+})());
+check("a project matrix on the older ruler warns, and still resolves", rulesOf({ sets: [], matrices: [{ id: "m1", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } }], assessments: [] }).includes("weighing-matrix-old-ruler"));
+check("the exported ladders are frozen, entry by entry", Object.isFrozen(VALUE_REACH_LADDERS) && Object.isFrozen(VALUE_REACH_LADDERS["saves-time"]));
+check("a probability off 0..1, or not a number, warns — and one in range does not", (() => {
+  const bad = rulesOf({ ...section, assessments: [row({ p_serves: 1.2, p_costs: "high" })] }).filter((r) => r === "weighing-probability-shape").length;
+  const fine = rulesOf({ ...section, assessments: [row({ p_serves: 0.9, p_costs: 0 })] }).includes("weighing-probability-shape");
+  return bad === 2 && !fine;
+})());
 check(
   "a weighing event with no actor warns",
   warningsFor(undefined, { journal: [{ id: "01A", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", matrix: "value", subject: "AC-a", criterion: "connects", level: 2, confidence: 1, scorer: human }] }).includes("weighing-event-no-actor"),
@@ -258,10 +282,10 @@ check(
 // --- Import never blocks: every probe case parses AND warns ------------------
 
 const good = { matrix: "value", subject: "AC-a", criterion: "connects", level: 1, scorer: { kind: "human", id: "x" }, confidence: 1, ts: "2026-11-15T10:00:00.000Z" };
-const pos = { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [{ id: "connects", weight: 2 }] };
+const pos = { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@2", criteria: [{ id: "connects", weight: 2 }] };
 const asRow = (over) => ({ sets: [], matrices: [], assessments: [{ ...good, ...over }] });
 const asPos = (over) => ({ sets: [{ ...pos, ...over }], matrices: [], assessments: [] });
-const mat = (subjects) => ({ sets: [], matrices: [{ id: "m", set: "value-contribution@1", subjects }], assessments: [] });
+const mat = (subjects) => ({ sets: [], matrices: [{ id: "m", set: "value-contribution@2", subjects }], assessments: [] });
 const bad = [
   ["an assessment with no ts", asRow({ ts: undefined }), "weighing-assessment-ts"],
   ["an assessment with an invalid ts", asRow({ ts: "yesterday" }), "weighing-assessment-ts"],
@@ -291,7 +315,7 @@ const bad = [
   ["a scale with no anchors", asPos({ scale: { min: -3, max: 3 } }), "weighing-scale-shape"],
   ["a matrix whose subjects kind is a tag", mat({ kind: "tag" }), "weighing-matrix-shape"],
   ["a matrix whose subjects is empty", mat({}), "weighing-matrix-shape"],
-  ["a matrix with a numeric status", { sets: [], matrices: [{ id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, status: 5 }], assessments: [] }, "weighing-set-status"],
+  ["a matrix with a numeric status", { sets: [], matrices: [{ id: "m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" }, status: 5 }], assessments: [] }, "weighing-set-status"],
 ];
 for (const [name, weighing, rule] of bad) {
   const parsed = ProjectBundleSchema.safeParse({ ...base, weighing }).success;
@@ -363,7 +387,7 @@ check("a project set whose scale has no anchors falls back: to its ruler's scale
 })());
 check("resolveWeighing reports what it dropped, with kind, id and stored index", (() => {
   const okSet = { id: "ok", version: "1.0.0", scale: set.scale, criteria: [] };
-  const okMatrix = { id: "m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } };
+  const okMatrix = { id: "m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" } };
   const r = resolveWeighing({
     sets: [okSet, { id: "positioning", role: "positioning" }, null, { ...okSet }, { ...set, version: "9.0.0" }],
     matrices: [okMatrix, { id: "m2" }, { ...okMatrix }, 5],
@@ -393,7 +417,7 @@ check("a malformed earlier set does not shadow a good later one, and raises no d
   return resolveWeighing(weighing).sets.find((s) => s.id === "rubric")?.title === "good" && !warningsFor(weighing).includes("weighing-duplicate-set");
 })());
 check("the same holds for matrices", (() => {
-  const okMatrix = (title) => ({ id: "m", title, set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" } });
+  const okMatrix = (title) => ({ id: "m", title, set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" } });
   const first = { sets: [], matrices: [okMatrix("first"), okMatrix("second")], assessments: [] };
   const shadow = { sets: [], matrices: [{ id: "m" }, okMatrix("good")], assessments: [] };
   return (

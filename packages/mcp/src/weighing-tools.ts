@@ -160,8 +160,8 @@ function requireInt(args: Record<string, unknown>, key: string, min: number, max
 const optionalString = (args: Record<string, unknown>, key: string): string | undefined =>
   typeof args[key] === "string" && args[key] !== "" ? (args[key] as string) : undefined;
 
-/** One cell, in the shape an agent reads. */
-function cellRow(cell: EffectiveCell) {
+/** One cell, in the shape an agent reads. Probabilities only when asked for: the `uncertain` marker is the part worth reading. */
+function cellRow(cell: EffectiveCell, withProbabilities: boolean) {
   return {
     criterion: cell.criterion,
     level: cell.level,
@@ -169,9 +169,13 @@ function cellRow(cell: EffectiveCell) {
     confidence: cell.confidence,
     source: cell.source,
     stale: cell.stale,
+    ...(cell.stale_by !== undefined ? { stale_by: cell.stale_by } : {}),
     claimed: cell.claimed,
     ...(cell.evidence !== undefined ? { evidence: cell.evidence } : {}),
     ...(cell.review ? { review: true } : {}),
+    ...(cell.uncertain ? { uncertain: true } : {}),
+    ...(withProbabilities && cell.p_serves !== undefined ? { p_serves: cell.p_serves } : {}),
+    ...(withProbabilities && cell.p_costs !== undefined ? { p_costs: cell.p_costs } : {}),
     ...(cell.others.length > 0
       ? { others: cell.others.map((row) => ({ scorer: row.scorer, level: row.level, confidence: row.confidence, ...(row.evidence !== undefined ? { evidence: row.evidence } : {}) })) }
       : {}),
@@ -179,7 +183,7 @@ function cellRow(cell: EffectiveCell) {
 }
 
 /** One promise: the numbers every time, the cells only when asked for. */
-function promiseRow(promise: PromiseWeighing, withCells: boolean) {
+function promiseRow(promise: PromiseWeighing, withCells: boolean, withProbabilities = false) {
   return {
     node_id: promise.node_id,
     title: promise.title,
@@ -199,12 +203,13 @@ function promiseRow(promise: PromiseWeighing, withCells: boolean) {
     flags: promise.flags,
     stale: promise.stale,
     review: promise.review,
+    uncertain: promise.uncertain,
     ...(promise.archived ? { archived: true } : {}),
-    ...(withCells ? { cells: promise.cells.map(cellRow) } : {}),
+    ...(withCells ? { cells: promise.cells.map((cell) => cellRow(cell, withProbabilities)) } : {}),
   };
 }
 
-const FILTERS = ["flagged", "stale", "review", "unassessed"] as const;
+const FILTERS = ["flagged", "stale", "review", "uncertain", "unassessed"] as const;
 
 function matchesFilter(promise: PromiseWeighing, filter: string): boolean {
   switch (filter) {
@@ -214,6 +219,8 @@ function matchesFilter(promise: PromiseWeighing, filter: string): boolean {
       return promise.stale.length > 0;
     case "review":
       return promise.review.length > 0;
+    case "uncertain":
+      return promise.uncertain.length > 0;
     case "unassessed":
       return !promise.cells.some((cell) => cell.source === "stored");
     default:
@@ -268,7 +275,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     {
       name: "get_matrix",
       description:
-        "The value matrix: what each promise (acceptance) is worth, against the 30 elements of value on a signed -3..+3 scale. Per promise: `served` (sum of positive levels / 3) and `cost` (sum of |negative levels| / 3), NEVER netted; `positioned` (the same over the elements the product's active positioning stands on, each times its weight); `kept_share` (platforms where it is live / platforms it applies to); `guesswork` (the share of served and of cost resting on confidence-0 cells; `positioned` carries its own, and every mass and total says how much of it is guesswork). `flags` is a partition: claim_not_supported (claimed in metadata.values but assessed 0 or 1), claim_contradicted (claimed but assessed negative), unclaimed_value (not claimed, assessed 1 or more) and unclaimed_cost (not claimed, assessed negative — authors claim intent, so a cost is never claimed). `stale` lists elements whose winning level was scored before the promise's title, Gherkin or values changed; `review` lists elements where a human and an agent differ by 2 or more. A cell nobody has scored reads at a SEEDED level (first claimed value +3, second +2, rest +1; scorer rule, confidence 0): a guess, never a score — negatives are never seeded. A human's level beats an agent's beats a seed, whatever the dates. Pass `subject` for one promise with every cell, its evidence and the scale's anchors — what you read before calling assess. Otherwise it lists promises (sort: served | cost | positioned | title; filter: flagged | stale | review | unassessed; limit) plus the per-element promised / kept / cost masses. A draft positioning feeds nothing.",
+        "The value matrix: what each promise (acceptance) is worth, against the 30 elements of value on a signed -3..+3 scale that measures REACH in a person's life: +1 within the product, +2 across the product's domain, +3 life-wide; the negatives mirror it, and 0 is weighed and unrelated. Most real promises land at +1; +3 is rare. Each element has its own ladder of what every level means. Per promise: `served` (sum of positive levels / 3) and `cost` (sum of |negative levels| / 3), NEVER netted; `positioned` (the same over the elements the product's active positioning stands on, each times its weight); `kept_share` (platforms where it is live / platforms it applies to); `guesswork` (the share of served and of cost resting on confidence-0 cells; `positioned` carries its own, and every mass and total says how much of it is guesswork). `flags` is a partition: claim_not_supported (claimed in metadata.values but assessed 0), claim_contradicted (claimed but assessed negative), unclaimed_value (not claimed, assessed 1 or more) and unclaimed_cost (not claimed, assessed negative — authors claim intent, so a cost is never claimed). `stale` lists elements whose winning level was scored before the promise's title, Gherkin or values changed, or against an older major of the ruler; `review` lists elements where a human and an agent differ by 2 or more; `uncertain` lists elements whose winning level a probabilistic scorer was unsure of (read it as a range). A cell nobody has scored reads at a SEEDED level: every claimed value +1 (scorer rule, confidence 0), a guess, never a score — negatives are never seeded. A human's level beats an agent's beats a seed, whatever the dates. Pass `subject` for one promise with every cell, its evidence, and each element's question and ladder — what you read before calling assess. Otherwise it lists promises (sort: served | cost | positioned | title; filter: flagged | stale | review | uncertain | unassessed; limit) plus the per-element promised / kept / cost masses. `probabilities: true` adds each cell's stored p_serves / p_costs. A draft positioning feeds nothing.",
       inputSchema: {
         type: "object",
         properties: {
@@ -277,6 +284,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           sort: { type: "string", enum: ["served", "cost", "positioned", "title"], description: "Default: served, heaviest first." },
           filter: { type: "string", enum: [...FILTERS] },
           limit: { type: "integer", minimum: 1, maximum: 200, description: "Default 25." },
+          probabilities: { type: "boolean", description: "With `subject`: add each cell's stored p_serves / p_costs. Default false — the `uncertain` marker is usually enough." },
         },
         additionalProperties: false,
       },
@@ -305,7 +313,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       const notes: string[] = [];
       if (skipped.length > 0) notes.push(`${skipped.length} stored set(s) or matrix(es) are malformed or duplicated and are ignored — see \`skipped\`.`);
       if (view.positioning !== null && !view.positioning.active) notes.push("The positioning is a draft — `positioned` figures are absent until it is saved as active.");
-      if (view.totals.assessed === 0) notes.push("Nothing has been assessed yet — every figure is seeded from the order of metadata.values (confidence 0), a guess.");
+      if (view.totals.assessed === 0) notes.push("Nothing has been assessed yet — every claimed value is seeded at +1 (confidence 0), a guess.");
 
       const subject = optionalString(args, "subject");
       if (subject !== undefined) {
@@ -314,9 +322,18 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
         return {
           matrix: { id: view.matrix.id, set: view.matrix.set, set_version: view.set.version },
           scale: weighingScaleOf(view.set),
+          // Each element's own question and ladder: a level means what ITS ladder says, the scale's anchors are the fallback.
+          elements: view.set.criteria.map((criterion) => ({
+            id: criterion.id,
+            name: criterion.name,
+            tier: criterion.group,
+            ...(criterion.question !== undefined ? { question: criterion.question } : {}),
+            ...(criterion.definition !== undefined ? { definition: criterion.definition } : {}),
+            ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}),
+          })),
           confidence_anchors: CONFIDENCE_ANCHORS,
           positioning,
-          promise: promiseRow(promise, true),
+          promise: promiseRow(promise, true, args.probabilities === true),
           ...(skipped.length > 0 ? { skipped } : {}),
           ...(notes.length > 0 ? { notes } : {}),
         };
@@ -370,7 +387,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     {
       name: "assess",
       description:
-        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the scale's anchors, not from memory. 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, where it can tell, whose hands you are — in a repository that is your git author name, read from `ARKAIK_ON_BEHALF_OF`, then `git config arkaik.user`, then `git config user.name`, and written into the committed sidecar; set `arkaik.user` to `-` to record nobody), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
+        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the element's own ladder, not from memory: the level is how far into the person's life it reaches (+1 within the product, +2 across its domain, +3 life-wide). 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, where it can tell, whose hands you are — in a repository that is your git author name, read from `ARKAIK_ON_BEHALF_OF`, then `git config arkaik.user`, then `git config user.name`, and written into the committed sidecar; set `arkaik.user` to `-` to record nobody), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
       inputSchema: {
         type: "object",
         properties: {
@@ -384,6 +401,8 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           run: { type: "string", maxLength: 200, description: "The audit or session this score belongs to. At most 200 characters." },
           commit: { type: "string", maxLength: 200 },
           matrix: { type: "string", description: `Default: ${VALUE_MATRIX_ID}.` },
+          p_serves: { type: "number", minimum: 0, maximum: 1, description: "Only from a probabilistic scorer: how sure it is (0 to 1) that the promise serves this element. Certainty, not size." },
+          p_costs: { type: "number", minimum: 0, maximum: 1, description: "The same for costs, asked independently. A level its scorer was unsure of reads as a range." },
         },
         required: ["subject", "criterion", "level", "confidence"],
         additionalProperties: false,
@@ -413,6 +432,9 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
         ...(optionalString(args, "model") !== undefined ? { model: optionalString(args, "model") as string } : {}),
         ...(optionalString(args, "run") !== undefined ? { run: optionalString(args, "run") as string } : {}),
         ...(optionalString(args, "commit") !== undefined ? { commit: optionalString(args, "commit") as string } : {}),
+        // Passed as given: a value off 0..1 is the planner's to refuse, with the reason.
+        ...(args.p_serves !== undefined ? { p_serves: args.p_serves as number } : {}),
+        ...(args.p_costs !== undefined ? { p_costs: args.p_costs as number } : {}),
       };
 
       const graph = await load();
@@ -436,7 +458,8 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       if (before?.source === "stored" && before.scorer.kind === "human") {
         notes.push("A human's level already stands for this cell and keeps winning — yours is recorded beside it" + (Math.abs(before.level - level) >= 2 ? ", and the cell now sits on the review list (you differ by 2 or more)." : "."));
       }
-      const anchor = weighingScaleOf(view.set).anchors[String(level)];
+      // The element's own ladder says what this level means; the scale's words are the fallback.
+      const anchor = view.set.criteria.find((candidate) => candidate.id === criterion)?.anchors?.[String(level)] ?? weighingScaleOf(view.set).anchors[String(level)];
 
       if (ctx.qualityRoot === undefined) {
         const events = await appendHosted([input]);
