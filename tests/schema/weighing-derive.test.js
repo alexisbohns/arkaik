@@ -220,6 +220,14 @@ check("a set with the positioning role under another id is not the matrix's posi
 const weights = buildWeighingContext({ sets: [positioning("active", [{ id: "connects", weight: 0 }, { id: "informs", weight: Infinity }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }])] }).positioning.weights;
 check("a weight of 0 means 0; a non-finite or negative weight reads as 1; the first duplicate wins", weights.get("connects") === 0 && weights.get("informs") === 1 && weights.get("organizes") === 1);
 
+const wview = (status, criteria) => deriveWeighing([consent], { sets: [positioning(status, criteria)] });
+const dupes = [{ id: "connects", weight: 0 }, { id: "informs" }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }];
+check(
+  "the view hands over the positioning's weights with the same rule as the roll-up: default 1, 0 is 0, the first duplicate wins",
+  [wview("active", dupes), wview("draft", dupes)].every((v) => eq(Object.fromEntries(v.positioning.weights), { connects: 0, informs: 1, organizes: 1 })),
+);
+check("…for a draft too, which feeds no roll-up but is still shown", wview("draft", dupes).positioning.active === false);
+
 // Guesswork on every number
 const guessy = ac("AC-guessy", ["connects"], { platforms: ["web", "ios"], metadata: { gherkin: "g", values: ["connects"], platformStatuses: { web: "live", ios: "development" } } });
 const guessSec = { sets: [positioning("active", [{ id: "connects", weight: 2 }, { id: "reduces-effort", weight: 3 }])], assessments: [row(guessy, "connects", 3, { confidence: 2 }), row(guessy, "reduces-effort", -3, { scorer: agent, confidence: 0 }), row(guessy, "reduces-anxiety", -3, { scorer: agent, confidence: 2 })] };

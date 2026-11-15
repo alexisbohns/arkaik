@@ -2726,6 +2726,22 @@ Append to `packages/schema/src/weighing-derive.ts`:
 ```ts
 // --- The context -------------------------------------------------------------
 
+/**
+ * The weight each element of a positioning stands on, by id. **The one rule**
+ * for what a weight is: the first criterion with an id wins; 0 means "this
+ * element does not count"; anything that is not a finite, non-negative number
+ * means "no weight said" (1). The roll-up and every reader of a positioning
+ * (the MCP `get_matrix`) read weights through this, so they cannot disagree.
+ */
+export function positioningWeights(set: Pick<WeighingCriteriaSet, "criteria">): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const criterion of set.criteria) {
+    if (weights.has(criterion.id)) continue; // the first wins
+    weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
+  }
+  return weights;
+}
+
 /** The matrix, its set, the stored cells and the active positioning, resolved once. */
 export interface WeighingContext {
   matrix: WeighingMatrix;
@@ -2775,13 +2791,7 @@ export function buildWeighingContext(
       : resolved.sets.find((candidate) => candidate.id === matrix.positioning && candidate.role === "positioning");
   let positioning: WeighingContext["positioning"] = null;
   if (positioningSet !== undefined && isActiveWeighingSet(positioningSet)) {
-    const weights = new Map<string, number>();
-    for (const criterion of positioningSet.criteria) {
-      if (weights.has(criterion.id)) continue; // the first wins
-      // 0 means "this element does not count"; anything that is not a finite, non-negative number means "no weight said" (1).
-      weights.set(criterion.id, typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1);
-    }
-    positioning = { set: positioningSet, weights };
+    positioning = { set: positioningSet, weights: positioningWeights(positioningSet) };
   }
   return { matrix, set, byCell, positioningSet, positioning };
 }
@@ -3005,6 +3015,14 @@ check("a set with the positioning role under another id is not the matrix's posi
 const weights = buildWeighingContext({ sets: [positioning("active", [{ id: "connects", weight: 0 }, { id: "informs", weight: Infinity }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }])] }).positioning.weights;
 check("a weight of 0 means 0; a non-finite or negative weight reads as 1; the first duplicate wins", weights.get("connects") === 0 && weights.get("informs") === 1 && weights.get("organizes") === 1);
 
+const wview = (status, criteria) => deriveWeighing([consent], { sets: [positioning(status, criteria)] });
+const dupes = [{ id: "connects", weight: 0 }, { id: "informs" }, { id: "informs", weight: 5 }, { id: "organizes", weight: -1 }, { id: "connects", weight: 4 }];
+check(
+  "the view hands over the positioning's weights with the same rule as the roll-up: default 1, 0 is 0, the first duplicate wins",
+  [wview("active", dupes), wview("draft", dupes)].every((v) => eq(Object.fromEntries(v.positioning.weights), { connects: 0, informs: 1, organizes: 1 })),
+);
+check("…for a draft too, which feeds no roll-up but is still shown", wview("draft", dupes).positioning.active === false);
+
 // Guesswork on every number
 const guessy = ac("AC-guessy", ["connects"], { platforms: ["web", "ios"], metadata: { gherkin: "g", values: ["connects"], platformStatuses: { web: "live", ios: "development" } } });
 const guessSec = { sets: [positioning("active", [{ id: "connects", weight: 2 }, { id: "reduces-effort", weight: 3 }])], assessments: [row(guessy, "connects", 3, { confidence: 2 }), row(guessy, "reduces-effort", -3, { scorer: agent, confidence: 0 }), row(guessy, "reduces-anxiety", -3, { scorer: agent, confidence: 2 })] };
@@ -3133,8 +3151,8 @@ export interface ElementMass {
 export interface WeighingView {
   matrix: WeighingMatrix;
   set: WeighingCriteriaSet;
-  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference. */
-  positioning: { set: WeighingCriteriaSet; active: boolean } | null;
+  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. `set` is a reference; `weights` is {@link positioningWeights} of it, a draft's too. */
+  positioning: { set: WeighingCriteriaSet; active: boolean; weights: Map<string, number> } | null;
   promises: PromiseWeighing[];
   /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
   elements: Record<string, ElementMass>;
@@ -3239,7 +3257,7 @@ export function deriveWeighing(
   return {
     matrix: ctx.matrix,
     set: ctx.set,
-    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null },
+    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null, weights: positioningWeights(ctx.positioningSet) },
     promises,
     elements,
     totals: {
@@ -3359,6 +3377,7 @@ const {
   foldWeighingEvents,
   parseWeighingEventInputs,
   planWeighingEvents,
+  WEIGHING_WRITE_LIMITS,
   WEIGHING_FOLD_TYPES,
   JOURNAL_EVENT_SCHEMAS,
   KnownJournalEventSchema,
@@ -3575,7 +3594,7 @@ const MAX_EVENTS = 50;
  * What one writer may put in one journal row. Enforced by {@link planWeighingEvents},
  * so every writer shares them; the hosted route also caps the whole body.
  */
-export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 } as const;
+export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 } as const;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
 
@@ -3584,13 +3603,15 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 /**
  * D14: what `scorer.on_behalf_of` may hold — an opaque user id, a handle or a
  * person's display name (a git author name: "Anne-Claire Dupré"), never an
- * email, because a sidecar is committed to a repo. So: non-empty, 128
- * characters at most, no control characters, and **no `@` anywhere** — that
- * refuses "me@example.com" and "Alexis <me@example.com>" alike.
+ * email, because a sidecar is committed to a repo. So: non-blank, 128
+ * characters at most, no control or invisible format characters (`\p{Cc}`,
+ * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text),
+ * and **no `@` anywhere** — the ASCII one and its look-alikes (U+FF20 full-width,
+ * U+FE6B small) — which refuses "me@example.com" and "Alexis <me@example.com>" alike.
  *
  * Exported so the MCP server can skip a candidate the planner would refuse.
  */
-export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !value.includes("@") && !/\p{Cc}/u.test(value);
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/[\p{Cc}\p{Cf}]/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -3695,6 +3716,8 @@ check(
   "anything with an @ is refused, whatever its shape",
   ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
 );
+check("a look-alike @ is refused too: the full-width and the small commercial at", ["me＠example.com", "me﹫example.com", "＠alexis"].every((value) => !behalfOutcome(value)));
+check("an invisible format character is refused (a zero-width space or joiner, a bidi override)", ["Alexis\u200bBohns", "Alexis\u200dBohns", "\u202eAlexis", "\ufeffAlexis"].every((value) => !behalfOutcome(value)));
 check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
@@ -3736,6 +3759,12 @@ check("50 refs are accepted", planWeighingEvents(undefined, [NODE], [assess({ re
 check("51 refs are refused", reasonOf([assess({ refs: Array.from({ length: 51 }, (_, i) => `R-${i}`) })]) === "invalid_entry");
 check("a ref of 200 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: ["r".repeat(200)] })], ctx()).ok === true);
 check("a ref of 201 characters is refused", reasonOf([assess({ refs: ["r".repeat(201)] })]) === "invalid_entry");
+for (const field of ["model", "run", "commit"]) {
+  check(`${field} of exactly 200 characters is accepted`, planWeighingEvents(undefined, [NODE], [assess({ [field]: "m".repeat(200) })], ctx({ scorerKind: "agent" })).ok === true);
+  check(`${field} of 201 characters is refused`, reasonOf([assess({ [field]: "m".repeat(201) })]) === "invalid_entry");
+}
+check("the caps are named: evidence, refs, ref and the model/run/commit fields", eq(WEIGHING_WRITE_LIMITS, { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 }));
+check("evidence that is blank after trimming is refused", ["   ", "\n\t "].every((evidence) => reasonOf([assess({ evidence })]) === "invalid_entry") && planWeighingEvents(undefined, [NODE], [assess({ evidence: " fine " })], ctx()).ok === true);
 
 // The model is the agent's own account of itself: a human session has none to claim.
 check("a human's scorer drops a supplied model", !("model" in planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx()).assessments[0].scorer));
@@ -3760,6 +3789,16 @@ const positioning = (over = {}) => ({
 const saved = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning() }], ctx());
 check("a positioning plans one set.saved event", saved.ok === true && saved.events.length === 1 && saved.events[0].type === "weighing.set.saved" && saved.events[0].set.id === "positioning");
 check("the saved set validates against its strict schema", KnownJournalEventSchema.safeParse(saved.events[0]).success);
+const setWith = (criteria) => planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria }) }], ctx());
+check("anchors keyed by levels on the scale, with words, are accepted", setWith([{ id: "connects", anchors: { "3": "a", "0": "b", "-3": "c" } }]).ok === true);
+check(
+  "anchors that are not an object of words are refused, not fixed",
+  [["not an object"], ["a", "b"], null, 5].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"),
+);
+check("an anchor on a level off the scale, or not a level, is refused", [{ "4": "x" }, { "-4": "x" }, { "1.5": "x" }, { three: "x" }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("an anchor whose words are empty or not a string is refused", [{ "3": "" }, { "3": "  " }, { "3": 3 }, { "3": null }].every((anchors) => setWith([{ id: "connects", anchors }]).refusals?.[0].reason === "invalid_set"));
+check("a criterion that is not an object is refused", [null, 5, "connects"].every((entry) => setWith([entry]).refusals?.[0].reason === "invalid_set"));
+check("a weight that is not a number is refused as given", ["3", true, NaN, Infinity].every((weight) => setWith([{ id: "connects", weight }]).refusals?.[0].reason === "invalid_set"));
 check("a positioning with an unknown element is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "teleports" }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("a weight of 0 is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "connects", weight: 0 }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("only the positioning can be saved in this slice", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ id: "my-set", role: undefined }) }], ctx()).refusals?.[0].reason === "invalid_set");
@@ -3832,12 +3871,15 @@ function assessmentProblem(entry: Record<string, unknown>): string | undefined {
   if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
     return "confidence must be an integer 0-3";
   }
+  const { evidenceChars, refs, refChars, fieldChars } = WEIGHING_WRITE_LIMITS;
   for (const field of ["matrix", "run", "commit", "model"] as const) {
     if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return `${field} must be a non-empty string when present`;
   }
-  const { evidenceChars, refs, refChars } = WEIGHING_WRITE_LIMITS;
+  for (const field of ["run", "commit", "model"] as const) {
+    if (typeof entry[field] === "string" && entry[field].length > fieldChars) return `${field} must be at most ${fieldChars} characters`;
+  }
   if (entry.evidence !== undefined) {
-    if (!isNonEmptyString(entry.evidence)) return "evidence must be a non-empty string when present";
+    if (!isNonEmptyString(entry.evidence) || entry.evidence.trim() === "") return "evidence must be a non-blank string when present";
     if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
   }
   if (entry.refs !== undefined) {
@@ -3912,8 +3954,20 @@ export function planWeighingEvents(
         if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
           return refuse("invalid_set", `"${String(criterion?.id)}" is not an element of ${ruler.id}`);
         }
-        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !(criterion.weight > 0))) {
+        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !Number.isFinite(criterion.weight) || !(criterion.weight > 0))) {
           return refuse("invalid_set", `the weight for "${criterion.id}" must be a number above 0 — leave the element out to leave it unpositioned`);
+        }
+        if (criterion.anchors !== undefined) {
+          // What each level means in the product's words: { "<level>": "words" }, levels on the ruler's scale.
+          const { min, max } = weighingScaleOf(ruler, resolved);
+          const anchors: unknown = criterion.anchors;
+          if (!isObject(anchors)) return refuse("invalid_set", `the anchors for "${criterion.id}" must be an object of level -> words`);
+          for (const [level, words] of Object.entries(anchors)) {
+            if (!/^-?\d+$/.test(level) || Number(level) < min || Number(level) > max) {
+              return refuse("invalid_set", `an anchor for "${criterion.id}" is keyed "${level}", which is not a level from ${min} to ${max}`);
+            }
+            if (typeof words !== "string" || words.trim() === "") return refuse("invalid_set", `the anchor for "${criterion.id}" at level ${level} must be non-empty words`);
+          }
         }
       }
       if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
@@ -8635,7 +8689,7 @@ type WeighingEventInput =
   | { type: "weighing.assessment.recorded"; matrix?; subject; criterion; level; confidence; evidence?; refs?; run?; commit?; model? }
   | { type: "weighing.set.saved"; set: WeighingCriteriaSet }
 function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string }          // the HTTP shape only: refuses scorer/basis/ts, copies known fields, judges NO value (the planner does, for every writer)
-const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 }             // enforced by planWeighingEvents
+const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200, fieldChars: 200 }             // enforced by planWeighingEvents
 function planWeighingEvents(section, nodes, inputs, { actor, scorerKind: "human"|"agent", onBehalfOf?, now? }):
   | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }   // reason adds "invalid_entry" (shape, caps); never throws; the model survives only on an agent's scorer
 function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold; replaces a stored row (and a set, against the last event folded for its id) only if the event's ts is >= its ts; skips rule rows
