@@ -1,5 +1,5 @@
 const { loadValueIcons, BUILD_DIR } = require("./load-value-icons");
-const { BUILD_DIR: SCHEMA_BUILD_DIR } = require("../schema/load-schema");
+const { loadSchema } = require("../schema/load-schema");
 const fs = require("fs");
 
 let failures = 0;
@@ -23,7 +23,7 @@ check("resolved component matches the values.ts icon name (no drift)",
 // The weighing library (packages/schema/src/weighing-library.ts) carries its own copy of the
 // element labels and definitions, because the MCP server and the CLI cannot import lib/.
 // This is the pin that keeps the two copies one.
-const { VALUE_CONTRIBUTION_SET } = require(require("path").join(SCHEMA_BUILD_DIR, "index.js"));
+const { VALUE_CONTRIBUTION_SET } = loadSchema();
 check("the weighing library's element names match lib/config/values.ts labels (no drift)",
   VALUES.every((v) => VALUE_CONTRIBUTION_SET.criteria.find((c) => c.id === v.id)?.name === v.label),
   VALUES.filter((v) => VALUE_CONTRIBUTION_SET.criteria.find((c) => c.id === v.id)?.name !== v.label).map((v) => v.id).join(", "));
