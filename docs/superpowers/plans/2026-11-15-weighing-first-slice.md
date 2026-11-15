@@ -1050,7 +1050,7 @@ git commit -m "feat(weighing): zod shapes and the additive bundle.weighing key (
 - Modify: `packages/schema/src/validate.ts`, `packages/schema/src/index.ts`
 - Modify: `tests/schema/weighing.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert **above** the final `fs.rmSync(BUILD_DIR, …)` line in `tests/schema/weighing.test.js`:
 
@@ -1084,12 +1084,12 @@ check("none of this is an error — warnings never block an import", validateBun
 check("a bundle with no weighing section raises no weighing finding", validateBundle(base).findings.every((f) => !f.rule.startsWith("weighing")));
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing.test.js`
 Expected: FAIL — `FAIL: an unknown criterion warns` (no rule fires yet) and the rest of the "validator" checks.
 
-- [ ] **Step 3: Write `packages/schema/src/weighing-validate.ts`**
+- [x] **Step 3: Write `packages/schema/src/weighing-validate.ts`**
 
 ```ts
 /**
@@ -1262,7 +1262,7 @@ export function validateWeighingSection(
 }
 ```
 
-- [ ] **Step 4: Call it from `validateBundle`**
+- [x] **Step 4: Call it from `validateBundle`**
 
 ```diff
 --- a/packages/schema/src/validate.ts
@@ -1297,16 +1297,16 @@ export function validateWeighingSection(
    // --- Snapshot ↔ journal cross-checks (Format Level 2, docs/spec/journal.md) ---
 ```
 
-- [ ] **Step 5: Export it**
+- [x] **Step 5: Export it**
 
 In `packages/schema/src/index.ts`, after `export * from "./weighing-library";` add `export * from "./weighing-validate";`.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `node tests/schema/weighing.test.js && npm run test:schema && npm run test:journal && npm run test:quality && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: all pass (`All weighing tests passed.` — 61 `PASS:` lines in total), `tsc` and `eslint` silent.
+Expected: all pass (`All weighing tests passed.` — 62 `PASS:` lines in total), `tsc` and `eslint` silent.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/schema/src/weighing-validate.ts packages/schema/src/validate.ts packages/schema/src/index.ts tests/schema/weighing.test.js

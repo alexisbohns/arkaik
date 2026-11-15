@@ -136,6 +136,34 @@ check("a bundle with a weighing section parses", ProjectBundleSchema.safeParse({
 check("a bundle without one still parses", ProjectBundleSchema.safeParse(base).success);
 check("schema_version stays 3 — the section is additive", base.schema_version === 3);
 
+// --- The validator ----------------------------------------------------------
+
+const warningsFor = (weighing, extra = {}) => validateBundle({ ...base, weighing, ...extra }).warnings.map((w) => w.rule);
+check("a clean section raises no weighing warning", warningsFor(section).filter((r) => r.startsWith("weighing")).length === 0);
+check("an unknown criterion warns", warningsFor({ ...section, assessments: [row({ criterion: "teleports" })] }).includes("weighing-unknown-criterion"));
+check("a level off the scale warns", warningsFor({ ...section, assessments: [row({ level: 4 })] }).includes("weighing-level-range"));
+check("a stored rule seed warns", warningsFor({ ...section, assessments: [row({ scorer: { kind: "rule", id: "seed" }, confidence: 0, evidence: undefined })] }).includes("weighing-rule-stored"));
+check("a missing scorer warns", warningsFor({ ...section, assessments: [{ ...row(), scorer: undefined }] }).includes("weighing-scorer-missing"));
+check("an unknown subject warns", warningsFor({ ...section, assessments: [row({ subject: "AC-gone" })] }).includes("weighing-unknown-subject"));
+check("a subject that is not an acceptance warns", warningsFor({ ...section, assessments: [row({ subject: "V-home" })] }, { nodes: [...base.nodes, { id: "V-home", project_id: "p", species: "view", title: "Home", status: "live", platforms: ["web"] }] }).includes("weighing-subject-species"));
+check("confidence 2 with no evidence warns", warningsFor({ ...section, assessments: [row({ evidence: undefined })] }).includes("weighing-no-evidence"));
+check("confidence 0 with no evidence is fine", !warningsFor({ ...section, assessments: [row({ confidence: 0, evidence: undefined })] }).includes("weighing-no-evidence"));
+check("two rows for one cell and kind warn", warningsFor({ ...section, assessments: [row(), row({ level: 1 })] }).includes("weighing-duplicate-assessment"));
+check("a human and an agent row for one cell do not", !warningsFor({ ...section, assessments: [row(), row({ scorer: agent })] }).includes("weighing-duplicate-assessment"));
+check("an unknown matrix warns", warningsFor({ ...section, assessments: [row({ matrix: "nope" })] }).includes("weighing-unknown-matrix"));
+check("a set major bump warns", warningsFor({ ...section, assessments: [row({ basis: { set_version: "0.9.0" } })] }).includes("weighing-set-major"));
+check("redefining a pinned set warns", warningsFor({ sets: [{ ...set, version: "9.0.0" }], matrices: [], assessments: [] }).includes("weighing-pinned-set-redefined"));
+const positioning = (criteria) => ({ id: "positioning", version: "1.0.0", subject: "acceptance", scale: set.scale, role: "positioning", extends: "value-contribution@1", criteria });
+check("a positioning naming a non-element warns", warningsFor({ sets: [positioning([{ id: "teleports", weight: 2 }])], matrices: [], assessments: [] }).includes("weighing-positioning-unknown-element"));
+check("a positioning weight of 0 warns", warningsFor({ sets: [positioning([{ id: "connects", weight: 0 }])], matrices: [], assessments: [] }).includes("weighing-positioning-weight"));
+check("a good positioning raises nothing", warningsFor({ sets: [positioning([{ id: "connects", weight: 3 }])], matrices: [], assessments: [] }).filter((r) => r.startsWith("weighing")).length === 0);
+check(
+  "a weighing event with no actor warns",
+  warningsFor(undefined, { journal: [{ id: "01A", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", matrix: "value", subject: "AC-a", criterion: "connects", level: 2, confidence: 1, scorer: human }] }).includes("weighing-event-no-actor"),
+);
+check("none of this is an error — warnings never block an import", validateBundle({ ...base, weighing: { ...section, assessments: [row({ criterion: "teleports", level: 9 })] } }).valid === true);
+check("a bundle with no weighing section raises no weighing finding", validateBundle(base).findings.every((f) => !f.rule.startsWith("weighing")));
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} weighing test(s) failed.`);

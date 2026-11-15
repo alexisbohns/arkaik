@@ -33,3 +33,4 @@ export * from "./journal-page";
 export * from "./weighing";
 export * from "./weighing-schemas";
 export * from "./weighing-library";
+export * from "./weighing-validate";
