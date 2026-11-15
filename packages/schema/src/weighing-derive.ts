@@ -334,3 +334,122 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
     review,
   };
 }
+
+// --- The matrix --------------------------------------------------------------
+
+/** What one element is promised and kept across every live promise. */
+export interface ElementMass {
+  /** Σ over promises of positive level ÷ 3. */
+  promised: number;
+  /** The same, each promise times its kept share (0 when it applies nowhere). */
+  kept: number;
+  /** Σ over promises of |negative level| ÷ 3. */
+  cost: number;
+  /** The share (0–1) of `promised` that rests on confidence-0 cells. */
+  guesswork: number;
+}
+
+export interface WeighingView {
+  matrix: WeighingMatrix;
+  set: WeighingCriteriaSet;
+  /** `null` when no positioning exists; `active: false` for a draft, which feeds nothing. */
+  positioning: { set: WeighingCriteriaSet; active: boolean } | null;
+  promises: PromiseWeighing[];
+  /** One entry per element of the set, in set order, zeros included. Archived promises are left out. */
+  elements: Record<string, ElementMass>;
+  totals: {
+    promised: number;
+    kept: number;
+    cost: number;
+    guesswork: number;
+    promises: number;
+    archived: number;
+    /** Promises with at least one stored (non-seed) cell. */
+    assessed: number;
+  };
+}
+
+/** The nodes a matrix judges. */
+export function matrixSubjects<N extends Pick<Node, "id" | "species">>(nodes: readonly N[], matrix: WeighingMatrix): N[] {
+  if (matrix.subjects.kind === "query") {
+    const species = matrix.subjects.species;
+    return nodes.filter((node) => node.species === species);
+  }
+  const ids = new Set(matrix.subjects.items.map((item) => item?.node_id ?? item?.id));
+  return nodes.filter((node) => ids.has(node.id));
+}
+
+/**
+ * Derive the whole matrix: every promise weighed, every element's masses, the
+ * totals. `undefined` when the matrix or its set is not available.
+ *
+ * Every roll-up is computed from promises, never from another roll-up, and an
+ * archived promise is weighed (so its form still works) but counted nowhere.
+ */
+export function deriveWeighing(
+  nodes: readonly WeighedNode[],
+  section: Partial<Pick<WeighingSection, "sets" | "matrices" | "assessments">> | null | undefined,
+  matrixId: string = VALUE_MATRIX_ID,
+): WeighingView | undefined {
+  const ctx = buildWeighingContext(section, matrixId);
+  if (ctx === undefined) return undefined;
+
+  const promises = matrixSubjects(nodes, ctx.matrix).map((node) => weighPromise(node, ctx));
+  const raw = new Map<string, { promised: number; kept: number; cost: number; promisedGuess: number }>(
+    ctx.set.criteria.map((criterion) => [criterion.id, { promised: 0, kept: 0, cost: 0, promisedGuess: 0 }]),
+  );
+
+  let assessed = 0;
+  let archived = 0;
+  for (const promise of promises) {
+    if (promise.cells.some((cell) => cell.source === "stored")) assessed++;
+    if (promise.archived) {
+      archived++;
+      continue;
+    }
+    const kept = promise.kept_share ?? 0;
+    for (const cell of promise.cells) {
+      const mass = raw.get(cell.criterion);
+      if (mass === undefined) continue;
+      if (cell.level > 0) {
+        mass.promised += cell.level / 3;
+        mass.kept += (cell.level / 3) * kept;
+        if (cell.confidence === 0) mass.promisedGuess += cell.level / 3;
+      } else if (cell.level < 0) {
+        mass.cost += -cell.level / 3;
+      }
+    }
+  }
+
+  const elements: Record<string, ElementMass> = {};
+  let promised = 0;
+  let keptTotal = 0;
+  let cost = 0;
+  let promisedGuess = 0;
+  for (const [id, mass] of raw) {
+    elements[id] = { promised: mass.promised, kept: mass.kept, cost: mass.cost, guesswork: mass.promised > 0 ? mass.promisedGuess / mass.promised : 0 };
+    promised += mass.promised;
+    keptTotal += mass.kept;
+    cost += mass.cost;
+    promisedGuess += mass.promisedGuess;
+  }
+
+  return {
+    matrix: ctx.matrix,
+    set: ctx.set,
+    positioning: ctx.positioningSet === undefined ? null : { set: ctx.positioningSet, active: ctx.positioning !== null },
+    promises,
+    elements,
+    totals: { promised, kept: keptTotal, cost, guesswork: promised > 0 ? promisedGuess / promised : 0, promises: promises.length, archived, assessed },
+  };
+}
+
+/** The sort keys a matrix page or an agent orders promises by. */
+export type PromiseSortKey = "served" | "cost" | "positioned" | "title";
+
+/** Promises ordered by a derived key, heaviest first (title: A to Z); a promise with no positioned figure sorts last. */
+export function sortPromises(promises: readonly PromiseWeighing[], key: PromiseSortKey): PromiseWeighing[] {
+  const value = (promise: PromiseWeighing): number =>
+    key === "served" ? promise.served : key === "cost" ? promise.cost : key === "positioned" ? promise.positioned?.served ?? -1 : 0;
+  return [...promises].sort((a, b) => (key === "title" ? a.title.localeCompare(b.title) : value(b) - value(a) || a.title.localeCompare(b.title)));
+}

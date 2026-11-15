@@ -167,6 +167,34 @@ check(
   }),
 );
 
+// --- The matrix: masses, archived, totals -----------------------------------
+
+const a1 = ac("AC-1", ["connects", "reduces-anxiety"], { platforms: ["web", "ios"], metadata: { gherkin: "g1", values: ["connects", "reduces-anxiety"], platformStatuses: { web: "live", ios: "development" } } });
+const a2 = ac("AC-2", ["connects"], { platforms: ["web"] });
+const gone = ac("AC-gone", ["connects"], { status: "archived" });
+const view = { id: "V-home", project_id: "p", species: "view", title: "Home", status: "live", platforms: ["web"] };
+const sec = { sets: [], matrices: [], assessments: [row(a1, "connects", 3), row(a1, "reduces-anxiety", -2)] };
+const derived = deriveWeighing([a1, a2, gone, view], sec);
+check("the matrix judges acceptances only", derived.promises.length === 3 && !derived.promises.some((p) => p.node_id === "V-home"));
+check("matrixSubjects reads the matrix's query", matrixSubjects([a1, view], derived.matrix).length === 1);
+check("every element of the set has a mass, zeros included", Object.keys(derived.elements).length === 30 && derived.elements.variety.promised === 0);
+check("connects: promised = 3/3 (a1, human) + 3/3 (a2, seed) = 2", near(derived.elements.connects.promised, 2), String(derived.elements.connects.promised));
+check("connects: kept = 1 × 1/2 (a1) + 1 × 1 (a2) = 1.5", near(derived.elements.connects.kept, 1.5), String(derived.elements.connects.kept));
+check("reduces-anxiety carries a cost mass and no promised mass", near(derived.elements["reduces-anxiety"].cost, 2 / 3) && derived.elements["reduces-anxiety"].promised === 0);
+check("an archived promise is weighed but counted nowhere", derived.totals.archived === 1 && near(derived.totals.promised, 2));
+check("only a1 has a stored cell", derived.totals.assessed === 1);
+check("connects: guesswork is the seeded share — a2's mass over the total", near(derived.elements.connects.guesswork, 0.5), String(derived.elements.connects.guesswork));
+check("the total guesswork share is the same reading across elements", near(derived.totals.guesswork, 0.5));
+check("a promise built only from seeds is all guesswork", near(derived.promises.find((p) => p.node_id === "AC-2").guesswork.served, 1));
+check("a human-scored promise at confidence 2 is no guesswork", near(derived.promises.find((p) => p.node_id === "AC-1").guesswork.served, 0));
+check("an unknown matrix derives to nothing", deriveWeighing([a1], sec, "nope") === undefined);
+check("a project with no section derives from seeds alone", deriveWeighing([a2], undefined).totals.guesswork === 1);
+
+const order = sortPromises(derived.promises, "served").map((p) => p.node_id);
+check("promises sort by served, heaviest first, ties by title", order[0] === "AC-1" && order.length === 3);
+check("promises sort by title A to Z", sortPromises(derived.promises, "title")[0].title === "Promise AC-1");
+check("promises sort by cost, costliest first", sortPromises(derived.promises, "cost")[0].node_id === "AC-1");
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 fs.rmSync(STATUS_BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {

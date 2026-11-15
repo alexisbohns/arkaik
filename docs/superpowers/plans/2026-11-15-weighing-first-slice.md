@@ -2875,7 +2875,7 @@ git commit -m "feat(weighing): served, cost, positioned, kept share, claim flags
 **Files:**
 - Modify: `packages/schema/src/weighing-derive.ts`, `tests/schema/weighing-derive.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` lines in `tests/schema/weighing-derive.test.js`:
 
@@ -2909,12 +2909,12 @@ check("promises sort by title A to Z", sortPromises(derived.promises, "title")[0
 check("promises sort by cost, costliest first", sortPromises(derived.promises, "cost")[0].node_id === "AC-1");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-derive.test.js`
 Expected: FAIL — `TypeError: deriveWeighing is not a function`.
 
-- [ ] **Step 3: Append the matrix section**
+- [x] **Step 3: Append the matrix section**
 
 Append to `packages/schema/src/weighing-derive.ts`:
 
@@ -3039,12 +3039,12 @@ export function sortPromises(promises: readonly PromiseWeighing[], key: PromiseS
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `node tests/schema/weighing-derive.test.js`
-Expected: all 59 checks `PASS:`, ending `All weighing-derive tests passed.`
+Expected: all 61 checks `PASS:`, ending `All weighing-derive tests passed.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-derive.ts tests/schema/weighing-derive.test.js
