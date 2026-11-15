@@ -307,14 +307,16 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
     },
 
     /**
-     * The raw editor's save. A stale `version` is the server's 412 and
+     * The raw editor's save. A stale `version` (or, with `eventCount`, a
+     * journal that grew since the read) is the server's 412 and
      * surfaces as a `RemoteProviderError` with that status — the caller's cue
      * that someone else wrote since the editor was opened.
      */
-    async replaceProject(projectId: string, bundle: ProjectBundle, { version }: ReplaceProjectOptions) {
+    async replaceProject(projectId: string, bundle: ProjectBundle, { version, eventCount }: ReplaceProjectOptions) {
+      const validator = eventCount === undefined ? version : `${version}.${eventCount}`;
       const result = await request<{ version: string }>(`/projects/${encodeURIComponent(projectId)}/bundle`, {
         method: "PUT",
-        headers: { "if-match": `"${version}"` },
+        headers: { "if-match": `"${validator}"` },
         body: JSON.stringify(bundle),
       });
       return { version: result.version };

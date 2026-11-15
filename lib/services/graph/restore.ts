@@ -127,8 +127,31 @@ export type IfMatchClassification = "match" | "absent" | "unsupported" | "stale"
  * A bare token and a double-quoted one compare equal (`7` and `"7"` both
  * match a stored version of `7`): both are honest statements of the same
  * version, one with the ETag quoting `arkaik restore` sends and one without.
+ *
+ * ── Journal-aware validator: `"<version>.<eventCount>"` ────────────────────
+ * `version` moves on every SNAPSHOT write, but not on a journal-only append
+ * (`appendJournalEvents`: a Lab Note's `deliverable.shipped`, quality and
+ * weighing events, a live delivery). That is deliberate — the read ETags
+ * (`etag.ts`) keep a merged PR from forcing every open map to re-download —
+ * but it leaves a bare version blind to an append landing between a
+ * restore's read and its PUT, and the PUT's journal replace would delete
+ * that event unseen. So the token may also name the journal the caller read:
+ * `"7.42"` matches only when the stored version is `7` AND the project holds
+ * exactly 42 events (`currentEventCount`). The count is sound as a validator
+ * because between two version bumps the journal only grows: the one deleter
+ * is the restore itself, and it always bumps `version`.
+ *
+ * A bare version keeps its old meaning, so a client that predates the
+ * composite form still works — and still has the blind spot. A composite
+ * token whose count part is not decimal digits, or whose version part is
+ * empty, is "unsupported", not "stale": the caller did not state a real
+ * validator.
  */
-export function classifyIfMatch(ifMatch: string | undefined | null, current: string): IfMatchClassification {
+export function classifyIfMatch(
+  ifMatch: string | undefined | null,
+  current: string,
+  currentEventCount?: number,
+): IfMatchClassification {
   if (typeof ifMatch !== "string") return "absent";
   const trimmed = ifMatch.trim();
   if (trimmed.length === 0) return "absent";
@@ -148,6 +171,19 @@ export function classifyIfMatch(ifMatch: string | undefined | null, current: str
   // "unsupported shape," not "stale" — the caller did not state a real
   // version to be stale AGAINST.
   if (normalized.length === 0 || normalized === "*") return "unsupported";
+  // The composite form, `<version>.<eventCount>` — see the "Journal-aware
+  // validator" note above. A version is decimal digits and never holds a dot,
+  // so a dot can only mean this form; anything else around it is malformed.
+  const dot = normalized.indexOf(".");
+  if (dot !== -1) {
+    const version = normalized.slice(0, dot);
+    const count = normalized.slice(dot + 1);
+    if (version.length === 0 || !/^\d+$/.test(count)) return "unsupported";
+    // A caller that cannot supply the stored count cannot vouch for it either:
+    // fail closed rather than fall back to comparing the version alone.
+    if (currentEventCount === undefined) return "stale";
+    return version === current && count === String(currentEventCount) ? "match" : "stale";
+  }
   return normalized === current ? "match" : "stale";
 }
 

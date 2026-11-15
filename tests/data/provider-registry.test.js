@@ -641,6 +641,16 @@ async function main() {
       JSON.stringify(sent.headers),
     );
     check("…and answers the version after the write", result.version === "8", JSON.stringify(result));
+
+    // With the journal length it was read with, the If-Match names that too —
+    // the only way the server can see an append that did not bump the version.
+    seen.length = 0;
+    await provider.replaceProject(HOSTED, bundle, { version: "7", eventCount: 3 });
+    check(
+      "…and with an event count, a composite \"<version>.<eventCount>\" If-Match",
+      seen[0]?.headers["if-match"] === '"7.3"',
+      JSON.stringify(seen[0]?.headers),
+    );
   }
   {
     const provider = remote.createRemoteProvider({
