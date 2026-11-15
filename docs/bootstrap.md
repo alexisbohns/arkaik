@@ -197,7 +197,8 @@ Three rails hold in either mode:
   the hosted project since the restore goes with it.
 - **It is `If-Match`-gated and owner-only.** A concurrent edit gets a `412`,
   never a silent overwrite — re-run to read the current state and decide
-  again. And the token must own the project, not merely hold a write scope.
+  again. The check covers the journal too: an event written after restore
+  read the hosted project (a Lab Note, a score) is a conflict, not a loss. And the token must own the project, not merely hold a write scope.
 - **`--dry-run` is an exact preview.** The server runs the same validation,
   version, and tier gates a real write would and returns the node/edge/event
   delta; nothing is written and no backup is taken. An append's preview is of

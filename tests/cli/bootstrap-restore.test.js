@@ -398,7 +398,8 @@ async function main() {
         return jsonResponse(200, { bundle: HOSTED_EXPORT });
       }
       if (url.endsWith("/api/graph/projects/prj_demo/bundle")) {
-        check("PUT carries If-Match with the read version", init.headers["If-Match"] === '"7"', JSON.stringify(init.headers));
+        // "<version>.<eventCount>" (#639): the read version AND the hosted journal the export held (1 event).
+        check("PUT carries If-Match naming the read version and the exported journal", init.headers["If-Match"] === '"7.1"', JSON.stringify(init.headers));
         const body = JSON.parse(init.body);
         check("PUT body carries both local nodes", body.bundle.nodes.length === 2, JSON.stringify(body.bundle.nodes));
         check(
@@ -504,6 +505,7 @@ async function main() {
       if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
       if (url.includes("/export")) throw new Error("dry-run must not call export");
       if (url.endsWith("/bundle?dryRun=1")) {
+        // A --replace dry run reads no export, so it has no event count to name: the bare version.
         check("dry-run PUT still carries If-Match", init.headers["If-Match"] === '"7"', JSON.stringify(init.headers));
         return jsonResponse(200, { version: "7", delta: { nodesBefore: 1, nodesAfter: 2, nodesAdded: 1, nodesRemoved: 0, nodesChanged: 0, nodesMalformed: 0, edgesBefore: 0, edgesAfter: 0, edgesAdded: 0, edgesRemoved: 0, edgesChanged: 0, edgesMalformed: 0, eventsBefore: 1, eventsAfter: 1, eventsAdded: 1, eventsDropped: 0, eventsChanged: 0, eventsMalformed: 0 }, dryRun: true });
       }
@@ -1964,6 +1966,11 @@ async function main() {
       check("append dry run: ok", result.ok === true && result.status === 200, JSON.stringify(result));
       check("append dry run: three calls, the PUT a preview", httpClient.calls.length === 3 && /\?dryRun=1$/.test(putUrl), JSON.stringify(httpClient.calls.map((c) => c.url)));
       check("append dry run: previews the MERGED bundle", putBody.bundle.nodes.some((n) => n.id === "V-app"), JSON.stringify(putBody?.bundle.nodes));
+      check(
+        "append dry run: If-Match names the exported journal too",
+        httpClient.calls[2].init.headers["If-Match"] === `"7.${HOSTED_AHEAD.journal.length}"`,
+        JSON.stringify(httpClient.calls[2].init.headers),
+      );
       check("append dry run: no backup", backupsIn(dir).length === 0, backupsIn(dir));
       const lines = captureConsoleLog(() => reportRestore(result));
       check("append dry run: the footer does not promise guards an append never runs", !lines.some((l) => /guards/.test(l)) && lines.some((l) => /Append:/.test(l)), JSON.stringify(lines));
@@ -1994,6 +2001,24 @@ async function main() {
         "append 412: names the conflict and the full undo command",
         /Conflict/.test(result.errorMessage || "") && (result.errorMessage || "").includes(undoCommandFor(result.backupPath)),
         result.errorMessage,
+      );
+    }
+
+    // 8b. A 412 with an UNCHANGED version means the journal moved under the restore (#639):
+    //     the message says that, rather than "read version 7, it is now 7".
+    {
+      const { dir, bundlePath } = fixture();
+      const httpClient = makeMockHttpClient((url) => {
+        if (url.endsWith("/api/graph/projects/prj_demo")) return jsonResponse(200, { version: "7" });
+        if (url.endsWith("/export")) return jsonResponse(200, { bundle: HOSTED_AHEAD });
+        return jsonResponse(412, { current: "7", eventCount: HOSTED_AHEAD.journal.length + 1 });
+      });
+      const result = await appendRestore({ path: bundlePath, apiBase: "http://example.invalid", env: { ARKAIK_TOKEN: "tok" }, cwd: dir, httpClient });
+      const message = result.errorMessage || "";
+      check(
+        "append 412, same version: names the journal that moved and its new size",
+        /journal gained events \(it now holds 5\)/.test(message) && !/it is now 7/.test(message) && /Re-run `arkaik restore`/.test(message),
+        message,
       );
     }
 
