@@ -10,9 +10,9 @@
 
 **Where:** worktree `/Users/alexis/code/arkaik-weighing`. `docs/rfcs/weighing.md` and `docs/README.md` belong to the agent writing the RFC on branch `weighing/docs` — **this plan never touches those two files** (the doc edits below go to `docs/spec/*.md` and `docs/hosted-projects.md`).
 
-**Every line of code in this plan was run, except the `on_behalf_of` additions of Parts 3 and 4 (D14), which are marked *not yet run* wherever they appear.** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
+**Every line of code in this plan was run — Part 3's `on_behalf_of` additions (D14) when Part 3 was implemented, and they passed as written — except Part 4's `on_behalf_of` additions, which are marked *not yet run* wherever they appear.** (Part 1's own `on_behalf_of` field, its zod line and its test were run when Part 1 was implemented, and pass.) The schema, CLI, hosted route, provider, MCP and app code below was applied to a scratch copy of the worktree and the test suites quoted here were run there: `tsc --noEmit`, `eslint` (0 errors), `test:schema`, `test:fixtures`, `test:journal`, `test:quality*`, `test:cli`, `test:mcp`, `test:provider`, `test:migrate`, `test:project-queries`, `test:panel-semantics`, `test:publik-strip`, `test:bootstrap` and `test:graph` against a scratch Postgres 16 all pass with it. Not run: `npm run build` (Turbopack refuses the scratch copy's symlinked `node_modules`, an artifact of the copy, not of the code — run it in the real worktree) and a browser pass over the two UI components (the panel form and the Settings editor are verified by `tsc`, `eslint` and the source-asserting panel suites only — see Part 5's manual check).
 
-**Not yet run: `on_behalf_of` in Parts 3 and 4.** The owner's decision to record whom a scorer acts for (D14) was folded into this plan after the run above, in a worktree with no `node_modules`, so none of the suites could be executed against it. Every added line is marked *not yet run*. They are small and follow the code beside them, but the first implementer must run `test:weighing`, `test:weighing-events`, `test:graph` and `test:mcp` and treat a red check there as the plan's bug, not theirs.
+**Not yet run: `on_behalf_of` in Part 4** (Part 3's were run: the planner, the `isOpaqueId` guard, the `invalid_on_behalf_of` refusal and the route's token stamp all passed `test:weighing-events`, `test:graph` and `test:weighing-provider` unchanged). The owner's decision to record whom a scorer acts for (D14) was folded into this plan after the run above, in a worktree with no `node_modules`, so none of the suites could be executed against it. Every added line in Part 4 is marked *not yet run*. They are small and follow the code beside them, but the Part 4 implementer must run `test:mcp` and treat a red check there as the plan's bug, not theirs.
 
 ---
 
@@ -3575,7 +3575,7 @@ const MAX_EVENTS = 50;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
 
-/** D14, not yet run: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
+/** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
 const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
 
 /**
@@ -3694,7 +3694,7 @@ check("the event carries the assessment flat, with the writer as actor", plan.ev
 check("the event validates against its strict schema", KnownJournalEventSchema.safeParse(plan.events[0]).success);
 check("a human session stamps a human", planWeighingEvents(undefined, [NODE], [assess()], ctx()).assessments[0].scorer.kind === "human");
 
-// on_behalf_of (not yet run — D14)
+// on_behalf_of (D14)
 const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKind: "agent", actor: "arkaik-agent", onBehalfOf: "42" }));
 check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
 check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
@@ -3741,7 +3741,7 @@ check("a positioning extending nothing is refused", planWeighingEvents(undefined
 Run: `node tests/schema/weighing-events.test.js`
 Expected: FAIL — `TypeError: planWeighingEvents is not a function`.
 
-> **Not yet run, and more than a field (D14).** The planner gains `ctx.onBehalfOf`, one refusal reason (`invalid_on_behalf_of`) and a small `isOpaqueId` guard that rejects an email-shaped value. The lines are marked in the code and the three checks are at the end of Step 1.
+> **Run in Part 3 (D14).** The planner gains `ctx.onBehalfOf`, one refusal reason (`invalid_on_behalf_of`) and a small `isOpaqueId` guard that rejects an email-shaped value; the three checks at the end of Step 1 pass as written, and Task 3.3 adds two more pinning that the stamp survives the fold.
 
 - [x] **Step 3: Append the planner**
 
@@ -3756,7 +3756,7 @@ export type WeighingRefusalReason =
   | "unknown_criterion"
   | "retired_criterion"
   | "level_out_of_range"
-  | "invalid_on_behalf_of" // D14, not yet run
+  | "invalid_on_behalf_of" // D14
   | "invalid_set";
 
 /** Why one entry of a batch was refused. `index` is its position in the request's `events` array. */
@@ -3772,7 +3772,7 @@ export interface WeighingPlanContext {
   /** Stamped by the caller: a session is `human`, a token or the MCP server is `agent`. Never `rule`. */
   scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
-   * Whom the scorer acts for, when the writer knows (D14, not yet run): the token
+   * Whom the scorer acts for, when the writer knows (D14): the token
    * owner's user id on the hosted route, whatever the MCP server was told in a
    * repo. An opaque id or handle, never an email. Absent otherwise.
    */
@@ -3874,7 +3874,7 @@ export function planWeighingEvents(
     }
 
     if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
-      // D14, not yet run.
+      // D14.
       return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
     }
 
@@ -3888,7 +3888,7 @@ export function planWeighingEvents(
         kind: ctx.scorerKind,
         id: ctx.actor,
         ...(input.model !== undefined ? { model: input.model } : {}),
-        ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14, not yet run
+        ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14
       },
       confidence: input.confidence as WeighingConfidence,
       ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
@@ -3942,6 +3942,8 @@ check("no section and no events stays undefined", foldWeighingEvents(undefined, 
 const fromNothing = foldWeighingEvents(undefined, ev(plan));
 check("a project with only events still folds, from nothing", fromNothing.assessments.length === 1 && fromNothing.sets.length === 0 && fromNothing.matrices.length === 0);
 check("the folded row is the planned row", same(fromNothing.assessments[0], row));
+check("an on_behalf_of stamp survives the fold: the row a reader sees names whom the agent acts for (D14)", foldWeighingEvents(undefined, behalf.events).assessments[0].scorer.on_behalf_of === "42");
+check("…and a writer that stamped nothing leaves the folded scorer without the key", !("on_behalf_of" in fromNothing.assessments[0].scorer));
 
 const later = planWeighingEvents(undefined, [NODE], [assess({ level: 3 })], ctx({ scorerKind: "agent", actor: "arkaik-mcp", now: new Date("2026-11-15T11:00:00.000Z") }));
 const folded = foldWeighingEvents(fromNothing, ev(later));
@@ -4063,7 +4065,7 @@ export function foldWeighingEvents(
 - [x] **Step 4: Run the tests**
 
 Run: `node tests/schema/weighing-events.test.js && npm run test:journal && npm run test:schema && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: 53 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
+Expected: 55 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
 
 - [x] **Step 5: Commit**
 
@@ -4899,7 +4901,7 @@ git commit -m "feat(weighing): docs/weighing sidecars folded by pack and restore
 
 This is the only task that needs Postgres (`npm run test:graph`); start the scratch cluster from § 1.3 first.
 
-> **Not yet run (D14).** The route's `onBehalfOf` stamp and the two `on_behalf_of` assertions below were added after the run.
+> **Run in Part 3 (D14).** The route's `onBehalfOf` stamp and the two `on_behalf_of` assertions below pass against a scratch Postgres as written.
 
 - [x] **Step 1: Write the failing integration test**
 
@@ -4977,7 +4979,7 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
      // A snapshot write bumps the version, so every read validator moves.
      const etagMutation = await api.MUTATE(
        jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-etag", "view") }] }),
-@@ -1434,6 +1473,126 @@
+@@ -1434,6 +1473,132 @@
        scopeDeniedRes.status === 403 && scopeDeniedBody.required === "graph:write",
        `${scopeDeniedRes.status} ${JSON.stringify(scopeDeniedBody)}`,
      );
@@ -5033,7 +5035,7 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
 +        body.events?.[0].scorer.kind === "agent" && body.events[0].scorer.model === "claude" && /^fp1-/.test(body.events[0].basis?.fingerprint) && body.events[0].actor === "arkaik-agent",
 +        JSON.stringify(body.events?.[0]),
 +      );
-+      // D14, not yet run: a token is an agent acting for its owner.
++      // D14: a token is an agent acting for its owner.
 +      check(
 +        "a token write is stamped on behalf of its owner: the user id as an opaque string, never an email",
 +        body.events?.[0].scorer.on_behalf_of === String(userW) && !String(body.events[0].scorer.on_behalf_of).includes("@"),
@@ -5281,7 +5283,7 @@ export const dynamic = "force-dynamic";
  * an agent's in every roll-up, which is exactly why a token cannot claim to be
  * one.
  *
- * **On whose behalf (D14, not yet run).** A token is an agent acting for the
+ * **On whose behalf (D14).** A token is an agent acting for the
  * person who minted it, and the record says so: `scorer.on_behalf_of` is the
  * token owner's user id, an opaque string and never an email (sidecars are
  * committed to repos, and a bundle can be published). A session is the person
@@ -5344,7 +5346,7 @@ export async function POST(
     const plan = planWeighingEvents(section, snapshot.nodes, inputs, {
       actor,
       scorerKind: agent ? "agent" : "human",
-      // D14, not yet run: whose hands the token is. `caller.userId` is the token's owner.
+      // D14: whose hands the token is. `caller.userId` is the token's owner.
       ...(agent ? { onBehalfOf: String(caller.userId) } : {}),
     });
     if (!plan.ok) {
@@ -5729,14 +5731,14 @@ git commit -m "feat(weighing): appendWeighingEvents on the browser, hosted and r
 - Modify: `package.json`, `package-lock.json`, `packages/cli/package.json`, `.github/workflows/ci.yml`
 - Modify: `docs/spec/journal.md`, `docs/spec/services.md`, `docs/spec/toolchain.md`, `docs/hosted-projects.md`
 
-- [ ] **Step 1: Scripts** — after `"test:weighing-derive"` in `package.json` add:
+- [x] **Step 1: Scripts** — after `"test:weighing-derive"` in `package.json` add:
 
 ```json
     "test:weighing-events": "node tests/schema/weighing-events.test.js",
     "test:weighing-provider": "node tests/data/weighing-provider.test.js",
 ```
 
-- [ ] **Step 2: CI steps** — in `ci.yml`, after the "Weighing derivation tests" step:
+- [x] **Step 2: CI steps** — in `ci.yml`, after the "Weighing derivation tests" step:
 
 ```yaml
       # The weighing write path: the two events, the planner every writer goes
@@ -5757,11 +5759,11 @@ and after the "Quality fold wired to the local provider's getProject" step:
 
 (The CLI suite rides the existing "CLI tests" step through `test:cli`; the route suite rides "Hosted graph API integration tests" through `test:graph`.)
 
-- [ ] **Step 3: Bump the CLI** (the CLI's behaviour changed; the owner publishes by hand)
+- [x] **Step 3: Bump the CLI** (the CLI's behaviour changed; the owner publishes by hand)
 
 In `packages/cli/package.json` set `"version": "0.12.0"`. In `package-lock.json` change the `"packages/cli"` entry's `"version": "0.11.1"` to `"0.12.0"`. Run `npm run test:cli` once more (`tests/cli/version.test.js` reads the built binary).
 
-- [ ] **Step 3b: `docs/spec/journal.md`** — after the `quality.signal.tripped` row of the vocabulary table add:
+- [x] **Step 3b: `docs/spec/journal.md`** — after the `quality.signal.tripped` row of the vocabulary table add:
 
 ````markdown
 | `weighing.assessment.recorded` | `matrix`, `subject`, `criterion`, `level`, `scorer`, `confidence`, `evidence?`, `refs?`, `basis?`, `run?` | One assessment (an `WeighingAssessment` minus its `ts`, which is the envelope's) written away from a checkout — a hosted session or a browser project (docs/rfcs/weighing.md). The read folds these latest-wins per `(matrix, subject, criterion, scorer.kind)` over the bundle's `weighing` section, the way a repo checkout folds a sidecar re-score in place. The writer stamps `scorer` (a session is `human`, a token `agent` and also carries `scorer.on_behalf_of`, the token owner's opaque user id, never an email) and `basis` (the set's version and the subject's fingerprint); a caller cannot supply them. In a repository no event is written — `docs/weighing/` is the record |
@@ -5774,13 +5776,13 @@ and after the paragraph that begins "The six `quality.*` types" add:
 The two `weighing.*` types follow the same rule — facts, not state: the weighing section a reader sees is a projection, the stored section with these events folded over it. Like `quality.assessment.scored` they are in the strict schema map (`JOURNAL_EVENT_SCHEMAS`) but not in the 22-type `JOURNAL_EVENT_TYPES` list, and `validateBundle` warns when one has no `actor`.
 ````
 
-- [ ] **Step 3c: `docs/spec/services.md`** — after the `POST /api/graph/projects/{id}/quality/events` row of the route table add:
+- [x] **Step 3c: `docs/spec/services.md`** — after the `POST /api/graph/projects/{id}/quality/events` row of the route table add:
 
 ````markdown
 | `POST /api/graph/projects/{id}/weighing/events` | `graph:write` (no narrower scope: an assessment outranks the ones before it) | Journal-only weighing events, two whitelisted types: `weighing.assessment.recorded` and `weighing.set.saved` (docs/rfcs/weighing.md) — no snapshot change, no version bump. Every entry goes through `planWeighingEvents`, the gate the browser provider and the MCP tools share; all-or-nothing, refusals name each entry's `index`, `reason` and `detail`. The scorer is **stamped from the caller** — a session is `human`, a token `agent` acting on behalf of its owner (`scorer.on_behalf_of`, an opaque user id) — and a body carrying `scorer`, `basis` or `ts` is a 400. The project `GET` folds these events over `snapshot.weighing`, and the bundle ETag's count covers them (`BUNDLE_FOLD_TYPES`) |
 ````
 
-- [ ] **Step 3d: `docs/spec/toolchain.md`** — replace the two table rows and add two detail rows:
+- [x] **Step 3d: `docs/spec/toolchain.md`** — replace the two table rows and add two detail rows:
 
 Replace the `arkaik pack [--no-journal] [--no-quality] [--inline-assets]` row's command cell and description with:
 
@@ -5802,7 +5804,7 @@ and in the per-verb table (the one beginning `| Verb | Default | Flags |`) add a
 | `arkaik restore` (weighing) | folds | `--no-weighing` drops the section. There is no separate loss guard: an assessment written hosted lives in the journal, and a restore that would shrink the journal is refused by `--allow-history-loss` already |
 ````
 
-- [ ] **Step 3e: `docs/hosted-projects.md`** — immediately before `## 4. Set up the GitHub App (once per deployment)` add:
+- [x] **Step 3e: `docs/hosted-projects.md`** — immediately before `## 4. Set up the GitHub App (once per deployment)` add:
 
 ````markdown
 ### Weighing on a hosted project
@@ -5815,12 +5817,12 @@ Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save
 
 ````
 
-- [ ] **Step 4: Gate**
+- [x] **Step 4: Gate**
 
 Run: `npm run generate && git status --short` (no generated artifact changes in this part), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:journal`, `npm run test:quality`, `npm run test:weighing`, `npm run test:weighing-derive`, `npm run test:weighing-events`, `npm run test:weighing-provider`, `npm run test:publik-strip`, `npm run test:cli`, `npm run test:bootstrap`, `npm run test:mcp` (the MCP suite still expects its Part-4-era counts only after Part 4 — at this layer it must still pass at its old count of 30), `npm run test:docs-visibility`, and with the scratch Postgres up: `npm run test:graph`, `npm run test:github`, `npm run test:publik`.
 Expected: all exit 0.
 
-- [ ] **Step 5: Commit and submit**
+- [x] **Step 5: Commit and submit** (committed; `gh stack submit` deliberately not run by the implementer)
 
 ```bash
 git add package.json package-lock.json packages/cli/package.json .github/workflows/ci.yml docs/spec/journal.md docs/spec/services.md docs/spec/toolchain.md docs/hosted-projects.md

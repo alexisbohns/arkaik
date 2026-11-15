@@ -81,7 +81,7 @@ check("the event carries the assessment flat, with the writer as actor", plan.ev
 check("the event validates against its strict schema", KnownJournalEventSchema.safeParse(plan.events[0]).success);
 check("a human session stamps a human", planWeighingEvents(undefined, [NODE], [assess()], ctx()).assessments[0].scorer.kind === "human");
 
-// on_behalf_of (not yet run — D14)
+// on_behalf_of (D14)
 const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKind: "agent", actor: "arkaik-agent", onBehalfOf: "42" }));
 check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
 check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
@@ -131,6 +131,8 @@ check("no section and no events stays undefined", foldWeighingEvents(undefined, 
 const fromNothing = foldWeighingEvents(undefined, ev(plan));
 check("a project with only events still folds, from nothing", fromNothing.assessments.length === 1 && fromNothing.sets.length === 0 && fromNothing.matrices.length === 0);
 check("the folded row is the planned row", same(fromNothing.assessments[0], row));
+check("an on_behalf_of stamp survives the fold: the row a reader sees names whom the agent acts for (D14)", foldWeighingEvents(undefined, behalf.events).assessments[0].scorer.on_behalf_of === "42");
+check("…and a writer that stamped nothing leaves the folded scorer without the key", !("on_behalf_of" in fromNothing.assessments[0].scorer));
 
 const later = planWeighingEvents(undefined, [NODE], [assess({ level: 3 })], ctx({ scorerKind: "agent", actor: "arkaik-mcp", now: new Date("2026-11-15T11:00:00.000Z") }));
 const folded = foldWeighingEvents(fromNothing, ev(later));

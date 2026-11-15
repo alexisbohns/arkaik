@@ -75,7 +75,7 @@ const MAX_EVENTS = 50;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
 
-/** D14, not yet run: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
+/** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
 const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
 
 /**
@@ -162,7 +162,7 @@ export type WeighingRefusalReason =
   | "unknown_criterion"
   | "retired_criterion"
   | "level_out_of_range"
-  | "invalid_on_behalf_of" // D14, not yet run
+  | "invalid_on_behalf_of" // D14
   | "invalid_set";
 
 /** Why one entry of a batch was refused. `index` is its position in the request's `events` array. */
@@ -178,7 +178,7 @@ export interface WeighingPlanContext {
   /** Stamped by the caller: a session is `human`, a token or the MCP server is `agent`. Never `rule`. */
   scorerKind: Exclude<WeighingScorerKind, "rule">;
   /**
-   * Whom the scorer acts for, when the writer knows (D14, not yet run): the token
+   * Whom the scorer acts for, when the writer knows (D14): the token
    * owner's user id on the hosted route, whatever the MCP server was told in a
    * repo. An opaque id or handle, never an email. Absent otherwise.
    */
@@ -280,7 +280,7 @@ export function planWeighingEvents(
     }
 
     if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
-      // D14, not yet run.
+      // D14.
       return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
     }
 
@@ -294,7 +294,7 @@ export function planWeighingEvents(
         kind: ctx.scorerKind,
         id: ctx.actor,
         ...(input.model !== undefined ? { model: input.model } : {}),
-        ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14, not yet run
+        ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14
       },
       confidence: input.confidence as WeighingConfidence,
       ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),

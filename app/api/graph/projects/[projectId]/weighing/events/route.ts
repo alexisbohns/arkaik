@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
  * an agent's in every roll-up, which is exactly why a token cannot claim to be
  * one.
  *
- * **On whose behalf (D14, not yet run).** A token is an agent acting for the
+ * **On whose behalf (D14).** A token is an agent acting for the
  * person who minted it, and the record says so: `scorer.on_behalf_of` is the
  * token owner's user id, an opaque string and never an email (sidecars are
  * committed to repos, and a bundle can be published). A session is the person
@@ -96,7 +96,7 @@ export async function POST(
     const plan = planWeighingEvents(section, snapshot.nodes, inputs, {
       actor,
       scorerKind: agent ? "agent" : "human",
-      // D14, not yet run: whose hands the token is. `caller.userId` is the token's owner.
+      // D14: whose hands the token is. `caller.userId` is the token's owner.
       ...(agent ? { onBehalfOf: String(caller.userId) } : {}),
     });
     if (!plan.ok) {

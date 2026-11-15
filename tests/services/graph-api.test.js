@@ -1525,7 +1525,7 @@ async function main() {
         body.events?.[0].scorer.kind === "agent" && body.events[0].scorer.model === "claude" && /^fp1-/.test(body.events[0].basis?.fingerprint) && body.events[0].actor === "arkaik-agent",
         JSON.stringify(body.events?.[0]),
       );
-      // D14, not yet run: a token is an agent acting for its owner.
+      // D14: a token is an agent acting for its owner.
       check(
         "a token write is stamped on behalf of its owner: the user id as an opaque string, never an email",
         body.events?.[0].scorer.on_behalf_of === String(userW) && !String(body.events[0].scorer.on_behalf_of).includes("@"),
