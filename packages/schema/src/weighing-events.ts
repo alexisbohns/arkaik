@@ -88,11 +88,13 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
  * person's display name (a git author name: "Anne-Claire Dupré"), never an
  * email, because a sidecar is committed to a repo. So: non-blank, 128
  * characters at most, no control or invisible format characters (`\p{Cc}`,
- * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text),
+ * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text —
+ * except U+200C and U+200D, the zero-width non-joiner and joiner, which spell
+ * names in many scripts and emoji sequences),
  * and **no `@` anywhere** — the ASCII one and its look-alikes (U+FF20 full-width,
  * U+FE6B small) — which refuses "me@example.com" and "Alexis <me@example.com>" alike.
  */
-export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/[\p{Cc}\p{Cf}]/u.test(value);
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/\p{Cc}|(?![\u200c\u200d])\p{Cf}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP

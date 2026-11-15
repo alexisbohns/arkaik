@@ -3607,13 +3607,15 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
  * person's display name (a git author name: "Anne-Claire Dupré"), never an
  * email, because a sidecar is committed to a repo. So: non-blank, 128
  * characters at most, no control or invisible format characters (`\p{Cc}`,
- * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text),
+ * `\p{Cf}`: a zero-width space or a bidi override can hide or reorder text —
+ * except U+200C and U+200D, the zero-width non-joiner and joiner, which spell
+ * names in many scripts and emoji sequences),
  * and **no `@` anywhere** — the ASCII one and its look-alikes (U+FF20 full-width,
  * U+FE6B small) — which refuses "me@example.com" and "Alexis <me@example.com>" alike.
  *
  * Exported so the MCP server can skip a candidate the planner would refuse.
  */
-export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/[\p{Cc}\p{Cf}]/u.test(value);
+export const isValidOnBehalfOf = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !/[@＠﹫]/.test(value) && !/\p{Cc}|(?![\u200c\u200d])\p{Cf}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -3719,7 +3721,8 @@ check(
   ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
 );
 check("a look-alike @ is refused too: the full-width and the small commercial at", ["me＠example.com", "me﹫example.com", "＠alexis"].every((value) => !behalfOutcome(value)));
-check("an invisible format character is refused (a zero-width space or joiner, a bidi override)", ["Alexis\u200bBohns", "Alexis\u200dBohns", "\u202eAlexis", "\ufeffAlexis"].every((value) => !behalfOutcome(value)));
+check("an invisible format character is refused (a zero-width space, a bidi override, a byte-order mark)", ["Alexis\u200bBohns", "\u202eAlexis", "Alexis\u202eBohns", "\ufeffAlexis", "\u2066Alexis"].every((value) => !behalfOutcome(value)));
+check("…but the zero-width joiner and non-joiner are names: a ZWJ emoji sequence, Persian and Indic spellings", ["Alex 👩\u200d💻", "می\u200cخواهم", "क्\u200dष", "Anne\u200dClaire"].every(behalfOutcome));
 check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());

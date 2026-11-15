@@ -95,7 +95,8 @@ check(
   ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
 );
 check("a look-alike @ is refused too: the full-width and the small commercial at", ["me＠example.com", "me﹫example.com", "＠alexis"].every((value) => !behalfOutcome(value)));
-check("an invisible format character is refused (a zero-width space or joiner, a bidi override)", ["Alexis\u200bBohns", "Alexis\u200dBohns", "\u202eAlexis", "\ufeffAlexis"].every((value) => !behalfOutcome(value)));
+check("an invisible format character is refused (a zero-width space, a bidi override, a byte-order mark)", ["Alexis\u200bBohns", "\u202eAlexis", "Alexis\u202eBohns", "\ufeffAlexis", "\u2066Alexis"].every((value) => !behalfOutcome(value)));
+check("…but the zero-width joiner and non-joiner are names: a ZWJ emoji sequence, Persian and Indic spellings", ["Alex 👩\u200d💻", "می\u200cخواهم", "क्\u200dष", "Anne\u200dClaire"].every(behalfOutcome));
 check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
