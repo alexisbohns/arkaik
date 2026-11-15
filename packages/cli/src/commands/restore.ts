@@ -1,16 +1,32 @@
 /**
- * `arkaik restore [--dry-run] [--allow-history-loss] [--allow-deletions]
- *                 [--no-quality] [--no-weighing] [--allow-quality-loss]
- *                 [--allow-metadata-loss]
+ * `arkaik restore [--dry-run] [--replace] [--allow-history-loss]
+ *                 [--allow-deletions] [--no-quality] [--no-weighing]
+ *                 [--allow-quality-loss] [--allow-metadata-loss]
  *                 [--audit <id>]
  *                 [--root <dir>] [--api <base-url>] [path]`
  *
  * Land a locally-built bundle — history included — on the hosted project
  * this repo is linked to (docs/superpowers/specs/2026-08-04-bootstrap-method-
  * design.md § 7, docs/superpowers/plans/2026-08-04-bootstrap-method.md
- * Task 12). This is the one destructive verb the CLI offers: it replaces the
- * hosted project's snapshot AND its journal wholesale, in one server-side
- * transaction (`PUT .../bundle`, Task 11).
+ * Task 12), in one server-side transaction (`PUT .../bundle`, Task 11).
+ *
+ * ── Append by default, replace on request (#624) ────────────────────────────
+ * The PUT always replaces what the server stores. What changed is what this
+ * command SENDS:
+ *
+ *  - by default (append) it fetches the hosted export and sends the local
+ *    bundle laid over it (`mergeForAppend`, ../lib/restore-merge.ts): every
+ *    hosted-only event, node, edge, setting, quality section and weighing row
+ *    survives, and a shared id takes the local record. Nothing on the host can
+ *    be removed, so the four loss guards below have nothing to catch and do
+ *    not run. A dry run fetches the export too, since the merge needs it;
+ *  - `--replace` is the old verb: the local bundle replaces the hosted one
+ *    wholesale. It is what undoing a restore from a backup needs, and it is the
+ *    only mode the guards and their `--allow-*` escape hatches apply to.
+ *
+ * Everything below about the backup and the guards describes replace mode
+ * first; append keeps the backup (a shared id still overwrites the hosted
+ * record) and skips the guards.
  *
  * ── Why the client-side backup is not optional ──────────────────────────────
  * The server keeps NO pre-image of a restore. A server-side backup table was
@@ -76,7 +92,7 @@
  *   the local section SURVIVES when the fold has nothing — no audits, no
  *   profile, no resolvable pack — and ships as it arrived.
  *
- * So `arkaik restore <backup-path>` sends the LIVE repo's sidecars when that
+ * So `arkaik restore --replace <backup-path>` sends the LIVE repo's sidecars when that
  * repo has any, and the backup's own captured section when it does not. Both
  * halves are deliberate. The first is not the split-brain the journal rule
  * exists to prevent:
@@ -102,7 +118,7 @@
  * And the second half is what makes the undo path whole: a backup file always
  * carries a `quality` section, because the export it was written from
  * includes one. Dropping it on a machine whose sidecars are missing would
- * make `arkaik restore <backup-path>` silently undo the snapshot and the
+ * make `arkaik restore --replace <backup-path>` silently undo the snapshot and the
  * journal while discarding the quality half of the very state being restored.
  *
  * So: history is always restored, quality is re-derived where it can be and
@@ -124,7 +140,7 @@
  *     sidecar, the same precedence `arkaik validate` uses — load-bearing here
  *     for a reason beyond mere consistency: a BACKUP file always carries its
  *     journal embedded, so if the sidecar ever won instead, running `arkaik
- *     restore <backup-path>` to undo a bad restore would silently pair that
+ *     restore --replace <backup-path>` to undo a bad restore would silently pair that
  *     backup's old snapshot with whatever journal happens to sit in the
  *     LIVE repo's `journal.jsonl` — the exact split-brain this precedence
  *     exists to prevent) — `bundle.json` on disk does NOT itself contain the
@@ -159,7 +175,7 @@
  * to read the current state and decide again.
  *
  * Every message that names a backup path also names the verb: `arkaik
- * restore <backupPath>` genuinely undoes a restore (the backup's embedded
+ * restore --replace <backupPath>` genuinely undoes a restore (the backup's embedded
  * journal wins on the way back in, per the precedence note above), so a
  * caller in a panic gets a command, not just a filename to stare at.
  *
@@ -176,6 +192,9 @@ import { foldQualitySection, isQualitySection, resolveQualityRoot } from "../lib
 import { foldWeighingSection } from "../lib/weighing-io";
 import { QUALITY_DIR } from "@arkaik/schema/src/cli/kritik-paths";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
+import { describeAppendSummary, mergeForAppend, type AppendSummary } from "../lib/restore-merge";
+
+export { mergeForAppend, describeAppendSummary, RESTORE_ACTOR, type AppendSummary } from "../lib/restore-merge";
 
 const LINK_FILE = "docs/arkaik/arkaik.json";
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
@@ -185,14 +204,25 @@ export const DEFAULT_API_BASE = "https://arkaik.app";
 
 const USAGE = `arkaik restore [options] [path]
 
-Replace the linked hosted project's bundle, journal AND quality section with
-a local bundle —
-the landing step for a bootstrapped map. Before sending anything, this
-exports the CURRENT hosted state (snapshot + journal) to
-docs/arkaik/.backups/<timestamp>-bundle.json (next to the link file — not
-wherever the local bundle happens to live) and refuses to proceed if that
-backup cannot be written — the server keeps no pre-image, so this file is the
-only way back if the restore turns out to be wrong.
+Land a local bundle on the linked hosted project — the landing step for a
+bootstrapped map.
+
+By default this APPENDS: the local bundle is merged into what the hosted
+project already holds. Hosted-only events, nodes, edges, project settings,
+quality and weighing state are all kept; where both sides hold the same id,
+the local record wins, except a status changed on the hosted project after
+your copy. Nothing on the hosted project is removed.
+
+--replace swaps the hosted bundle, journal and sections for the local ones
+wholesale, removing whatever the local bundle lacks. That is what undoing a
+restore from a backup needs, and it refuses any loss you have not allowed
+with an --allow-* flag.
+
+Before a real run sends anything, this exports the CURRENT hosted state
+(snapshot + journal) to docs/arkaik/.backups/<timestamp>-bundle.json (next to
+the link file — not wherever the local bundle happens to live) and refuses to
+proceed if that backup cannot be written — the server keeps no pre-image, so
+this file is the only way back if the restore turns out to be wrong.
 
 Arguments:
   path                Path to the local bundle JSON file
@@ -206,6 +236,14 @@ Options:
                         the delta. Sends nothing destructive and takes no
                         backup (there is nothing to protect against in this
                         mode).
+  --replace             Replace the hosted project wholesale instead of
+                        appending to it. Anything the local bundle lacks is
+                        removed, so each kind of loss below refuses unless its
+                        --allow-* flag is passed too. Undo a restore with
+                        the command a real restore prints (--replace with
+                        every --allow-* flag).
+
+Only with --replace:
   --allow-history-loss  Proceed even though the outbound journal has fewer
                         events than the hosted one currently holds. Without
                         this flag, that shrink refuses outright — it usually
@@ -219,22 +257,6 @@ Options:
                         local copy (edited in the app), not an intended
                         deletion. Undoing a restore from a backup is the
                         common case where it IS intended.
-  --no-quality          Do not send a quality section: skip the docs/quality/
-                        fold AND drop any section the local bundle already
-                        carries. Does NOT by itself permit erasing the hosted
-                        one — that needs --allow-quality-loss too, because
-                        "don't send mine" and "destroy theirs" are different
-                        decisions and only one of them is irreversible.
-  --no-weighing         Do not send a weighing section: skip the docs/weighing/
-                        fold AND drop any section the local bundle already
-                        carries. WARNING: a restore replaces the hosted
-                        journal, and an assessment recorded only on the hosted
-                        project lives in that journal. The history guard
-                        compares COUNTS, so it does NOT reliably protect those
-                        events: a repo whose journal is as long as the hosted
-                        one passes it while still erasing them. The backup this
-                        command writes first holds them; the proper fix is
-                        issue #624 (restore appends by default).
   --allow-quality-loss  Proceed even though the restore would erase a quality
                         section the hosted project currently has. Without this
                         flag, that refuses outright — it usually means
@@ -246,6 +268,24 @@ Options:
                         refuses outright and names the keys — those settings
                         are usually edited in the app and never reach the
                         repo bundle, so a restore would silently delete them.
+
+Either mode:
+  --no-quality          Do not send a quality section: skip the docs/quality/
+                        fold AND drop any section the local bundle already
+                        carries. An append keeps the hosted section. Under
+                        --replace this does NOT by itself permit erasing the
+                        hosted one — that needs --allow-quality-loss too,
+                        because "don't send mine" and "destroy theirs" are
+                        different decisions and only one is irreversible.
+  --no-weighing         Do not send a weighing section: skip the docs/weighing/
+                        fold AND drop any section the local bundle already
+                        carries. An append keeps the hosted section and every
+                        hosted assessment event. WARNING under --replace: an
+                        assessment recorded only on the hosted project lives in
+                        the journal that --replace overwrites, and the history
+                        guard compares COUNTS, so it does not reliably protect
+                        those events. The backup this command writes first
+                        holds them.
   --audit <id>          Fold ONE audit's snapshot rather than merging every
                         audit into current state. An id that is not on disk is
                         an error, not an empty section.
@@ -273,6 +313,8 @@ export interface RunRestoreOptions {
   path?: string;
   /** Preview via the server's dry-run mode instead of writing for real. Default: false. */
   dryRun?: boolean;
+  /** Replace the hosted project wholesale instead of appending to it (#624). The loss guards and their `allow*` overrides apply only here. Default: false. */
+  replace?: boolean;
   /** Proceed even when the outbound journal is shorter than the hosted one. Default: false. */
   allowHistoryLoss?: boolean;
   /** Proceed even when the outbound snapshot drops hosted nodes or edges. Default: false. */
@@ -308,6 +350,10 @@ export interface RunRestoreResult {
   /** Set when `ok` is false. */
   fatal?: string;
   dryRun: boolean;
+  /** Whether this run appended to the hosted project (the default) or replaced it. */
+  mode?: "append" | "replace";
+  /** Append only, once the merge ran: what the hosted project had that the local bundle did not, all of it kept. */
+  kept?: AppendSummary;
   bundlePath?: string;
   /** Set once the pre-restore backup was written (real restore only — dry-run never takes one). */
   backupPath?: string;
@@ -364,14 +410,46 @@ function describeVersionReadFailure(status: number, baseUrl: string, projectId: 
 
 /**
  * The recovery instruction every message naming a backup path should carry —
- * not just the filename, but the verb: `arkaik restore <backupPath>`
+ * not just the filename, but the verb: `arkaik restore --replace <backupPath>`
  * genuinely restores that snapshot (its embedded journal wins on the way
  * back in — see the module doc comment's precedence note). Centralized so
  * every call site says the same thing, in the same words.
  */
 function backupNoteFor(backupPath: string | undefined): string {
   if (!backupPath) return "";
-  return ` Your pre-restore backup is at ${backupPath}. Undo this restore with: arkaik restore ${backupPath}`;
+  return ` Your pre-restore backup is at ${backupPath}. Undo this restore with: ${undoCommandFor(backupPath)}`;
+}
+
+/**
+ * The command that puts a backup back. It has to be `--replace` (an append of the
+ * backup would keep everything the restore added), and it has to carry all four
+ * `--allow-*` flags: the backup predates the restore, so it has fewer events and
+ * nodes and may lack settings or a quality section the restore brought, and each
+ * of those trips a guard. Going back to exactly the backup IS the intended loss.
+ * Anything written on the hosted project after the restore is lost too, which is
+ * why the undo is printed, never run.
+ */
+export function undoCommandFor(backupPath: string): string {
+  return `arkaik restore --replace --allow-history-loss --allow-deletions --allow-quality-loss --allow-metadata-loss ${backupPath}`;
+}
+
+/** The `--allow-*` flags set on `options`, by their CLI names. */
+function allowFlagsOf(options: RunRestoreOptions): string[] {
+  return [
+    options.allowHistoryLoss && "--allow-history-loss",
+    options.allowDeletions && "--allow-deletions",
+    options.allowQualityLoss && "--allow-quality-loss",
+    options.allowMetadataLoss && "--allow-metadata-loss",
+  ].filter((flag): flag is string => typeof flag === "string");
+}
+
+/** Why an `--allow-*` flag without `--replace` is refused rather than ignored. */
+function describeAllowWithoutReplace(flags: string[]): string {
+  return (
+    `${flags.join(", ")} only ${flags.length === 1 ? "applies" : "apply"} with --replace. ` +
+    `restore appends by default and removes nothing, so there is no loss to allow. ` +
+    `To replace the hosted project (for example to undo a restore from a backup), add --replace.`
+  );
 }
 
 /**
@@ -392,11 +470,15 @@ async function interpretPutResponse(
     version: string;
     qualityFolded?: boolean;
     qualityNotice?: string;
+    mode: "append" | "replace";
+    kept?: AppendSummary;
   },
 ): Promise<RunRestoreResult> {
   const base: RunRestoreResult = {
     ok: true,
     dryRun: ctx.dryRun,
+    mode: ctx.mode,
+    kept: ctx.kept,
     bundlePath: ctx.bundlePath,
     backupPath: ctx.backupPath,
     requestSent: true,
@@ -662,10 +744,50 @@ function describeMetadataLoss(dropped: string[], bundlePath: string): string {
   ].join("\n");
 }
 
+type ExportedBundle = { project?: unknown; nodes: unknown[]; edges: unknown[]; journal: unknown[]; quality?: unknown; weighing?: unknown };
+
+/**
+ * GET the hosted export and check it is a whole bundle, or say why not. A real
+ * run needs it as the backup (the only recovery path), so every failure keeps
+ * the "refusing to restore without a backup" wording; an append dry run needs
+ * it only to merge, and says that instead.
+ */
+async function fetchExport(
+  httpClient: HttpClient,
+  url: string,
+  headers: Record<string, string>,
+  dryRun: boolean,
+): Promise<ExportedBundle | string> {
+  const why = dryRun ? "An append preview needs it to merge." : "Refusing to restore without a backup.";
+  let exported: unknown;
+  try {
+    const exportRes = await httpClient(url, { headers });
+    if (!exportRes.ok) {
+      return `Could not export the current hosted state (${exportRes.status}). ${why} Nothing was sent.`;
+    }
+    const body = await safeJson(exportRes);
+    exported = body.bundle;
+  } catch (e) {
+    return `Could not export the current hosted state: ${(e as Error).message}. ${why}`;
+  }
+  if (typeof exported !== "object" || exported === null || Array.isArray(exported)) {
+    return `The export response was not a bundle. ${why} Nothing was sent.`;
+  }
+  const bundle = exported as Record<string, unknown>;
+  if (!Array.isArray(bundle.journal) || !Array.isArray(bundle.nodes) || !Array.isArray(bundle.edges)) {
+    return dryRun
+      ? "The exported bundle is missing nodes, edges, or a journal array, so there is nothing whole to merge into. Nothing was sent."
+      : "The exported bundle is missing nodes, edges, or a journal array — an incomplete backup would not cover what restore is about to destroy. Refusing to restore. Nothing was sent.";
+  }
+  return bundle as ExportedBundle;
+}
+
 export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRestoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const dryRun = options.dryRun ?? false;
+  const replace = options.replace ?? false;
+  const mode: "append" | "replace" = replace ? "replace" : "append";
   const allowHistoryLoss = options.allowHistoryLoss ?? false;
   const allowDeletions = options.allowDeletions ?? false;
   const noQuality = options.noQuality ?? false;
@@ -673,6 +795,13 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   const allowQualityLoss = options.allowQualityLoss ?? false;
   const allowMetadataLoss = options.allowMetadataLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
+
+  // The --allow-* flags permit a loss, and only --replace can cause one. Passing one without
+  // it is almost always a command written before append became the default (#624) — most
+  // often an undo from a backup, which needs --replace to remove what the restore added.
+  // Refuse rather than quietly append.
+  const strayAllowFlags = allowFlagsOf(options);
+  if (strayAllowFlags.length > 0 && !replace) return fatalResult(dryRun, describeAllowWithoutReplace(strayAllowFlags));
 
   const linkPath = join(cwd, LINK_FILE);
   if (!existsSync(linkPath)) {
@@ -737,12 +866,11 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   }
   const qualityFields = { qualityFolded, qualityNotice };
 
-  // Weighing rides the same bundle, from the same repo root. There is NO loss guard of its
+  // Weighing rides the same bundle, from the same repo root. An append keeps every hosted
+  // weighing row and event (`mergeForAppend`). Under --replace there is NO loss guard of its
   // own, and the history guard does not stand in for one: an assessment recorded only on
   // the hosted project is a journal event, the PUT replaces the journal, and the guard
-  // compares COUNTS (a repo journal as long as the hosted one passes it while still
-  // erasing those events). The backup written before the PUT is the only recovery.
-  // Issue #624 (restore appends by default) is the real fix and is not part of this slice.
+  // compares COUNTS. The backup written before the PUT is the only recovery there.
   if (noWeighing) {
     delete outboundBundle.weighing;
   } else {
@@ -773,7 +901,30 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   }
 
   const putHeaders = { ...headers, "Content-Type": "application/json", "If-Match": `"${version}"` };
-  const putBody = JSON.stringify({ bundle: outboundBundle });
+
+  // A replace dry run never fetches the export (it has nothing to diff it against that the
+  // server's own delta does not already show). Every other run needs it: a real run for the
+  // backup and the guards, an append for the merge.
+  let exportedBundle: ExportedBundle | undefined;
+  if (!(replace && dryRun)) {
+    const read = await fetchExport(httpClient, `${baseUrl}/api/graph/projects/${encodedProjectId}/export`, headers, dryRun);
+    if (typeof read === "string") return fatalResult(dryRun, read, qualityFields);
+    exportedBundle = read;
+  }
+
+  let sendBundle: Record<string, unknown> = outboundBundle;
+  let kept: AppendSummary | undefined;
+  if (!replace && exportedBundle !== undefined) {
+    try {
+      const merged = mergeForAppend(exportedBundle as Record<string, unknown>, outboundBundle);
+      sendBundle = merged.bundle;
+      kept = merged.kept;
+    } catch (e) {
+      return fatalResult(dryRun, `Could not merge the local bundle into the hosted one: ${(e as Error).message}. Nothing was sent.`, qualityFields);
+    }
+  }
+  const putBody = JSON.stringify({ bundle: sendBundle });
+  const resultCtx = { dryRun, bundlePath, version, mode, kept, ...qualityFields };
 
   if (dryRun) {
     // No backup, on purpose: the server writes nothing in this mode, so
@@ -790,111 +941,94 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
         body: putBody,
       });
     } catch (e) {
-      return { ok: true, dryRun, bundlePath, requestSent: false, errorMessage: `Network error: ${(e as Error).message}` };
+      return { ok: true, dryRun, mode, kept, bundlePath, requestSent: false, errorMessage: `Network error: ${(e as Error).message}` };
     }
-    return interpretPutResponse(res, { dryRun, bundlePath, version, ...qualityFields });
+    return interpretPutResponse(res, resultCtx);
   }
+  if (exportedBundle === undefined) {
+    // Unreachable: only a replace dry run skips the export, and it returned above.
+    return fatalResult(dryRun, "Internal error: no hosted export in hand for a real restore. Nothing was sent.", qualityFields);
+  }
+  const exported = exportedBundle;
 
-  // ── Mandatory pre-restore backup ────────────────────────────────────────
-  // The only recovery path that exists (no server-side pre-image, by
-  // deliberate design — see the module doc comment). MUST happen before the
-  // PUT below, and ANY failure — network, shape, or filesystem — MUST abort
-  // the run rather than warn and continue.
-  let exported: unknown;
-  try {
-    const exportRes = await httpClient(`${baseUrl}/api/graph/projects/${encodedProjectId}/export`, { headers });
-    if (!exportRes.ok) {
-      return fatalResult(dryRun, `Could not export the current hosted state (${exportRes.status}). Refusing to restore without a backup. Nothing was sent.`);
+  // ── Loss guards (--replace only) ────────────────────────────────────────
+  // An append can only add and update — the merge keeps every hosted id, key
+  // and section — so none of the four losses below can happen and the guards
+  // are skipped. They exist for --replace, where each one is a typed decision.
+  if (replace) {
+    // ── History-loss guard ───────────────────────────────────────────────────
+    // An outbound journal SHORTER than the hosted one silently wipes history
+    // and reads as an ordinary successful restore everywhere else:
+    // `loadJournalEvents` returns `[]` by design when there is no sidecar and
+    // no embedded journal, nothing downstream objects to an empty journal, and
+    // the collapse shows up only as `events N -> 0` in the printed delta —
+    // formatted identically to the two unremarkable lines above it. Ordinary
+    // triggers: `journal.jsonl` uncommitted or gitignored, `arkaik restore
+    // <path>` pointing at a bundle in a different directory than its sidecar,
+    // or a fresh clone run before `merge`. `exportedBundle.journal` is already
+    // a validated array from the check just above, so no extra round-trip is
+    // needed to compare against it.
+    const hostedEventCount = exported.journal.length;
+    if (journalEvents.length < hostedEventCount && !allowHistoryLoss) {
+      return fatalResult(
+        dryRun,
+        `This restore would replace ${hostedEventCount} hosted journal events with ${journalEvents.length}. ` +
+          `Nothing was sent. If that is intended, re-run with --allow-history-loss; ` +
+          `otherwise check that ${journalPathFor(bundlePath)} exists and is current.`,
+        qualityFields,
+      );
     }
-    const body = await safeJson(exportRes);
-    exported = body.bundle;
-  } catch (e) {
-    return fatalResult(dryRun, `Could not export the current hosted state: ${(e as Error).message}. Refusing to restore without a backup.`);
-  }
 
-  if (typeof exported !== "object" || exported === null || Array.isArray(exported)) {
-    return fatalResult(dryRun, "The export response was not a bundle. Refusing to restore without a backup. Nothing was sent.");
-  }
-  const exportedBundle = exported as { project?: unknown; nodes?: unknown; edges?: unknown; journal?: unknown; quality?: unknown };
-  if (!Array.isArray(exportedBundle.journal) || !Array.isArray(exportedBundle.nodes) || !Array.isArray(exportedBundle.edges)) {
-    return fatalResult(
-      dryRun,
-      "The exported bundle is missing nodes, edges, or a journal array — an incomplete backup would not cover what restore is about to destroy. Refusing to restore. Nothing was sent.",
-    );
-  }
+    // ── Quality-loss guard ───────────────────────────────────────────────────
+    // Same shape as the history guard above, and the same blind spot without
+    // it: a repo with no sidecars restoring over a hosted project that HAS a
+    // quality section erases every open finding on it, and the printed delta
+    // says nothing about quality at all. The export is already in hand for the
+    // backup, so this costs no extra round-trip. Runs before the backup write
+    // for the reason the history guard states: a refused run should leave
+    // nothing behind in `.backups/`.
+    //
+    // `--no-quality` deliberately does NOT imply this flag — see
+    // `describeQualityLoss`.
+    //
+    // Both sides are tested with the SAME predicate (`isQualitySection`, shared
+    // with the fold). Checking only `=== undefined` on the outbound side let a
+    // local `"quality": null` or `"quality": "oops"` count as a section and sail
+    // past into the request. The schema rejects it one layer down, so this is
+    // defence in depth rather than the only line, but a guard that fails open on
+    // a shape it never considered is not a guard.
+    //
+    // Note what this guard CANNOT see: a section the local bundle carried that
+    // the fold did not replace (`carriedSection`). The outbound bundle has one,
+    // so nothing fires — correctly, since that is the undo path. See the
+    // precedence section in this file's header.
+    const hostedQuality = exported.quality;
+    if (isQualitySection(hostedQuality) && !isQualitySection(outboundBundle.quality) && !allowQualityLoss) {
+      return fatalResult(dryRun, describeQualityLoss(hostedQuality, qualityRoot, noQuality, qualityNotice), qualityFields);
+    }
 
-  // ── History-loss guard ───────────────────────────────────────────────────
-  // An outbound journal SHORTER than the hosted one silently wipes history
-  // and reads as an ordinary successful restore everywhere else:
-  // `loadJournalEvents` returns `[]` by design when there is no sidecar and
-  // no embedded journal, nothing downstream objects to an empty journal, and
-  // the collapse shows up only as `events N -> 0` in the printed delta —
-  // formatted identically to the two unremarkable lines above it. Ordinary
-  // triggers: `journal.jsonl` uncommitted or gitignored, `arkaik restore
-  // <path>` pointing at a bundle in a different directory than its sidecar,
-  // or a fresh clone run before `merge`. `exportedBundle.journal` is already
-  // a validated array from the check just above, so no extra round-trip is
-  // needed to compare against it.
-  const hostedEventCount = exportedBundle.journal.length;
-  if (journalEvents.length < hostedEventCount && !allowHistoryLoss) {
-    return fatalResult(
-      dryRun,
-      `This restore would replace ${hostedEventCount} hosted journal events with ${journalEvents.length}. ` +
-        `Nothing was sent. If that is intended, re-run with --allow-history-loss; ` +
-        `otherwise check that ${journalPathFor(bundlePath)} exists and is current.`,
-      qualityFields,
-    );
-  }
+    // ── Metadata-loss guard (#423) ──────────────────────────────────────────
+    // Same shape as the guards around it, and the same blind spot without it:
+    // `project.metadata` is replaced wholesale and the printed delta never
+    // mentions it. Runs before the backup write so a refused run leaves nothing
+    // behind in `.backups/`. See `describeMetadataLoss`.
+    const droppedKeys = droppedMetadataKeys(exported.project, outboundBundle.project);
+    if (droppedKeys.length > 0 && !allowMetadataLoss) {
+      return fatalResult(dryRun, describeMetadataLoss(droppedKeys, bundlePath), qualityFields);
+    }
 
-  // ── Quality-loss guard ───────────────────────────────────────────────────
-  // Same shape as the history guard above, and the same blind spot without
-  // it: a repo with no sidecars restoring over a hosted project that HAS a
-  // quality section erases every open finding on it, and the printed delta
-  // says nothing about quality at all. The export is already in hand for the
-  // backup, so this costs no extra round-trip. Runs before the backup write
-  // for the reason the history guard states: a refused run should leave
-  // nothing behind in `.backups/`.
-  //
-  // `--no-quality` deliberately does NOT imply this flag — see
-  // `describeQualityLoss`.
-  //
-  // Both sides are tested with the SAME predicate (`isQualitySection`, shared
-  // with the fold). Checking only `=== undefined` on the outbound side let a
-  // local `"quality": null` or `"quality": "oops"` count as a section and sail
-  // past into the request. The schema rejects it one layer down, so this is
-  // defence in depth rather than the only line, but a guard that fails open on
-  // a shape it never considered is not a guard.
-  //
-  // Note what this guard CANNOT see: a section the local bundle carried that
-  // the fold did not replace (`carriedSection`). The outbound bundle has one,
-  // so nothing fires — correctly, since that is the undo path. See the
-  // precedence section in this file's header.
-  const hostedQuality = exportedBundle.quality;
-  if (isQualitySection(hostedQuality) && !isQualitySection(outboundBundle.quality) && !allowQualityLoss) {
-    return fatalResult(dryRun, describeQualityLoss(hostedQuality, qualityRoot, noQuality, qualityNotice), qualityFields);
-  }
-
-  // ── Metadata-loss guard (#423) ──────────────────────────────────────────
-  // Same shape as the guards around it, and the same blind spot without it:
-  // `project.metadata` is replaced wholesale and the printed delta never
-  // mentions it. Runs before the backup write so a refused run leaves nothing
-  // behind in `.backups/`. See `describeMetadataLoss`.
-  const droppedKeys = droppedMetadataKeys(exportedBundle.project, outboundBundle.project);
-  if (droppedKeys.length > 0 && !allowMetadataLoss) {
-    return fatalResult(dryRun, describeMetadataLoss(droppedKeys, bundlePath), qualityFields);
-  }
-
-  // ── Deletion guard ───────────────────────────────────────────────────────
-  // The history guard above compares COUNTS, so it cannot see a deletion that
-  // arrives alongside a much larger addition — the shape a brownfield
-  // bootstrap always has. Diffing the export BY ID is what makes it visible,
-  // and the export is already in hand for the backup, so this costs no extra
-  // round-trip. Runs before the backup write for the same reason the history
-  // guard does: a refused run should leave nothing behind in `.backups/`.
-  const removedNodes = removedIds(exportedBundle.nodes, Array.isArray(local.nodes) ? local.nodes : []);
-  const removedEdges = removedIds(exportedBundle.edges, Array.isArray(local.edges) ? local.edges : []);
-  if ((removedNodes.length > 0 || removedEdges.length > 0) && !allowDeletions) {
-    return fatalResult(dryRun, describeDeletions(removedNodes, removedEdges, bundlePath), qualityFields);
+    // ── Deletion guard ───────────────────────────────────────────────────────
+    // The history guard above compares COUNTS, so it cannot see a deletion that
+    // arrives alongside a much larger addition — the shape a brownfield
+    // bootstrap always has. Diffing the export BY ID is what makes it visible,
+    // and the export is already in hand for the backup, so this costs no extra
+    // round-trip. Runs before the backup write for the same reason the history
+    // guard does: a refused run should leave nothing behind in `.backups/`.
+    const removedNodes = removedIds(exported.nodes, Array.isArray(local.nodes) ? local.nodes : []);
+    const removedEdges = removedIds(exported.edges, Array.isArray(local.edges) ? local.edges : []);
+    if ((removedNodes.length > 0 || removedEdges.length > 0) && !allowDeletions) {
+      return fatalResult(dryRun, describeDeletions(removedNodes, removedEdges, bundlePath), qualityFields);
+    }
   }
 
   // Anchored to the LINK FILE's directory, not `bundlePath`'s — the backup
@@ -935,6 +1069,8 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     return {
       ok: true,
       dryRun,
+      mode,
+      kept,
       bundlePath,
       backupPath,
       requestSent: false,
@@ -942,7 +1078,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
     };
   }
 
-  return interpretPutResponse(res, { dryRun, bundlePath, backupPath, version, ...qualityFields });
+  return interpretPutResponse(res, { ...resultCtx, backupPath });
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,6 +1148,9 @@ export function reportRestore(result: RunRestoreResult): void {
   if (result.qualityNotice !== undefined) {
     console.log(result.qualityNotice);
   }
+  if (result.kept !== undefined) {
+    console.log(describeAppendSummary(result.kept));
+  }
 
   if (!result.requestSent) {
     console.error(result.errorMessage ?? "Restore failed before a request could be sent.");
@@ -1023,14 +1162,16 @@ export function reportRestore(result: RunRestoreResult): void {
       console.log("[dry-run] server preview — nothing was written:");
       printDelta(result.delta);
       console.log(
-        "Re-run without --dry-run to apply — that run takes the backup, and only that run checks the " +
-          "history, deletion, quality-loss and metadata-loss guards (all four read the export, which a dry run never fetches).",
+        result.mode === "replace"
+          ? "Re-run without --dry-run to apply — that run takes the backup, and only that run checks the " +
+              "history, deletion, quality-loss and metadata-loss guards (all four read the export, which a dry run never fetches)."
+          : "Re-run without --dry-run to apply — that run takes the backup first.",
       );
     } else {
       console.log(`Restored. New version ${result.version}.`);
       printDelta(result.delta);
       if (result.backupPath) {
-        console.log(`  Undo this restore with: arkaik restore ${result.backupPath}`);
+        console.log(`  Undo this restore with: ${undoCommandFor(result.backupPath)}`);
       }
     }
     // process.exitCode (not process.exit(0)): the lines just printed are the
@@ -1051,6 +1192,7 @@ export function reportRestore(result: RunRestoreResult): void {
 
 export function runRestoreCli(argv: string[]): void {
   let dryRun = false;
+  let replace = false;
   let allowHistoryLoss = false;
   let allowDeletions = false;
   let noQuality = false;
@@ -1070,6 +1212,8 @@ export function runRestoreCli(argv: string[]): void {
       return;
     } else if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg === "--replace") {
+      replace = true;
     } else if (arg === "--allow-history-loss") {
       allowHistoryLoss = true;
     } else if (arg === "--allow-deletions") {
@@ -1110,9 +1254,14 @@ export function runRestoreCli(argv: string[]): void {
     fail(`--audit and --no-quality contradict each other: one names an audit to fold, the other removes the section\n\n${USAGE}`);
   }
 
+  // Refused here as well as in runRestore, so the argv mistake is named with the usage beside it.
+  const allowFlags = allowFlagsOf({ allowHistoryLoss, allowDeletions, allowQualityLoss, allowMetadataLoss });
+  if (allowFlags.length > 0 && !replace) fail(`${describeAllowWithoutReplace(allowFlags)}\n\n${USAGE}`);
+
   runRestore({
     path: positionals[0],
     dryRun,
+    replace,
     allowHistoryLoss,
     allowDeletions,
     noQuality,

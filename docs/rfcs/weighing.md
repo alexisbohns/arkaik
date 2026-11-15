@@ -991,7 +991,7 @@ Risks, and what answers them:
 | New species break old validators | Slice 1 adds none. Slice 2 adds the species and edges in one coordinated release. |
 | Value claims as currency | Once levels follow claims, over-claiming pays. The claim-versus-assessment table lists a claimed element assessed 0 or +1. |
 | Two status sources | See question 13. |
-| `arkaik restore` loses hosted-only assessments | A restore replaces the hosted journal, so an assessment recorded only on a hosted project vanishes unless the repo's sidecars carry it. The owner wants restore to append by default and to overwrite only behind an explicit flag. That is issue #624, critical, and **not part of slice 1**. |
+| `arkaik restore` loses hosted-only assessments | **Resolved by #624: restore appends by default.** The hosted journal and weighing section are merged with the repo's, so an assessment recorded only on a hosted project survives. Only `arkaik restore --replace` still swaps the journal wholesale, and its history guard compares counts, so the backup it writes first is the recovery there. |
 
 ## 19. What changes in the normative docs when this ships
 

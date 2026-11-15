@@ -2305,7 +2305,7 @@
       "id": "F-restore-hosted-bundle",
       "species": "flow",
       "title": "Restore Hosted Bundle",
-      "description": "arkaik restore lands a mined history on a hosted project: a local backup written and read back verified first, a history-shrink guard behind --allow-history-loss, an exact server-side dry-run on demand, then the whole-bundle PUT gated by If-Match.",
+      "description": "arkaik restore lands a mined history on a hosted project. By default it appends: the hosted export is fetched and the local bundle merged into it, so nothing that exists only on the host is lost. A local backup is written and read back verified first, an exact server-side dry-run is available on demand, and the whole-bundle PUT is gated by If-Match. --replace swaps the hosted bundle wholesale, behind four loss guards.",
       "status": "live",
       "platforms": [
         "web"
@@ -3975,6 +3975,25 @@
       "project_id": "arkaik-self-map"
     },
     {
+      "id": "AC-restore-keeps-hosted-state",
+      "species": "acceptance",
+      "title": "Restore Keeps What Only the Host Has",
+      "description": "arkaik restore appends by default: events, nodes, edges, project settings, quality and weighing scores that exist only on the hosted project survive the restore. Only --replace removes them.",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "product": "toolchain",
+        "gherkin": "Given a hosted project holding a score, a node and a setting the repo bundle does not carry\nWhen I run `arkaik restore` without --replace\nThen the restored project still holds that score, that node and that setting",
+        "values": [
+          "reduces-anxiety",
+          "reduces-risk"
+        ]
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
       "id": "AC-stale-restore-blocked",
       "species": "acceptance",
       "title": "Stale Restore Blocked",
@@ -4265,6 +4284,21 @@
         "context": "The hosted journal is read-only — mutations derive their events server-side — so a bootstrapped map's backdated story had no landing path. An append_event mutation op and a server-side pre-image table were both considered; the pre-image needs a new table, hence a migration, hence a manual production step — a known foot-gun in this repo.",
         "consequences": "The graph API gains exactly one destructive verb: owner-only, If-Match required (428 missing, 400 malformed, 412 stale), tier-checked, with a fail-closed dry-run that runs the server's real gates. The CLI writes and read-back-verifies a local backup before sending and guards against history shrink — that client-side backup is the only recovery path, by decision rather than omission, at zero migration cost.",
         "decided_at": "2026-08-04"
+      },
+      "project_id": "arkaik-self-map"
+    },
+    {
+      "id": "DEC-restore-appends-by-default",
+      "species": "decision",
+      "title": "Restore appends by default; replacing is opt-in",
+      "description": "arkaik restore merges the local bundle into the hosted export before the PUT, so it can only add and update. Replacing the hosted project wholesale needs --replace, and its loss guards apply only there.",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted",
+        "context": "A restore replaced the hosted journal and sections wholesale, and each loss it caused was patched with a narrower guard: hosted-only nodes, a count-based history check a longer journal slipped past, project settings, and then weighing scores people enter in the app. The guards kept missing new kinds of hosted-only state.",
+        "consequences": "The merge runs in the CLI on the export it already fetched for the backup, so the server and its whole-bundle PUT are unchanged. Hosted-only state survives by construction; on a shared id the local record wins. Undoing a restore from a backup now needs --replace, and the --allow-* flags are refused without it.",
+        "decided_at": "2026-11-15"
       },
       "project_id": "arkaik-self-map"
     },
@@ -7307,6 +7341,27 @@
       "project_id": "arkaik-self-map",
       "source_id": "DEC-restore-whole-bundle-rails",
       "target_id": "AC-dry-run-previews-exactly",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-AC-restore-keeps-hosted-state-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "AC-restore-keeps-hosted-state",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "covers"
+    },
+    {
+      "id": "e-DEC-restore-appends-by-default-F-restore-hosted-bundle",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-appends-by-default",
+      "target_id": "F-restore-hosted-bundle",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-restore-appends-by-default-AC-restore-keeps-hosted-state",
+      "project_id": "arkaik-self-map",
+      "source_id": "DEC-restore-appends-by-default",
+      "target_id": "AC-restore-keeps-hosted-state",
       "edge_type": "generates"
     },
     {
@@ -15274,6 +15329,24 @@
         "DEC-determinism-cli-judgment-skill",
         "AC-skill-leaves-when-done"
       ]
+    },
+    {
+      "id": "012611151800000000000001",
+      "ts": "2026-11-15T18:00:00Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "DEC-restore-appends-by-default",
+      "species": "decision",
+      "title": "Restore appends by default; replacing is opt-in"
+    },
+    {
+      "id": "012611151800000000000002",
+      "ts": "2026-11-15T18:00:00Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "AC-restore-keeps-hosted-state",
+      "species": "acceptance",
+      "title": "Restore Keeps What Only the Host Has"
     }
   ]
 }

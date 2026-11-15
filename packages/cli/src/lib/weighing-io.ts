@@ -34,7 +34,7 @@ function isSection(value: unknown): boolean {
  * fold is never a failure — weighing is additive, a project with no
  * `docs/weighing/` must still pack — and "leave the bundle untouched" is
  * literal: a section the bundle already carried survives, which is what lets
- * `arkaik restore <backup>` put the weighing half back too. What DOES throw is
+ * `arkaik restore --replace <backup>` put the weighing half back too. What DOES throw is
  * a *malformed* sidecar, named by its path.
  */
 export function foldWeighingSection(bundle: Record<string, unknown>, root: string): FoldWeighingResult {
