@@ -64,9 +64,22 @@ const NODES = [
 const BUNDLE = { schema_version: 3, project: { id: "demo", title: "Demo", created_at: ISO, updated_at: ISO }, nodes: NODES, edges: [] };
 const CREATED = NODES.map((n, i) => JSON.stringify({ id: `01A${i}`, ts: ISO, type: "node.created", node_id: n.id, species: n.species, title: n.title }));
 
+/**
+ * A copy of `env` that git cannot be steered by: no global or system config, and none of the variables
+ * that redirect it (an outer `git commit` hook or a CI runner sets some of them), so what a test says
+ * about git config is about the config the test wrote. Both the fixture's git and the server's.
+ */
+function isolatedGitEnv(env = process.env) {
+  const out = { ...env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" };
+  for (const key of Object.keys(out)) {
+    if (["GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"].includes(key) || /^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(key)) delete out[key];
+  }
+  return out;
+}
+
 /** Run git in `cwd`, throwing on failure — fixture setup only. */
 function git(cwd, ...args) {
-  const done = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const done = spawnSync("git", args, { cwd, encoding: "utf8", env: isolatedGitEnv() });
   if (done.status !== 0) throw new Error(`git ${args.join(" ")}: ${done.stderr}`);
 }
 
@@ -83,7 +96,7 @@ function startSession(extraArgs = [], env = {}, gitConfig = undefined) {
   const bundlePath = path.join(dir, "docs", "arkaik", "bundle.json");
   writeFileSync(bundlePath, JSON.stringify(BUNDLE, null, 2));
   writeFileSync(path.join(dir, "docs", "arkaik", "journal.jsonl"), `${CREATED.join("\n")}\n`);
-  const isolated = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" };
+  const isolated = isolatedGitEnv();
   delete isolated.ARKAIK_ON_BEHALF_OF;
   if (gitConfig !== undefined) {
     git(dir, "init", "-q");
@@ -149,6 +162,8 @@ async function main() {
     const names = (listed.result?.tools ?? []).map((t) => t.name);
     check("the catalog lists get_matrix, assess and save_positioning", ["get_matrix", "assess", "save_positioning"].every((n) => names.includes(n)), names.join());
     const assessDef = listed.result.tools.find((t) => t.name === "assess");
+    check("assess's description tells what a repo session writes about its author, and the opt-out", /git author name/.test(assessDef.description) && /arkaik\.user/.test(assessDef.description) && /nobody/.test(assessDef.description), assessDef.description.slice(-400));
+    check("model, run and commit are capped at 200 in the input schema", ["model", "run", "commit"].every((k) => assessDef.inputSchema.properties[k].maxLength === 200));
     check("assess takes no scorer — an agent cannot claim to be a human", assessDef !== undefined && !("scorer" in assessDef.inputSchema.properties) && !("kind" in assessDef.inputSchema.properties));
     check("assess's level is the signed scale", assessDef !== undefined && assessDef.inputSchema.properties.level.minimum === -3 && assessDef.inputSchema.properties.level.maximum === 3);
 
@@ -173,16 +188,27 @@ async function main() {
     check("a bad sort is an error", (await repo.call("get_matrix", { sort: "vibes" })).isError);
 
     // --- assess: validator-gated, agent-stamped -----------------------------------
+    // The planner owns every value rule, so a refusal carries ITS reason (a repo's and a hosted one's alike).
     const bad = [
-      ["an unknown element", { subject: "AC-consent", criterion: "teleports", level: 1, confidence: 0 }],
-      ["a level of 4", { subject: "AC-consent", criterion: "connects", level: 4, confidence: 0 }],
-      ["a view as the subject", { subject: "V-home", criterion: "connects", level: 1, confidence: 0 }],
-      ["a missing acceptance", { subject: "AC-gone", criterion: "connects", level: 1, confidence: 0 }],
-      ["evidence missing above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2 }],
+      ["an unknown element", { subject: "AC-consent", criterion: "teleports", level: 1, confidence: 0 }, "unknown_criterion"],
+      ["a level of 4", { subject: "AC-consent", criterion: "connects", level: 4, confidence: 0 }, "level_out_of_range"],
+      ["a level of -4", { subject: "AC-consent", criterion: "connects", level: -4, confidence: 0 }, "level_out_of_range"],
+      ["a view as the subject", { subject: "V-home", criterion: "connects", level: 1, confidence: 0 }, "unknown_subject"],
+      ["a missing acceptance", { subject: "AC-gone", criterion: "connects", level: 1, confidence: 0 }, "unknown_subject"],
+      ["a model of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, model: "m".repeat(201) }, "invalid_entry"],
+      ["a run of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, run: "r".repeat(201) }, "invalid_entry"],
+      ["a commit of 201 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, commit: "c".repeat(201) }, "invalid_entry"],
+      ["evidence of 2001 characters", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 1, evidence: "e".repeat(2001) }, "invalid_entry"],
+      ["evidence that is only whitespace", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, evidence: "   " }, "invalid_entry"],
+      ["evidence missing above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2 }, undefined],
+      ["whitespace evidence above confidence 0", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 2, evidence: "  \n" }, undefined],
+      ["a level that is not an integer", { subject: "AC-consent", criterion: "connects", level: 1.5, confidence: 0 }, undefined],
+      ["an unknown matrix", { subject: "AC-consent", criterion: "connects", level: 1, confidence: 0, matrix: "nope" }, undefined],
     ];
-    for (const [label, args] of bad) {
+    for (const [label, args, reason] of bad) {
       const res = await repo.call("assess", args);
       check(`assess refuses ${label}`, res.isError, res.text.slice(0, 160));
+      if (reason !== undefined) check(`…with the planner's reason, ${reason}`, res.json.refusals?.[0]?.reason === reason, res.text.slice(0, 240));
     }
     check("…and wrote nothing", !existsSync(path.join(repo.dir, "docs", "weighing")));
 
@@ -234,6 +260,8 @@ async function main() {
     const again = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 0, confidence: 2, evidence: "I disagree" });
     check("an agent that disagrees is told a human's level stands", again.json.notes?.some((n) => /human's level already stands/.test(n) && /review/.test(n)), JSON.stringify(again.json.notes));
     check("…and the human's row is still on disk", repo.readJson("docs", "weighing", "assessments", "value.json").assessments.some((a) => a.scorer?.kind === "human" && a.level === 3));
+    const near = await repo.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 2, confidence: 2, evidence: "close to theirs" });
+    check("an agent one level off a human is told theirs stands, but is NOT told the cell is on the review list", near.json.notes?.some((n) => /human's level already stands/.test(n)) && !near.json.notes.some((n) => /review/.test(n)), JSON.stringify(near.json.notes));
 
     // --- positioning ----------------------------------------------------------------------------------
     const draft = await repo.call("save_positioning", { elements: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "removes a worry the user names", 0: "nothing to do with worry" } }, { id: "connects" }] });
@@ -242,6 +270,22 @@ async function main() {
     const drafted = await repo.call("get_matrix");
     check("a draft feeds no roll-up: no positioned figure, and it says so", drafted.json.promises.every((x) => x.positioned === null) && drafted.json.notes.some((n) => /draft/.test(n)));
     check("…but get_matrix shows the draft", drafted.json.positioning.status === "draft" && drafted.json.positioning.elements.length === 2);
+    const dup = await repo.call("save_positioning", { elements: [{ id: "connects", weight: 2 }, { id: "connects", weight: 5 }, { id: "informs" }] });
+    check("a duplicated element is saved as given (the planner does not fix it)", !dup.isError && dup.json.positioning.criteria.length === 3);
+    const dupRead = (await repo.call("get_matrix")).json.positioning.elements;
+    check("get_matrix reads weights through the derivation's rule: the first duplicate wins, a missing weight is 1", dupRead.length === 2 && dupRead[0].weight === 2 && dupRead[1].id === "informs" && dupRead[1].weight === 1, JSON.stringify(dupRead));
+    const refusedSets = [
+      ["a weight given as a string", [{ id: "connects", weight: "3" }]],
+      ["a negative weight", [{ id: "connects", weight: -1 }]],
+      ["anchors on a level off the scale", [{ id: "connects", anchors: { 9: "x" } }]],
+      ["anchors that are not words", [{ id: "connects", anchors: { 3: 7 } }]],
+      ["an element that is not an object", [null]],
+    ];
+    for (const [label, elements] of refusedSets) {
+      const res = await repo.call("save_positioning", { elements });
+      check(`save_positioning refuses ${label}, passed through as given`, res.isError && res.json.refusals?.[0]?.reason === "invalid_set", res.text.slice(0, 200));
+    }
+    check("…and a refused save left the saved positioning as it was", repo.readJson("docs", "weighing", "sets", "positioning.json").criteria.length === 3);
     const active = await repo.call("save_positioning", { status: "active", elements: [{ id: "reduces-anxiety", weight: 3 }, { id: "connects" }] });
     check("saving it active replaces it whole", !active.isError && repo.readJson("docs", "weighing", "sets", "positioning.json").status === "active");
     const positioned = (await repo.call("get_matrix", { subject: "AC-consent" })).json.promise.positioned;
@@ -284,7 +328,45 @@ async function main() {
   check("an email in the env var is skipped, not stamped: the next source is used", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "me@example.com" }, { "arkaik.user": "Local Handle", "user.name": "Anne" })) === "Local Handle");
   check("an email in arkaik.user is skipped too: user.name is used", (await behalfOf({}, { "arkaik.user": "me@example.com", "user.name": "Anne" })) === "Anne");
   check("an email-shaped user.name is skipped, and with nothing left the field is absent — scoring still works", (await behalfOf({}, { "user.name": "Anne <anne@example.com>" })) === undefined);
+  // The opt-out: "-" means "record nobody" and stops the chain; an empty value still falls through.
+  check("ARKAIK_ON_BEHALF_OF=- records nobody, whatever git says", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "-" }, ALL)) === undefined);
+  check("…also with surrounding whitespace", (await behalfOf({ ARKAIK_ON_BEHALF_OF: " - " }, ALL)) === undefined);
+  check("git config arkaik.user - records nobody: user.name is not consulted", (await behalfOf({}, { "arkaik.user": "-", "user.name": "Anne-Claire Dupré" })) === undefined);
+  check("git config user.name - is not a name either", (await behalfOf({}, { "user.name": "-" })) === undefined);
+  check("an empty arkaik.user is not set: it falls through to user.name", (await behalfOf({}, { "arkaik.user": "", "user.name": "Anne" })) === "Anne");
+  check("a value that merely contains a dash is a name like any other", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "-x" }, {})) === "-x" && (await behalfOf({}, { "user.name": "Anne-Claire" })) === "Anne-Claire");
   check("an email in every source leaves the field absent and the score recorded", (await behalfOf({ ARKAIK_ON_BEHALF_OF: "a@b.co" }, { "arkaik.user": "c@d.co", "user.name": "e@f.co" })) === undefined);
+
+  // A git that hangs costs at most one short timeout, and arkaik.user timing out ends the chain (user.name is not tried).
+  const fakeBin = mkdtempSync(path.join(tmpdir(), "arkaik-fake-git-"));
+  const fakeLog = path.join(fakeBin, "calls.log");
+  writeFileSync(path.join(fakeBin, "git"), '#!/bin/sh\necho "$@" >> "$FAKE_GIT_LOG"\nexec sleep 20\n', { mode: 0o755 });
+  const slow = startSession([], { PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`, FAKE_GIT_LOG: fakeLog });
+  try {
+    await slow.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+    const began = Date.now();
+    const res = await slow.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
+    check("a git that hangs does not block scoring: the score is recorded with nobody stamped", !res.isError && !("on_behalf_of" in res.json.assessment.scorer), res.text.slice(0, 200));
+    check("…within a couple of seconds", Date.now() - began < 5000, `${Date.now() - began} ms`);
+    const calls = readFileSync(fakeLog, "utf8").trim().split("\n");
+    check("…and a timed-out arkaik.user ends the chain: user.name was never asked", calls.length === 1 && /arkaik\.user/.test(calls[0]), calls.join(" | "));
+  } finally {
+    slow.stop();
+    rmSync(fakeBin, { recursive: true, force: true });
+  }
+
+  // --- a claimed element scored negative: claim_contradicted, and only that flag ---------------------
+  const flags = startSession();
+  try {
+    await flags.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "weighing-test", version: "0" } });
+    await flags.call("assess", { subject: "AC-invite", criterion: "connects", level: -2, confidence: 1, evidence: "the invite link exposes the inviter's number" });
+    const promise = (await flags.call("get_matrix", { subject: "AC-invite" })).json.promise;
+    check("a claimed element scored negative raises claim_contradicted, and nothing else", promise.flags.claim_contradicted.join() === "connects" && Object.entries(promise.flags).every(([name, ids]) => name === "claim_contradicted" || ids.length === 0), JSON.stringify(promise.flags));
+    check("…it costs what it claimed to serve", promise.cost === 0.67 && promise.served === 0, JSON.stringify(promise));
+    check("filter=flagged lists it", (await flags.call("get_matrix", { filter: "flagged" })).json.promises.map((x) => x.node_id).join() === "AC-invite");
+  } finally {
+    flags.stop();
+  }
 
   // --- hosted: the same tools over a stub of the API --------------------------------------------------------
   const received = [];
@@ -293,7 +375,7 @@ async function main() {
     ...BUNDLE,
     weighing: {
       sets: [],
-      matrices: [],
+      matrices: [{ id: "draft-m", set: "value-contribution@1", subjects: { kind: "query", species: "acceptance" }, status: "draft" }],
       assessments: [{ matrix: "value", subject: "AC-invite", criterion: "connects", level: 2, scorer: { kind: "human", id: "arkaik-app" }, confidence: 2, evidence: "a person", basis: { fingerprint: "fp1-0", set_version: "1.0.0" }, ts: "2026-11-14T10:00:00.000Z" }],
     },
   };
@@ -339,12 +421,20 @@ async function main() {
     const note = await hosted.call("assess", { subject: "AC-invite", criterion: "connects", level: 0, confidence: 1, evidence: "reads as touching only" });
     check("hosted assess tells an agent a human's level stands", note.json.notes?.some((n) => /human's level already stands/.test(n)), JSON.stringify(note.json.notes));
 
+    const before = received.length;
+    const drafted = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0, matrix: "draft-m" });
+    check("assess against a draft matrix is refused in the tool, with the reason", drafted.isError && /This matrix is a draft and feeds no roll-up; activate it first\./.test(drafted.json.message), drafted.text.slice(0, 200));
+    const unknownMatrix = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0, matrix: "nope" });
+    check("…and against an unknown one", unknownMatrix.isError && /nope/.test(unknownMatrix.json.message), unknownMatrix.text.slice(0, 200));
+    check("…and nothing was posted for either", received.length === before);
+
     const pos = await hosted.call("save_positioning", { elements: [{ id: "connects", weight: 2 }] });
     check("hosted save_positioning posts a weighing.set.saved draft", !pos.isError && received.at(-1).events[0].type === "weighing.set.saved" && received.at(-1).events[0].set.status === "draft");
 
     refuse = true;
     const refused = await hosted.call("assess", { subject: "AC-consent", criterion: "reduces-anxiety", level: 1, confidence: 0 });
     check("a server refusal surfaces with its reason", refused.isError && /unknown_criterion/.test(refused.text), refused.text.slice(0, 300));
+    check("…as the same structured refusals a repo's refusal carries", refused.json.refusals?.[0]?.reason === "unknown_criterion" && refused.json.refusals[0].index === 0, JSON.stringify(refused.json.refusals));
   } finally {
     hosted.stop();
     stub.close();

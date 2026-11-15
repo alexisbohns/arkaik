@@ -43,6 +43,7 @@ import {
   WEIGHING_SET_SAVED,
   buildWeighingContext,
   deriveWeighing,
+  isActiveWeighingSet,
   isValidOnBehalfOf,
   planWeighingEvents,
   resolveWeighing,
@@ -83,19 +84,30 @@ export interface WeighingToolContext {
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
-/** `git config --get <key>` read in `root`; any failure (no git, no repo, not set, a timeout) means "not set". No shell. */
-function gitConfigValue(root: string, key: string): Promise<string | undefined> {
+/** How long one `git config` may take: it reads a file, so a longer wait means git is hung (a network home, a lock) and `assess` must not wait on it. */
+const GIT_CONFIG_TIMEOUT_MS = 1500;
+
+/**
+ * `git config --get <key>` read in `root`. No shell. `value` is `undefined` for
+ * every failure (no git, no repo, not set, empty); `timedOut` says git was
+ * killed for taking too long, which the caller treats as "stop asking".
+ */
+function gitConfigValue(root: string, key: string): Promise<{ value?: string; timedOut: boolean }> {
   return new Promise((resolve) => {
     try {
-      execFile("git", ["config", "--get", key], { cwd: root, timeout: 5000 }, (error, stdout) => {
-        const value = error === null ? String(stdout).trim() : "";
-        resolve(value === "" ? undefined : value);
+      execFile("git", ["config", "--get", key], { cwd: root, timeout: GIT_CONFIG_TIMEOUT_MS }, (error, stdout) => {
+        if (error !== null) return resolve({ timedOut: (error as { killed?: boolean }).killed === true });
+        const value = String(stdout).trim();
+        resolve({ ...(value === "" ? {} : { value }), timedOut: false });
       });
     } catch {
-      resolve(undefined);
+      resolve({ timedOut: false });
     }
   });
 }
+
+/** The opt-out: this as `ARKAIK_ON_BEHALF_OF` or `git config arkaik.user` means "record nobody". */
+export const ON_BEHALF_OF_NOBODY = "-";
 
 /**
  * D14, repo mode: whom this session scores for. The first usable of
@@ -110,13 +122,23 @@ function gitConfigValue(root: string, key: string): Promise<string | undefined> 
  * works. `undefined` when none is usable (an unattended CI run). Read per call,
  * so a config change mid-session is honoured; the env var, when usable, costs no
  * process.
+ *
+ * **The opt-out.** A sidecar is committed, so the default writes the git author
+ * name into a repo's history. `-` (see {@link ON_BEHALF_OF_NOBODY}) in
+ * `ARKAIK_ON_BEHALF_OF` or `arkaik.user` means "record nobody": nothing is
+ * stamped and the chain stops, so the git name is not read. An EMPTY value is
+ * not that — it is "not set", and falls through. A git that times out
+ * ({@link GIT_CONFIG_TIMEOUT_MS}) ends the chain too: no second wait for `user.name`.
  */
 export async function resolveOnBehalfOf(root: string, env: NodeJS.ProcessEnv = process.env): Promise<string | undefined> {
   const fromEnv = env.ARKAIK_ON_BEHALF_OF?.trim();
+  if (fromEnv === ON_BEHALF_OF_NOBODY) return undefined;
   if (fromEnv !== undefined && isValidOnBehalfOf(fromEnv)) return fromEnv;
   for (const key of ["arkaik.user", "user.name"]) {
-    const value = await gitConfigValue(root, key);
-    if (value !== undefined && isValidOnBehalfOf(value)) return value;
+    const { value, timedOut } = await gitConfigValue(root, key);
+    if (timedOut) return undefined;
+    if (key === "arkaik.user" && value === ON_BEHALF_OF_NOBODY) return undefined;
+    if (value !== undefined && value !== ON_BEHALF_OF_NOBODY && isValidOnBehalfOf(value)) return value;
   }
   return undefined;
 }
@@ -234,7 +256,9 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     try {
       return await ctx.store.appendWeighingEvents(inputs);
     } catch (error) {
-      throw new ToolError((error as Error).message);
+      // The remote store attaches the server's structured refusals; carry them as a repo refusal does.
+      const refusals = (error as { refusals?: unknown }).refusals;
+      throw new ToolError((error as Error).message, refusals !== undefined ? { refusals } : undefined);
     }
   };
 
@@ -265,12 +289,16 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       const view = deriveWeighing(nodes, section, matrixId);
       if (view === undefined) throw new ToolError(`No usable matrix "${matrixId}" (unknown, or a draft — a draft feeds no roll-up). The built-in one is "${VALUE_MATRIX_ID}".`);
 
+      // The weights are the derivation's own (`positioningWeights`: default 1, 0 is 0, the first duplicate wins), never a second copy of that rule.
       const positioning =
         view.positioning === null
           ? null
           : {
               status: view.positioning.active ? "active" : "draft",
-              elements: view.positioning.set.criteria.map((criterion) => ({ id: criterion.id, weight: typeof criterion.weight === "number" && Number.isFinite(criterion.weight) && criterion.weight >= 0 ? criterion.weight : 1, ...(criterion.anchors !== undefined ? { anchors: criterion.anchors } : {}) })),
+              elements: [...view.positioning.weights].map(([id, weight]) => {
+                const anchors = view.positioning?.set.criteria.find((criterion) => criterion.id === id)?.anchors;
+                return { id, weight, ...(anchors !== undefined ? { anchors } : {}) };
+              }),
             };
       // What the resolver dropped (a malformed saved positioning, a duplicate id): said, not silent.
       const { skipped } = resolveWeighing(section);
@@ -342,7 +370,7 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     {
       name: "assess",
       description:
-        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the scale's anchors, not from memory. 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, where it can tell, whose hands you are), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
+        "Record one judgement: a signed level (-3..+3) for one promise on one value element, with how sure you are and why. Read the promise first with get_matrix `subject` so you score against the scale's anchors, not from memory. 0 means weighed and unrelated; a negative level is a COST (the promise works against that value) — score costs you find, authors rarely claim them, and an unclaimed cost is the most valuable thing an audit returns. `confidence`: 0 guess · 1 inferred from the promise's own text · 2 evidenced (cites something outside it) · 3 verified. `evidence` is required above confidence 0: a score without a citation is an opinion. Scored as an AGENT — a human's level for the same cell keeps winning and yours is recorded beside it, flagged for review when you differ by 2 or more. The tool stamps what you cannot: who you are (and, where it can tell, whose hands you are — in a repository that is your git author name, read from `ARKAIK_ON_BEHALF_OF`, then `git config arkaik.user`, then `git config user.name`, and written into the committed sidecar; set `arkaik.user` to `-` to record nobody), the set's version and a fingerprint of the promise, so a later edit to its title, Gherkin or values marks your score stale. In a repository it upserts docs/weighing/assessments/<matrix>.json (nothing in the journal); on a hosted project it records weighing.assessment.recorded. The write goes through the same validator-gated gate as the app's form: an unknown element, an out-of-range level or a subject that is not an acceptance refuses with the reason.",
       inputSchema: {
         type: "object",
         properties: {
@@ -352,9 +380,9 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
           confidence: { type: "integer", enum: [0, 1, 2, 3] },
           evidence: { type: "string", maxLength: 2000, description: "Markdown, at most 2,000 characters. Required when confidence is above 0." },
           refs: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 50, description: "Ids cited: nodes, journal events, findings. At most 50, each at most 200 characters." },
-          model: { type: "string", description: "The model you are, when you know." },
-          run: { type: "string", description: "The audit or session this score belongs to." },
-          commit: { type: "string" },
+          model: { type: "string", maxLength: 200, description: "The model you are, when you know. At most 200 characters." },
+          run: { type: "string", maxLength: 200, description: "The audit or session this score belongs to. At most 200 characters." },
+          commit: { type: "string", maxLength: 200 },
           matrix: { type: "string", description: `Default: ${VALUE_MATRIX_ID}.` },
         },
         required: ["subject", "criterion", "level", "confidence"],
@@ -364,10 +392,12 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
     async (args) => {
       const subject = requireString(args, "subject");
       const criterion = requireString(args, "criterion");
-      const level = requireInt(args, "level", -3, 3);
+      // Only that it is a whole number: the range is the planner's to judge (it says `level_out_of_range`, with the scale).
+      const level = args.level;
+      if (typeof level !== "number" || !Number.isInteger(level)) throw new ToolError("`level` is required and must be an integer (the scale is -3 to +3).");
       const confidence = requireInt(args, "confidence", 0, 3);
       const evidence = optionalString(args, "evidence");
-      if (confidence > 0 && evidence === undefined) {
+      if (confidence > 0 && (evidence === undefined || evidence.trim() === "")) {
         throw new ToolError("`evidence` is required above confidence 0 — a score without a citation is an opinion, not an assessment. Say what you read, or score at confidence 0.");
       }
       const refs = Array.isArray(args.refs) ? (args.refs as unknown[]).filter((ref): ref is string => typeof ref === "string" && ref !== "") : undefined;
@@ -389,16 +419,24 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
       const section = sectionOf(graph);
       const nodes = graph.nodes as Node[];
 
+      // The matrix must be one a roll-up reads: a draft feeds none, so a score against it would be recorded and then count for nothing.
+      const matrixId = input.matrix ?? VALUE_MATRIX_ID;
+      const view = buildWeighingContext(section, matrixId);
+      if (view === undefined) {
+        const matrix = resolveWeighing(section).matrices.find((candidate) => candidate.id === matrixId);
+        if (matrix === undefined) throw new ToolError(`No matrix "${matrixId}". The built-in one is "${VALUE_MATRIX_ID}".`);
+        if (!isActiveWeighingSet(matrix)) throw new ToolError("This matrix is a draft and feeds no roll-up; activate it first.");
+        throw new ToolError(`Matrix "${matrixId}" names the set "${matrix.set}", which is not available.`);
+      }
       // What the cell reads before this write, so the reply can say whose level stands.
-      const view = buildWeighingContext(section, input.matrix);
       const node = nodes.find((candidate) => candidate.id === subject);
-      const before = view !== undefined && node !== undefined ? weighPromise(node, view).cells.find((cell) => cell.criterion === criterion) : undefined;
+      const before = node !== undefined ? weighPromise(node, view).cells.find((cell) => cell.criterion === criterion) : undefined;
 
       const notes: string[] = [];
       if (before?.source === "stored" && before.scorer.kind === "human") {
         notes.push("A human's level already stands for this cell and keeps winning — yours is recorded beside it" + (Math.abs(before.level - level) >= 2 ? ", and the cell now sits on the review list (you differ by 2 or more)." : "."));
       }
-      const anchor = view === undefined ? undefined : weighingScaleOf(view.set).anchors[String(level)];
+      const anchor = weighingScaleOf(view.set).anchors[String(level)];
 
       if (ctx.qualityRoot === undefined) {
         const events = await appendHosted([input]);
@@ -476,11 +514,17 @@ export function buildWeighingCatalog(ctx: WeighingToolContext): {
         role: "positioning",
         status,
         extends: `${ruler.id}@${ruler.version.split(".")[0]}`,
-        criteria: (args.elements as Record<string, unknown>[]).map((entry) => ({
-          id: String(entry.id),
-          ...(typeof entry.weight === "number" ? { weight: entry.weight } : {}),
-          ...(typeof entry.anchors === "object" && entry.anchors !== null ? { anchors: entry.anchors as Record<string, string> } : {}),
-        })),
+        // Passed through AS GIVEN: a weight that is a string, an anchor off the scale or an entry that is not an
+        // object is the planner's to refuse (`invalid_set`, with the reason), not this tool's to quietly fix.
+        criteria: (args.elements as unknown[]).map((entry) =>
+          typeof entry === "object" && entry !== null && !Array.isArray(entry)
+            ? ({
+                id: (entry as Record<string, unknown>).id,
+                ...((entry as Record<string, unknown>).weight !== undefined ? { weight: (entry as Record<string, unknown>).weight } : {}),
+                ...((entry as Record<string, unknown>).anchors !== undefined ? { anchors: (entry as Record<string, unknown>).anchors } : {}),
+              } as WeighingCriteriaSet["criteria"][number])
+            : (entry as WeighingCriteriaSet["criteria"][number]),
+        ),
       };
       const input: WeighingEventInput = { type: WEIGHING_SET_SAVED, set };
 

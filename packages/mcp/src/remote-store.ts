@@ -285,7 +285,9 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
         };
         if (e.status === 422 && e.body?.error === "refused" && e.body.refusals) {
           const detail = e.body.refusals.map((r) => `entry ${r.index}: ${r.reason}${r.detail ? ` — ${r.detail}` : ""}`).join("; ");
-          throw new Error(`Weighing events refused — ${detail}`);
+          // Carried structured, as `appendQualityEvents` does, so a tool can answer with the same
+          // `refusals` a repo refusal carries and an agent branches on one shape.
+          throw Object.assign(new Error(`Weighing events refused — ${detail}`), { refusals: e.body.refusals });
         }
         throw err;
       }
