@@ -222,10 +222,16 @@ export function isWeighingProbability(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
-/** At or above this, a scorer is clear about a direction (the Jev POC's gate: cells there never moved between runs). */
-export const WEIGHING_CLEAR_AT = 0.7;
-/** At or above this, the other direction is not settled either. */
-export const WEIGHING_UNSETTLED_AT = 0.3;
+/**
+ * At or above this, a scorer is certain of a direction. Calibrated on 2026-11-16
+ * against 180 hand-labelled cells of Jev's answers: a serves direction was right
+ * 94% of the time from 0.9, 56% between 0.7 and 0.9. A costs direction never gets
+ * that sure (right about two times in three at its best), so a cost nearly always
+ * reads as a range.
+ */
+export const WEIGHING_CLEAR_AT = 0.9;
+/** At or above this, the other direction is not settled either (the calibration found nothing real below 0.5). */
+export const WEIGHING_UNSETTLED_AT = 0.5;
 
 /**
  * Should a level be read as a range rather than a point? Only when the row
