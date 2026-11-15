@@ -193,6 +193,12 @@ jobs:
       - name: Weighing model tests (library, fingerprint, shapes, validator warnings)
         run: npm run test:weighing
 
+      # The weighing projections: seeding, the level a cell reads at, served and
+      # cost (never netted), positioned variants, kept share (pinned to
+      # lib/utils/platform-status.ts), element masses and the claim flags. Pure.
+      - name: Weighing derivation tests (seeds, effective level, served/cost, masses, flags)
+        run: npm run test:weighing-derive
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.

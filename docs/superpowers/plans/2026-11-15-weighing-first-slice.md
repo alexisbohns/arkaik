@@ -3056,13 +3056,13 @@ git commit -m "feat(weighing): element masses, totals and the promise sort keys 
 **Files:**
 - Modify: `package.json`, `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Add the script** — after `"test:weighing"` in `package.json`:
+- [x] **Step 1: Add the script** — after `"test:weighing"` in `package.json`:
 
 ```json
     "test:weighing-derive": "node tests/schema/weighing-derive.test.js",
 ```
 
-- [ ] **Step 2: Add the CI step** — directly after the "Weighing model tests" step in `ci.yml`:
+- [x] **Step 2: Add the CI step** — directly after the "Weighing model tests" step in `ci.yml`:
 
 ```yaml
       # The weighing projections: seeding, the level a cell reads at, served and
@@ -3072,12 +3072,12 @@ git commit -m "feat(weighing): element masses, totals and the promise sort keys 
         run: npm run test:weighing-derive
 ```
 
-- [ ] **Step 3: Run the gate**
+- [x] **Step 3: Run the gate**
 
 Run: `npm run generate && git status --short` (expected: no change — nothing in this part touches a generated artifact), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run test:weighing && npm run test:weighing-derive && npm run test:schema && npm run test:quality && npm run test:effective-status`.
 Expected: all exit 0; `eslint` reports no error (the header imports are all used now).
 
-- [ ] **Step 4: Commit and submit**
+- [ ] **Step 4: Commit and submit** (committed; `gh stack submit` deliberately not run by the implementer)
 
 ```bash
 git add package.json .github/workflows/ci.yml
