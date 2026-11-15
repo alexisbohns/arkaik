@@ -315,3 +315,78 @@ export function planWeighingEvents(
 
   return refusals.length > 0 ? { ok: false, refusals } : { ok: true, events, assessments };
 }
+
+// --- The fold ----------------------------------------------------------------
+
+/** The assessment an event carries, or `undefined` when it is not a well-formed one. */
+function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined {
+  const e = event as Record<string, unknown>;
+  const scorer = e.scorer as { kind?: unknown; id?: unknown } | undefined;
+  if (
+    typeof e.matrix !== "string" ||
+    e.matrix === "" ||
+    typeof e.subject !== "string" ||
+    e.subject === "" ||
+    typeof e.criterion !== "string" ||
+    e.criterion === "" ||
+    typeof e.level !== "number" ||
+    !Number.isInteger(e.level) ||
+    typeof e.confidence !== "number" ||
+    typeof e.ts !== "string" ||
+    e.ts === "" ||
+    typeof scorer !== "object" ||
+    scorer === null ||
+    typeof scorer.kind !== "string" ||
+    typeof scorer.id !== "string"
+  ) {
+    return undefined;
+  }
+  // The envelope's own keys are not part of the assessment; `ts` is both.
+  const { id: _id, actor: _actor, type: _type, v: _v, ...rest } = e;
+  void _id;
+  void _actor;
+  void _type;
+  void _v;
+  return rest as unknown as WeighingAssessment;
+}
+
+/**
+ * Fold the weighing events of a journal over a stored section, latest-wins.
+ *
+ * Returns the SAME `section` reference when there is nothing to fold, so a
+ * caller can tell "unchanged" with `===` — the identity check the hosted read
+ * and the local provider both use to avoid copying a bundle for nothing. Unlike
+ * the Kritik fold it will start a section from nothing: weighing needs no audit
+ * restored first, so a project holding only events still folds.
+ *
+ * An assessment event replaces the stored row with the same
+ * {@link assessmentKey}; a set event replaces the set with the same id. An
+ * event that is not shaped right is skipped, never thrown on — the journal is
+ * append-only, and a bad line stays forever.
+ */
+export function foldWeighingEvents(
+  section: WeighingSection | undefined,
+  events: readonly JournalEvent[],
+): WeighingSection | undefined {
+  const relevant = events.filter((event) => event?.type === WEIGHING_ASSESSMENT_RECORDED || event?.type === WEIGHING_SET_SAVED);
+  if (relevant.length === 0) return section;
+
+  let assessments = asArray<WeighingAssessment>(section?.assessments);
+  let sets = asArray<WeighingCriteriaSet>(section?.sets);
+
+  for (const event of relevant) {
+    if (event.type === WEIGHING_ASSESSMENT_RECORDED) {
+      const row = assessmentOfEvent(event);
+      if (row !== undefined) assessments = upsertWeighingAssessment(assessments, row).assessments;
+      continue;
+    }
+    const set = (event as { set?: unknown }).set;
+    if (typeof set !== "object" || set === null || Array.isArray(set)) continue;
+    const id = (set as { id?: unknown }).id;
+    if (typeof id !== "string" || id === "") continue;
+    const at = sets.findIndex((existing) => existing?.id === id);
+    sets = at === -1 ? [...sets, set as WeighingCriteriaSet] : sets.map((existing, i) => (i === at ? (set as WeighingCriteriaSet) : existing));
+  }
+
+  return { ...(section ?? {}), sets, matrices: asArray<WeighingMatrix>(section?.matrices), assessments };
+}

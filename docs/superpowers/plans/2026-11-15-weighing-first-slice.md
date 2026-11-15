@@ -3928,7 +3928,7 @@ git commit -m "feat(weighing): planWeighingEvents — one gate for the route, th
 **Files:**
 - Modify: `packages/schema/src/weighing-events.ts`, `tests/schema/weighing-events.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` line:
 
@@ -3974,12 +3974,12 @@ const bundle = {
 check("a folded section raises no weighing warning", validateBundle({ ...bundle, weighing: both }).warnings.filter((w) => w.rule.startsWith("weighing")).length === 0);
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-events.test.js`
 Expected: FAIL — `TypeError: foldWeighingEvents is not a function`.
 
-- [ ] **Step 3: Append the fold**
+- [x] **Step 3: Append the fold**
 
 Append to `packages/schema/src/weighing-events.ts`:
 
@@ -4060,12 +4060,12 @@ export function foldWeighingEvents(
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `node tests/schema/weighing-events.test.js && npm run test:journal && npm run test:schema && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: 50 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
+Expected: 53 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-events.ts tests/schema/weighing-events.test.js

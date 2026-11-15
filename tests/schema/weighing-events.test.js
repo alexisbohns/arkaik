@@ -122,6 +122,46 @@ check("a weight of 0 is refused", planWeighingEvents(undefined, [NODE], [{ type:
 check("only the positioning can be saved in this slice", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ id: "my-set", role: undefined }) }], ctx()).refusals?.[0].reason === "invalid_set");
 check("a positioning extending nothing is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ extends: "nope@1" }) }], ctx()).refusals?.[0].reason === "invalid_set");
 
+// --- foldWeighingEvents ------------------------------------------------------
+
+const ev = (planResult) => planResult.events;
+const section = { sets: [], matrices: [], assessments: [] };
+check("no weighing events: the SAME section comes back", foldWeighingEvents(section, [makeEvent("node.created", { node_id: "x", species: "view", title: "x" })]) === section);
+check("no section and no events stays undefined", foldWeighingEvents(undefined, []) === undefined);
+const fromNothing = foldWeighingEvents(undefined, ev(plan));
+check("a project with only events still folds, from nothing", fromNothing.assessments.length === 1 && fromNothing.sets.length === 0 && fromNothing.matrices.length === 0);
+check("the folded row is the planned row", same(fromNothing.assessments[0], row));
+
+const later = planWeighingEvents(undefined, [NODE], [assess({ level: 3 })], ctx({ scorerKind: "agent", actor: "arkaik-mcp", now: new Date("2026-11-15T11:00:00.000Z") }));
+const folded = foldWeighingEvents(fromNothing, ev(later));
+check("a later event from the same scorer kind replaces the cell", folded.assessments.length === 1 && folded.assessments[0].level === 3);
+const humanEvent = planWeighingEvents(undefined, [NODE], [assess({ level: -1 })], ctx({ now: new Date("2026-11-15T12:00:00.000Z") }));
+const both = foldWeighingEvents(folded, ev(humanEvent));
+check("a human's event lands beside the agent's, not over it", both.assessments.length === 2 && both.assessments.some((a) => a.scorer?.kind === "human" && a.level === -1) && both.assessments.some((a) => a.scorer?.kind === "agent" && a.level === 3));
+check("the fold does not mutate the stored section", fromNothing.assessments.length === 1 && fromNothing.assessments[0].level === 2);
+check("the fold keeps unknown top-level keys on the section", foldWeighingEvents({ ...section, extra: 7 }, ev(plan)).extra === 7);
+
+const setFolded = foldWeighingEvents(section, ev(saved));
+check("a set event adds the set", setFolded.sets.length === 1 && setFolded.sets[0].status === "draft");
+const activated = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ status: "active" }) }], ctx({ now: new Date("2026-11-15T13:00:00.000Z") }));
+const reFolded = foldWeighingEvents(setFolded, ev(activated));
+check("a later set event replaces the set by id — latest wins", reFolded.sets.length === 1 && reFolded.sets[0].status === "active");
+const junk = [
+  { id: "01J", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", subject: "AC-a" },
+  { id: "01K", ts: "2026-11-15T10:00:00.000Z", type: "weighing.set.saved", set: "nope" },
+];
+check("malformed events are skipped, never thrown on", foldWeighingEvents(section, junk).assessments.length === 0);
+
+// --- It all validates --------------------------------------------------------
+
+const bundle = {
+  schema_version: 3,
+  project: { id: "p", title: "P", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
+  nodes: [{ id: "AC-a", project_id: "p", species: "acceptance", title: "Accept an invite", status: "live", platforms: ["web"], metadata: NODE.metadata }],
+  edges: [],
+};
+check("a folded section raises no weighing warning", validateBundle({ ...bundle, weighing: both }).warnings.filter((w) => w.rule.startsWith("weighing")).length === 0);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} weighing-events test(s) failed.`);
