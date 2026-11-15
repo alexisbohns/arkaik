@@ -3403,14 +3403,12 @@ check("a body with no events array is an error", typeof parseWeighingEventInputs
 check("an empty batch is an error", typeof parseWeighingEventInputs({ events: [] }).error === "string");
 check("51 entries is an error", typeof parseWeighingEventInputs({ events: Array.from({ length: 51 }, () => assess()) }).error === "string");
 check("an unknown type is an error", typeof parseWeighingEventInputs({ events: [{ type: "quality.finding.resolved", finding_id: "x" }] }).error === "string");
-check("a fractional level is an error", typeof parseWeighingEventInputs({ events: [assess({ level: 1.5 })] }).error === "string");
-check("a confidence of 4 is an error", typeof parseWeighingEventInputs({ events: [assess({ confidence: 4 })] }).error === "string");
-check("an empty subject is an error", typeof parseWeighingEventInputs({ events: [assess({ subject: "" })] }).error === "string");
+check("an entry that is not an object is an error", typeof parseWeighingEventInputs({ events: [null] }).error === "string");
+check("the parser is the HTTP shape only: it does not judge a value (that is the planner's, so every writer gets it)", Array.isArray(parseWeighingEventInputs({ events: [assess({ level: 1.5, confidence: 7, subject: "" })] })));
 for (const stamped of ["scorer", "basis", "ts"]) {
   check(`a caller-supplied ${stamped} is refused — the server stamps it`, /stamped by the server/.test(parseWeighingEventInputs({ events: [assess({ [stamped]: stamped === "ts" ? "2026-01-01T00:00:00.000Z" : { kind: "human", id: "me" } })] }).error ?? ""));
 }
-check("refs must be non-empty strings", typeof parseWeighingEventInputs({ events: [assess({ refs: ["ok", ""] })] }).error === "string");
-check("a set needs an id, version and subject", typeof parseWeighingEventInputs({ events: [{ type: "weighing.set.saved", set: { id: "positioning" } }] }).error === "string");
+check("a set must be an object", typeof parseWeighingEventInputs({ events: [{ type: "weighing.set.saved", set: "nope" }] }).error === "string");
 
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
@@ -3538,7 +3536,7 @@ import {
 import {
   WEIGHING_ASSESSMENT_RECORDED,
   WEIGHING_SET_SAVED,
-  upsertWeighingAssessment,
+  assessmentKey,
   type WeighingAssessment,
   type WeighingConfidence,
   type WeighingCriteriaSet,
@@ -3552,7 +3550,7 @@ const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[
 
 // --- Inputs ------------------------------------------------------------------
 
-/** One caller-supplied write, after {@link parseWeighingEventInputs} has narrowed its shape. */
+/** One caller-supplied write: what {@link parseWeighingEventInputs} hands on. The types are a promise; {@link planWeighingEvents} judges every value anyway. */
 export type WeighingEventInput =
   | {
       type: typeof WEIGHING_ASSESSMENT_RECORDED;
@@ -3573,24 +3571,35 @@ export type WeighingEventInput =
 
 const MAX_EVENTS = 50;
 
+/**
+ * What one writer may put in one journal row. Enforced by {@link planWeighingEvents},
+ * so every writer shares them; the hosted route also caps the whole body.
+ */
+export const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 } as const;
+
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value !== "";
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
 const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
 
 /**
- * Shape-validate a request body into a batch of {@link WeighingEventInput}.
+ * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
+ * half of the gate, and only that.
  *
- * Purely structural — it never looks at the graph or the section, so it cannot
- * refuse an unknown subject (that is {@link planWeighingEvents}'s job). A legal
- * batch is an array; an error is `{ error }`. 1–50 entries. **`scorer`, `basis`
- * and `ts` are refused outright**: provenance is stamped by the writer and the
- * fingerprint is read off the graph, so a caller can claim neither.
+ * It checks what only an HTTP body can get wrong: the body is an object with an
+ * `events` array of 1–50 entries, each an object of a known `type`, and **none
+ * carries `scorer`, `basis` or `ts`** — provenance is stamped by the writer and
+ * the fingerprint is read off the graph, so a caller can claim neither. It
+ * copies only the fields an event may carry, so a stray key never reaches the
+ * planner. It does **not** judge a value (a level, a confidence, an empty
+ * subject, a set's shape): that is {@link planWeighingEvents}'s job, because the
+ * browser provider and the MCP tools never see this parser and must be held to
+ * the same rules. An error is `{ error }`.
  */
 export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | { error: string } {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return { error: "body must be an object with an events array" };
-  }
+  if (!isObject(body)) return { error: "body must be an object with an events array" };
   const { events } = body as { events?: unknown };
   if (!Array.isArray(events)) return { error: "events must be an array" };
   if (events.length === 0) return { error: "events must contain at least one entry" };
@@ -3598,54 +3607,24 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
 
   const parsed: WeighingEventInput[] = [];
   for (const [index, raw] of events.entries()) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { error: `events[${index}] must be an object` };
-    const entry = raw as Record<string, unknown>;
+    if (!isObject(raw)) return { error: `events[${index}] must be an object` };
+    const entry = raw;
 
     if (entry.type === WEIGHING_ASSESSMENT_RECORDED) {
       for (const stamped of ["scorer", "basis", "ts"] as const) {
         if (stamped in entry) return { error: `events[${index}].${stamped} is stamped by the server — remove it` };
       }
-      for (const field of ["subject", "criterion"] as const) {
-        if (!isNonEmptyString(entry[field])) return { error: `events[${index}].${field} must be a non-empty string` };
+      const known: Record<string, unknown> = {};
+      for (const field of ["matrix", "subject", "criterion", "level", "confidence", "evidence", "refs", "run", "commit", "model"] as const) {
+        if (entry[field] !== undefined) known[field] = entry[field];
       }
-      if (typeof entry.level !== "number" || !Number.isInteger(entry.level)) return { error: `events[${index}].level must be an integer` };
-      if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
-        return { error: `events[${index}].confidence must be an integer 0-3` };
-      }
-      for (const field of ["matrix", "evidence", "run", "commit", "model"] as const) {
-        if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return { error: `events[${index}].${field} must be a non-empty string when present` };
-      }
-      if (entry.refs !== undefined && (!Array.isArray(entry.refs) || !entry.refs.every(isNonEmptyString))) {
-        return { error: `events[${index}].refs must be an array of non-empty strings when present` };
-      }
-      parsed.push({
-        type: WEIGHING_ASSESSMENT_RECORDED,
-        subject: entry.subject as string,
-        criterion: entry.criterion as string,
-        level: entry.level,
-        confidence: entry.confidence,
-        ...(entry.matrix !== undefined ? { matrix: entry.matrix as string } : {}),
-        ...(entry.evidence !== undefined ? { evidence: entry.evidence as string } : {}),
-        ...(entry.refs !== undefined ? { refs: entry.refs as string[] } : {}),
-        ...(entry.run !== undefined ? { run: entry.run as string } : {}),
-        ...(entry.commit !== undefined ? { commit: entry.commit as string } : {}),
-        ...(entry.model !== undefined ? { model: entry.model as string } : {}),
-      });
+      parsed.push({ type: WEIGHING_ASSESSMENT_RECORDED, ...known } as WeighingEventInput);
       continue;
     }
 
     if (entry.type === WEIGHING_SET_SAVED) {
-      const set = entry.set;
-      if (typeof set !== "object" || set === null || Array.isArray(set)) return { error: `events[${index}].set must be an object` };
-      const s = set as Record<string, unknown>;
-      if (!isNonEmptyString(s.id) || !isNonEmptyString(s.version) || !isNonEmptyString(s.subject)) {
-        return { error: `events[${index}].set needs a non-empty id, version and subject` };
-      }
-      // The scale is optional: a positioning without one uses its ruler's (weighingScaleOf).
-      if (!Array.isArray(s.criteria)) {
-        return { error: `events[${index}].set needs a criteria array` };
-      }
-      parsed.push({ type: WEIGHING_SET_SAVED, set: set as WeighingCriteriaSet });
+      if (!isObject(entry.set)) return { error: `events[${index}].set must be an object` };
+      parsed.push({ type: WEIGHING_SET_SAVED, set: entry.set as WeighingCriteriaSet });
       continue;
     }
 
@@ -3711,6 +3690,39 @@ check("an unknown matrix is refused", refused([assess({ matrix: "nope" })]).refu
 const batch = refused([assess(), assess({ criterion: "teleports" }), assess({ level: 9 })]);
 check("one bad entry refuses the whole batch, each naming its index", batch.ok === false && eq(batch.refusals.map((r) => r.index), [1, 2]));
 
+// The planner is the ONE gate: a writer that never saw the HTTP parser (the browser provider, MCP) gets the same refusals, and never a throw.
+const reasonOf = (inputs) => planWeighingEvents(undefined, [NODE], inputs, ctx()).refusals?.[0]?.reason;
+check("a fractional level is refused, not thrown on", reasonOf([assess({ level: 1.5 })]) === "invalid_entry");
+check("a string level is refused", reasonOf([assess({ level: "2" })]) === "invalid_entry");
+check("a confidence of 4 is refused", reasonOf([assess({ confidence: 4 })]) === "invalid_entry");
+check("a confidence of 7 is refused", reasonOf([assess({ confidence: 7 })]) === "invalid_entry");
+check("a fractional confidence is refused", reasonOf([assess({ confidence: 1.5 })]) === "invalid_entry");
+check("a missing confidence is refused", reasonOf([assess({ confidence: undefined })]) === "invalid_entry");
+check("an empty subject is refused", reasonOf([assess({ subject: "" })]) === "invalid_entry");
+check("an empty criterion is refused", reasonOf([assess({ criterion: "" })]) === "invalid_entry");
+check("a non-string subject is refused", reasonOf([assess({ subject: 7 })]) === "invalid_entry");
+check("an empty ref is refused", reasonOf([assess({ refs: ["ok", ""] })]) === "invalid_entry");
+check("refs that are not an array are refused", reasonOf([assess({ refs: "AC-a" })]) === "invalid_entry");
+check("a non-string run is refused", reasonOf([assess({ run: 5 })]) === "invalid_entry");
+check("an entry that is not an object is refused", reasonOf([null]) === "invalid_entry");
+check("an unknown type is refused", reasonOf([{ type: "quality.finding.resolved" }]) === "invalid_entry");
+check("a set whose criteria are not an array is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", version: "1.0.0", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: "connects" } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set with no version is refused (it would be saved and then silently ignored)", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: { id: "positioning", subject: "acceptance", role: "positioning", extends: "value-contribution@1", criteria: [] } }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a set that is not an object is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: null }], ctx()).refusals?.[0].reason === "invalid_set");
+check("one structural refusal still refuses the whole batch, naming its index", eq(planWeighingEvents(undefined, [NODE], [assess(), assess({ confidence: 7 })], ctx()).refusals?.map((r) => r.index), [1]));
+
+// Caps: the scale of what one writer can put in a journal row.
+check("evidence of exactly 2000 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ evidence: "x".repeat(2000) })], ctx()).ok === true);
+check("evidence of 2001 characters is refused", reasonOf([assess({ evidence: "x".repeat(2001) })]) === "invalid_entry");
+check("50 refs are accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: Array.from({ length: 50 }, (_, i) => `R-${i}`) })], ctx()).ok === true);
+check("51 refs are refused", reasonOf([assess({ refs: Array.from({ length: 51 }, (_, i) => `R-${i}`) })]) === "invalid_entry");
+check("a ref of 200 characters is accepted", planWeighingEvents(undefined, [NODE], [assess({ refs: ["r".repeat(200)] })], ctx()).ok === true);
+check("a ref of 201 characters is refused", reasonOf([assess({ refs: ["r".repeat(201)] })]) === "invalid_entry");
+
+// The model is the agent's own account of itself: a human session has none to claim.
+check("a human's scorer drops a supplied model", !("model" in planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx()).assessments[0].scorer));
+check("an agent's scorer keeps its model", planWeighingEvents(undefined, [NODE], [assess({ model: "claude" })], ctx({ scorerKind: "agent" })).assessments[0].scorer.model === "claude");
+
 const retired = { sets: [], matrices: [], assessments: [] };
 check("an empty section changes nothing about planning", planWeighingEvents(retired, [NODE], [assess()], ctx()).ok === true);
 
@@ -3756,6 +3768,7 @@ export type WeighingRefusalReason =
   | "unknown_criterion"
   | "retired_criterion"
   | "level_out_of_range"
+  | "invalid_entry" // structurally wrong: a type, a level that is not an integer, a confidence outside 0-3, an empty id, a cap exceeded
   | "invalid_on_behalf_of" // D14
   | "invalid_set";
 
@@ -3791,9 +3804,43 @@ export type WeighingPlan =
     }
   | { ok: false; refusals: WeighingRefusal[] };
 
+/** The first structural problem with an assessment entry, or `undefined` when it is well-formed. Judges shape, never the graph. */
+function assessmentProblem(entry: Record<string, unknown>): string | undefined {
+  for (const field of ["subject", "criterion"] as const) {
+    if (!isNonEmptyString(entry[field])) return `${field} must be a non-empty string`;
+  }
+  if (typeof entry.level !== "number" || !Number.isInteger(entry.level)) return "level must be an integer";
+  if (typeof entry.confidence !== "number" || !Number.isInteger(entry.confidence) || entry.confidence < 0 || entry.confidence > 3) {
+    return "confidence must be an integer 0-3";
+  }
+  for (const field of ["matrix", "run", "commit", "model"] as const) {
+    if (entry[field] !== undefined && !isNonEmptyString(entry[field])) return `${field} must be a non-empty string when present`;
+  }
+  const { evidenceChars, refs, refChars } = WEIGHING_WRITE_LIMITS;
+  if (entry.evidence !== undefined) {
+    if (!isNonEmptyString(entry.evidence)) return "evidence must be a non-empty string when present";
+    if (entry.evidence.length > evidenceChars) return `evidence must be at most ${evidenceChars} characters`;
+  }
+  if (entry.refs !== undefined) {
+    if (!Array.isArray(entry.refs) || !entry.refs.every(isNonEmptyString)) return "refs must be an array of non-empty strings when present";
+    if (entry.refs.length > refs) return `refs must hold at most ${refs} items`;
+    if (entry.refs.some((ref: string) => ref.length > refChars)) return `each ref must be at most ${refChars} characters`;
+  }
+  return undefined;
+}
+
 /**
  * Plan the journal events one batch of {@link WeighingEventInput}s would
  * produce, or refuse the whole batch.
+ *
+ * **The one gate.** The hosted route, the browser provider and the MCP tools all
+ * come through here, and only the route sees {@link parseWeighingEventInputs},
+ * so every structural rule lives HERE: an entry must be an object of a known
+ * type, a subject and a criterion non-empty strings, the level an integer, the
+ * confidence an integer 0-3, the optional strings non-empty, `evidence` at most
+ * {@link WEIGHING_WRITE_LIMITS}.evidenceChars characters and `refs` at most
+ * `refs` items of `refChars` characters. A failure is a refusal, never a throw —
+ * the types a caller compiled against are a promise nothing forces it to keep.
  *
  * Checks every assessment against the resolved library the way `kritik_score`
  * checks a score against the pack: the matrix exists, the subject is a node the
@@ -3824,11 +3871,18 @@ export function planWeighingEvents(
   const events: JournalEvent[] = [];
   const assessments: WeighingAssessment[] = [];
 
-  inputs.forEach((input, index) => {
+  inputs.forEach((entry: unknown, index) => {
     const refuse = (reason: WeighingRefusalReason, detail: string) => refusals.push({ index, reason, detail });
 
-    if (input.type === WEIGHING_SET_SAVED) {
-      const set = input.set;
+    if (!isObject(entry)) return refuse("invalid_entry", "an entry must be an object");
+
+    if (entry.type === WEIGHING_SET_SAVED) {
+      const set = entry.set as WeighingCriteriaSet;
+      if (!isObject(set)) return refuse("invalid_set", "set must be an object");
+      if (!isNonEmptyString(set.id) || !isNonEmptyString(set.version) || !isNonEmptyString(set.subject)) {
+        return refuse("invalid_set", "a set needs a non-empty id, version and subject");
+      }
+      if (!Array.isArray(set.criteria)) return refuse("invalid_set", "a set needs a criteria array");
       const ruler = typeof set.extends === "string" ? setOfRef(resolved, set.extends) : undefined;
       if (set.id !== POSITIONING_SET_ID || set.role !== "positioning") {
         return refuse("invalid_set", `only the positioning can be saved: id "${POSITIONING_SET_ID}" with role "positioning"`);
@@ -3846,9 +3900,20 @@ export function planWeighingEvents(
       if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
         return refuse("invalid_set", `status must be "draft" or "active"`);
       }
-      events.push(makeEvent(WEIGHING_SET_SAVED, { set }, { actor: ctx.actor, ts: now }));
+      try {
+        events.push(makeEvent(WEIGHING_SET_SAVED, { set }, { actor: ctx.actor, ts: now }));
+      } catch (error) {
+        return refuse("invalid_set", error instanceof Error ? error.message : "the event failed its schema");
+      }
       return;
     }
+
+    if (entry.type !== WEIGHING_ASSESSMENT_RECORDED) {
+      return refuse("invalid_entry", `type must be ${WEIGHING_ASSESSMENT_RECORDED} or ${WEIGHING_SET_SAVED}`);
+    }
+    const problem = assessmentProblem(entry);
+    if (problem !== undefined) return refuse("invalid_entry", problem);
+    const input = entry as Extract<WeighingEventInput, { type: typeof WEIGHING_ASSESSMENT_RECORDED }>;
 
     const matrix = resolved.matrices.find((candidate) => candidate.id === (input.matrix ?? VALUE_MATRIX_ID));
     if (matrix === undefined) {
@@ -3887,7 +3952,8 @@ export function planWeighingEvents(
       scorer: {
         kind: ctx.scorerKind,
         id: ctx.actor,
-        ...(input.model !== undefined ? { model: input.model } : {}),
+        // The model is an agent's account of itself; a person has none to claim.
+        ...(input.model !== undefined && ctx.scorerKind === "agent" ? { model: input.model } : {}),
         ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14
       },
       confidence: input.confidence as WeighingConfidence,
@@ -3901,10 +3967,15 @@ export function planWeighingEvents(
       ...(input.run !== undefined ? { run: input.run } : {}),
       ts,
     };
-    assessments.push(row);
     const { ts: _ts, ...payload } = row;
     void _ts;
-    events.push(makeEvent(WEIGHING_ASSESSMENT_RECORDED, payload, { actor: ctx.actor, ts: now }));
+    try {
+      events.push(makeEvent(WEIGHING_ASSESSMENT_RECORDED, payload, { actor: ctx.actor, ts: now }));
+    } catch (error) {
+      // The strict event schema is the last word; what it refuses is a refusal, not a crash.
+      return refuse("invalid_entry", error instanceof Error ? error.message : "the event failed its schema");
+    }
+    assessments.push(row);
   });
 
   return refusals.length > 0 ? { ok: false, refusals } : { ok: true, events, assessments };
@@ -3959,6 +4030,21 @@ check("a set event adds the set", setFolded.sets.length === 1 && setFolded.sets[
 const activated = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ status: "active" }) }], ctx({ now: new Date("2026-11-15T13:00:00.000Z") }));
 const reFolded = foldWeighingEvents(setFolded, ev(activated));
 check("a later set event replaces the set by id — latest wins", reFolded.sets.length === 1 && reFolded.sets[0].status === "active");
+// A `rule` row is computed on read and never stored (D3): an event claiming to be one is not folded, whoever appended it.
+const ruleEvent = { ...ev(plan)[0], id: "01RULE", scorer: { kind: "rule", id: "seed" } };
+check("a rule-scored event is skipped by the fold", foldWeighingEvents(section, [ruleEvent]).assessments.length === 0);
+check("…even beside a real one", foldWeighingEvents(section, [ruleEvent, ...ev(plan)]).assessments.length === 1);
+
+// Latest wins by TIME, not by arrival: a stored row newer than the event survives it.
+const stamp = (kind, ts, level) => ({ matrix: "value", subject: "AC-a", criterion: "connects", level, scorer: { kind, id: "x" }, confidence: 1, ts });
+const stored = { sets: [], matrices: [], assessments: [stamp("agent", "2026-11-16T00:00:00.000Z", 3)] };
+const olderEvent = { ...ev(plan)[0], id: "01OLD", scorer: { kind: "agent", id: "arkaik-mcp" }, level: 1, ts: "2026-11-15T10:00:00.000Z" };
+check("a stored row newer than the folded event survives it", foldWeighingEvents(stored, [olderEvent]).assessments[0].level === 3);
+check("an event newer than the stored row replaces it", foldWeighingEvents(stored, [{ ...olderEvent, ts: "2026-11-17T00:00:00.000Z" }]).assessments[0].level === 1);
+check("on equal times the later event wins", foldWeighingEvents(stored, [{ ...olderEvent, ts: "2026-11-16T00:00:00.000Z" }]).assessments[0].level === 1);
+check("an unparseable stored time counts as oldest: the event replaces it", foldWeighingEvents({ ...stored, assessments: [{ ...stored.assessments[0], ts: "yesterday" }] }, [olderEvent]).assessments[0].level === 1);
+check("two events fold by their time, whatever order the journal holds them", foldWeighingEvents(section, [{ ...olderEvent, id: "01B", ts: "2026-11-15T12:00:00.000Z", level: 2 }, { ...olderEvent, id: "01A", ts: "2026-11-15T11:00:00.000Z", level: 0 }]).assessments[0].level === 2);
+
 const junk = [
   { id: "01J", ts: "2026-11-15T10:00:00.000Z", type: "weighing.assessment.recorded", subject: "AC-a" },
   { id: "01K", ts: "2026-11-15T10:00:00.000Z", type: "weighing.set.saved", set: "nope" },
@@ -3988,6 +4074,12 @@ Append to `packages/schema/src/weighing-events.ts`:
 ```ts
 // --- The fold ----------------------------------------------------------------
 
+/** A row's time for "latest wins": an unparseable or missing time is the oldest there is. */
+function timeOf(ts: unknown): number {
+  const time = typeof ts === "string" ? Date.parse(ts) : Number.NaN;
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
 /** The assessment an event carries, or `undefined` when it is not a well-formed one. */
 function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined {
   const e = event as Record<string, unknown>;
@@ -4007,6 +4099,9 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
     typeof scorer !== "object" ||
     scorer === null ||
     typeof scorer.kind !== "string" ||
+    // A `rule` row is computed on read and never stored (D3): an event claiming to be one is skipped,
+    // whoever appended it, so a seed can never be forged into a stored cell.
+    scorer.kind === "rule" ||
     typeof scorer.id !== "string"
   ) {
     return undefined;
@@ -4030,7 +4125,13 @@ function assessmentOfEvent(event: JournalEvent): WeighingAssessment | undefined 
  * restored first, so a project holding only events still folds.
  *
  * An assessment event replaces the stored row with the same
- * {@link assessmentKey}; a set event replaces the set with the same id. An
+ * {@link assessmentKey} **only when it is at least as recent**: the two are
+ * compared by their `ts` with `Date.parse`, an unparseable time counts as the
+ * oldest there is, and on equal times the later event (the one folded last)
+ * wins. So a section a restore stored AFTER an event was written is not undone
+ * by replaying that event, and a clock-skewed event cannot overwrite a newer
+ * row. A `rule`-scored event is skipped (a rule row is never stored). A set
+ * event replaces the set with the same id. An
  * event that is not shaped right is skipped, never thrown on — the journal is
  * append-only, and a bad line stays forever.
  */
@@ -4041,13 +4142,17 @@ export function foldWeighingEvents(
   const relevant = events.filter((event) => event?.type === WEIGHING_ASSESSMENT_RECORDED || event?.type === WEIGHING_SET_SAVED);
   if (relevant.length === 0) return section;
 
-  let assessments = asArray<WeighingAssessment>(section?.assessments);
+  const assessments = [...asArray<WeighingAssessment>(section?.assessments)];
   let sets = asArray<WeighingCriteriaSet>(section?.sets);
 
   for (const event of relevant) {
     if (event.type === WEIGHING_ASSESSMENT_RECORDED) {
       const row = assessmentOfEvent(event);
-      if (row !== undefined) assessments = upsertWeighingAssessment(assessments, row).assessments;
+      if (row === undefined) continue;
+      const key = assessmentKey(row);
+      const at = assessments.findIndex((existing) => assessmentKey(existing) === key);
+      if (at === -1) assessments.push(row);
+      else if (timeOf(row.ts) >= timeOf(assessments[at]?.ts)) assessments[at] = row;
       continue;
     }
     const set = (event as { set?: unknown }).set;
@@ -4065,7 +4170,7 @@ export function foldWeighingEvents(
 - [x] **Step 4: Run the tests**
 
 Run: `node tests/schema/weighing-events.test.js && npm run test:journal && npm run test:schema && npx tsc --noEmit -p . && npx eslint packages/schema/src`
-Expected: 55 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
+Expected: 86 `PASS:` lines, `All weighing-events tests passed.`, the others green, `tsc` and `eslint` silent.
 
 - [x] **Step 5: Commit**
 
@@ -4099,7 +4204,7 @@ Create `tests/cli/weighing.test.js` (drives the built CLI for `pack`, an esbuild
  * techniques tests/cli/quality-section-fold.test.js and tests/cli/push.test.js
  * already use, so nothing here ever reaches a real network.
  *
- * Run via `npm run test:weighing-cli` (builds the CLI first).
+ * Run under `npm run test:cli`, where it is the last step (that script builds the CLI first).
  */
 
 const { build } = require("esbuild");
@@ -4114,6 +4219,8 @@ const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 const PUSH_ENTRY = path.join(ROOT, "packages", "cli", "src", "commands", "push.ts");
 const TEST_BUILD_DIR = path.join(ROOT, "packages", "cli", ".test-build-weighing");
 const PUSH_BUNDLE = path.join(TEST_BUILD_DIR, "push.mjs");
+const FILES_ENTRY = path.join(ROOT, "packages", "schema", "src", "cli", "weighing-files.ts");
+const FILES_BUNDLE = path.join(TEST_BUILD_DIR, "weighing-files.mjs");
 
 if (!existsSync(CLI)) {
   console.error(`CLI not built at ${CLI}. Run \`npm run build -w arkaik\` first.`);
@@ -4244,8 +4351,44 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
-  // --- push withholds it by default ---------------------------------------------------
+  // JSON that parses but is not { assessments: [] } is named, never a TypeError.
+  for (const [what, body] of [["null", "null"], ["a bare array", "[]"], ["a string", '"x"']]) {
+    const { dir, bundlePath } = repo();
+    writeFileSync(path.join(dir, "docs", "weighing", "assessments", "value.json"), body);
+    const res = pack([bundlePath], dir);
+    check(`a sidecar holding ${what} fails the pack naming the file`, res.status !== 0 && /value\.json/.test(res.stderr) && !/TypeError|Cannot read/.test(res.stderr), res.stderr);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // --- the writers and the loaders agree (weighing-files.ts, which load-schema.js does not discover) ---
   mkdirSync(TEST_BUILD_DIR, { recursive: true });
+  await build({ entryPoints: [FILES_ENTRY], outfile: FILES_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
+  const files = await import(pathToFileURL(FILES_BUNDLE).href);
+  {
+    const root = mkdtempSync(path.join(tmpdir(), "arkaik-weighing-rt-"));
+    check("an empty root has no section", files.loadWeighingSection(root) === undefined);
+    // Written out of order on purpose: the save sorts (matrix, subject, criterion, then authority).
+    const rows = [ROW({ subject: "AC-b", criterion: "connects" }), ROW({ scorer: { kind: "agent", id: "arkaik-mcp" }, level: 3 }), ROW()];
+    files.saveWeighingAssessments(root, "value", rows);
+    files.saveWeighingSet(root, POSITIONING);
+    const section = files.loadWeighingSection(root);
+    check("the section the loaders read has every row that was saved", section?.assessments?.length === 3, JSON.stringify(section?.assessments?.length));
+    check("…in the sorted order: subject, then authority (human before agent)", section.assessments.map((a) => `${a.subject}:${a.scorer.kind}`).join() === "AC-a:human,AC-a:agent,AC-b:human", section.assessments.map((a) => `${a.subject}:${a.scorer.kind}`).join());
+    check("the saved set reads back whole", JSON.stringify(section.sets) === JSON.stringify([POSITIONING]));
+    check("loadMatrixAssessments reads one matrix's rows", files.loadMatrixAssessments(root, "value").length === 3 && files.loadMatrixAssessments(root, "other").length === 0);
+    files.saveWeighingAssessments(root, "value", files.loadMatrixAssessments(root, "value").slice(0, 1));
+    check("a second save replaces the file, it does not append", files.loadMatrixAssessments(root, "value").length === 1);
+    let unsafe = null;
+    try {
+      files.saveWeighingAssessments(root, "../escape", []);
+    } catch (error) {
+      unsafe = error;
+    }
+    check("a matrix id that is a path is refused", unsafe !== null && /not a valid weighing id/.test(unsafe.message));
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  // --- push withholds it by default ---------------------------------------------------
   await build({ entryPoints: [PUSH_ENTRY], outfile: PUSH_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
   const { runPush, DEFAULT_API_BASE } = await import(pathToFileURL(PUSH_BUNDLE).href);
   const client = (sink) => async (url, init) => {
@@ -4366,6 +4509,18 @@ function jsonFilesIn(dir: string): string[] {
     .map((name) => join(dir, name));
 }
 
+/**
+ * The assessments of one `assessments/<matrix>.json`, or a throw that names the
+ * file. JSON `null`, a bare array, a string and `{}` all parse — so the shape is
+ * checked BEFORE a property is read, and none of them is a TypeError.
+ */
+function assessmentsOfFile(file: string): WeighingAssessment[] {
+  const parsed: unknown = readJson<unknown>(file);
+  const assessments = typeof parsed === "object" && parsed !== null ? (parsed as Partial<AssessmentsFile>).assessments : undefined;
+  if (!Array.isArray(assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
+  return assessments;
+}
+
 /** Every project-authored set on disk, by file name. */
 export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
   return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<WeighingCriteriaSet>(file));
@@ -4373,11 +4528,7 @@ export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
 
 /** Every stored assessment on disk, matrix by matrix. A file that is not `{ assessments: [] }` throws, naming the file. */
 export function loadWeighingAssessments(root: string): WeighingAssessment[] {
-  return jsonFilesIn(join(weighingDir(root), WEIGHING_ASSESSMENTS_DIR)).flatMap((file) => {
-    const parsed = readJson<Partial<AssessmentsFile>>(file);
-    if (!Array.isArray(parsed.assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
-    return parsed.assessments;
-  });
+  return jsonFilesIn(join(weighingDir(root), WEIGHING_ASSESSMENTS_DIR)).flatMap(assessmentsOfFile);
 }
 
 /**
@@ -4410,9 +4561,7 @@ export function saveWeighingSet(root: string, set: WeighingCriteriaSet): void {
 export function loadMatrixAssessments(root: string, matrixId: string): WeighingAssessment[] {
   const file = weighingAssessmentsPath(root, matrixId);
   if (!existsSync(file)) return [];
-  const parsed = readJson<Partial<AssessmentsFile>>(file);
-  if (!Array.isArray(parsed.assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
-  return parsed.assessments;
+  return assessmentsOfFile(file);
 }
 ```
 
@@ -4795,7 +4944,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
   *                 [--audit <id>]
   *                 [--root <dir>] [--api <base-url>] [path]`
   *
-@@ -172,6 +173,7 @@
+@@ -172,6 +173,7 @@ import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSyn
  import { join, resolve } from "node:path";
  import { journalPathFor, loadJournalEvents } from "../lib/journal-io";
  import { foldQualitySection, isQualitySection, resolveQualityRoot } from "../lib/kritik-io";
@@ -4803,20 +4952,24 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
  import { QUALITY_DIR } from "@arkaik/schema/src/cli/kritik-paths";
  import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
  
-@@ -223,6 +225,12 @@
+@@ -223,6 +225,16 @@ Options:
                          one — that needs --allow-quality-loss too, because
                          "don't send mine" and "destroy theirs" are different
                          decisions and only one of them is irreversible.
 +  --no-weighing         Do not send a weighing section: skip the docs/weighing/
 +                        fold AND drop any section the local bundle already
-+                        carries. A restore replaces the hosted journal, and
-+                        with it any assessment written hosted since the last
-+                        one — the history-loss guard below is what catches
-+                        that, as it does for every other event.
++                        carries. WARNING: a restore replaces the hosted
++                        journal, and an assessment recorded only on the hosted
++                        project lives in that journal. The history guard
++                        compares COUNTS, so it does NOT reliably protect those
++                        events: a repo whose journal is as long as the hosted
++                        one passes it while still erasing them. The backup this
++                        command writes first holds them; the proper fix is
++                        issue #624 (restore appends by default).
    --allow-quality-loss  Proceed even though the restore would erase a quality
                          section the hosted project currently has. Without this
                          flag, that refuses outright — it usually means
-@@ -267,6 +275,8 @@
+@@ -267,6 +279,8 @@ export interface RunRestoreOptions {
    allowDeletions?: boolean;
    /** Skip folding docs/quality/ into the outbound bundle, and drop any section the local bundle carries. Default: false. */
    noQuality?: boolean;
@@ -4825,7 +4978,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
    /** Pin one audit's snapshot instead of merging every audit into current state. */
    audit?: string;
    /** Repo root holding docs/quality/. Default: derived from the bundle's path, cwd as fallback. */
-@@ -655,6 +665,7 @@
+@@ -655,6 +669,7 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
    const allowHistoryLoss = options.allowHistoryLoss ?? false;
    const allowDeletions = options.allowDeletions ?? false;
    const noQuality = options.noQuality ?? false;
@@ -4833,14 +4986,16 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
    const allowQualityLoss = options.allowQualityLoss ?? false;
    const allowMetadataLoss = options.allowMetadataLoss ?? false;
    const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
-@@ -721,6 +732,19 @@
-     }
+@@ -722,6 +737,22 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
    }
    const qualityFields = { qualityFolded, qualityNotice };
-+
-+  // Weighing rides the same bundle, from the same repo root. No loss guard of
-+  // its own: an assessment written hosted lives in the journal, and a restore
-+  // that would shrink the journal is already refused by the history guard.
+ 
++  // Weighing rides the same bundle, from the same repo root. There is NO loss guard of its
++  // own, and the history guard does not stand in for one: an assessment recorded only on
++  // the hosted project is a journal event, the PUT replaces the journal, and the guard
++  // compares COUNTS (a repo journal as long as the hosted one passes it while still
++  // erasing those events). The backup written before the PUT is the only recovery.
++  // Issue #624 (restore appends by default) is the real fix and is not part of this slice.
 +  if (noWeighing) {
 +    delete outboundBundle.weighing;
 +  } else {
@@ -4850,10 +5005,11 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
 +      return fatalResult(dryRun, (e as Error).message);
 +    }
 +  }
- 
++
    const headers = { Authorization: `Bearer ${token}` };
  
-@@ -1023,6 +1047,7 @@
+   // Step 2: read the current version. Needed for If-Match on BOTH branches —
+@@ -1023,6 +1054,7 @@ export function runRestoreCli(argv: string[]): void {
    let allowHistoryLoss = false;
    let allowDeletions = false;
    let noQuality = false;
@@ -4861,7 +5017,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
    let allowQualityLoss = false;
    let allowMetadataLoss = false;
    let audit: string | undefined;
-@@ -1044,6 +1069,8 @@
+@@ -1044,6 +1076,8 @@ export function runRestoreCli(argv: string[]): void {
        allowDeletions = true;
      } else if (arg === "--no-quality") {
        noQuality = true;
@@ -4870,7 +5026,7 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
      } else if (arg === "--allow-quality-loss") {
        allowQualityLoss = true;
      } else if (arg === "--allow-metadata-loss") {
-@@ -1082,6 +1109,7 @@
+@@ -1082,6 +1116,7 @@ export function runRestoreCli(argv: string[]): void {
      allowHistoryLoss,
      allowDeletions,
      noQuality,
@@ -4880,10 +5036,94 @@ export function foldWeighingSection(bundle: Record<string, unknown>, root: strin
      audit,
 ```
 
+- [x] **Step 8b: Test `restore`** — `restore` assembles its own outbound bundle, so it needs its own checks: the fold rides along, `--no-weighing` drops a folded or carried section, a weighing-free restore is untouched, and a `null` sidecar names its file before anything is sent. Add to `tests/cli/bootstrap-restore.test.js` (run by `test:bootstrap`), reusing the quality block's `qualityResponder` and `runQualityRestore`:
+
+```diff
+--- a/tests/cli/bootstrap-restore.test.js
++++ b/tests/cli/bootstrap-restore.test.js
+@@ -1261,6 +1261,76 @@ async function main() {
+     check("exactly one PUT", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 1, JSON.stringify(httpClient.calls.map((c) => c.url)));
+   }
+ 
++  // Weighing (docs/rfcs/weighing.md). restore folds docs/weighing/ into the outbound bundle the way
++  // pack does, from the same repo root; --no-weighing drops it, carried or folded. (There is no
++  // loss guard of its own — see restore.ts and issue #624.)
++  const writeWeighingSidecars = (dir) => {
++    const write = (relative, value) => {
++      const file = path.join(dir, "docs", "weighing", ...relative);
++      mkdirSync(path.dirname(file), { recursive: true });
++      writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
++    };
++    const row = (kind, level) => ({
++      matrix: "value",
++      subject: "AC-a",
++      criterion: "connects",
++      level,
++      scorer: { kind, id: kind === "human" ? "alexis" : "arkaik-mcp" },
++      confidence: 2,
++      basis: { fingerprint: "fp1-0", set_version: "1.0.0" },
++      ts: "2026-11-15T10:00:00.000Z",
++    });
++    write(["assessments", "value.json"], { matrix: "value", assessments: [row("agent", 3), row("human", 1)] });
++    write(["sets", "positioning.json"], {
++      id: "positioning",
++      version: "1.0.0",
++      subject: "acceptance",
++      role: "positioning",
++      status: "active",
++      extends: "value-contribution@1",
++      criteria: [{ id: "connects", weight: 3 }],
++    });
++  };
++  {
++    const { dir, bundlePath } = fixture();
++    writeWeighingSidecars(dir);
++    let sent;
++    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
++    const result = await runQualityRestore(dir, bundlePath, httpClient);
++    check("a restore with docs/weighing/ succeeds", result.ok === true && result.status === 200, JSON.stringify(result));
++    check("the PUT body carries the folded weighing section", sent && sent.weighing && sent.weighing.assessments.length === 2 && sent.weighing.sets.length === 1, JSON.stringify(sent && Object.keys(sent)));
++    check("…the human's row sorts before the agent's, as the sidecar writes them", sent && sent.weighing.assessments[0].scorer.kind === "human" && sent.weighing.assessments[1].scorer.kind === "agent");
++    check("…and the built-in matrix is not stored", sent && sent.weighing.matrices.length === 0);
++  }
++  {
++    const { dir, bundlePath } = fixture();
++    writeWeighingSidecars(dir);
++    const local = JSON.parse(readFileSync(bundlePath, "utf8"));
++    local.weighing = { sets: [], matrices: [], assessments: [{ matrix: "value", subject: "AC-a", criterion: "connects", level: 2, scorer: { kind: "human", id: "LOCAL SECTION MARKER" }, confidence: 1, ts: "2026-01-01T00:00:00.000Z" }] };
++    writeFileSync(bundlePath, JSON.stringify(local));
++    let sent;
++    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
++    const result = await runQualityRestore(dir, bundlePath, httpClient, { noWeighing: true });
++    check("--no-weighing restore ok", result.ok === true, JSON.stringify(result));
++    check("--no-weighing sends no weighing section — folded or carried", sent && sent.weighing === undefined && !JSON.stringify(sent).includes("LOCAL SECTION MARKER"), JSON.stringify(sent && Object.keys(sent)));
++  }
++  {
++    const { dir, bundlePath } = fixture();
++    let sent;
++    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
++    const result = await runQualityRestore(dir, bundlePath, httpClient);
++    check("a weighing-free restore is untouched", result.ok === true && sent && sent.weighing === undefined);
++  }
++  {
++    const { dir, bundlePath } = fixture();
++    mkdirSync(path.join(dir, "docs", "weighing", "assessments"), { recursive: true });
++    writeFileSync(path.join(dir, "docs", "weighing", "assessments", "value.json"), "null");
++    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT));
++    const result = await runQualityRestore(dir, bundlePath, httpClient);
++    check("a sidecar that is JSON null fails the restore naming the file, never a TypeError", result.ok === false && /value\.json/.test(result.fatal || "") && !/Cannot read/.test(result.fatal || ""), result.fatal);
++    check("…before anything is sent", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 0);
++  }
++
+   // 8. --audit pins one audit's snapshot in the outbound body.
+   {
+     const { dir, bundlePath } = fixture();
+```
+
 - [x] **Step 9: Run the CLI suites**
 
 Run: `npm run test:cli && npm run test:bootstrap && npx tsc --noEmit -p . && npx eslint packages`
-Expected: `All weighing CLI tests passed.` (27 `PASS:` lines) and every other CLI suite green (the bootstrap restore suite exercises `restore`); `tsc` and `eslint` silent.
+Expected: `All weighing CLI tests passed.` (37 `PASS:` lines) and every other CLI suite green (the bootstrap restore suite exercises `restore`); `tsc` and `eslint` silent.
 
 - [x] **Step 10: Commit**
 
@@ -4933,7 +5173,7 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
 ```diff
 --- a/tests/services/graph-api.test.js
 +++ b/tests/services/graph-api.test.js
-@@ -623,6 +623,45 @@
+@@ -623,6 +623,68 @@ async function main() {
        `${afterScored["GET nodes"]} / ${afterScored["GET edges"]}`,
      );
  
@@ -4962,6 +5202,29 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
 +      BigInt(afterWeighingValidators.qualityEventCount) === BigInt(beforeWeighingValidators.qualityEventCount) + BigInt(1),
 +      `${beforeWeighingValidators.qualityEventCount} -> ${afterWeighingValidators.qualityEventCount}`,
 +    );
++    // All-or-nothing at the storage layer: the owner check and every insert share one transaction, so a
++    // failure part-way through a batch (here a duplicate id) leaves NOTHING of the batch behind.
++    {
++      const before = await store.loadValidators(projectId, [ownerA]);
++      let failed = false;
++      try {
++        await store.appendJournalEvents(
++          projectId,
++          [ownerA],
++          [{ ...weighingEvent, id: "01etagweighing0000000000002" }, { ...weighingEvent, id: "01etagweighing0000000000003" }, weighingEvent],
++          "graphtest",
++        );
++      } catch {
++        failed = true;
++      }
++      const after = await store.loadValidators(projectId, [ownerA]);
++      check("an append whose last event collides with an existing id fails", failed);
++      check(
++        "…and none of the earlier events in the batch were written (one transaction)",
++        after.eventCount === before.eventCount && after.qualityEventCount === before.qualityEventCount,
++        `${before.eventCount}/${before.qualityEventCount} -> ${after.eventCount}/${after.qualityEventCount}`,
++      );
++    }
 +    const afterWeighing = {};
 +    for (const [label, route] of READS) {
 +      afterWeighing[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
@@ -4979,7 +5242,7 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
      // A snapshot write bumps the version, so every read validator moves.
      const etagMutation = await api.MUTATE(
        jsonReq(ORIGIN, "POST", { ops: [{ op: "create_node", node: node("V-etag", "view") }] }),
-@@ -1434,6 +1473,132 @@
+@@ -1434,6 +1496,151 @@ async function main() {
        scopeDeniedRes.status === 403 && scopeDeniedBody.required === "graph:write",
        `${scopeDeniedRes.status} ${JSON.stringify(scopeDeniedBody)}`,
      );
@@ -5046,6 +5309,25 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
 +      const res = await weighPost([weighAssess({ scorer: { kind: "human", id: "me" } })], weighToken.plaintext);
 +      const body = await res.json();
 +      check("a body that claims a scorer is a 400, not a forged human", res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
++    }
++
++    for (const [field, value] of [
++      ["basis", { fingerprint: "fp1-0", set_version: "1.0.0" }],
++      ["ts", "2026-01-01T00:00:00.000Z"],
++    ]) {
++      const res = await weighPost([weighAssess({ [field]: value })], weighToken.plaintext);
++      const body = await res.json();
++      check(`a body that claims a ${field} is a 400 too — the server stamps it`, res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
++    }
++    {
++      const res = await weighPost([weighAssess({ evidence: "x".repeat(300 * 1024) })], weighToken.plaintext);
++      const body = await res.json();
++      check("a body over 256 KB is a 413 before it is parsed", res.status === 413 && body.limit === 256 * 1024, `${res.status} ${JSON.stringify(body).slice(0, 120)}`);
++    }
++    {
++      const res = await weighPost([weighAssess({ confidence: 7 })], weighToken.plaintext);
++      const body = await res.json();
++      check("a structurally bad entry is refused by the planner: a 422 naming its index, not a 500", res.status === 422 && body.refusals?.[0].index === 0 && body.refusals[0].reason === "invalid_entry", `${res.status} ${JSON.stringify(body)}`);
 +    }
 +
 +    // 3. The GET folds it, and a session writes as a person.
@@ -5119,12 +5401,12 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
 Run: `DATABASE_URL=postgres://arkaik@127.0.0.1:5544/arkaik_test npm run test:graph`
 Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (the route does not exist yet).
 
-- [x] **Step 3: The store — one fold list, two readers**
+- [x] **Step 3: The store — one fold list, two readers, and an atomic append**
 
 ```diff
 --- a/lib/services/graph/store.ts
 +++ b/lib/services/graph/store.ts
-@@ -8,6 +8,7 @@
+@@ -8,6 +8,7 @@ import {
    MutationError,
    RELEASE_COUNT_EVENT_FIELDS,
    STATUS_VOCABULARY_VERSION,
@@ -5132,7 +5414,7 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
    applyOps,
    computeReleaseEventCounts,
    formatJournalCursor,
-@@ -247,7 +248,11 @@
+@@ -247,7 +248,11 @@ export interface ProjectValidators {
    version: string;
    /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
    eventCount: string;
@@ -5145,11 +5427,10 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
    qualityEventCount: string;
  }
  
-@@ -267,6 +272,16 @@
-  * so a new fold type cannot silently ship without the ETag learning about it.
+@@ -268,15 +273,25 @@ interface ValidatorColumns {
   */
  export const QUALITY_FOLD_TYPES = ["quality.finding.resolved", "quality.finding.accepted", "quality.assessment.scored"] as const;
-+
+ 
 +/**
 + * Everything the project GET folds over the stored snapshot on the way out: the
 + * Kritik decisions above, plus the weighing events (`WEIGHING_FOLD_TYPES` in
@@ -5159,10 +5440,13 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
 + * weighing event is never read into a Kritik plan.
 + */
 +export const BUNDLE_FOLD_TYPES = [...QUALITY_FOLD_TYPES, ...WEIGHING_FOLD_TYPES] as const;
- 
++
  /**
   * The validator columns, selected off `graph_projects p` in the SAME
-@@ -276,7 +291,7 @@
+  * statement as whatever body a read returns, so ETag and body come from one
+  * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
+- * inserts outside a transaction, so two concurrent appends can commit out of
++ * inserts in a transaction of its own, but nothing orders two of them, so two concurrent appends can commit out of
   * `seq` order and a max taken between them would never learn about the
   * earlier row; a count moves on every commit whatever the order.
   *
@@ -5171,7 +5455,7 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
   * `$`-parameterized: those are source-code constants, never request input, so
   * there is nothing here for the "values go through `$`-params" rule (see
   * `replaceProjectBundle`'s own doc comment) to be protecting against.
-@@ -286,7 +301,7 @@
+@@ -286,7 +301,7 @@ const VALIDATOR_COLUMNS = `
              (select count(*) from graph_events e where e.project_id = p.id)::text as event_count,
              (select count(*) from graph_events e
                where e.project_id = p.id
@@ -5180,11 +5464,10 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
  
  /**
   * The owner scope every read shares — and deliberately NO `archived_at`
-@@ -641,6 +656,15 @@
-  */
+@@ -642,12 +657,22 @@ export async function qualityEventsOfTypes(
  export const qualityFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
    qualityEventsOfTypes(projectId, ownerIds, QUALITY_FOLD_TYPES);
-+
+ 
 +/**
 + * The `WEIGHING_FOLD_TYPES` events, and nothing else — what the project GET
 + * folds over the stored `weighing` section (`foldWeighingEvents` in
@@ -5193,9 +5476,55 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
 + */
 +export const weighingFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
 +  qualityEventsOfTypes(projectId, ownerIds, WEIGHING_FOLD_TYPES);
- 
++
  /**
   * Append pre-stamped journal events WITHOUT touching the snapshot — the
+  * journal-only write path (slice 3: the Lab Note webhook). Unlike
+  * `applyMutation` there are no graph ops and no version bump: the snapshot is
+  * authoritative for state and unchanged; the journal is authoritative for
+- * history and grows. Owner-scoped like every other write.
++ * history and grows. Owner-scoped like every other write, and atomic: the batch
++ * commits whole or not at all.
+  */
+ export async function appendJournalEvents(
+   projectId: string,
+@@ -655,18 +680,25 @@ export async function appendJournalEvents(
+   events: readonly JournalEvent[],
+   actor: string,
+ ): Promise<{ ok: true } | StoreFailure> {
+-  const { rows } = await query<{ id: string }>(
+-    `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
+-    [projectId, ownerIds],
+-  );
+-  if (rows.length === 0) return { ok: false, reason: "not_found" };
+-  for (const event of events) {
+-    await query(
+-      `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
+-      [event.id, projectId, JSON.stringify(event), actor],
++  // One transaction for the owner check and every insert, on the transaction's own
++  // client: a batch is ALL or NOTHING at the storage layer too. Were each insert its own
++  // statement, a failure part-way (a duplicate id, a dropped connection) would leave the
++  // batch's earlier events behind while the caller was told the whole batch failed —
++  // and the quality and weighing routes both promise all-or-nothing.
++  return withTransaction<{ ok: true } | StoreFailure>(async (client) => {
++    const { rows } = await client.query<{ id: string }>(
++      `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
++      [projectId, ownerIds],
+     );
+-  }
+-  return { ok: true };
++    if (rows.length === 0) return { ok: false, reason: "not_found" };
++    for (const event of events) {
++      await client.query(
++        `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
++        [event.id, projectId, JSON.stringify(event), actor],
++      );
++    }
++    return { ok: true };
++  });
+ }
+ 
+ /**
 ```
 
 - [x] **Step 4: The project GET folds weighing events**
@@ -5249,7 +5578,7 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
 
 ```ts
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { appendJournalEvents, getProject, weighingFoldEvents } from "@/lib/services/graph/store";
 import {
   foldWeighingEvents,
@@ -5261,6 +5590,15 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * The most a weighing batch may weigh on the wire: 256 KB. At most 50 entries of a
+ * few hundred bytes each, with `evidence` capped at 2,000 characters and `refs` at
+ * 50 of 200 — so a legal batch is far under it, and the whole-bundle ceiling
+ * (`MAX_BUNDLE_BYTES`) would be a quality-of-service hole on a route that only ever
+ * appends a few rows.
+ */
+const MAX_WEIGHING_BODY_BYTES = 256 * 1024;
 
 /**
  * `POST` — the hosted, events-only write path for weighing: one assessment, or a
@@ -5314,8 +5652,8 @@ export async function POST(
   const { projectId } = await params;
 
   const raw = await req.text();
-  if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
-    return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });
+  if (Buffer.byteLength(raw, "utf8") > MAX_WEIGHING_BODY_BYTES) {
+    return Response.json({ error: "payload_too_large", limit: MAX_WEIGHING_BODY_BYTES }, { status: 413 });
   }
 
   let body: unknown;
@@ -5489,6 +5827,24 @@ async function main() {
     viewRefusal = error;
   }
   check("a view is not a subject of the value matrix", viewRefusal !== null && /unknown_subject/.test(viewRefusal.message), viewRefusal?.message);
+  // The browser never sees the HTTP parser: the planner is its only gate, so it must refuse what the route's body parser used to.
+  for (const [name, bad] of [
+    ["a confidence of 7", { confidence: 7 }],
+    ["a fractional level (1.5)", { level: 1.5 }],
+    ["an empty subject", { subject: "" }],
+    ["evidence over the cap", { evidence: "x".repeat(2001) }],
+  ]) {
+    const countBefore = (await db.journals.get(PROJECT)).events.length;
+    received.length = 0;
+    let error = null;
+    try {
+      await localProvider.appendWeighingEvents(PROJECT, [assess(), assess(bad)]);
+    } catch (e) {
+      error = e;
+    }
+    check(`${name} is refused with a message, never a raw throw from the event schema`, error !== null && /Assessment refused — invalid_entry/.test(error.message), error?.message);
+    check(`…and nothing is written or notified (${name})`, (await db.journals.get(PROJECT)).events.length === countBefore && received.length === 0);
+  }
   let missing = null;
   try {
     await localProvider.appendWeighingEvents("p-nope", [assess()]);
@@ -5716,7 +6072,7 @@ Expected: FAIL — `TypeError: localProvider.appendWeighingEvents is not a funct
 - [x] **Step 5: Run the provider suites and the type check**
 
 Run: `node tests/data/weighing-provider.test.js && npm run test:provider && npm run test:migrate && npm run test:quality-fold && npm run test:project-queries && npx tsc --noEmit -p .`
-Expected: `All weighing-provider tests passed.` (21 `PASS:` lines) and the existing suites green. (`local-provider.ts` imports only `@arkaik/schema` additions, so `load-local-provider.js`'s alias table is untouched.)
+Expected: `All weighing-provider tests passed.` (29 `PASS:` lines) and the existing suites green. (`local-provider.ts` imports only `@arkaik/schema` additions, so `load-local-provider.js`'s alias table is untouched.)
 
 - [x] **Step 6: Commit**
 
@@ -5766,7 +6122,7 @@ In `packages/cli/package.json` set `"version": "0.12.0"`. In `package-lock.json`
 - [x] **Step 3b: `docs/spec/journal.md`** — after the `quality.signal.tripped` row of the vocabulary table add:
 
 ````markdown
-| `weighing.assessment.recorded` | `matrix`, `subject`, `criterion`, `level`, `scorer`, `confidence`, `evidence?`, `refs?`, `basis?`, `run?` | One assessment (an `WeighingAssessment` minus its `ts`, which is the envelope's) written away from a checkout — a hosted session or a browser project (docs/rfcs/weighing.md). The read folds these latest-wins per `(matrix, subject, criterion, scorer.kind)` over the bundle's `weighing` section, the way a repo checkout folds a sidecar re-score in place. The writer stamps `scorer` (a session is `human`, a token `agent` and also carries `scorer.on_behalf_of`, the token owner's opaque user id, never an email) and `basis` (the set's version and the subject's fingerprint); a caller cannot supply them. In a repository no event is written — `docs/weighing/` is the record |
+| `weighing.assessment.recorded` | `matrix`, `subject`, `criterion`, `level`, `scorer`, `confidence`, `evidence?`, `refs?`, `basis?`, `run?` | One assessment (an `WeighingAssessment` minus its `ts`, which is the envelope's) written away from a checkout — a hosted session or a browser project (docs/rfcs/weighing.md). The read folds these latest-wins per `(matrix, subject, criterion, scorer.kind)` over the bundle's `weighing` section — latest by `ts` (an event replaces a stored row only when it is at least as recent; a `rule`-scored event is skipped), the way a repo checkout folds a sidecar re-score in place. The writer stamps `scorer` (a session is `human`, a token `agent` and also carries `scorer.on_behalf_of`, the token owner's opaque user id, never an email) and `basis` (the set's version and the subject's fingerprint); a caller cannot supply them. In a repository no event is written — `docs/weighing/` is the record |
 | `weighing.set.saved` | `set` | A criteria set saved whole — latest wins by `set.id`. Slice 1 admits exactly one: the `positioning` (`role: "positioning"`, `extends: "value-contribution@1"`, `status: "draft" \| "active"`) |
 ````
 
@@ -5779,7 +6135,7 @@ The two `weighing.*` types follow the same rule — facts, not state: the weighi
 - [x] **Step 3c: `docs/spec/services.md`** — after the `POST /api/graph/projects/{id}/quality/events` row of the route table add:
 
 ````markdown
-| `POST /api/graph/projects/{id}/weighing/events` | `graph:write` (no narrower scope: an assessment outranks the ones before it) | Journal-only weighing events, two whitelisted types: `weighing.assessment.recorded` and `weighing.set.saved` (docs/rfcs/weighing.md) — no snapshot change, no version bump. Every entry goes through `planWeighingEvents`, the gate the browser provider and the MCP tools share; all-or-nothing, refusals name each entry's `index`, `reason` and `detail`. The scorer is **stamped from the caller** — a session is `human`, a token `agent` acting on behalf of its owner (`scorer.on_behalf_of`, an opaque user id) — and a body carrying `scorer`, `basis` or `ts` is a 400. The project `GET` folds these events over `snapshot.weighing`, and the bundle ETag's count covers them (`BUNDLE_FOLD_TYPES`) |
+| `POST /api/graph/projects/{id}/weighing/events` | `graph:write` (no narrower scope: an assessment outranks the ones before it) | Journal-only weighing events, two whitelisted types: `weighing.assessment.recorded` and `weighing.set.saved` (docs/rfcs/weighing.md) — no snapshot change, no version bump. Every entry goes through `planWeighingEvents`, the gate the browser provider and the MCP tools share; all-or-nothing (atomic in the store too: one transaction), refusals name each entry's `index`, `reason` and `detail`. The planner holds every structural rule — an integer level, a confidence 0-3, `evidence` at most 2,000 characters, `refs` at most 50 of 200 — and the body is capped at 256 KB (`413` past it). The scorer is **stamped from the caller** — a session is `human`, a token `agent` acting on behalf of its owner (`scorer.on_behalf_of`, an opaque user id) — and a body carrying `scorer`, `basis` or `ts` is a 400. The project `GET` folds these events over `snapshot.weighing`, and the bundle ETag's count covers them (`BUNDLE_FOLD_TYPES`) |
 ````
 
 - [x] **Step 3d: `docs/spec/toolchain.md`** — replace the two table rows and add two detail rows:
@@ -5801,7 +6157,7 @@ and in the per-verb table (the one beginning `| Verb | Default | Flags |`) add a
 ````markdown
 | `arkaik pack` (weighing) | folds | `--no-weighing` **deletes** the `weighing` section rather than declining to add one, for the reason `--no-quality` does. `docs/weighing/` is folded from the same repo root as `docs/quality/` (derived from the bundle's own path); no files means no section, never a failure ([bundle-format.md](bundle-format.md) § Weighing) |
 | `arkaik push` (weighing) | strips | `--include-weighing` embeds the section and forwards `?include_weighing=true`. A third, independent opt-in: what a product scores its own promises, costs included, is neither its history nor its open findings |
-| `arkaik restore` (weighing) | folds | `--no-weighing` drops the section. There is no separate loss guard: an assessment written hosted lives in the journal, and a restore that would shrink the journal is refused by `--allow-history-loss` already |
+| `arkaik restore` (weighing) | folds | `--no-weighing` drops the section. **There is no loss guard for hosted-only assessments, and the history guard does not stand in for one:** an assessment recorded only on the hosted project is a journal event, a restore replaces the journal, and the guard compares event *counts* — a repo journal as long as the hosted one passes it while still erasing them. The backup `restore` writes first holds them; the fix (restore appends by default) is issue #624 |
 ````
 
 - [x] **Step 3e: `docs/hosted-projects.md`** — immediately before `## 4. Set up the GitHub App (once per deployment)` add:
@@ -5813,9 +6169,19 @@ A hosted project has no `docs/weighing/` directory. Its weighing state is the `w
 
 **The scorer is stamped by the server, never read from the body.** A signed-in session writes as a person; a token writes as an agent and also records `scorer.on_behalf_of`, the token owner's user id (an opaque number, never an email), so the record says whose hands the agent was. A person's level beats an agent's for the same cell, and the agent's is kept beside it, which is why a token cannot claim to be one. The server also stamps a fingerprint of the acceptance (title, Gherkin, values) so a later edit marks the score stale, and the full version of the value set it was read against.
 
-Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing. Nothing lands in the repository: the journal events are the whole record.
+Nothing lands in the repository: the journal events are the whole record.
+
+**Mind `arkaik restore`.** It replaces the hosted journal, so an assessment recorded only on the hosted project (or in a browser project) is erased by a restore unless the repository's `docs/weighing/` carries it. The history guard compares event *counts*, so it does **not** reliably catch this: a repo journal as long as the hosted one passes it. Take the backup `restore` writes first, and see issue #624 (restore appends by default), which is the real fix.
 
 ````
+
+- [x] **Step 3f: `docs/spec/bundle-format.md`** — Part 1 left TWO `## Weighing` sections here (the second a stale copy that also carried two Quality paragraphs, "Validation is warnings only (… `criterion_id` …)" and "Publik withholds it… `?include_quality=true`"). Merge them: keep the first Weighing section (it is correct per D15); delete those two Quality paragraphs from under it (§ Quality already holds them); delete the second `## Weighing` heading and everything under it except its **Validation is warnings only** list and its **Publik withholds it by default** paragraph, which replace the first section's last two paragraphs; and drop its "stay required" claim. In the storage paragraph say the fold is latest **by time** (an event replaces a stored row only when its `ts` is at least the row's; an unparseable time is the oldest; a `rule`-scored event is skipped) and that only `POST …/weighing/events` stamps a scorer the caller cannot choose (a whole-bundle `PUT` carries whatever the bundle holds). The result: one `## Weighing`, 50 lines shorter.
+
+- [x] **Step 3g: `docs/rfcs/weighing.md` § 18** — the one edit this plan makes to the RFC (R18): after row 15 of the open-questions table add
+
+```markdown
+| 16 | Forged human rows. `POST …/weighing/events` stamps the scorer, so no caller there can claim to be a human. A whole-bundle `PUT` (`arkaik restore`) or an import carries whatever scorers the bundle holds, so anyone with `graph:write` can plant a `human` row, and a human's level wins every cell. | Known and accepted in slice 1: provenance is a record, not an access control. Restore appending by default (issue #624) narrows the window. Provenance-checked restore is a later question. |
+```
 
 - [x] **Step 4: Gate**
 
@@ -6685,8 +7051,8 @@ Expected: the catalog is now 31 tools (`FAIL: tools/list exposes the 33-tool cat
           criterion: { type: "string", description: "A value element id, e.g. reduces-anxiety." },
           level: { type: "integer", minimum: -3, maximum: 3 },
           confidence: { type: "integer", enum: [0, 1, 2, 3] },
-          evidence: { type: "string", description: "Markdown. Required when confidence is above 0." },
-          refs: { type: "array", items: { type: "string" }, description: "Ids cited: nodes, journal events, findings." },
+          evidence: { type: "string", maxLength: 2000, description: "Markdown, at most 2,000 characters. Required when confidence is above 0." },
+          refs: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 50, description: "Ids cited: nodes, journal events, findings. At most 50, each at most 200 characters." },
           model: { type: "string", description: "The model you are, when you know." },
           run: { type: "string", description: "The audit or session this score belongs to." },
           commit: { type: "string" },
@@ -6869,7 +7235,7 @@ git commit -m "feat(weighing): get_matrix, assess and save_positioning over MCP 
 ### Task 4.6: Version, docs, gate
 
 **Files:**
-- Modify: `packages/mcp/package.json`, `package-lock.json`, `docs/spec/mcp.md`
+- Modify: `packages/mcp/package.json`, `package-lock.json`, `docs/spec/mcp.md`, `docs/hosted-projects.md`
 
 - [ ] **Step 1: Bump the server** (its tool catalog grew; the owner publishes by hand)
 
@@ -6895,6 +7261,12 @@ Three tools read and write the weighing layer ([docs/rfcs/weighing.md](../rfcs/w
 
 In the same file, change the `### Quality tools (Kritik)` neighbour nothing else; and wherever the doc states the tool total (search for "16 graph" / "30"), update to include the three weighing tools (the suite's catalog assertion is now 33).
 
+- [ ] **Step 2b: `docs/hosted-projects.md`** — Part 3 left the MCP pointer out of its "Weighing on a hosted project" subsection (the tools did not exist yet). In that subsection, between the paragraph that begins "**The scorer is stamped by the server**" and the one that begins "Nothing lands in the repository", add:
+
+```markdown
+Over MCP, `get_matrix` reads the section, `assess` records a judgement and `save_positioning` drafts or saves the positioning — see [mcp.md](spec/mcp.md) § Weighing.
+```
+
 - [ ] **Step 3: Gate**
 
 Run: `npm run generate && git status --short` (expected: no artifact changes), `npm run lint`, `npx tsc --noEmit -p .`, `npm run build`, `npm run validate:seeds`, `npm run test:fixtures`, `npm run test:schema`, `npm run test:weighing && npm run test:weighing-derive && npm run test:weighing-events && npm run test:weighing-provider`, `npm run test:cli`, `npm run test:mcp`, `npm run test:docs-visibility`.
@@ -6903,7 +7275,7 @@ Expected: all exit 0.
 - [ ] **Step 4: Commit and submit**
 
 ```bash
-git add packages/mcp/package.json package-lock.json docs/spec/mcp.md
+git add packages/mcp/package.json package-lock.json docs/spec/mcp.md docs/hosted-projects.md
 git commit -m "chore(weighing): arkaik-mcp 0.11.0 and the weighing tools in the MCP spec (part 4/5)"
 gh stack submit --auto
 ```
@@ -8029,13 +8401,14 @@ suggested:
 - **R-F1 — stored elements are typed as well-formed.** `WeighingSection.sets` / `matrices` / `assessments` are typed as arrays of well-formed records although storage may hold anything in them (D15). Readers are safe because they go through `resolveWeighing` / `readWeighingAssessments`, but nothing in the types forces that. Follow-up: type the stored elements `unknown[]` so a direct read does not compile.
 - **R-F2 — the published JSON Schema no longer says what an author should write.** D15 made every leaf `z.unknown()`, so `public/schema/project-bundle.json` documents descriptions but enforces and types nothing. Follow-up: publish a strict authoring JSON Schema (the shapes as written, no `unknown` leaves) beside the permissive import one.
 
-- **R10 — restore replaces the hosted journal.** An assessment written hosted (or in a browser project) is an *event*; `arkaik restore` PUTs a bundle and journal from the repo, so hosted-only assessments vanish unless the repo's `docs/weighing/` carries them. The existing `--allow-history-loss` guard catches a journal that *shrinks*; nothing writes hosted events *back* into `docs/weighing/`. A `pull`-style verb is out of slice. Same story for a browser project exported to a repo: its events travel in `journal[]`, not as sidecars. **The owner wants `arkaik restore` to append by default and to overwrite only behind an explicit flag; that is filed as issue #624 (critical) and is deliberately not part of slice 1.** Until it lands, this risk stands as written: slice 1's `restore` folds the repo's sidecars and replaces the hosted journal.
+- **R10 — restore replaces the hosted journal.** An assessment written hosted (or in a browser project) is an *event*; `arkaik restore` PUTs a bundle and journal from the repo, so hosted-only assessments vanish unless the repo's `docs/weighing/` carries them. The existing `--allow-history-loss` guard catches a journal that *shrinks*; nothing writes hosted events *back* into `docs/weighing/`. A `pull`-style verb is out of slice. Same story for a browser project exported to a repo: its events travel in `journal[]`, not as sidecars. **The count-based history guard does NOT reliably protect these events** (a repo journal as long as the hosted one passes it while still erasing them), and `restore`'s help, `docs/spec/toolchain.md` and `docs/hosted-projects.md` say so. **The owner wants `arkaik restore` to append by default and to overwrite only behind an explicit flag; that is filed as issue #624 (critical) and is deliberately not part of slice 1.** Until it lands, this risk stands as written: slice 1's `restore` folds the repo's sidecars and replaces the hosted journal.
 - **R11 — provenance on the hosted route (revised by D14).** `scorer.id` is still the actor string (`arkaik-app` for a session, `arkaik-agent` for a token). The first draft stopped there, judging numeric user ids in a bundle that Publik can opt into publishing worse than a coarse label. **The owner overruled that:** a token write now also records `scorer.on_behalf_of`, the token owner's user id. The residual risk is the one the first draft named: the id travels in the section, and Publik withholds `weighing` by default but publishes it behind `?include_weighing=true`, so an opted-in publication carries opaque user ids (never emails: the planner refuses one). A session records nothing, since it is the person.
 - **R12 — no page sorts by served/cost yet.** The brief calls them "the derived sort keys"; slice 1 ships them in the panel and in `get_matrix` (`sort`), and `sortPromises` is exported for the next slice's pages. Acceptances/Pyramid are untouched.
 - **R13 — `qualityEventCount` now counts weighing events.** The validator field keeps its name to avoid a rename across `etag.ts`, `store.ts` and four tests; its doc comment says so. A follow-up rename is cheap.
 - **R14 — not run here:** `npm run build` (Turbopack refused the scratch copy's symlinked `node_modules`) and any browser pass over `WeighingGroup` / `PositioningPanel`. Task 5.7 step 3 is the checklist for the second; the first is a CI gate.
 - **R15 — local Node 26 vs CI Node 20.** Nothing here `require`s a `.ts` file; the loaders transpile. The new CLI/MCP suites spawn built `dist` artifacts, which are plain JS.
 - **R16 — the History page** shows a weighing event only in the unfiltered feed (no family claims `weighing.*`, as for `quality.*`). Task 5.5 gives it words; a "Weighing" family chip is out of slice.
+- **R18 — forged human rows through a bundle write.** "No caller can claim to be a human" (D4) holds only on `POST …/weighing/events`, where the server stamps the scorer. A whole-bundle `PUT` (`arkaik restore`) and an import carry whatever scorers the bundle holds, so a caller with `graph:write` can store `scorer.kind: "human"` rows, and a human's level wins every cell. Provenance here is a record, not an access control. Slice 1 narrows what it can: `foldWeighingEvents` skips `rule`-scored events (D3: a rule row is never stored) and replaces a stored row only by time. Recorded as RFC § 18 question 16; closing it needs a provenance-checked restore, which belongs with issue #624.
 - **R17 — a saved positioning is journaled by actor (D14, D11). Resolved by the lead:** the event envelope's `actor` already records who saved it (session = human, token/MCP = agent), which satisfies the owner's "every save is journaled with who made it"; no `scorer` field is added to `weighing.set.saved`. In repo mode the save's author is the git commit's.
 
 ### Open questions for the owner, and what was answered
@@ -8110,13 +8483,14 @@ function sortPromises(promises, "served" | "cost" | "positioned" | "title"): Pro
 type WeighingEventInput =
   | { type: "weighing.assessment.recorded"; matrix?; subject; criterion; level; confidence; evidence?; refs?; run?; commit?; model? }
   | { type: "weighing.set.saved"; set: WeighingCriteriaSet }
-function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string }          // refuses scorer/basis/ts
+function parseWeighingEventInputs(body): WeighingEventInput[] | { error: string }          // the HTTP shape only: refuses scorer/basis/ts, copies known fields, judges NO value (the planner does, for every writer)
+const WEIGHING_WRITE_LIMITS = { evidenceChars: 2000, refs: 50, refChars: 200 }             // enforced by planWeighingEvents
 function planWeighingEvents(section, nodes, inputs, { actor, scorerKind: "human"|"agent", onBehalfOf?, now? }):
-  | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }
-function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold
+  | { ok: true; events: JournalEvent[]; assessments: WeighingAssessment[] } | { ok: false; refusals: { index; reason; detail }[] }   // reason adds "invalid_entry" (shape, caps); never throws; the model survives only on an agent's scorer
+function foldWeighingEvents(section | undefined, events): WeighingSection | undefined      // same reference when nothing to fold; replaces a stored row only if the event's ts is >= its ts; skips rule rows
 // P3 — packages/schema/src/cli/weighing-files.ts:  loadWeighingSection(root), saveWeighingAssessments(root, matrix, rows), saveWeighingSet(root, set), loadMatrixAssessments(root, matrix)
 // P3 — DataProvider.appendWeighingEvents?(projectId, inputs): Promise<JournalEvent[]>        // local: journal row; remote: POST …/weighing/events
-// P3 — POST /api/graph/projects/{id}/weighing/events   200 { events } · 400 invalid_events · 403 graph:write · 422 { error:"refused", message, refusals }
+// P3 — POST /api/graph/projects/{id}/weighing/events   200 { events } · 400 invalid_events (HTTP shape: scorer/basis/ts) · 403 graph:write · 413 (> 256 KB) · 422 { error:"refused", message, refusals } — refusals carry every structural rule too
 // P4 — MCP: get_matrix { matrix?, subject?, sort?, filter?, limit? } · assess { subject, criterion, level, confidence, evidence?, … } · save_positioning { elements, status?, title? }
 // P5 — useWeighing(projectId): { section: WeighingSection | undefined; record(inputs): Promise<void> }
 ```
