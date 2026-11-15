@@ -1546,7 +1546,7 @@ git commit -m "test(weighing): pin the library's element wording to lib/config/v
 - Modify: `package.json`, `.github/workflows/ci.yml`
 - Regenerate: `public/schema/project-bundle.json`, `docs/arkaik-skill/scripts/validate-bundle.js`, `plugin/skills/arkaik/scripts/validate-bundle.js`
 
-- [ ] **Step 1: Add the script**
+- [x] **Step 1: Add the script**
 
 In `package.json`, directly after the `"test:quality-plan"` line, add:
 
@@ -1554,7 +1554,7 @@ In `package.json`, directly after the `"test:quality-plan"` line, add:
     "test:weighing": "node tests/schema/weighing.test.js",
 ```
 
-- [ ] **Step 2: Add the CI step**
+- [x] **Step 2: Add the CI step**
 
 In `.github/workflows/ci.yml`, after the "Kritik plan tests (grammar, cells, sort-last ids, partial ids, schema)" step and before the "Kritik webhook tests" comment block, insert (two-space YAML indentation as the neighbours):
 
@@ -1566,17 +1566,17 @@ In `.github/workflows/ci.yml`, after the "Kritik plan tests (grammar, cells, sor
         run: npm run test:weighing
 ```
 
-- [ ] **Step 3: Regenerate and look at what moved**
+- [x] **Step 3: Regenerate and look at what moved**
 
 Run: `npm run generate && git status --short`
 Expected modified: `public/schema/project-bundle.json`, `docs/arkaik-skill/scripts/validate-bundle.js`, `plugin/skills/arkaik/scripts/validate-bundle.js`. Nothing under `lib/prompts/generated`, `plugin-kritik`, `lib/landing/generated`, `docs/arkaik-skill/references/schema.md`. Run `git diff --stat public/schema/project-bundle.json` and confirm the JSON Schema gained `weighing` on `ProjectBundle` and the `$defs` `Scorer`, `WeighingScale`, `WeighingGroup`, `WeighingCriterion`, `CriteriaSet`, `Matrix`, `Assessment`, `WeighingSection`.
 
-- [ ] **Step 4: Verify the drift gate is now clean**
+- [x] **Step 4: Verify the drift gate is now clean**
 
 Run: `npm run generate && git diff --exit-code -- docs/arkaik-skill/references/schema.md lib/prompts/generated plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin-kritik lib/landing/generated`
 Expected: exit 0 (the three changed artifacts are the ones you are about to commit).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json .github/workflows/ci.yml public/schema/project-bundle.json docs/arkaik-skill/scripts/validate-bundle.js plugin/skills/arkaik/scripts/validate-bundle.js

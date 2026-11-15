@@ -45,6 +45,10 @@
     "quality": {
       "description": "Optional Kritik quality state (docs/rfcs/kritik.md § 4.1) — the pinned pack version, the project's surface profile, its assessments and findings. Additive: a bundle without it is not an error, and the comparative matrix is derived from it (deriveQualityMatrix), never stored.",
       "$ref": "#/$defs/QualitySection"
+    },
+    "weighing": {
+      "description": "Optional weighing state (docs/rfcs/weighing.md) — the project's own criteria sets (a positioning), matrices and assessments, each assessment carrying its scorer, confidence and basis. Additive: a bundle without it is not an error, and every weight, served and cost figure is derived from it, never stored.",
+      "$ref": "#/$defs/WeighingSection"
     }
   },
   "$defs": {
@@ -1308,6 +1312,407 @@
       ],
       "additionalProperties": {},
       "description": "One concrete defect. Severity and priority are deliberately absent — they are derived from impact × likelihood and cost (deriveQualityMatrix), so a finding can never carry a severity its own numbers disagree with."
+    },
+    "WeighingSection": {
+      "type": "object",
+      "properties": {
+        "sets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CriteriaSet"
+          }
+        },
+        "matrices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Matrix"
+          }
+        },
+        "assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Assessment"
+          }
+        }
+      },
+      "required": [
+        "sets",
+        "matrices",
+        "assessments"
+      ],
+      "additionalProperties": {},
+      "description": "The project's weighing state (docs/rfcs/weighing.md) — its own criteria sets (a positioning), matrices and assessments. The built-in value set is library content, not stored; served, cost and kept share are derived, never stored."
+    },
+    "CriteriaSet": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "description": "Semver. Levels are comparable only within a major."
+        },
+        "title": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string",
+          "description": "What the set judges: acceptance today."
+        },
+        "scale": {
+          "$ref": "#/$defs/WeighingScale"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WeighingGroup"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WeighingCriterion"
+          }
+        },
+        "role": {
+          "description": "positioning marks the set a project writes about itself.",
+          "type": "string",
+          "const": "positioning"
+        },
+        "status": {
+          "description": "Absent means active. A draft feeds no roll-up.",
+          "type": "string",
+          "enum": [
+            "draft",
+            "active"
+          ]
+        },
+        "extends": {
+          "description": "A positioning's ruler, e.g. value-contribution@1.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "subject",
+        "scale",
+        "criteria"
+      ],
+      "additionalProperties": {},
+      "description": "A versioned list of criteria for one kind of subject. The 30 elements of value are one; a positioning is another."
+    },
+    "WeighingScale": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "anchors": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Every level described in words, keyed by the level as a string."
+        }
+      },
+      "required": [
+        "min",
+        "max",
+        "anchors"
+      ],
+      "additionalProperties": {},
+      "description": "A criteria set's scale: its bounds and every level's anchor."
+    },
+    "WeighingGroup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "additionalProperties": {},
+      "description": "A grouping of criteria — the tiers, for the value set."
+    },
+    "WeighingCriterion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier. Never redefined — retired via superseded_by."
+        },
+        "group": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "anchors": {
+          "description": "This criterion's own wording of each level — on a positioning, in the product's words.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "weight": {
+          "description": "On a positioning: how much the product stands on it. Absent means 1.",
+          "type": "number"
+        },
+        "superseded_by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": {},
+      "description": "One question on a scale where every level is described."
+    },
+    "Matrix": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "set": {
+          "type": "string",
+          "description": "The set's id and major, e.g. value-contribution@1."
+        },
+        "subjects": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "query"
+                },
+                "species": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "species"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "list"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "node_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "items"
+              ],
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "positioning": {
+          "description": "The id of the positioning set that re-weights this matrix.",
+          "type": "string"
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "node_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "node_id"
+          ],
+          "additionalProperties": {}
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "set",
+        "subjects"
+      ],
+      "additionalProperties": {},
+      "description": "A criteria set applied to a list of subjects."
+    },
+    "Assessment": {
+      "type": "object",
+      "properties": {
+        "matrix": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "criterion": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "A whole number on the set's scale. 0 means unrelated. No half points."
+        },
+        "scorer": {
+          "$ref": "#/$defs/Scorer"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 0
+            },
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 2
+            },
+            {
+              "type": "number",
+              "const": 3
+            }
+          ],
+          "description": "0 guess · 1 inferred · 2 evidenced · 3 verified."
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "basis": {
+          "description": "What the scorer was looking at, so a re-read can tell the score went stale.",
+          "type": "object",
+          "properties": {
+            "fingerprint": {
+              "description": "A hash of the subject's judged fields.",
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "set_version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "set_version"
+          ],
+          "additionalProperties": {}
+        },
+        "run": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "matrix",
+        "subject",
+        "criterion",
+        "level",
+        "scorer",
+        "confidence",
+        "ts"
+      ],
+      "additionalProperties": {},
+      "description": "One (matrix × subject × criterion) judgement — latest per scorer kind wins; history lives in the journal."
+    },
+    "Scorer": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "human",
+            "agent",
+            "rule"
+          ],
+          "description": "Who judged. A human's level beats an agent's, which beats a rule's."
+        },
+        "id": {
+          "type": "string",
+          "description": "A person's handle, an agent's name, or a seeding rule's id."
+        },
+        "model": {
+          "description": "The model behind an agent, when it says.",
+          "type": "string"
+        },
+        "on_behalf_of": {
+          "description": "Whom the scorer acts for: an opaque user id or handle, never an email. Stamped by the writer where identity is known.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": {},
+      "description": "Provenance of one assessment."
     }
   }
 }

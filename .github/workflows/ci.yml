@@ -187,6 +187,12 @@ jobs:
       - name: Kritik plan tests (grammar, cells, sort-last ids, partial ids, schema)
         run: npm run test:quality-plan
 
+      # The weighing layer's model (docs/rfcs/weighing.md): the built-in value
+      # library, the fingerprint staleness reads, the zod shapes and the
+      # validator's warnings. Pure and DB-free like the Kritik suites above.
+      - name: Weighing model tests (library, fingerprint, shapes, validator warnings)
+        run: npm run test:weighing
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.
