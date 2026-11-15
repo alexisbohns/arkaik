@@ -622,7 +622,7 @@ export function cellKey(matrix: string, subject: string, criterion: string): str
  * cannot throw on it. Readers skip such rows with {@link isWeighingAssessmentShape}.
  */
 export function assessmentKey(a: Pick<WeighingAssessment, "matrix" | "subject" | "criterion" | "scorer">): string {
-  const kind = typeof a?.scorer?.kind === "string" ? a.scorer?.kind : "";
+  const kind = typeof a?.scorer?.kind === "string" ? a.scorer.kind : "";
   return `${cellKey(String(a?.matrix), String(a?.subject), String(a?.criterion))}\u0000${kind}`;
 }
 
