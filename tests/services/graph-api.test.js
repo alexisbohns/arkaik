@@ -648,6 +648,29 @@ async function main() {
       BigInt(afterWeighingValidators.qualityEventCount) === BigInt(beforeWeighingValidators.qualityEventCount) + BigInt(1),
       `${beforeWeighingValidators.qualityEventCount} -> ${afterWeighingValidators.qualityEventCount}`,
     );
+    // All-or-nothing at the storage layer: the owner check and every insert share one transaction, so a
+    // failure part-way through a batch (here a duplicate id) leaves NOTHING of the batch behind.
+    {
+      const before = await store.loadValidators(projectId, [ownerA]);
+      let failed = false;
+      try {
+        await store.appendJournalEvents(
+          projectId,
+          [ownerA],
+          [{ ...weighingEvent, id: "01etagweighing0000000000002" }, { ...weighingEvent, id: "01etagweighing0000000000003" }, weighingEvent],
+          "graphtest",
+        );
+      } catch {
+        failed = true;
+      }
+      const after = await store.loadValidators(projectId, [ownerA]);
+      check("an append whose last event collides with an existing id fails", failed);
+      check(
+        "…and none of the earlier events in the batch were written (one transaction)",
+        after.eventCount === before.eventCount && after.qualityEventCount === before.qualityEventCount,
+        `${before.eventCount}/${before.qualityEventCount} -> ${after.eventCount}/${after.qualityEventCount}`,
+      );
+    }
     const afterWeighing = {};
     for (const [label, route] of READS) {
       afterWeighing[label] = etagOf(await route(new Request(ORIGIN), ctx(projectId)));
@@ -1536,6 +1559,25 @@ async function main() {
       const res = await weighPost([weighAssess({ scorer: { kind: "human", id: "me" } })], weighToken.plaintext);
       const body = await res.json();
       check("a body that claims a scorer is a 400, not a forged human", res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
+    }
+
+    for (const [field, value] of [
+      ["basis", { fingerprint: "fp1-0", set_version: "1.0.0" }],
+      ["ts", "2026-01-01T00:00:00.000Z"],
+    ]) {
+      const res = await weighPost([weighAssess({ [field]: value })], weighToken.plaintext);
+      const body = await res.json();
+      check(`a body that claims a ${field} is a 400 too — the server stamps it`, res.status === 400 && body.error === "invalid_events" && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const res = await weighPost([weighAssess({ evidence: "x".repeat(300 * 1024) })], weighToken.plaintext);
+      const body = await res.json();
+      check("a body over 256 KB is a 413 before it is parsed", res.status === 413 && body.limit === 256 * 1024, `${res.status} ${JSON.stringify(body).slice(0, 120)}`);
+    }
+    {
+      const res = await weighPost([weighAssess({ confidence: 7 })], weighToken.plaintext);
+      const body = await res.json();
+      check("a structurally bad entry is refused by the planner: a 422 naming its index, not a 500", res.status === 422 && body.refusals?.[0].index === 0 && body.refusals[0].reason === "invalid_entry", `${res.status} ${JSON.stringify(body)}`);
     }
 
     // 3. The GET folds it, and a session writes as a person.

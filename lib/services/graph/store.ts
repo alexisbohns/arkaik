@@ -287,7 +287,7 @@ export const BUNDLE_FOLD_TYPES = [...QUALITY_FOLD_TYPES, ...WEIGHING_FOLD_TYPES]
  * The validator columns, selected off `graph_projects p` in the SAME
  * statement as whatever body a read returns, so ETag and body come from one
  * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
- * inserts outside a transaction, so two concurrent appends can commit out of
+ * inserts in a transaction of its own, but nothing orders two of them, so two concurrent appends can commit out of
  * `seq` order and a max taken between them would never learn about the
  * earlier row; a count moves on every commit whatever the order.
  *
@@ -671,7 +671,8 @@ export const weighingFoldEvents = (projectId: string, ownerIds: readonly string[
  * journal-only write path (slice 3: the Lab Note webhook). Unlike
  * `applyMutation` there are no graph ops and no version bump: the snapshot is
  * authoritative for state and unchanged; the journal is authoritative for
- * history and grows. Owner-scoped like every other write.
+ * history and grows. Owner-scoped like every other write, and atomic: the batch
+ * commits whole or not at all.
  */
 export async function appendJournalEvents(
   projectId: string,
@@ -679,18 +680,25 @@ export async function appendJournalEvents(
   events: readonly JournalEvent[],
   actor: string,
 ): Promise<{ ok: true } | StoreFailure> {
-  const { rows } = await query<{ id: string }>(
-    `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
-    [projectId, ownerIds],
-  );
-  if (rows.length === 0) return { ok: false, reason: "not_found" };
-  for (const event of events) {
-    await query(
-      `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
-      [event.id, projectId, JSON.stringify(event), actor],
+  // One transaction for the owner check and every insert, on the transaction's own
+  // client: a batch is ALL or NOTHING at the storage layer too. Were each insert its own
+  // statement, a failure part-way (a duplicate id, a dropped connection) would leave the
+  // batch's earlier events behind while the caller was told the whole batch failed —
+  // and the quality and weighing routes both promise all-or-nothing.
+  return withTransaction<{ ok: true } | StoreFailure>(async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `select id from graph_projects where id = $1 and owner_id = any($2::text[]) and archived_at is null`,
+      [projectId, ownerIds],
     );
-  }
-  return { ok: true };
+    if (rows.length === 0) return { ok: false, reason: "not_found" };
+    for (const event of events) {
+      await client.query(
+        `insert into graph_events (id, project_id, event, actor) values ($1, $2, $3, $4)`,
+        [event.id, projectId, JSON.stringify(event), actor],
+      );
+    }
+    return { ok: true };
+  });
 }
 
 /**

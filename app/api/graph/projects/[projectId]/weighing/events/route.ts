@@ -1,5 +1,5 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
-import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
+import { servicesConfigured, servicesUnavailable } from "@/lib/services/db";
 import { appendJournalEvents, getProject, weighingFoldEvents } from "@/lib/services/graph/store";
 import {
   foldWeighingEvents,
@@ -11,6 +11,15 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * The most a weighing batch may weigh on the wire: 256 KB. At most 50 entries of a
+ * few hundred bytes each, with `evidence` capped at 2,000 characters and `refs` at
+ * 50 of 200 — so a legal batch is far under it, and the whole-bundle ceiling
+ * (`MAX_BUNDLE_BYTES`) would be a quality-of-service hole on a route that only ever
+ * appends a few rows.
+ */
+const MAX_WEIGHING_BODY_BYTES = 256 * 1024;
 
 /**
  * `POST` — the hosted, events-only write path for weighing: one assessment, or a
@@ -64,8 +73,8 @@ export async function POST(
   const { projectId } = await params;
 
   const raw = await req.text();
-  if (Buffer.byteLength(raw, "utf8") > MAX_BUNDLE_BYTES) {
-    return Response.json({ error: "payload_too_large", limit: MAX_BUNDLE_BYTES }, { status: 413 });
+  if (Buffer.byteLength(raw, "utf8") > MAX_WEIGHING_BODY_BYTES) {
+    return Response.json({ error: "payload_too_large", limit: MAX_WEIGHING_BODY_BYTES }, { status: 413 });
   }
 
   let body: unknown;
