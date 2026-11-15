@@ -169,6 +169,7 @@ function cellRow(cell: EffectiveCell, withProbabilities: boolean) {
     confidence: cell.confidence,
     source: cell.source,
     stale: cell.stale,
+    ...(cell.stale_by !== undefined ? { stale_by: cell.stale_by } : {}),
     claimed: cell.claimed,
     ...(cell.evidence !== undefined ? { evidence: cell.evidence } : {}),
     ...(cell.review ? { review: true } : {}),

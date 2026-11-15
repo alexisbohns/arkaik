@@ -128,6 +128,13 @@ export interface EffectiveCell {
   source: "stored" | "seed";
   /** The subject or the set moved since the winner looked. Never changes who wins. */
   stale: boolean;
+  /**
+   * Why, when stale: the promise's text moved (`subject`), the ruler's major
+   * moved (`ruler` — every level scored on `value-contribution@1`), or both.
+   * A surface says which, because "re-read the promise" and "re-score on the
+   * new ruler" are different asks.
+   */
+  stale_by?: ("subject" | "ruler")[];
   /** Only when the stored evidence is a string. */
   evidence?: string;
   /** The author claimed this element in `metadata.values`. */
@@ -199,9 +206,10 @@ export function resolveCell(
   }
 
   const basis = winner.basis;
-  const stale =
-    (basis?.fingerprint !== undefined && basis.fingerprint !== current.fingerprint) ||
-    (basis?.set_version !== undefined && majorOf(basis.set_version) !== majorOf(current.setVersion));
+  const staleBy: ("subject" | "ruler")[] = [];
+  if (basis?.fingerprint !== undefined && basis.fingerprint !== current.fingerprint) staleBy.push("subject");
+  if (basis?.set_version !== undefined && majorOf(basis.set_version) !== majorOf(current.setVersion)) staleBy.push("ruler");
+  const stale = staleBy.length > 0;
   const other = winner === human ? agent : undefined;
   return {
     criterion,
@@ -211,6 +219,7 @@ export function resolveCell(
     confidence: confidenceOf(winner.confidence),
     source: "stored",
     stale,
+    ...(stale ? { stale_by: staleBy } : {}),
     ...(typeof winner.evidence === "string" ? { evidence: winner.evidence } : {}),
     claimed,
     others: other === undefined ? [] : [other],

@@ -102,8 +102,10 @@ check("…the agent's level rides beside it", staleHuman.others.length === 1 && 
 check("a new set major marks it stale", resolve([row(node, "connects", 2, { basis: { fingerprint: current.fingerprint, set_version: "0.9.0" } })]).stale === true);
 check("a level scored on the @1 ruler reads stale under @2 — and still wins, as every stale level does", (() => {
   const cell = weighPromise(node, buildWeighingContext({ assessments: [row(node, "connects", 3, { basis: { fingerprint: acceptanceFingerprint(node), set_version: "1.0.0" } })] })).cells[0];
-  return cell.stale === true && cell.level === 3 && cell.source === "stored";
+  return cell.stale === true && JSON.stringify(cell.stale_by) === JSON.stringify(["ruler"]) && cell.level === 3 && cell.source === "stored";
 })());
+check("a moved promise says so — and a fresh cell carries no reason", JSON.stringify(staleHuman.stale_by) === JSON.stringify(["subject"]) && resolve([row(node, "connects", 2)]).stale_by === undefined);
+check("both at once lists both", JSON.stringify(resolve([row(node, "connects", 2, { basis: { fingerprint: "fp1-x", set_version: "1.0.0" } })]).stale_by) === JSON.stringify(["subject", "ruler"]));
 check("a fresh row is not stale", resolve([row(node, "connects", 2)]).stale === false);
 check("a row with no basis is never stale", resolve([row(node, "connects", 2, { basis: undefined })], { current: moved }).stale === false);
 check("a human and an agent two levels apart go on the review list", resolve([row(node, "connects", 3), row(node, "connects", 1, { scorer: agent })]).review === true);
