@@ -8564,7 +8564,7 @@ The seeding rule reads the order of `metadata.values`; `ValuePicker` — the onl
 - Create: `lib/utils/value-order.ts`
 - Modify: `components/values/ValuePicker.tsx`
 
-- [ ] **Step 1: The helper**
+- [x] **Step 1: The helper**
 
 ```ts
 /**
@@ -8594,7 +8594,7 @@ export function keepClaimOrder<T extends string>(
 }
 ```
 
-- [ ] **Step 2: Use it in the picker**
+- [x] **Step 2: Use it in the picker**
 
 ```diff
 --- a/components/values/ValuePicker.tsx
@@ -8638,12 +8638,12 @@ export function keepClaimOrder<T extends string>(
    function toggle(id: ValueId) {
 ```
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 Run: `npm run test:value-order && npx tsc --noEmit -p . && npx eslint components/values lib/utils`
 Expected: `All value-order tests passed.`; `tsc` and `eslint` silent.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add lib/utils/value-order.ts components/values/ValuePicker.tsx
