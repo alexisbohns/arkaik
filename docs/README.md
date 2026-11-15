@@ -22,6 +22,12 @@ Normative specs for the arkaik format and tooling (each carries its own implemen
 - [Maps & Projections](spec/maps.md) — the multi-map model: `MapDefinition`, subgraph semantics, built-in archetypes, storage
 - [MCP Server](spec/mcp.md) — the agent plane: stdio tools over the repo bundle, validator-gated dual-write, distribution
 
+## RFCs
+
+Proposals and decision records (internal, not served on the `/docs` site):
+
+- [Weighing](rfcs/weighing.md) — accepted design, not implemented (2026-11-15): weighing promises, journeys and value with signed levels, stories, needs, outcomes, positioning and caps
+
 ## LLM & Prompt Surfaces
 
 - Generate prompt builder UI: `/generate`
