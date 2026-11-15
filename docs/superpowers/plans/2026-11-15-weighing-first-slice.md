@@ -7655,7 +7655,7 @@ gh stack submit --auto
 - Create: `tests/app/weighing-panel.test.js`, `tests/app/value-order.test.js`
 - Modify: `package.json`, `.gitignore`
 
-- [ ] **Step 1: Write the source-asserting test**
+- [x] **Step 1: Write the source-asserting test**
 
 A file that does not exist yet reads as empty, so each missing piece is a `FAIL`, not a crash.
 
@@ -7754,7 +7754,7 @@ if (failures > 0) {
 console.log("\nAll weighing-panel tests passed.");
 ```
 
-- [ ] **Step 2: Write the order helper's test**
+- [x] **Step 2: Write the order helper's test**
 
 ```js
 #!/usr/bin/env node
@@ -7814,7 +7814,7 @@ if (failures > 0) {
 console.log("\nAll value-order tests passed.");
 ```
 
-- [ ] **Step 3: Scripts and ignore line**
+- [x] **Step 3: Scripts and ignore line**
 
 In `package.json`, after `"test:weighing-provider"` add:
 
@@ -7825,7 +7825,7 @@ In `package.json`, after `"test:weighing-provider"` add:
 
 In `.gitignore`, after `/tests/app/.test-build-arkademy/` add `/tests/app/.test-build-value-order/`.
 
-- [ ] **Step 4: Run both to verify they fail**
+- [x] **Step 4: Run both to verify they fail**
 
 Run: `npm run test:weighing-panel; npm run test:value-order`
 Expected: `weighing-panel` prints a `FAIL:` for every check (none of the files exist) and `1x weighing-panel test(s) failed.`; `value-order` fails with `ENOENT … lib/utils/value-order.ts`.
@@ -7835,7 +7835,7 @@ Expected: `weighing-panel` prints a `FAIL:` for every check (none of the files e
 **Files:**
 - Create: `lib/hooks/useWeighing.ts`
 
-- [ ] **Step 1: Write the hook**
+- [x] **Step 1: Write the hook**
 
 ```ts
 "use client";
@@ -7881,12 +7881,12 @@ export function useWeighing(projectId: string) {
 }
 ```
 
-- [ ] **Step 2: Run the contract test**
+- [x] **Step 2: Run the contract test**
 
 Run: `npm run test:weighing-panel`
 Expected: the three `useWeighing …` checks now `PASS:`; the rest still `FAIL:`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/app/weighing-panel.test.js tests/app/value-order.test.js package.json .gitignore lib/hooks/useWeighing.ts

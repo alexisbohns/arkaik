@@ -35,6 +35,8 @@
     "test:weighing-derive": "node tests/schema/weighing-derive.test.js",
     "test:weighing-events": "node tests/schema/weighing-events.test.js",
     "test:weighing-provider": "node tests/data/weighing-provider.test.js",
+    "test:weighing-panel": "node tests/app/weighing-panel.test.js",
+    "test:value-order": "node tests/app/value-order.test.js",
     "test:quality-webhook": "node tests/services/quality-webhook.test.js",
     "test:once-changed-files": "node tests/services/once-changed-files.test.js",
     "test:quality-events": "node tests/services/quality-events.test.js",

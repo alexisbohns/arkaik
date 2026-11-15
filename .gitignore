@@ -58,6 +58,7 @@
 /tests/app/.test-build-screen-wall/
 /tests/app/.test-build-screen-inspector/
 /tests/app/.test-build-arkademy/
+/tests/app/.test-build-value-order/
 /kits/stones/tests/.test-build-*/
 /packages/cli/.test-build/
 # transient CJS build emitted by the bootstrap-lib direct-require tests
