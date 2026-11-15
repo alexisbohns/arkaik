@@ -175,7 +175,8 @@ bundle there, in one transaction.
 **Restore appends by default.** It fetches the hosted project and merges the
 local bundle into it before sending: every event, node, edge, project setting,
 quality section and weighing score that exists only on the hosted project is
-kept, and where both sides hold the same id the local record wins. Nothing on
+kept, and where both sides hold the same id the local record wins (except a
+status someone changed on the hosted project since, which is kept). Nothing on
 the hosted project is removed, so a project someone kept editing in the app
 while the bootstrap ran comes through whole.
 
@@ -190,8 +191,10 @@ Three rails hold in either mode:
   current hosted state — journal included — to
   `docs/arkaik/.backups/<timestamp>-bundle.json`, verifies the file reads
   back, and refuses to proceed if it cannot. The server keeps no pre-image,
-  so this file is the only undo: `arkaik restore --replace <backup-path>`
-  reverses a restore you regret.
+  so this file is the only undo. Restore prints the exact command, which is
+  `arkaik restore --replace` with all four `--allow-*` flags and the backup
+  path: going back to the backup is a loss on purpose, and anything written on
+  the hosted project since the restore goes with it.
 - **It is `If-Match`-gated and owner-only.** A concurrent edit gets a `412`,
   never a silent overwrite — re-run to read the current state and decide
   again. And the token must own the project, not merely hold a write scope.

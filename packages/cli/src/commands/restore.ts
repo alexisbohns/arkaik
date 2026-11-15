@@ -194,7 +194,7 @@ import { QUALITY_DIR } from "@arkaik/schema/src/cli/kritik-paths";
 import { DEFAULT_HTTP_CLIENT, type HttpClient } from "../lib/providers";
 import { describeAppendSummary, mergeForAppend, type AppendSummary } from "../lib/restore-merge";
 
-export { mergeForAppend, describeAppendSummary, type AppendSummary } from "../lib/restore-merge";
+export { mergeForAppend, describeAppendSummary, RESTORE_ACTOR, type AppendSummary } from "../lib/restore-merge";
 
 const LINK_FILE = "docs/arkaik/arkaik.json";
 const DEFAULT_BUNDLE_PATH = "docs/arkaik/bundle.json";
@@ -210,7 +210,8 @@ bootstrapped map.
 By default this APPENDS: the local bundle is merged into what the hosted
 project already holds. Hosted-only events, nodes, edges, project settings,
 quality and weighing state are all kept; where both sides hold the same id,
-the local record wins. Nothing on the hosted project is removed.
+the local record wins, except a status changed on the hosted project after
+your copy. Nothing on the hosted project is removed.
 
 --replace swaps the hosted bundle, journal and sections for the local ones
 wholesale, removing whatever the local bundle lacks. That is what undoing a
@@ -239,7 +240,8 @@ Options:
                         appending to it. Anything the local bundle lacks is
                         removed, so each kind of loss below refuses unless its
                         --allow-* flag is passed too. Undo a restore with
-                        \`arkaik restore --replace <backup>\`.
+                        the command a real restore prints (--replace with
+                        every --allow-* flag).
 
 Only with --replace:
   --allow-history-loss  Proceed even though the outbound journal has fewer
@@ -415,7 +417,39 @@ function describeVersionReadFailure(status: number, baseUrl: string, projectId: 
  */
 function backupNoteFor(backupPath: string | undefined): string {
   if (!backupPath) return "";
-  return ` Your pre-restore backup is at ${backupPath}. Undo this restore with: arkaik restore --replace ${backupPath}`;
+  return ` Your pre-restore backup is at ${backupPath}. Undo this restore with: ${undoCommandFor(backupPath)}`;
+}
+
+/**
+ * The command that puts a backup back. It has to be `--replace` (an append of the
+ * backup would keep everything the restore added), and it has to carry all four
+ * `--allow-*` flags: the backup predates the restore, so it has fewer events and
+ * nodes and may lack settings or a quality section the restore brought, and each
+ * of those trips a guard. Going back to exactly the backup IS the intended loss.
+ * Anything written on the hosted project after the restore is lost too, which is
+ * why the undo is printed, never run.
+ */
+export function undoCommandFor(backupPath: string): string {
+  return `arkaik restore --replace --allow-history-loss --allow-deletions --allow-quality-loss --allow-metadata-loss ${backupPath}`;
+}
+
+/** The `--allow-*` flags set on `options`, by their CLI names. */
+function allowFlagsOf(options: RunRestoreOptions): string[] {
+  return [
+    options.allowHistoryLoss && "--allow-history-loss",
+    options.allowDeletions && "--allow-deletions",
+    options.allowQualityLoss && "--allow-quality-loss",
+    options.allowMetadataLoss && "--allow-metadata-loss",
+  ].filter((flag): flag is string => typeof flag === "string");
+}
+
+/** Why an `--allow-*` flag without `--replace` is refused rather than ignored. */
+function describeAllowWithoutReplace(flags: string[]): string {
+  return (
+    `${flags.join(", ")} only ${flags.length === 1 ? "applies" : "apply"} with --replace. ` +
+    `restore appends by default and removes nothing, so there is no loss to allow. ` +
+    `To replace the hosted project (for example to undo a restore from a backup), add --replace.`
+  );
 }
 
 /**
@@ -762,6 +796,13 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   const allowMetadataLoss = options.allowMetadataLoss ?? false;
   const httpClient = options.httpClient ?? DEFAULT_HTTP_CLIENT;
 
+  // The --allow-* flags permit a loss, and only --replace can cause one. Passing one without
+  // it is almost always a command written before append became the default (#624) — most
+  // often an undo from a backup, which needs --replace to remove what the restore added.
+  // Refuse rather than quietly append.
+  const strayAllowFlags = allowFlagsOf(options);
+  if (strayAllowFlags.length > 0 && !replace) return fatalResult(dryRun, describeAllowWithoutReplace(strayAllowFlags));
+
   const linkPath = join(cwd, LINK_FILE);
   if (!existsSync(linkPath)) {
     return fatalResult(dryRun, `No ${LINK_FILE}. Run \`arkaik link\` first — restore only targets hosted projects.`);
@@ -874,9 +915,13 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   let sendBundle: Record<string, unknown> = outboundBundle;
   let kept: AppendSummary | undefined;
   if (!replace && exportedBundle !== undefined) {
-    const merged = mergeForAppend(exportedBundle as Record<string, unknown>, outboundBundle);
-    sendBundle = merged.bundle;
-    kept = merged.kept;
+    try {
+      const merged = mergeForAppend(exportedBundle as Record<string, unknown>, outboundBundle);
+      sendBundle = merged.bundle;
+      kept = merged.kept;
+    } catch (e) {
+      return fatalResult(dryRun, `Could not merge the local bundle into the hosted one: ${(e as Error).message}. Nothing was sent.`, qualityFields);
+    }
   }
   const putBody = JSON.stringify({ bundle: sendBundle });
   const resultCtx = { dryRun, bundlePath, version, mode, kept, ...qualityFields };
@@ -1126,7 +1171,7 @@ export function reportRestore(result: RunRestoreResult): void {
       console.log(`Restored. New version ${result.version}.`);
       printDelta(result.delta);
       if (result.backupPath) {
-        console.log(`  Undo this restore with: arkaik restore --replace ${result.backupPath}`);
+        console.log(`  Undo this restore with: ${undoCommandFor(result.backupPath)}`);
       }
     }
     // process.exitCode (not process.exit(0)): the lines just printed are the
@@ -1209,23 +1254,9 @@ export function runRestoreCli(argv: string[]): void {
     fail(`--audit and --no-quality contradict each other: one names an audit to fold, the other removes the section\n\n${USAGE}`);
   }
 
-  // The --allow-* flags permit a loss, and only --replace can cause one. Passing one without
-  // it is almost always a command written before append became the default (#624) — most
-  // often an undo from a backup, which needs --replace to remove what the restore added.
-  // Refuse rather than quietly append.
-  const allowFlags = [
-    allowHistoryLoss && "--allow-history-loss",
-    allowDeletions && "--allow-deletions",
-    allowQualityLoss && "--allow-quality-loss",
-    allowMetadataLoss && "--allow-metadata-loss",
-  ].filter((flag): flag is string => typeof flag === "string");
-  if (allowFlags.length > 0 && !replace) {
-    fail(
-      `${allowFlags.join(", ")} only ${allowFlags.length === 1 ? "applies" : "apply"} with --replace. ` +
-        `restore appends by default and removes nothing, so there is no loss to allow. ` +
-        `To replace the hosted project (for example to undo a restore from a backup), add --replace.\n\n${USAGE}`,
-    );
-  }
+  // Refused here as well as in runRestore, so the argv mistake is named with the usage beside it.
+  const allowFlags = allowFlagsOf({ allowHistoryLoss, allowDeletions, allowQualityLoss, allowMetadataLoss });
+  if (allowFlags.length > 0 && !replace) fail(`${describeAllowWithoutReplace(allowFlags)}\n\n${USAGE}`);
 
   runRestore({
     path: positionals[0],
