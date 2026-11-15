@@ -227,10 +227,14 @@ Options:
                         decisions and only one of them is irreversible.
   --no-weighing         Do not send a weighing section: skip the docs/weighing/
                         fold AND drop any section the local bundle already
-                        carries. A restore replaces the hosted journal, and
-                        with it any assessment written hosted since the last
-                        one — the history-loss guard below is what catches
-                        that, as it does for every other event.
+                        carries. WARNING: a restore replaces the hosted
+                        journal, and an assessment recorded only on the hosted
+                        project lives in that journal. The history guard
+                        compares COUNTS, so it does NOT reliably protect those
+                        events: a repo whose journal is as long as the hosted
+                        one passes it while still erasing them. The backup this
+                        command writes first holds them; the proper fix is
+                        issue #624 (restore appends by default).
   --allow-quality-loss  Proceed even though the restore would erase a quality
                         section the hosted project currently has. Without this
                         flag, that refuses outright — it usually means
@@ -733,9 +737,12 @@ export async function runRestore(options: RunRestoreOptions = {}): Promise<RunRe
   }
   const qualityFields = { qualityFolded, qualityNotice };
 
-  // Weighing rides the same bundle, from the same repo root. No loss guard of
-  // its own: an assessment written hosted lives in the journal, and a restore
-  // that would shrink the journal is already refused by the history guard.
+  // Weighing rides the same bundle, from the same repo root. There is NO loss guard of its
+  // own, and the history guard does not stand in for one: an assessment recorded only on
+  // the hosted project is a journal event, the PUT replaces the journal, and the guard
+  // compares COUNTS (a repo journal as long as the hosted one passes it while still
+  // erasing those events). The backup written before the PUT is the only recovery.
+  // Issue #624 (restore appends by default) is the real fix and is not part of this slice.
   if (noWeighing) {
     delete outboundBundle.weighing;
   } else {

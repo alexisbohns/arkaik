@@ -57,6 +57,18 @@ function jsonFilesIn(dir: string): string[] {
     .map((name) => join(dir, name));
 }
 
+/**
+ * The assessments of one `assessments/<matrix>.json`, or a throw that names the
+ * file. JSON `null`, a bare array, a string and `{}` all parse — so the shape is
+ * checked BEFORE a property is read, and none of them is a TypeError.
+ */
+function assessmentsOfFile(file: string): WeighingAssessment[] {
+  const parsed: unknown = readJson<unknown>(file);
+  const assessments = typeof parsed === "object" && parsed !== null ? (parsed as Partial<AssessmentsFile>).assessments : undefined;
+  if (!Array.isArray(assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
+  return assessments;
+}
+
 /** Every project-authored set on disk, by file name. */
 export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
   return jsonFilesIn(join(weighingDir(root), WEIGHING_SETS_DIR)).map((file) => readJson<WeighingCriteriaSet>(file));
@@ -64,11 +76,7 @@ export function loadWeighingSets(root: string): WeighingCriteriaSet[] {
 
 /** Every stored assessment on disk, matrix by matrix. A file that is not `{ assessments: [] }` throws, naming the file. */
 export function loadWeighingAssessments(root: string): WeighingAssessment[] {
-  return jsonFilesIn(join(weighingDir(root), WEIGHING_ASSESSMENTS_DIR)).flatMap((file) => {
-    const parsed = readJson<Partial<AssessmentsFile>>(file);
-    if (!Array.isArray(parsed.assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
-    return parsed.assessments;
-  });
+  return jsonFilesIn(join(weighingDir(root), WEIGHING_ASSESSMENTS_DIR)).flatMap(assessmentsOfFile);
 }
 
 /**
@@ -101,7 +109,5 @@ export function saveWeighingSet(root: string, set: WeighingCriteriaSet): void {
 export function loadMatrixAssessments(root: string, matrixId: string): WeighingAssessment[] {
   const file = weighingAssessmentsPath(root, matrixId);
   if (!existsSync(file)) return [];
-  const parsed = readJson<Partial<AssessmentsFile>>(file);
-  if (!Array.isArray(parsed.assessments)) throw new Error(`${file}: expected { "matrix": …, "assessments": [] }`);
-  return parsed.assessments;
+  return assessmentsOfFile(file);
 }

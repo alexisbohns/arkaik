@@ -10,7 +10,7 @@
  * techniques tests/cli/quality-section-fold.test.js and tests/cli/push.test.js
  * already use, so nothing here ever reaches a real network.
  *
- * Run via `npm run test:weighing-cli` (builds the CLI first).
+ * Run under `npm run test:cli`, where it is the last step (that script builds the CLI first).
  */
 
 const { build } = require("esbuild");
@@ -25,6 +25,8 @@ const CLI = path.join(ROOT, "packages", "cli", "dist", "index.js");
 const PUSH_ENTRY = path.join(ROOT, "packages", "cli", "src", "commands", "push.ts");
 const TEST_BUILD_DIR = path.join(ROOT, "packages", "cli", ".test-build-weighing");
 const PUSH_BUNDLE = path.join(TEST_BUILD_DIR, "push.mjs");
+const FILES_ENTRY = path.join(ROOT, "packages", "schema", "src", "cli", "weighing-files.ts");
+const FILES_BUNDLE = path.join(TEST_BUILD_DIR, "weighing-files.mjs");
 
 if (!existsSync(CLI)) {
   console.error(`CLI not built at ${CLI}. Run \`npm run build -w arkaik\` first.`);
@@ -155,8 +157,44 @@ async function main() {
     rmSync(dir, { recursive: true, force: true });
   }
 
-  // --- push withholds it by default ---------------------------------------------------
+  // JSON that parses but is not { assessments: [] } is named, never a TypeError.
+  for (const [what, body] of [["null", "null"], ["a bare array", "[]"], ["a string", '"x"']]) {
+    const { dir, bundlePath } = repo();
+    writeFileSync(path.join(dir, "docs", "weighing", "assessments", "value.json"), body);
+    const res = pack([bundlePath], dir);
+    check(`a sidecar holding ${what} fails the pack naming the file`, res.status !== 0 && /value\.json/.test(res.stderr) && !/TypeError|Cannot read/.test(res.stderr), res.stderr);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // --- the writers and the loaders agree (weighing-files.ts, which load-schema.js does not discover) ---
   mkdirSync(TEST_BUILD_DIR, { recursive: true });
+  await build({ entryPoints: [FILES_ENTRY], outfile: FILES_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
+  const files = await import(pathToFileURL(FILES_BUNDLE).href);
+  {
+    const root = mkdtempSync(path.join(tmpdir(), "arkaik-weighing-rt-"));
+    check("an empty root has no section", files.loadWeighingSection(root) === undefined);
+    // Written out of order on purpose: the save sorts (matrix, subject, criterion, then authority).
+    const rows = [ROW({ subject: "AC-b", criterion: "connects" }), ROW({ scorer: { kind: "agent", id: "arkaik-mcp" }, level: 3 }), ROW()];
+    files.saveWeighingAssessments(root, "value", rows);
+    files.saveWeighingSet(root, POSITIONING);
+    const section = files.loadWeighingSection(root);
+    check("the section the loaders read has every row that was saved", section?.assessments?.length === 3, JSON.stringify(section?.assessments?.length));
+    check("…in the sorted order: subject, then authority (human before agent)", section.assessments.map((a) => `${a.subject}:${a.scorer.kind}`).join() === "AC-a:human,AC-a:agent,AC-b:human", section.assessments.map((a) => `${a.subject}:${a.scorer.kind}`).join());
+    check("the saved set reads back whole", JSON.stringify(section.sets) === JSON.stringify([POSITIONING]));
+    check("loadMatrixAssessments reads one matrix's rows", files.loadMatrixAssessments(root, "value").length === 3 && files.loadMatrixAssessments(root, "other").length === 0);
+    files.saveWeighingAssessments(root, "value", files.loadMatrixAssessments(root, "value").slice(0, 1));
+    check("a second save replaces the file, it does not append", files.loadMatrixAssessments(root, "value").length === 1);
+    let unsafe = null;
+    try {
+      files.saveWeighingAssessments(root, "../escape", []);
+    } catch (error) {
+      unsafe = error;
+    }
+    check("a matrix id that is a path is refused", unsafe !== null && /not a valid weighing id/.test(unsafe.message));
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  // --- push withholds it by default ---------------------------------------------------
   await build({ entryPoints: [PUSH_ENTRY], outfile: PUSH_BUNDLE, bundle: true, platform: "node", target: "node18", format: "esm", legalComments: "none" });
   const { runPush, DEFAULT_API_BASE } = await import(pathToFileURL(PUSH_BUNDLE).href);
   const client = (sink) => async (url, init) => {

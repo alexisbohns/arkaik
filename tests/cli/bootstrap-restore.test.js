@@ -1261,6 +1261,76 @@ async function main() {
     check("exactly one PUT", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 1, JSON.stringify(httpClient.calls.map((c) => c.url)));
   }
 
+  // Weighing (docs/rfcs/weighing.md). restore folds docs/weighing/ into the outbound bundle the way
+  // pack does, from the same repo root; --no-weighing drops it, carried or folded. (There is no
+  // loss guard of its own — see restore.ts and issue #624.)
+  const writeWeighingSidecars = (dir) => {
+    const write = (relative, value) => {
+      const file = path.join(dir, "docs", "weighing", ...relative);
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
+    };
+    const row = (kind, level) => ({
+      matrix: "value",
+      subject: "AC-a",
+      criterion: "connects",
+      level,
+      scorer: { kind, id: kind === "human" ? "alexis" : "arkaik-mcp" },
+      confidence: 2,
+      basis: { fingerprint: "fp1-0", set_version: "1.0.0" },
+      ts: "2026-11-15T10:00:00.000Z",
+    });
+    write(["assessments", "value.json"], { matrix: "value", assessments: [row("agent", 3), row("human", 1)] });
+    write(["sets", "positioning.json"], {
+      id: "positioning",
+      version: "1.0.0",
+      subject: "acceptance",
+      role: "positioning",
+      status: "active",
+      extends: "value-contribution@1",
+      criteria: [{ id: "connects", weight: 3 }],
+    });
+  };
+  {
+    const { dir, bundlePath } = fixture();
+    writeWeighingSidecars(dir);
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+    check("a restore with docs/weighing/ succeeds", result.ok === true && result.status === 200, JSON.stringify(result));
+    check("the PUT body carries the folded weighing section", sent && sent.weighing && sent.weighing.assessments.length === 2 && sent.weighing.sets.length === 1, JSON.stringify(sent && Object.keys(sent)));
+    check("…the human's row sorts before the agent's, as the sidecar writes them", sent && sent.weighing.assessments[0].scorer.kind === "human" && sent.weighing.assessments[1].scorer.kind === "agent");
+    check("…and the built-in matrix is not stored", sent && sent.weighing.matrices.length === 0);
+  }
+  {
+    const { dir, bundlePath } = fixture();
+    writeWeighingSidecars(dir);
+    const local = JSON.parse(readFileSync(bundlePath, "utf8"));
+    local.weighing = { sets: [], matrices: [], assessments: [{ matrix: "value", subject: "AC-a", criterion: "connects", level: 2, scorer: { kind: "human", id: "LOCAL SECTION MARKER" }, confidence: 1, ts: "2026-01-01T00:00:00.000Z" }] };
+    writeFileSync(bundlePath, JSON.stringify(local));
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient, { noWeighing: true });
+    check("--no-weighing restore ok", result.ok === true, JSON.stringify(result));
+    check("--no-weighing sends no weighing section — folded or carried", sent && sent.weighing === undefined && !JSON.stringify(sent).includes("LOCAL SECTION MARKER"), JSON.stringify(sent && Object.keys(sent)));
+  }
+  {
+    const { dir, bundlePath } = fixture();
+    let sent;
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT, (b) => { sent = b; }));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+    check("a weighing-free restore is untouched", result.ok === true && sent && sent.weighing === undefined);
+  }
+  {
+    const { dir, bundlePath } = fixture();
+    mkdirSync(path.join(dir, "docs", "weighing", "assessments"), { recursive: true });
+    writeFileSync(path.join(dir, "docs", "weighing", "assessments", "value.json"), "null");
+    const httpClient = makeMockHttpClient(qualityResponder(HOSTED_EXPORT));
+    const result = await runQualityRestore(dir, bundlePath, httpClient);
+    check("a sidecar that is JSON null fails the restore naming the file, never a TypeError", result.ok === false && /value\.json/.test(result.fatal || "") && !/Cannot read/.test(result.fatal || ""), result.fatal);
+    check("…before anything is sent", httpClient.calls.filter((c) => c.url.endsWith("/bundle")).length === 0);
+  }
+
   // 8. --audit pins one audit's snapshot in the outbound body.
   {
     const { dir, bundlePath } = fixture();
