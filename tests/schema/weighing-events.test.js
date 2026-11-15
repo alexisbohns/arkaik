@@ -84,6 +84,16 @@ const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKin
 check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
 check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
 check("an email is refused: sidecars are committed to repos", planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: "me@example.com" })).refusals?.[0].reason === "invalid_on_behalf_of");
+const behalfOutcome = (value) => planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: value })).ok === true;
+check(
+  "a git author name is accepted: spaces, accents, a hyphen, an apostrophe, non-Latin script",
+  ["Alexis Bohns", "Anne-Claire Dupré", "José O'Brien", "李 雷", "alexisbohns", "u_1842"].every(behalfOutcome),
+);
+check(
+  "anything with an @ is refused, whatever its shape",
+  ["me@example.com", "Alexis <me@example.com>", "me @ example", "@alexis", "a@b"].every((value) => !behalfOutcome(value)),
+);
+check("an empty, blank, control-character or over-long value is refused", ["", "   ", "Alexis\nBohns", "a\u0000b", "x".repeat(129)].every((value) => !behalfOutcome(value)) && behalfOutcome("x".repeat(128)));
 
 const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
 check("an unknown subject is refused", refused([assess({ subject: "AC-nope" })]).refusals?.[0].reason === "unknown_subject");

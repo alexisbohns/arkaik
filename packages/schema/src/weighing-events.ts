@@ -83,8 +83,14 @@ const isNonEmptyString = (value: unknown): value is string => typeof value === "
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** D14: an opaque id or handle: no whitespace, 128 characters at most, and not an email (a sidecar is committed to a repo). */
-const isOpaqueId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/\s/.test(value) && !/[^\s@]+@[^\s@]+/.test(value);
+/**
+ * D14: what `scorer.on_behalf_of` may hold — an opaque user id, a handle or a
+ * person's display name (a git author name: "Anne-Claire Dupré"), never an
+ * email, because a sidecar is committed to a repo. So: non-empty, 128
+ * characters at most, no control characters, and **no `@` anywhere** — that
+ * refuses "me@example.com" and "Alexis <me@example.com>" alike.
+ */
+const isOpaqueId = (value: string): boolean => value.trim() !== "" && value.length <= 128 && !value.includes("@") && !/\p{Cc}/u.test(value);
 
 /**
  * Shape a request body into a batch of {@link WeighingEventInput} — the HTTP
@@ -315,7 +321,7 @@ export function planWeighingEvents(
 
     if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
       // D14.
-      return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
+      return refuse("invalid_on_behalf_of", "on_behalf_of is a user id, a handle or a name (no control characters, at most 128 characters), never an email — sidecars are committed to repos");
     }
 
     const ts = now.toISOString();
