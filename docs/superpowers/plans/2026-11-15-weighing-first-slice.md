@@ -3337,7 +3337,7 @@ gh stack submit --auto
 - Create: `packages/schema/src/weighing-events.ts`
 - Create: `tests/schema/weighing-events.test.js` (grows over 3.1–3.3)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/schema/weighing-events.test.js` (preamble, the vocabulary and parser sections, epilogue):
 
@@ -3420,12 +3420,12 @@ if (failures > 0) {
 console.log("\nAll weighing-events tests passed.");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-events.test.js`
 Expected: FAIL — `FAIL: both have a strict schema`, then `TypeError: parseWeighingEventInputs is not a function`.
 
-- [ ] **Step 3: Add the strict event schemas**
+- [x] **Step 3: Add the strict event schemas**
 
 ```diff
 --- a/packages/schema/src/journal-events.ts
@@ -3493,7 +3493,7 @@ Expected: FAIL — `FAIL: both have a strict schema`, then `TypeError: parseWeig
  ]);
 ```
 
-- [ ] **Step 4: Write the first half of `weighing-events.ts`**
+- [x] **Step 4: Write the first half of `weighing-events.ts`**
 
 Create `packages/schema/src/weighing-events.ts` with the header and the inputs section. (`planWeighingEvents` and `foldWeighingEvents` are appended in 3.2 and 3.3 — the header already imports what they need.)
 
@@ -3655,16 +3655,16 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
 }
 ```
 
-- [ ] **Step 5: Export it**
+- [x] **Step 5: Export it**
 
 In `packages/schema/src/index.ts`, after `export * from "./weighing-validate";` add `export * from "./weighing-events";` (keep `weighing-derive` after it if Part 2 is below you).
 
-- [ ] **Step 6: Run the test**
+- [x] **Step 6: Run the test**
 
 Run: `node tests/schema/weighing-events.test.js && npx tsc --noEmit -p .`
 Expected: the vocabulary and parser checks `PASS:`, ending `All weighing-events tests passed.`; `tsc` silent. (If `tsc` complains that `planWeighingEvents`/`foldWeighingEvents` are imported-but-unused names — it does not; unused imports are not an error here. ESLint is run at the end of the part.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/schema/src/journal-events.ts packages/schema/src/weighing-events.ts packages/schema/src/index.ts tests/schema/weighing-events.test.js
