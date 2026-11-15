@@ -7,9 +7,10 @@ import {
   loadValidators,
   qualityFoldEvents,
   updateProjectFields,
+  weighingFoldEvents,
 } from "@/lib/services/graph/store";
 import { foldQualityEvents } from "@/lib/utils/quality";
-import type { Project, QualitySection } from "@arkaik/schema";
+import { foldWeighingEvents, type Project, type QualitySection, type WeighingSection } from "@arkaik/schema";
 
 /**
  * A single hosted project (db/migrations/008_graph_projects.sql).
@@ -21,7 +22,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET — snapshot + version, with the quality decisions folded in.
+ * GET — snapshot + version, with the quality decisions and the weighing events
+ * folded in.
  *
  * The JSON `version` is what a client passes back as `If-Match` on a mutation
  * to say "only if nothing moved since I read this". The `ETag` header is NOT
@@ -79,7 +81,16 @@ export async function GET(
       storedQuality,
       await qualityFoldEvents(projectId, caller.ownerIds),
     );
-    const bundle = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
+    // The weighing section, the same way: its assessments and its positioning
+    // are journal events on a hosted project, and the read is what folds them
+    // over whatever section a restore stored. `foldWeighingEvents` hands back
+    // the SAME reference when there is nothing to fold, so an untouched project
+    // is not copied; unlike the quality fold it also starts a section from
+    // nothing, because weighing needs no audit restored first.
+    const storedWeighing = (found.bundle as { weighing?: WeighingSection }).weighing;
+    const weighing = foldWeighingEvents(storedWeighing, await weighingFoldEvents(projectId, caller.ownerIds));
+    const withQuality = quality === storedQuality ? found.bundle : { ...found.bundle, quality };
+    const bundle = weighing === storedWeighing ? withQuality : { ...withQuality, weighing };
     return Response.json(
       { bundle, version: found.version },
       { status: 200, headers: readResponseHeaders(bundleEtag(found.validators)) },

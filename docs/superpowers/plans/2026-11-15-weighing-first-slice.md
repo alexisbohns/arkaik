@@ -4901,7 +4901,7 @@ This is the only task that needs Postgres (`npm run test:graph`); start the scra
 
 > **Not yet run (D14).** The route's `onBehalfOf` stamp and the two `on_behalf_of` assertions below were added after the run.
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Teach the loader about the new route (a `routes` entry and a returned handler — the new route imports only specifiers `COMMON` already maps, so the alias table needs no change):
 
@@ -5112,12 +5112,12 @@ Add the ETag checks and the route block to `tests/services/graph-api.test.js` (t
      const userL = await seedUser(client, "live");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `DATABASE_URL=postgres://arkaik@127.0.0.1:5544/arkaik_test npm run test:graph`
 Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (the route does not exist yet).
 
-- [ ] **Step 3: The store — one fold list, two readers**
+- [x] **Step 3: The store — one fold list, two readers**
 
 ```diff
 --- a/lib/services/graph/store.ts
@@ -5196,7 +5196,7 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
   * Append pre-stamped journal events WITHOUT touching the snapshot — the
 ```
 
-- [ ] **Step 4: The project GET folds weighing events**
+- [x] **Step 4: The project GET folds weighing events**
 
 ```diff
 --- a/app/api/graph/projects/[projectId]/route.ts
@@ -5243,7 +5243,7 @@ Expected: FAIL at load — `Cannot find module …/weighing/events/route.ts` (th
        { status: 200, headers: readResponseHeaders(bundleEtag(found.validators)) },
 ```
 
-- [ ] **Step 5: The route**
+- [x] **Step 5: The route**
 
 ```ts
 import { getCaller, hasScope } from "@/lib/services/auth";
@@ -5365,12 +5365,12 @@ export async function POST(
 }
 ```
 
-- [ ] **Step 6: Run the integration suite**
+- [x] **Step 6: Run the integration suite**
 
 Run: `DATABASE_URL=postgres://arkaik@127.0.0.1:5544/arkaik_test npm run test:graph`
 Expected: every `PASS:`, including `qualityEventCount rises by one for a weighing.assessment.recorded append`, `a graph:read token is refused 403 naming graph:write`, `a body that claims a scorer is a 400, not a forged human`, `the human's level and the agent's sit side by side`, `the stored snapshot never grew a weighing section`, `a batch with bad entries is a 422 refusing every entry, naming indexes`, `another owner's token cannot weigh this project (404, not 403)`, ending `All graph-API checks passed.`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add lib/services/graph/store.ts "app/api/graph/projects/[projectId]/route.ts" "app/api/graph/projects/[projectId]/weighing/events/route.ts" tests/services/load-graph-api.js tests/services/graph-api.test.js

@@ -146,6 +146,7 @@ function loadGraphApi() {
     "quality-events-route.js": src("app", "api", "graph", "projects", "[projectId]", "quality", "events", "route.ts"),
     "live-route.js": src("app", "api", "graph", "projects", "[projectId]", "live", "route.ts"),
     "screenshots-route.js": src("app", "api", "graph", "projects", "[projectId]", "screenshots", "route.ts"),
+    "weighing-events-route.js": src("app", "api", "graph", "projects", "[projectId]", "weighing", "events", "route.ts"),
   };
   for (const [out, from] of Object.entries(routes)) {
     write(out, transpile(from, "route.ts", COMMON));
@@ -180,6 +181,7 @@ function loadGraphApi() {
     QUALITY_EVENTS: req("quality-events-route.js").POST,
     LIVE: req("live-route.js").POST,
     SCREENSHOTS: req("screenshots-route.js").POST,
+    WEIGHING_EVENTS: req("weighing-events-route.js").POST,
   };
 }
 

@@ -8,6 +8,7 @@ import {
   MutationError,
   RELEASE_COUNT_EVENT_FIELDS,
   STATUS_VOCABULARY_VERSION,
+  WEIGHING_FOLD_TYPES,
   applyOps,
   computeReleaseEventCounts,
   formatJournalCursor,
@@ -247,7 +248,11 @@ export interface ProjectValidators {
   version: string;
   /** Every `graph_events` row of the project — `/journal` and `/export` depend on all of them. */
   eventCount: string;
-  /** Only the event types `foldQualityEvents` reads into the bundle — see `QUALITY_FOLD_TYPES`. */
+  /**
+   * Only the event types the project GET folds into the bundle — see
+   * `BUNDLE_FOLD_TYPES`. Named for the first of them; a weighing event moves it
+   * too, because the bundle it validates carries the folded weighing section.
+   */
   qualityEventCount: string;
 }
 
@@ -269,6 +274,16 @@ interface ValidatorColumns {
 export const QUALITY_FOLD_TYPES = ["quality.finding.resolved", "quality.finding.accepted", "quality.assessment.scored"] as const;
 
 /**
+ * Everything the project GET folds over the stored snapshot on the way out: the
+ * Kritik decisions above, plus the weighing events (`WEIGHING_FOLD_TYPES` in
+ * `@arkaik/schema`, folded by `foldWeighingEvents`). The ETag's count is built
+ * from THIS list, so a new fold type cannot ship without the validator learning
+ * about it — and `QUALITY_FOLD_TYPES` stays what `planQualityEvents` loads, so a
+ * weighing event is never read into a Kritik plan.
+ */
+export const BUNDLE_FOLD_TYPES = [...QUALITY_FOLD_TYPES, ...WEIGHING_FOLD_TYPES] as const;
+
+/**
  * The validator columns, selected off `graph_projects p` in the SAME
  * statement as whatever body a read returns, so ETag and body come from one
  * snapshot-consistent read. `count(*)`, not `max(seq)`: `appendJournalEvents`
@@ -276,7 +291,7 @@ export const QUALITY_FOLD_TYPES = ["quality.finding.resolved", "quality.finding.
  * `seq` order and a max taken between them would never learn about the
  * earlier row; a count moves on every commit whatever the order.
  *
- * The `in (...)` list is string-built from `QUALITY_FOLD_TYPES` rather than
+ * The `in (...)` list is string-built from `BUNDLE_FOLD_TYPES` rather than
  * `$`-parameterized: those are source-code constants, never request input, so
  * there is nothing here for the "values go through `$`-params" rule (see
  * `replaceProjectBundle`'s own doc comment) to be protecting against.
@@ -286,7 +301,7 @@ const VALIDATOR_COLUMNS = `
             (select count(*) from graph_events e where e.project_id = p.id)::text as event_count,
             (select count(*) from graph_events e
               where e.project_id = p.id
-                and e.event->>'type' in (${QUALITY_FOLD_TYPES.map((t) => `'${t}'`).join(", ")}))::text as quality_event_count`;
+                and e.event->>'type' in (${BUNDLE_FOLD_TYPES.map((t) => `'${t}'`).join(", ")}))::text as quality_event_count`;
 
 /**
  * The owner scope every read shares — and deliberately NO `archived_at`
@@ -641,6 +656,15 @@ export async function qualityEventsOfTypes(
  */
 export const qualityFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
   qualityEventsOfTypes(projectId, ownerIds, QUALITY_FOLD_TYPES);
+
+/**
+ * The `WEIGHING_FOLD_TYPES` events, and nothing else — what the project GET
+ * folds over the stored `weighing` section (`foldWeighingEvents` in
+ * `@arkaik/schema`), and what `POST …/weighing/events` plans against. Same
+ * one-row owner check as `qualityEventsOfTypes`, which it is.
+ */
+export const weighingFoldEvents = (projectId: string, ownerIds: readonly string[]): Promise<JournalEvent[]> =>
+  qualityEventsOfTypes(projectId, ownerIds, WEIGHING_FOLD_TYPES);
 
 /**
  * Append pre-stamped journal events WITHOUT touching the snapshot — the
