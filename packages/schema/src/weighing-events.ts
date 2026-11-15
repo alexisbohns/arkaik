@@ -153,3 +153,165 @@ export function parseWeighingEventInputs(body: unknown): WeighingEventInput[] | 
   }
   return parsed;
 }
+
+// --- The planner -------------------------------------------------------------
+
+export type WeighingRefusalReason =
+  | "unknown_matrix"
+  | "unknown_subject"
+  | "unknown_criterion"
+  | "retired_criterion"
+  | "level_out_of_range"
+  | "invalid_on_behalf_of" // D14, not yet run
+  | "invalid_set";
+
+/** Why one entry of a batch was refused. `index` is its position in the request's `events` array. */
+export interface WeighingRefusal {
+  index: number;
+  reason: WeighingRefusalReason;
+  detail: string;
+}
+
+export interface WeighingPlanContext {
+  /** The envelope's `actor`: `arkaik-app`, `arkaik-agent`, `arkaik-mcp`. */
+  actor: string;
+  /** Stamped by the caller: a session is `human`, a token or the MCP server is `agent`. Never `rule`. */
+  scorerKind: Exclude<WeighingScorerKind, "rule">;
+  /**
+   * Whom the scorer acts for, when the writer knows (D14, not yet run): the token
+   * owner's user id on the hosted route, whatever the MCP server was told in a
+   * repo. An opaque id or handle, never an email. Absent otherwise.
+   */
+  onBehalfOf?: string;
+  /** Defaults to now. */
+  now?: Date;
+}
+
+export type WeighingPlan =
+  | {
+      ok: true;
+      /** Stamped, ready to append. Same order as the inputs. */
+      events: JournalEvent[];
+      /** The assessment rows the assessment events carry — what a sidecar writer upserts. */
+      assessments: WeighingAssessment[];
+    }
+  | { ok: false; refusals: WeighingRefusal[] };
+
+/**
+ * Plan the journal events one batch of {@link WeighingEventInput}s would
+ * produce, or refuse the whole batch.
+ *
+ * Checks every assessment against the resolved library the way `kritik_score`
+ * checks a score against the pack: the matrix exists, the subject is a node the
+ * matrix judges, the criterion is in the set and not retired, the level is on
+ * the set's scale. Then it stamps what the caller must not: the scorer, the
+ * set's full version and the subject's fingerprint (and, when the writer knows
+ * it, whom the scorer acts for) — so staleness is measured
+ * from what the server saw, never from what a client said it saw.
+ *
+ * **All-or-nothing**, like `persistMutation`: one refusal anywhere refuses
+ * every entry, each naming its `index`, so a caller retrying a corrected batch
+ * never reasons about a partial write.
+ *
+ * A saved set is held to the positioning's contract: id `positioning`, role
+ * `positioning`, extending a set the library holds, naming only that set's
+ * criteria, every weight above zero. Nothing else can be saved in slice 1.
+ */
+export function planWeighingEvents(
+  section: WeighingSection | undefined,
+  nodes: readonly Pick<Node, "id" | "species" | "title" | "metadata">[],
+  inputs: readonly WeighingEventInput[],
+  ctx: WeighingPlanContext,
+): WeighingPlan {
+  const resolved = resolveWeighing(section);
+  const byId = new Map(nodes.map((node) => [node.id, node] as const));
+  const now = ctx.now ?? new Date();
+  const refusals: WeighingRefusal[] = [];
+  const events: JournalEvent[] = [];
+  const assessments: WeighingAssessment[] = [];
+
+  inputs.forEach((input, index) => {
+    const refuse = (reason: WeighingRefusalReason, detail: string) => refusals.push({ index, reason, detail });
+
+    if (input.type === WEIGHING_SET_SAVED) {
+      const set = input.set;
+      const ruler = typeof set.extends === "string" ? setOfRef(resolved, set.extends) : undefined;
+      if (set.id !== POSITIONING_SET_ID || set.role !== "positioning") {
+        return refuse("invalid_set", `only the positioning can be saved: id "${POSITIONING_SET_ID}" with role "positioning"`);
+      }
+      if (ruler === undefined) return refuse("invalid_set", `a positioning extends a set the library holds (e.g. ${VALUE_SET_ID}@1)`);
+      const known = new Set(ruler.criteria.map((criterion) => criterion.id));
+      for (const criterion of set.criteria) {
+        if (!isNonEmptyString(criterion?.id) || !known.has(criterion.id)) {
+          return refuse("invalid_set", `"${String(criterion?.id)}" is not an element of ${ruler.id}`);
+        }
+        if (criterion.weight !== undefined && (typeof criterion.weight !== "number" || !(criterion.weight > 0))) {
+          return refuse("invalid_set", `the weight for "${criterion.id}" must be a number above 0 — leave the element out to leave it unpositioned`);
+        }
+      }
+      if (set.status !== undefined && set.status !== "draft" && set.status !== "active") {
+        return refuse("invalid_set", `status must be "draft" or "active"`);
+      }
+      events.push(makeEvent(WEIGHING_SET_SAVED, { set }, { actor: ctx.actor, ts: now }));
+      return;
+    }
+
+    const matrix = resolved.matrices.find((candidate) => candidate.id === (input.matrix ?? VALUE_MATRIX_ID));
+    if (matrix === undefined) {
+      return refuse("unknown_matrix", `no matrix "${input.matrix ?? VALUE_MATRIX_ID}" (have: ${resolved.matrices.map((m) => m.id).join(", ")})`);
+    }
+    const set = setOfRef(resolved, matrix.set);
+    if (set === undefined) return refuse("unknown_matrix", `matrix "${matrix.id}" names set "${matrix.set}", which is not available`);
+
+    const node = byId.get(input.subject);
+    const judged = matrix.subjects.kind === "query" ? node?.species === matrix.subjects.species : matrix.subjects.items.some((item) => (item?.node_id ?? item?.id) === input.subject);
+    if (node === undefined || !judged) {
+      return refuse("unknown_subject", `"${input.subject}" is not a subject of matrix "${matrix.id}"`);
+    }
+
+    const criterion = set.criteria.find((candidate) => candidate.id === input.criterion);
+    if (criterion === undefined) return refuse("unknown_criterion", `"${input.criterion}" is not in set "${set.id}"`);
+    if (typeof criterion.superseded_by === "string") {
+      return refuse("retired_criterion", `"${criterion.id}" is retired — score "${criterion.superseded_by}" instead`);
+    }
+    const scale = weighingScaleOf(set, resolved);
+    if (input.level < scale.min || input.level > scale.max) {
+      return refuse("level_out_of_range", `level ${input.level} is outside ${scale.min}..${scale.max}`);
+    }
+
+    if (ctx.onBehalfOf !== undefined && !isOpaqueId(ctx.onBehalfOf)) {
+      // D14, not yet run.
+      return refuse("invalid_on_behalf_of", "on_behalf_of is an opaque user id or handle, never an email — sidecars are committed to repos");
+    }
+
+    const ts = now.toISOString();
+    const row: WeighingAssessment = {
+      matrix: matrix.id,
+      subject: input.subject,
+      criterion: criterion.id,
+      level: input.level,
+      scorer: {
+        kind: ctx.scorerKind,
+        id: ctx.actor,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(ctx.onBehalfOf !== undefined ? { on_behalf_of: ctx.onBehalfOf } : {}), // D14, not yet run
+      },
+      confidence: input.confidence as WeighingConfidence,
+      ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
+      ...(input.refs !== undefined ? { refs: input.refs } : {}),
+      basis: {
+        fingerprint: acceptanceFingerprint(node),
+        set_version: set.version,
+        ...(input.commit !== undefined ? { commit: input.commit } : {}),
+      },
+      ...(input.run !== undefined ? { run: input.run } : {}),
+      ts,
+    };
+    assessments.push(row);
+    const { ts: _ts, ...payload } = row;
+    void _ts;
+    events.push(makeEvent(WEIGHING_ASSESSMENT_RECORDED, payload, { actor: ctx.actor, ts: now }));
+  });
+
+  return refusals.length > 0 ? { ok: false, refusals } : { ok: true, events, assessments };
+}

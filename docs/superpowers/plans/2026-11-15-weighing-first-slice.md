@@ -3676,7 +3676,7 @@ git commit -m "feat(weighing): the event shapes and a parser that refuses a clai
 **Files:**
 - Modify: `packages/schema/src/weighing-events.ts`, `tests/schema/weighing-events.test.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Insert above the final `fs.rmSync(BUILD_DIR…` line of `tests/schema/weighing-events.test.js`:
 
@@ -3736,14 +3736,14 @@ check("only the positioning can be saved in this slice", planWeighingEvents(unde
 check("a positioning extending nothing is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ extends: "nope@1" }) }], ctx()).refusals?.[0].reason === "invalid_set");
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `node tests/schema/weighing-events.test.js`
 Expected: FAIL — `TypeError: planWeighingEvents is not a function`.
 
 > **Not yet run, and more than a field (D14).** The planner gains `ctx.onBehalfOf`, one refusal reason (`invalid_on_behalf_of`) and a small `isOpaqueId` guard that rejects an email-shaped value. The lines are marked in the code and the three checks are at the end of Step 1.
 
-- [ ] **Step 3: Append the planner**
+- [x] **Step 3: Append the planner**
 
 Append to `packages/schema/src/weighing-events.ts`:
 
@@ -3911,12 +3911,12 @@ export function planWeighingEvents(
 }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `node tests/schema/weighing-events.test.js`
 Expected: the planner checks `PASS:` (including `a level of −3 is accepted — the scale is signed`, `one bad entry refuses the whole batch, each naming its index`); the fold checks are not written yet, so the file ends `All weighing-events tests passed.`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/schema/src/weighing-events.ts tests/schema/weighing-events.test.js

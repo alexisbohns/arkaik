@@ -68,6 +68,60 @@ for (const stamped of ["scorer", "basis", "ts"]) {
 check("refs must be non-empty strings", typeof parseWeighingEventInputs({ events: [assess({ refs: ["ok", ""] })] }).error === "string");
 check("a set needs an id, version and subject", typeof parseWeighingEventInputs({ events: [{ type: "weighing.set.saved", set: { id: "positioning" } }] }).error === "string");
 
+// --- planWeighingEvents: assessments -----------------------------------------
+
+const plan = planWeighingEvents(undefined, [NODE, VIEW], [assess({ model: "claude" })], ctx({ scorerKind: "agent", actor: "arkaik-mcp" }));
+check("a valid assessment plans one event", plan.ok === true && plan.events.length === 1 && plan.assessments.length === 1);
+const row = plan.assessments[0];
+check("the scorer is stamped by the caller, with the model", eq(row.scorer, { kind: "agent", id: "arkaik-mcp", model: "claude" }));
+check("the matrix defaults to value", row.matrix === "value");
+check("the basis is read off the graph: fingerprint and the set's full version", row.basis.fingerprint === acceptanceFingerprint(NODE) && row.basis.set_version === "1.0.0");
+check("the row's ts is the event's ts", row.ts === NOW.toISOString() && plan.events[0].ts === NOW.toISOString());
+check("the event carries the assessment flat, with the writer as actor", plan.events[0].type === "weighing.assessment.recorded" && plan.events[0].actor === "arkaik-mcp" && plan.events[0].level === 2 && plan.events[0].scorer.kind === "agent");
+check("the event validates against its strict schema", KnownJournalEventSchema.safeParse(plan.events[0]).success);
+check("a human session stamps a human", planWeighingEvents(undefined, [NODE], [assess()], ctx()).assessments[0].scorer.kind === "human");
+
+// on_behalf_of (not yet run — D14)
+const behalf = planWeighingEvents(undefined, [NODE], [assess()], ctx({ scorerKind: "agent", actor: "arkaik-agent", onBehalfOf: "42" }));
+check("a writer that knows whose hands these are stamps scorer.on_behalf_of, on the row and on the event", behalf.ok === true && behalf.assessments[0].scorer.on_behalf_of === "42" && behalf.events[0].scorer.on_behalf_of === "42" && KnownJournalEventSchema.safeParse(behalf.events[0]).success);
+check("…and stamps nothing when it does not know", !("on_behalf_of" in plan.assessments[0].scorer));
+check("an email is refused: sidecars are committed to repos", planWeighingEvents(undefined, [NODE], [assess()], ctx({ onBehalfOf: "me@example.com" })).refusals?.[0].reason === "invalid_on_behalf_of");
+
+const refused = (inputs) => planWeighingEvents(undefined, [NODE, VIEW], inputs, ctx());
+check("an unknown subject is refused", refused([assess({ subject: "AC-nope" })]).refusals?.[0].reason === "unknown_subject");
+check("a view is not a subject of the value matrix", refused([assess({ subject: "V-home" })]).refusals?.[0].reason === "unknown_subject");
+check("an unknown criterion is refused", refused([assess({ criterion: "teleports" })]).refusals?.[0].reason === "unknown_criterion");
+check("a level of 4 is refused", refused([assess({ level: 4 })]).refusals?.[0].reason === "level_out_of_range");
+check("a level of −3 is accepted — the scale is signed", refused([assess({ level: -3 })]).ok === true);
+check("a level of 0 is accepted — weighed and unrelated", refused([assess({ level: 0 })]).ok === true);
+check("an unknown matrix is refused", refused([assess({ matrix: "nope" })]).refusals?.[0].reason === "unknown_matrix");
+const batch = refused([assess(), assess({ criterion: "teleports" }), assess({ level: 9 })]);
+check("one bad entry refuses the whole batch, each naming its index", batch.ok === false && eq(batch.refusals.map((r) => r.index), [1, 2]));
+
+const retired = { sets: [], matrices: [], assessments: [] };
+check("an empty section changes nothing about planning", planWeighingEvents(retired, [NODE], [assess()], ctx()).ok === true);
+
+// --- planWeighingEvents: the positioning -------------------------------------
+
+const positioning = (over = {}) => ({
+  id: "positioning",
+  version: "1.0.0",
+  subject: "acceptance",
+  scale: { min: -3, max: 3, anchors: {} },
+  role: "positioning",
+  status: "draft",
+  extends: "value-contribution@1",
+  criteria: [{ id: "reduces-anxiety", weight: 3, anchors: { 3: "removes a worry the user names", 0: "nothing to do with worry" } }],
+  ...over,
+});
+const saved = planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning() }], ctx());
+check("a positioning plans one set.saved event", saved.ok === true && saved.events.length === 1 && saved.events[0].type === "weighing.set.saved" && saved.events[0].set.id === "positioning");
+check("the saved set validates against its strict schema", KnownJournalEventSchema.safeParse(saved.events[0]).success);
+check("a positioning with an unknown element is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "teleports" }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a weight of 0 is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ criteria: [{ id: "connects", weight: 0 }] }) }], ctx()).refusals?.[0].reason === "invalid_set");
+check("only the positioning can be saved in this slice", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ id: "my-set", role: undefined }) }], ctx()).refusals?.[0].reason === "invalid_set");
+check("a positioning extending nothing is refused", planWeighingEvents(undefined, [NODE], [{ type: "weighing.set.saved", set: positioning({ extends: "nope@1" }) }], ctx()).refusals?.[0].reason === "invalid_set");
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures > 0) {
   console.log(`\n${failures} weighing-events test(s) failed.`);
