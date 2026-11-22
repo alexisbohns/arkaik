@@ -522,7 +522,7 @@ validator warns when there is none.
   seeded the option (a string). A name matching no journal event is a warning.
 - A decision settles one stake and selects one option: it `impacts` the stake and
   `generates` the option, and `metadata.closed_options` lists the options that lost
-  as `{ option_id, reason }`. Writing a decision is not part of this skill yet.
+  as `{ option_id, reason }`. Write a decision with `decide_option` (see Ideate and decide in the skill).
 
 ---
 

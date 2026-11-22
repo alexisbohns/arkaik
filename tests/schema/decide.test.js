@@ -167,6 +167,25 @@ for (const status of ["proposed", "rejected", "deprecated", "superseded"]) {
   assert(closure.state === "closed" && same(closure.competing, ["DEC-1"]), "an ambiguous stake reads the latest decision and names the other");
 }
 
+// --- A decision that settles several stakes ----------------------------------
+{
+  // DEC-multi settles STK-slow and STK-other and generates an option for each.
+  const g = withDecision(baseGraph(), decision("DEC-multi", "approved"), ["OPT-a", "OPT-elsewhere"], ["STK-slow", "STK-other"]);
+  assert(answerFor("STK-slow", g.nodes, g.edges)?.option.id === "OPT-a", "each stake reads its own option from a decision that settles two");
+  assert(answerFor("STK-other", g.nodes, g.edges)?.option.id === "OPT-elsewhere", "and the other stake reads its own, not the first generated");
+  assert(optionClosureFor("OPT-elsewhere", "STK-slow", g.nodes, g.edges).state === "closed", "an option of another stake is not selected for this one");
+  assert(optionClosureFor("OPT-a", "STK-other", g.nodes, g.edges).state === "closed", "and the other way round");
+  // A decision whose only generated option belongs to another stake answers nothing here.
+  const stray = withDecision(baseGraph(), decision("DEC-x", "approved"), ["OPT-elsewhere"]);
+  assert(answerFor("STK-slow", stray.nodes, stray.edges) === undefined, "a settling decision that generates only another stake's option gives no answer");
+  assert(["OPT-a", "OPT-b"].every((id) => optionClosureFor(id, "STK-slow", stray.nodes, stray.edges).state === "open"), "and leaves every option of the stake open, not closed");
+  // Two addressing options generated: both readers pick the same one.
+  const two = withDecision(baseGraph(), decision("DEC-two", "approved"), ["OPT-b", "OPT-a"]);
+  const picked = answerFor("STK-slow", two.nodes, two.edges)?.option.id;
+  const states = ["OPT-a", "OPT-b"].map((id) => optionClosureFor(id, "STK-slow", two.nodes, two.edges).state);
+  assert(picked === "OPT-b" && same(states, ["closed", "selected"]), "when a decision generates two options for a stake, both readers pick the same one", `${picked} ${states}`);
+}
+
 // --- Promises and candidates -------------------------------------------------
 {
   const g = baseGraph();
@@ -283,7 +302,15 @@ function bundleOf(g, journal) {
     ...(journal !== undefined ? { journal } : {}),
   };
 }
-const ruleSet = (result) => new Set(result.findings.map((f) => `${f.severity}:${f.rule}`));
+// Every finding as severity:rule@path, with a count, so a second instance of a rule the bundle already warns about shows up.
+const findingCounts = (result) => {
+  const counts = new Map();
+  for (const f of result.findings) {
+    const key = `${f.severity}:${f.rule}@${f.path ?? ""}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+};
 
 function proveClean(label, g, journal, input) {
   const before = validateBundle(bundleOf(g, journal));
@@ -293,7 +320,8 @@ function proveClean(label, g, journal, input) {
   const events = toJournalEvents(outcome.eventInputs, "test");
   const after = validateBundle(bundleOf({ nodes: outcome.nodes, edges: outcome.edges }, [...journal, ...events]));
   assert(after.valid, `${label}: the result is a valid bundle`, JSON.stringify(after.errors));
-  const novel = [...ruleSet(after)].filter((rule) => !ruleSet(before).has(rule));
+  const was = findingCounts(before);
+  const novel = [...findingCounts(after)].filter(([key, count]) => count > (was.get(key) ?? 0)).map(([key]) => key);
   assert(novel.length === 0, `${label}: no new warnings`, novel.join(", "));
   assert(parseBundle(bundleOf({ nodes: outcome.nodes, edges: outcome.edges }, [...journal, ...events])).success, `${label}: the result parses`);
   return { result, outcome, events, after };
@@ -351,6 +379,15 @@ const createdEvents = (g) => toJournalEvents(applyOps({ projectId: P, nodes: [],
   assert(result.ops.filter((o) => o.op === "update_node").length === 2 && result.ops.filter((o) => o.op === "create_edge" && o.edge.edge_type === "supersedes").length === 2, "an ambiguous stake has every settling decision superseded");
   const outcome = applyOps({ projectId: P, nodes: amb.nodes, edges: amb.edges }, result.ops);
   assert(validateBundle(bundleOf({ nodes: outcome.nodes, edges: outcome.edges })).findings.every((f) => f.rule !== "stake-multiple-decisions"), "and the stake-multiple-decisions warning clears");
+}
+
+{
+  // Superseding a decision that also settles another stake un-settles that stake: the plan says so.
+  const g = withDecision(baseGraph(), decision("DEC-multi", "approved"), ["OPT-a", "OPT-elsewhere"], ["STK-slow", "STK-other"]);
+  const result = plan(g, { optionId: "OPT-b", supersede: true });
+  assert(result.action === "decide" && result.handToHuman.some((h) => h.includes("DEC-multi") && h.includes("STK-other")), "superseding a decision that settles another stake hands that to a human", JSON.stringify(result.handToHuman));
+  const single = withDecision(baseGraph(), decision("DEC-1", "approved"), ["OPT-a"]);
+  assert(plan(single, { optionId: "OPT-b", supersede: true }).handToHuman.every((h) => !h.includes("also settles")), "superseding a one-stake decision adds no such note");
 }
 
 if (failures > 0) {

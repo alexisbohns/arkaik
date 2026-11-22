@@ -196,6 +196,16 @@ export function optionsGeneratedBy<N extends NodeLike>(decisionId: string, nodes
   return found;
 }
 
+/**
+ * The options a settling decision generates for one stake: the generated options
+ * that also address that stake, in edge order. A decision that settles several
+ * stakes generates options for the others too, and those answer nothing here.
+ */
+function answeringOptions<N extends NodeLike>(decisionId: string, stakeId: string, nodes: readonly N[], edges: readonly EdgeLike[]): N[] {
+  const addressing = new Set(optionsAddressing(stakeId, nodes, edges).map((option) => option.id));
+  return optionsGeneratedBy(decisionId, nodes, edges).filter((option) => addressing.has(option.id));
+}
+
 /** The answer to a stake: the option its settling decision generates. */
 export interface StakeAnswer<N> {
   decision: N;
@@ -207,13 +217,13 @@ export interface StakeAnswer<N> {
 /**
  * The option that answers a stake: the one its settling decision generates.
  * Undefined when no decision settles the stake, or the settling decision
- * generates no option. With two settling decisions the latest one wins, by
+ * generates no option that addresses the stake. With two settling decisions the latest one wins, by
  * `decided_at` then id, and the others are named in `competing`.
  */
 export function answerFor<N extends NodeLike>(stakeId: string, nodes: readonly N[], edges: readonly EdgeLike[]): StakeAnswer<N> | undefined {
   const [latest, ...rest] = settlingDecisionsFor(stakeId, nodes, edges);
   if (latest === undefined) return undefined;
-  const option = optionsGeneratedBy(latest.id, nodes, edges)[0];
+  const option = answeringOptions(latest.id, stakeId, nodes, edges)[0];
   return option === undefined ? undefined : { decision: latest, option, competing: rest.map((decision) => decision.id) };
 }
 
@@ -233,7 +243,7 @@ export interface OptionClosure {
 /**
  * An option's closure for one stake, read from the stake's settling decision and
  * never stored: `selected` when the decision generates it, `closed` when the
- * decision generates another option (with the reason from `closed_options`, if
+ * decision generates another option for the stake (with the reason from `closed_options`, if
  * it gave one), `open` otherwise. A decision that is proposed, rejected,
  * deprecated or superseded settles nothing, so the option reopens.
  */
@@ -241,9 +251,9 @@ export function optionClosureFor(optionId: string, stakeId: string, nodes: reado
   const [latest, ...rest] = settlingDecisionsFor(stakeId, nodes, edges);
   if (latest === undefined) return { state: "open", competing: [] };
   const competing = rest.map((decision) => decision.id);
-  const generated = optionsGeneratedBy(latest.id, nodes, edges);
-  if (generated.length === 0) return { state: "open", decision_id: latest.id, competing };
-  if (generated.some((option) => option.id === optionId)) return { state: "selected", decision_id: latest.id, competing };
+  const selected = answeringOptions(latest.id, stakeId, nodes, edges)[0];
+  if (selected === undefined) return { state: "open", decision_id: latest.id, competing };
+  if (selected.id === optionId) return { state: "selected", decision_id: latest.id, competing };
   const reason = closedOptionsOf(latest).find((entry) => entry.option_id === optionId)?.reason;
   return { state: "closed", decision_id: latest.id, ...(reason !== undefined && reason !== "" ? { reason } : {}), competing };
 }
@@ -450,6 +460,12 @@ export function planSelectOption(input: SelectOptionInput): SelectOptionPlan {
         },
       });
       reasons.push(`Supersedes ${previous.id} (it was ${was}).`);
+      const others = targetsOf(previous.id, "impacts", input.edges).filter((id) => id !== stake.id && byId.get(id)?.species === "stake");
+      if (others.length > 0) {
+        handToHuman.push(
+          `${previous.id} also settles ${others.join(", ")}: superseding it un-settles ${others.length === 1 ? "that stake" : "those stakes"}. Decide again for ${others.length === 1 ? "it" : "them"}, or keep ${previous.id}.`,
+        );
+      }
     }
   }
 

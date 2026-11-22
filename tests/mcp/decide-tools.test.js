@@ -139,6 +139,10 @@ async function main() {
     check("a status other than approved or enacted is refused", badStatus.isError && /approved or enacted/.test(badStatus.text), badStatus.text.slice(0, 300));
     const badDate = await s.call("decide_option", { stake_id: "STK-slow", option_id: "OPT-skip", reason: "x", decided_at: "last week" });
     check("an unparseable date is refused", badDate.isError && /decided_at/.test(badDate.text), badDate.text.slice(0, 300));
+    for (const lenient of ["1", "Nov 22", "2026-02-30", "2026-13-01"]) {
+      const odd = await s.call("decide_option", { stake_id: "STK-slow", option_id: "OPT-skip", reason: "x", decided_at: lenient });
+      check(`a date Date.parse takes but ISO 8601 does not is refused: ${lenient}`, odd.isError && /decided_at/.test(odd.text), odd.text.slice(0, 300));
+    }
     const badClosed = await s.call("decide_option", { stake_id: "STK-slow", option_id: "OPT-skip", reason: "x", closed: "OPT-short" });
     check("a malformed closed list is refused", badClosed.isError && /closed/.test(badClosed.text), badClosed.text.slice(0, 300));
     check("no refusal wrote anything", s.journalLines() === lines && JSON.stringify(s.bundle()) === bundleBefore);

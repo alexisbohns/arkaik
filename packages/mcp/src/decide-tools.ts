@@ -30,6 +30,17 @@ function requireString(args: Record<string, unknown>, key: string): string {
   return value;
 }
 
+const ISO_8601 = /^(\d{4})-(\d{2})-(\d{2})(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/** True for an ISO 8601 date or date-time that names a real day. `Date.parse` alone also takes "1" and "Nov 22", and rolls "2026-02-30" over to March. */
+function isIsoDate(value: string): boolean {
+  const match = ISO_8601.exec(value);
+  if (match === null || !Number.isFinite(Date.parse(value))) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const real = new Date(Date.UTC(year, month - 1, day));
+  return real.getUTCFullYear() === year && real.getUTCMonth() === month - 1 && real.getUTCDate() === day;
+}
+
 function optionalString(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key];
   if (value === undefined) return undefined;
@@ -105,7 +116,7 @@ export function buildDecideCatalog(
       const status = optionalString(args, "status");
       if (status !== undefined && status !== "approved" && status !== "enacted") throw new ToolError("`status` must be approved or enacted.");
       const decidedAt = optionalString(args, "decided_at") ?? today();
-      if (!Number.isFinite(Date.parse(decidedAt))) throw new ToolError("`decided_at` must be an ISO 8601 date.");
+      if (!isIsoDate(decidedAt)) throw new ToolError("`decided_at` must be an ISO 8601 date.");
       if (args.supersede !== undefined && typeof args.supersede !== "boolean") throw new ToolError("`supersede` must be a boolean.");
       const closed = readClosed(args);
       const title = optionalString(args, "title");
