@@ -202,6 +202,9 @@ const rules = (bundle) => validateBundle(bundle).findings.map((f) => `${f.severi
     "stake-catalog-mismatch",
     "stake-catalog-unknown-value",
     "stake-unanchored",
+    "stake-reverify-invalid",
+    "stake-criterion-version-invalid",
+    "stake-criterion-version-unlinked",
     "product-membership-wrong-species",
   ]) {
     assert(warned.has(rule), `stake-warnings.json raises ${rule}`);

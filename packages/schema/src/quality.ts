@@ -129,9 +129,9 @@ export interface KritikDomain extends Record<string, unknown> {
 }
 
 /**
- * The atomic auditable unit. Criteria are **append-and-supersede**: an id is
- * never redefined, only deprecated via `superseded_by` and replaced, so a score
- * recorded two audits ago still means what it meant (SPEC §8).
+ * The atomic auditable unit. A criterion's `version` counts changes to its
+ * definition or level anchors while its id stays; a replacement still goes
+ * through `superseded_by` (SPEC §8).
  */
 export interface KritikCriterion extends Record<string, unknown> {
   id: string;
@@ -150,6 +150,8 @@ export interface KritikCriterion extends Record<string, unknown> {
   default_impact?: number;
   /** Weight in the domain roll-up (1–3; 3 = load-bearing). */
   weight?: number;
+  /** Counts changes to the definition or level anchors; the id stays. An integer from 1, and absent reads as 1. */
+  version?: number;
   references?: KritikReference[];
   /** Concrete audit steps an agent can execute. */
   checklist?: string[];
@@ -292,7 +294,9 @@ export interface KritikOverlay extends Record<string, unknown> {
  *
  * Matching ids **replace** rather than merge — an overlay criterion is a
  * complete criterion, and half of one silently inheriting the other half's
- * anchors would produce a criterion nobody wrote. Non-matching ids append, in
+ * anchors would produce a criterion nobody wrote. The one exception is the
+ * `version`: a replacement that states none keeps the pack's, so a local
+ * rewording does not read as a criterion that was never versioned. Non-matching ids append, in
  * pack-then-overlay order, so a custom criterion rolls up into its domain
  * exactly like a pack one.
  *
@@ -315,8 +319,10 @@ export function mergeKritikLibrary(pack: KritikLibrary, overlay?: KritikOverlay 
   for (const criterion of asArray<KritikCriterion>(overlay.criteria)) {
     if (typeof criterion?.id !== "string" || criterion.id === "") continue;
     const at = criteria.findIndex((existing) => existing?.id === criterion.id);
-    if (at >= 0) criteria[at] = criterion;
-    else criteria.push(criterion);
+    if (at >= 0) {
+      const packVersion = criteria[at].version;
+      criteria[at] = criterion.version === undefined && packVersion !== undefined ? { ...criterion, version: packVersion } : criterion;
+    } else criteria.push(criterion);
   }
 
   const scales =

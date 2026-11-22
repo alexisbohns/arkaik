@@ -112,6 +112,10 @@ interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Stake nodes: the verified half expires this many days after the latest check. A positive number. */
+  reverify_every_days?: number;
+  /** Requirement, risk and defect stakes linked to a Kritik criterion: the criterion version last verified against. An integer from 1. */
+  verified_criterion_version?: number;
   /** Option nodes: the id of the request.filed journal event that seeded the option. */
   suggested_by?: string;
   /** Decision nodes: the options that lost, each with the reason it lost. */

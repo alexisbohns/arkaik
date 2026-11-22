@@ -29,6 +29,7 @@ import {
   resolvePlatformStatus,
   SIGNAL_SOURCE_KINDS,
   STAKE_PROVENANCE_IDS,
+  stakeCatalogOf,
   stakeEvidenceEventIds,
   stakeMetadataWith,
   type Edge,
@@ -553,6 +554,13 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         for (const [key, value] of Object.entries(patch.metadata as Record<string, unknown>)) {
           if (value === null) delete merged[key];
           else merged[key] = value;
+        }
+        // The verified criterion version belongs to the criterion it was verified against: a patch that moves the
+        // catalog link without restating the version drops it, as the editor's own catalog write does.
+        const before = stakeCatalogOf(current);
+        const after = stakeCatalogOf({ metadata: merged as Node["metadata"] });
+        if ((before?.source !== after?.source || before?.id !== after?.id) && !("verified_criterion_version" in patch.metadata)) {
+          delete merged.verified_criterion_version;
         }
         patch.metadata = stakeMetadataWith(merged as Node["metadata"], {});
       }

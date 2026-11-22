@@ -283,6 +283,9 @@ jobs:
       - name: Stake evaluation tests (reference declares species, stake assessments, felt/matters/frequency, criticality)
         run: npm run test:stake-evaluation
 
+      - name: Criterion version tests (pack versions, overlay merge, stake expiry and verified version, warnings)
+        run: npm run test:criterion-version
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

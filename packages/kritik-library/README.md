@@ -21,4 +21,4 @@ A full audit belongs at a milestone boundary. Between milestones, the pack is us
 
 ## Stability
 
-Criteria are **append-and-supersede**: an id is never redefined, only deprecated (`superseded_by`) with a new id introduced, so maturity scores stay comparable across audits and across pack versions.
+Each criterion has a `version`, a counter that moves when its definition or level anchors change while its id stays. A stake that was verified against a criterion stores the version it saw, so it can read stale when the criterion moves on. A replacement is still **append-and-supersede**: the old id is deprecated (`superseded_by`) and a new id introduced, so maturity scores stay comparable across audits and across pack versions. [`SPEC.md` § 8](./SPEC.md#8-versioning--evolution) has the rules.

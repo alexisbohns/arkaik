@@ -109,6 +109,10 @@ interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Stake nodes: the verified half expires this many days after the latest check. A positive number. */
+  reverify_every_days?: number;
+  /** Requirement, risk and defect stakes linked to a Kritik criterion: the criterion version last verified against. An integer from 1. */
+  verified_criterion_version?: number;
   /** Option nodes: the id of the request.filed journal event that seeded the option. */
   suggested_by?: string;
   /** Decision nodes: the options that lost, each with the reason it lost. */
@@ -500,6 +504,11 @@ to the anatomy by `concerns` edges (stake → flow / view / data-model / api-end
   them (the validator warns). They are shown beside a stake's pyramid score and never
   summed with it. A requirement, risk or defect is read against its Kritik criterion's
   criticality (`kritikCriticality`), never copied onto the stake.
+- `metadata.reverify_every_days` is a positive number of days: the verified half of
+  the proof expires this long after the latest check. Absent means it does not expire.
+- `metadata.verified_criterion_version` is a positive integer: the Kritik criterion
+  `version` a requirement, risk or defect was last verified against. Set it only on a
+  stake with a Kritik `catalog` link (the validator warns otherwise).
 - `platforms` is `[]`, and no product membership is stored.
 - The node's own `status` is the stored lifecycle and may only be `idea`,
   `discovery` or `archived`; every other state is derived. Anything else is a warning.

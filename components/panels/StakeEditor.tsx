@@ -19,6 +19,7 @@ import {
   stakeMattersOf,
   stakeMetadataWith,
   stakeProvenanceOf,
+  stakeReverifyDaysOf,
   stakeSpeciesFor,
   stakeSpeciesOf,
   type StakeFelt,
@@ -93,6 +94,7 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
   const felt = stakeFeltOf(node);
   const matters = stakeMattersOf(node);
   const frequency = stakeFrequencyOf(node);
+  const reverifyDays = stakeReverifyDaysOf(node);
   const projectId = useProjectId();
   const { project } = useProject(projectId);
   const quality = project?.quality;
@@ -348,6 +350,18 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
         </PanelSection>
       )}
 
+      <PanelSection title="Re-verify">
+        <ReverifyDaysField
+          id={`${fieldId}-reverify`}
+          stored={reverifyDays}
+          readOnly={readOnly}
+          onCommit={(days) => write({ reverify_every_days: days })}
+        />
+        <p className="text-xs text-muted-foreground">
+          How long a verification holds. After this many days without a new check the stake reads as stale. Leave it empty and it does not expire.
+        </p>
+      </PanelSection>
+
       <PanelSection title="Lifecycle">
         {readOnly ? (
           <p className="text-sm">{node.status}</p>
@@ -406,5 +420,63 @@ function CatalogCriterionField({
       placeholder="SAF-01"
       onChange={(event) => setValue(event.target.value)}
     />
+  );
+}
+
+/**
+ * The re-verify interval in days, saved after a pause like the panel's other
+ * text fields. Clearing the field removes the key; text that is not a positive
+ * number is not saved, and the field says so.
+ */
+function ReverifyDaysField({
+  id,
+  stored,
+  readOnly,
+  onCommit,
+}: {
+  id: string;
+  stored: number | undefined;
+  readOnly: boolean;
+  onCommit: (days: number | undefined) => void;
+}) {
+  const initial = stored === undefined ? "" : String(stored);
+  const [value, setValue] = useState(initial);
+  const lastSaved = useRef(initial);
+  const commit = useRef(onCommit);
+  useEffect(() => {
+    commit.current = onCommit;
+  });
+  const trimmed = value.trim();
+  const parsed = trimmed === "" ? undefined : Number(trimmed);
+  const invalid = parsed !== undefined && !(Number.isFinite(parsed) && parsed > 0);
+  useEffect(() => {
+    if (trimmed === lastSaved.current) return;
+    const days = trimmed === "" ? undefined : Number(trimmed);
+    if (days !== undefined && !(Number.isFinite(days) && days > 0)) return;
+    const timeout = setTimeout(() => {
+      lastSaved.current = trimmed;
+      commit.current(days);
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timeout);
+  }, [trimmed]);
+
+  if (readOnly) return <p className="text-sm">{stored === undefined ? "Does not expire" : `Every ${stored} days`}</p>;
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        aria-label="Re-verify every N days"
+        aria-invalid={invalid || undefined}
+        className="w-24"
+        value={value}
+        placeholder="N"
+        onChange={(event) => setValue(event.target.value)}
+        data-stake-reverify=""
+      />
+      <span className="text-sm text-muted-foreground">days</span>
+    </div>
   );
 }

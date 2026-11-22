@@ -197,6 +197,10 @@ export interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Stake nodes: the verified half expires this many days after the latest check. A positive number. */
+  reverify_every_days?: number;
+  /** Requirement, risk and defect stakes linked to a Kritik criterion: the criterion version last verified against. An integer from 1. */
+  verified_criterion_version?: number;
   /** Option nodes: the id of the request.filed journal event that seeded the option. */
   suggested_by?: string;
   /** Decision nodes: the options that lost, each with the reason it lost. */
@@ -266,6 +270,12 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     felt: StakeFeltSchema.optional(),
     matters: StakeMattersSchema.optional(),
     frequency: StakeFrequencySchema.optional(),
+    reverify_every_days: z.number().optional().meta({
+      description: "Stake nodes only: the verified half expires this many days after the latest check. A positive number.",
+    }),
+    verified_criterion_version: z.number().optional().meta({
+      description: "Stake nodes only: the Kritik criterion version a requirement was last verified against. An integer from 1.",
+    }),
     suggested_by: z.string().optional().meta({
       description: "Option nodes only: the id of the request.filed journal event that seeded this option.",
     }),

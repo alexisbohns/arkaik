@@ -489,6 +489,14 @@
         "frequency": {
           "$ref": "#/$defs/StakeFrequency"
         },
+        "reverify_every_days": {
+          "description": "Stake nodes only: the verified half expires this many days after the latest check. A positive number.",
+          "type": "number"
+        },
+        "verified_criterion_version": {
+          "description": "Stake nodes only: the Kritik criterion version a requirement was last verified against. An integer from 1.",
+          "type": "number"
+        },
         "suggested_by": {
           "description": "Option nodes only: the id of the request.filed journal event that seeded this option.",
           "type": "string"
@@ -1079,7 +1087,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Stable identifier, `<DOMAIN>-NN`. Never redefined — retired via superseded_by."
+          "description": "Stable identifier, `<DOMAIN>-NN`. A changed definition bumps `version` and keeps the id; a replacement is retired via superseded_by."
         },
         "domain": {
           "type": "string"
@@ -1121,6 +1129,10 @@
         },
         "weight": {
           "description": "Weight in the domain roll-up (1–3; 3 = load-bearing). Absent means 1.",
+          "type": "number"
+        },
+        "version": {
+          "description": "Counts changes to the definition or level anchors; the id stays. An integer from 1; absent reads as 1.",
           "type": "number"
         },
         "references": {

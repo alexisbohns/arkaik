@@ -70,7 +70,7 @@ export const KritikDomainSchema: z.ZodType<KritikDomain> = z
 
 export const KritikCriterionSchema: z.ZodType<KritikCriterion> = z
   .object({
-    id: z.string().meta({ description: "Stable identifier, `<DOMAIN>-NN`. Never redefined — retired via superseded_by." }),
+    id: z.string().meta({ description: "Stable identifier, `<DOMAIN>-NN`. A changed definition bumps `version` and keeps the id; a replacement is retired via superseded_by." }),
     domain: z.string(),
     subcategory: z.string().optional(),
     name: z.string().optional(),
@@ -81,6 +81,7 @@ export const KritikCriterionSchema: z.ZodType<KritikCriterion> = z
     level_anchors: z.record(z.string(), z.string()).optional().meta({ description: "Observable descriptions per maturity level, keyed l0…l4." }),
     default_impact: z.number().optional(),
     weight: z.number().optional().meta({ description: "Weight in the domain roll-up (1–3; 3 = load-bearing). Absent means 1." }),
+    version: z.number().optional().meta({ description: "Counts changes to the definition or level anchors; the id stays. An integer from 1; absent reads as 1." }),
     references: z.array(KritikReferenceSchema).optional(),
     checklist: z.array(z.string()).optional(),
     signals: z.array(z.string()).optional().meta({ description: "Mechanically checkable monitoring hooks run between audits." }),
