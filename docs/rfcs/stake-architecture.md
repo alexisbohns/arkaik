@@ -6,9 +6,9 @@ order: 94
 
 # RFC: Stake architecture: one node, one chain, from signal to proof
 
-> Status: **Proposed. Architecture agreed with the product owner on 2026-11-22; nothing here is implemented.** Written from the design document [arkaik: unified stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC), which this RFC now replaces as the source of truth. One question is deferred to its own research session: how options are compared ([§ 12](#12-open-questions)).
+> Status: **Architecture agreed with the product owner on 2026-11-22. Parts 1 to 4 shipped with this stack; parts 5 and 6 are not built, and [§ 14](#14-proposal-for-parts-5-and-6) lays out the calls the owner makes before they are.** Written from the design document [arkaik: unified stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC), which this RFC now replaces as the source of truth. One question is deferred to its own research session: how options are compared ([§ 12](#12-open-questions)).
 >
-> Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. [§ 10](#10-what-exists-today) lists them, including three places where the design document assumed more than the code holds. Shapes marked **(proposal)** are the lead's working choice for a detail the owner did not settle.
+> Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. [§ 10](#10-what-exists-today) lists them, including three places where the design document assumed more than the code holds; it describes the code as it stood before parts 1 to 4, which [§ 11](#11-shipping-order) now says what built. Shapes marked **(proposal)** are the lead's working choice for a detail the owner did not settle.
 >
 > Precedents: [Weighing](./weighing.md) (the `opportunity` species, its derived states, the assessment primitive) and [Need qualification](./need-qualification.md) (how raw input becomes a qualified need). This RFC renames the first and widens the second. Where they disagree with this one, this one wins. [§ 11](#11-shipping-order) says what it changes in weighing's slice 2.
 
@@ -292,16 +292,33 @@ Most of the chain already exists under another name. Two entities are new, optio
 
 ## 11. Shipping order
 
-Each part is its own PR, in this order. Each builds on the one before.
+Each part is its own PR, in this order. Each builds on the one before. **Parts 1 to 4 shipped with this stack.** Parts 5 and 6 wait on the owner's calls in [§ 14](#14-proposal-for-parts-5-and-6).
 
-| Part | Ships | Depends on |
+| Part | Ships | Depends on | State |
+|---|---|---|---|
+| **1. Schema** | Graph species `stake` (id prefix `STK-`), `metadata.stake_species`, the anchor, provenance (observed or anticipated) and the optional catalog link. Like decisions: no platforms, excluded from delivery and parity roll-ups and from the Journey and System maps. | Nothing | Shipped |
+| **2. Signal** | `request.filed` generalised to every source kind, including a Kritik finding, an idea and a benchmark. A verbatim field. Links to many stakes. The "suggested by" link to an option. | 1 | Shipped, except "suggested by" (it needs an option; [§ 14](#14-proposal-for-parts-5-and-6), call 12) |
+| **3. Qualification** | Species routing as the first step, ahead of the need-specific steps of need qualification. Merge into an existing stake before creating one. | 1, 2 | Shipped |
+| **4. Evaluation** | A reference declares its species. Kind, mattering and frequency on the user-facing species. Kritik criticality read by criterion id. | 1, 3 | Shipped |
+| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 | Proposed in § 14 |
+| **6. Proof and statuses** | The two halves, the optional expiry and the derived statuses, including "verified, not delivered". | 5 | Proposed in § 14 |
+
+### What parts 1 to 4 built
+
+The names the code settled on, where the RFC had left a **(proposal)**.
+
+| Part | Choice built | Where |
 |---|---|---|
-| **1. Schema** | Graph species `stake` (id prefix `STK-` **(proposal)**), `metadata.stake_species`, the anchor, provenance (observed or anticipated) and the optional catalog link. Like decisions: no platforms, excluded from delivery and parity roll-ups and from the Journey and System maps. | Nothing |
-| **2. Signal** | `request.filed` generalised to every source kind, including a Kritik finding, an idea and a benchmark. A verbatim field. Links to many stakes. The "suggested by" link to an option. | 1 |
-| **3. Qualification** | Species routing as the first step, ahead of the need-specific steps of need qualification. Merge into an existing stake before creating one. | 1, 2 |
-| **4. Evaluation** | A reference declares its species. Kind, mattering and frequency on the user-facing species. Kritik criticality read by criterion id. | 1, 3 |
-| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 |
-| **6. Proof and statuses** | The two halves, the optional expiry and the derived statuses, including "verified, not delivered". | 5 |
+| 1 | Species `stake`, prefix `STK-`. Its six kinds live in `metadata.stake_species` (bug, friction, need, requirement, risk, defect). | `packages/schema/src/ids.ts`, `stake.ts` |
+| 1 | The anchor is an **edge**, `concerns`: stake to flow, view, data model or API endpoint. `impacts` stays decision-only. | `ids.ts` (`VALID_EDGE_SEMANTICS.concerns`) |
+| 1 | `metadata.provenance` (observed or anticipated; absent reads observed) and `metadata.catalog: { source: "kritik" \| "values", id }`, an id and nothing copied. | `stake.ts`, `bundle.ts` |
+| 1 | Stored lifecycle is `idea`, `discovery` or `archived`; every other state stays derived. Validator rules are warnings. | `stake.ts`, `validate.ts` |
+| 2 | `request.filed` gained optional fields (source kind, verbatim, provenance, `stake_ids`, `finding_id`, `criterion_id`, `url`). The durable signal-to-stake link is `metadata.evidence[]` on the stake. | `journal.ts`, `journal-events.ts` |
+| 3 | Pure routing and merge-candidate logic, plus MCP `qualify_signal` (read) and `promote_signal` (write, op-only). | `packages/schema/src/qualify.ts` |
+| 4 | A criteria set declares `stake_species`; `value-contribution@2` declares bug, friction and need. Kritik stays read-only. | `weighing.ts`, `weighing-library.ts`, `stake-evaluation.ts` |
+| 4 | `metadata.felt` (expected, wanted, delight), `metadata.matters` (1 to 4) and `metadata.frequency` (rare, some, often), user-facing kinds only. | `stake.ts`, `stake-evaluation.ts` |
+
+Nothing parts 1 to 4 built writes a derived state, an option or a proof.
 
 ### What it changes in weighing's slice 2
 
@@ -320,10 +337,10 @@ Weighing § 17 ships slice 2 as `composes` acceptance to acceptance, species `op
 | 2 | Definitions of done for friction, risk and defect. | The proposals in [§ 3](#3-species). Not settled. |
 | 3 | Frequency on bug and friction. | Assumed. The owner has not confirmed. |
 | 4 | The balance of gains against protections. | A later analysis layer, derived, never stored. |
-| 5 | The schema name of the six species, given that *species* already names graph node kinds. | `metadata.stake_species` **(proposal)**. |
-| 6 | Is the anchor an edge or a field? An edge lets a stake be traversed like the graph and admits several anchors. | An edge **(proposal)**, named in part 1. |
-| 7 | Which Kritik field reads as a requirement's criticality. | `default_impact`, with the finding's severity when a finding raised it **(proposal)**. |
-| 8 | Is an option a graph species, a record, or (for features) a candidate story at status `idea`? | Part 5 decides. For features, a candidate story already fits. |
+| 5 | The schema name of the six species, given that *species* already names graph node kinds. | `metadata.stake_species`. Built in part 1. |
+| 6 | Is the anchor an edge or a field? An edge lets a stake be traversed like the graph and admits several anchors. | An edge, `concerns`. Built in part 1. |
+| 7 | Which Kritik field reads as a requirement's criticality. | `default_impact`, with the finding's severity when a finding raised it. Built in part 4. |
+| 8 | Is an option a graph species, a record, or (for features) a candidate story at status `idea`? | A graph species, `OPT-` **(proposal, [§ 14](#14-proposal-for-parts-5-and-6) call 1)**. For features alone a candidate story already fits. |
 
 ## 13. What changes in the normative docs when this ships
 
@@ -338,3 +355,209 @@ This RFC describes a design, so the documents below keep describing what is buil
 | 1–6 | [`docs/spec/mcp.md`](../spec/mcp.md) | New species, edges and tools as each part adds them. |
 | Each | [`docs/rfcs/weighing.md`](./weighing.md), [`docs/rfcs/need-qualification.md`](./need-qualification.md) | `opportunity` reads `stake` once part 1 ships. |
 | Each | `public/schema/project-bundle.json`, plugin and CLI scripts | Regenerated and committed, because CI diffs them. |
+
+## 14. Proposal for parts 5 and 6
+
+Parts 1 to 4 gave the chain its first half: a signal is qualified into a stake, and the stake is evaluated against the reference its species picks. Parts 5 and 6 build the second half: options, the decision, the proof and the derived states. [§ 7](#7-options-and-decision) and [§ 8](#8-done-and-proof) settle the shape. They leave thirteen calls to the owner.
+
+This section lays out each call, with the lean **(proposal)** and the alternative. Nothing here is built, and no code should be written for parts 5 and 6 before the owner answers. Every "today" below was checked against the code on the tip of this stack.
+
+### 14.1 The ground the proposal stands on
+
+| Fact | Today | Where |
+|---|---|---|
+| No option exists. | No `option` species, no `OPT-` prefix, no `addresses` edge anywhere in the schema, the app or the MCP tools. | `packages/schema/src/ids.ts`, `id-gen.ts` |
+| A decision reaches two things. | `generates` runs decision to acceptance only. `impacts` runs decision to flow, view, data model or API endpoint. They are disjoint on purpose: an acceptance is generated, never merely impacted. | `ids.ts` (`VALID_EDGE_SEMANTICS`) |
+| A decision's status is global to the node. | `decision_status` (proposed, approved, enacted, rejected, deprecated, superseded) sits on the node, and `lifecycleStatusForDecision` sends rejected, deprecated and superseded to `archived`. | `packages/schema/src/decision.ts` |
+| No derived state exists. | Nothing computes *promised*, *verified, not delivered*, *partly addressed* or *addressed*. A stake stores `idea`, `discovery` or `archived` only. | `stake.ts`; a search of `packages`, `lib`, `app` and `components` finds none |
+| "Promise" is not derived. | The nearest code is the parity read: `resolvePlatformStatus`, `hasParityGap` and `DEFAULT_DELIVERED_STATUSES = ["live"]`. | `packages/schema/src/acceptance.ts` |
+| `live` already means delivered. | A merged pull request moves an acceptance to `releasing`. Only the deploy door, `POST …/live`, sets `live`, one platform at a time, and refuses an unscoped one. | `packages/schema/src/promote.ts`, `lib/services/graph/live.ts` |
+| A shipped deliverable names nodes. | `deliverable.shipped` carries optional `node_ids` and one optional `platform`. The webhook sets `platform` only when exactly one platform resolves, so a delivery that spans two carries none. | `journal.ts`, `lib/services/github/pull-request.ts` (`deliverableScope`) |
+| A stake or option id reaches `node_ids` by hand only. | The PR mention grammar matches `AC-…` ids. Other ids come from the Lab Note `nodes:` key or the CLI `--nodes`, and an id the project does not hold is dropped and reported. | `packages/schema/src/mentions.ts`, `lib/services/github/lab-note-parse.ts`, `packages/cli/src/commands/deliverable.ts` |
+| Kritik findings name nodes; criteria carry no version. | `quality.finding.opened`, `.resolved` and `.accepted` carry optional `node_ids`. An assessment is keyed by criterion and surface, and a surface has no node link. A criterion has an id, `default_impact` and `weight`, and no version of its own; only the framework has one. | `journal-events.ts`, `quality.ts` |
+| A matrix can already hold a non-node. | A weighing matrix has `subjects` (a species query or a list) and an optional `context.node_id`. The derive and the validator read nodes only. | `packages/schema/src/weighing.ts`, `weighing-derive.ts`, `weighing-validate.ts` |
+
+### 14.2 What the leans add up to
+
+If the owner takes every lean below, parts 5 and 6 add this much and no more.
+
+| Part | Adds | Stores | Derives |
+|---|---|---|---|
+| 5 | Species `option` (`OPT-`, no platforms). One new edge type, `addresses`. Two new pairs on existing edges (`generates` decision to option, `impacts` decision to stake). A pure helper that writes a decision and its two edges in one batch. | The option node, its edges, the decision. The losers' reasons. | The answer type, the answer, an option's closure per stake, the promise role. |
+| 6 | A zod-free reader that derives the half of the proof and the state of a stake from facts that already exist. A stable list of the journal event types it reads. | One optional expiry field on the stake. | Verified, delivered, the platforms concerned, the six states. |
+
+No new journal event is needed in the lean. Both halves of the proof read what the journal already holds. Every new field is optional and additive, so neither part bumps `schema_version`. The new species and edge type are not additive for an older validator, which rejects an unknown species or edge type: part 5 is one release that adds both together.
+
+### 14.3 The calls
+
+Calls 1 to 4 shape part 5. Calls 5 to 11 shape part 6. Calls 12 and 13 are about ordering and what stays out.
+
+#### Call 1. What is an option? (RFC question 8)
+
+| | Option |
+|---|---|
+| **Lean (proposal)** | **A graph species**, `option`, id prefix `OPT-`, `platforms: []`. Stored lifecycle `idea`, `discovery` or `archived`, like a stake. The description holds the expected effect. The draft definition of done of [§ 7](#7-options-and-decision) lives on or beside it (§ 14.4). |
+| **Why** | An option needs edges (to stakes, to a decision, to acceptances), journal `node_ids` (a deliverable can name it) and, later, a matrix subject. A record has none of that. A candidate story covers a feature only; a diligence, a mitigation and a resolution are not acceptance-shaped. |
+| **Alternative A** | **A record** in the bundle, not a node. Smaller, but no edges, and the journal cross-check reads `node_ids` against nodes. |
+| **Alternative B** | **A candidate story**: an acceptance at status `idea`. Free for features, and the RFC already says it fits. Five of the six answer types would still need a home. |
+| **Rejected** | **A decision at `proposed`.** `decision_status` is global to the node, so one option could not be selected for one stake and closed for another, and `lifecycleStatusForDecision` forces a rejected decision to `archived`. |
+
+#### Call 2. The edge vocabulary
+
+[§ 11](#what-it-changes-in-weighings-slice-2) says part 5 decides the shape of `addresses` for the answer types other than a feature.
+
+| Pair | Lean **(proposal)** |
+|---|---|
+| Option to stake | New edge **`addresses`** |
+| Acceptance to stake | `addresses` (weighing slice 2's pair, now to a stake) |
+| Acceptance to option | `addresses` (a feature's draft definition of done) |
+| Decision to the selected option | Reuse **`generates`**, widened to decision to option |
+| Decision to the stake it settles | Reuse **`impacts`**, widened to decision to stake |
+
+| | |
+|---|---|
+| **Cost of the lean** | `generates` and `impacts` are disjoint by design. Widening both bends that rule: a reader can no longer tell the meaning from the edge type alone. The write helper and the validator carry the rest. |
+| **Alternative** | A second new edge, **`selects`** (decision to option), keeping `generates` for acceptances only. Clearer, and one more closed-enum edge type to ship together with the first. |
+| **Also decide** | Where `composes` acceptance to acceptance (weighing's stories) lands. It is untouched by this RFC, and `composes` is tied to flow playlists in the validator and the mutation planner, so the lean leaves it alone and does not use it for a definition of done. |
+
+#### Call 3. Where closure lives, and who decided
+
+Closure is derived per option and stake, never stored on the option. A shared option can be selected for one stake and closed for another, so no single `status` can hold it. An option is closed for a stake when that stake has an approved or enacted decision that generates a different option. A rejected or deprecated decision reopens it.
+
+| | |
+|---|---|
+| **Lean (proposal)** | Store only the reason each loser lost, on the decision: `metadata.closed_options: { option_id, reason }[]`. An optional metadata key needs no version bump. |
+| **Alternative A** | The reason on the edge's own `metadata`. Closer to the pair, but a loser has no edge to the decision to carry it. |
+| **Alternative B** | The reasons in the decision's `consequences` prose. Nothing new, nothing machine-readable. |
+| **Author** | Lean: read it from the journal `actor` of the decision's write, as every other record does. Alternative: store `decided_by` on the decision. |
+
+#### Call 4. The promise threshold
+
+An acceptance reads as a promise when a decision chose it. [§ 7](#7-options-and-decision) adds that an acceptance already live also reads as a promise, and weighing § 6 says status `backlog` or later. The two do not agree.
+
+| | |
+|---|---|
+| **Lean (proposal)** | A promise is an acceptance that an **approved or enacted** decision generates, directly or through an option it addresses, **or** one that already resolves to `live`. A `proposed` decision does not count, as in weighing § 10. |
+| **Alternative** | Weighing's rule: also any acceptance at `backlog` or later. It covers quick wins nobody debated, and it makes every backlog item a promise. |
+| **A candidate** | An acceptance at `idea` or `discovery` that no decision chose. Derived, never stored. |
+
+#### Call 5. How the states relate, platform by platform
+
+The table in [§ 8](#statuses-derived-and-never-stored) does not say how a state reads when the two halves differ across platforms. The cases it leaves open: verified on some platforms with nothing delivered; delivered with no verification; verified and delivered on different platforms; an expired verification with delivery already in hand.
+
+The lean is one reading, top rule first.
+
+| Order | State | True when |
+|---|---|---|
+| 1 | Addressed | Every required half holds on every platform concerned. |
+| 2 | Verified, not delivered | Delivery is required, it holds nowhere, and verification holds on every platform concerned. |
+| 3 | Partly addressed | Some required half holds on some platform, and no rule above applies. |
+| 4 | Promised | A decision chose an option and the answer has a definition of done. A stale verification lands here, whatever was delivered. |
+| 5 | Considered | An evaluation exists or an option addresses the stake (call 10 for the quality kinds). |
+| 6 | Raised | A signal was qualified into the stake. |
+
+**Lean (proposal):** this ladder. **Alternative:** a grid of the two halves per platform, shown as such, with a state only where one rule is unambiguous. Delivered without verified has no name in the RFC under either reading; the ladder files it under *partly addressed*.
+
+#### Call 6. What "verified" reads, given that `live` already means delivered
+
+[§ 10](#10-what-exists-today) says the verified half is the parity matrix, which reads `live`. But the deploy door sets `live` only when a build reached users, and a merged change sits at `releasing` until then. So the parity matrix already reads delivery.
+
+| Reading | Effect |
+|---|---|
+| **Lean (proposal):** verified is the acceptance reaching `live` on a platform; delivered is a `deliverable.shipped` that names the answer. | "Verified, not delivered" then means *live, with no changelog record*. Honest, and cheap: both reads exist. |
+| **Alternative A:** verified is `releasing` or later; delivered is `live`. | It reads better in words, and it contradicts § 10, where delivered is the shipped deliverable. |
+| **Alternative B:** a new journal event, `proof.recorded`, written by whoever checked. | The only way to prove a non-acceptance answer (a followed process, a non-reproduction) without modelling it as an acceptance. A new event type, so a new reader and spec entry. |
+
+Lean for the non-acceptance answers: **model each as an acceptance** (a repro becomes a Gherkin scenario; a mitigation process becomes a checkable acceptance), so no new event type is needed. If the owner wants an explicit confirmation, take alternative B.
+
+The delivered half needs an acceptance, option or stake id in a deliverable's `node_ids`. The mention grammar only reads `AC-…`, so a stake or option id arrives by the Lab Note `nodes:` key or the CLI `--nodes`.
+
+#### Call 7. What "the audit passes" means for Kritik, and when a criterion goes stale
+
+[§ 5](#5-catalogs-and-incarnations) rule 3 says a requirement reads stale when its criterion changes. The code cannot tell. A criterion has no version, an assessment is not tied to a node, and a surface is not either. Only a finding names nodes.
+
+| | |
+|---|---|
+| **What a pass could be** | (a) Every finding with the stake's criterion id and an anchor in its `node_ids` is resolved, refuted or accepted-risk. (b) An assessment of that criterion at or above the target level (`DEFAULT_TARGET_LEVEL`, 3) dated after the stake was raised. (c) Both. |
+| **Lean (proposal)** | (c) **Both**, so that no open finding and a re-scored criterion are each required. A finding alone passes a criterion nobody re-audited. A score alone ignores an open finding on the anchor. |
+| **Staleness** | Lean: store the framework version the requirement was last verified against, as weighing's `basis.set_version` does, and read the stake stale when the library moved to a new major (`sameFrameworkMajor` exists). It is coarse. **Alternative:** add a per-criterion version to the Kritik library. That is a Kritik change, against rule 2 of § 5, and it is the precise answer. |
+
+Part 4 owns the stored link from a stake to its criterion (`metadata.catalog`). The version it was last checked against is a new field and belongs to part 6.
+
+#### Call 8. Which platforms a stake concerns
+
+A stake and an option carry no platforms. A state that says "on every platform concerned" needs a list.
+
+| | |
+|---|---|
+| **Lean (proposal)** | The union of the platforms of the definition-of-done acceptances, read through the active product's scope. For an answer with no acceptance (a requirement, a risk), one platform-less cell: it is met or it is not. |
+| **Alternative A** | The platforms of the stake's anchor nodes. Simple, and an anchor often lists platforms the answer does not touch. |
+| **Alternative B** | Always one platform-less cell. Never wrong about a platform, and says nothing about parity. |
+| **The trap** | A `deliverable.shipped` with no `platform` is a delivery that spans two. Reading it as "every platform" over-claims; reading it as "none" under-claims. The lean reads an absent platform as **unknown, so not met on any platform**, which can understate a real delivery. A fix is an optional list of platforms per node on the event, additive, so that `AC-x@ios` stops being lost. The owner decides whether to widen the event. |
+
+#### Call 9. The shape of an expiry
+
+[§ 8](#8-done-and-proof) says the verified half may carry an expiry date. A date set once is already past the day a later check passes.
+
+| | |
+|---|---|
+| **Lean (proposal)** | An **interval** on the stake: `metadata.reverify_every_days`. The half reads stale when the latest check is older than the interval, so a new check restarts the clock. Optional; absent means it never expires. |
+| **Alternative** | An absolute date, `metadata.verify_by`. It reads stale when now is past it and no check is dated after it. It matches the RFC's wording, and the owner has to move it by hand. |
+| **Where** | Lean: on the stake, since the evidence is derived and the stake is what stays. **Alternative:** on the option or the answer, which dies with the choice. |
+
+The date of the latest check is the latest `node.status_changed` for the answer's acceptance and platform, or the latest assessment or finding resolution for a quality kind. Every read takes `now` as an argument, so it is testable.
+
+#### Call 10. "Considered" for requirement, risk and defect
+
+*Considered* is true when the stake has an evaluation or an option addresses it. A user-facing stake can hold a weighing assessment. A quality stake is read against Kritik, which is read-only, so no assessment of ours exists to find.
+
+| | |
+|---|---|
+| **Lean (proposal)** | A quality stake is *considered* when **an option addresses it**, or when it carries a catalog link (`metadata.catalog` naming a criterion), since the link is the evaluation by reference. |
+| **Alternative** | Only an option counts. A requirement then stays *raised* until someone writes an answer, which is true to the chain and makes the state less informative for the imagine door. |
+
+#### Call 11. What an archived stake derives to
+
+The RFC lists six states and none is *closed*. Part 1 stores `archived` as a lifecycle value.
+
+| | |
+|---|---|
+| **Lean (proposal)** | An archived stake derives no state. It leaves the state counts and every working view, as an archived option does, and stays readable. Its last derived state is not kept. |
+| **Alternative** | A seventh derived state, *closed*, with a free-text reason on the stake, so that a dismissed stake and a stake that was addressed can be told apart. |
+
+#### Call 12. The "suggested by" link, and where the edge lands
+
+[§ 7](#a-signal-can-seed-an-option) says a signal can seed an option, kept with a "suggested by" link. Signals are journal events, not nodes, so there is no edge to draw.
+
+| | |
+|---|---|
+| **Lean (proposal)** | The option carries `metadata.suggested_by: <request.filed event id>`, a string, written when an idea is ingested. A reader links the two the way a stake's `evidence[].event_id` already does. The cross-check warns on a dangling id, never errors. |
+| **Alternative** | Put the option's id on the signal (`option_ids` on `request.filed`). Two writers then own one link, and the event is immutable. |
+| **Ordering** | `suggested_by` ships with part 5, since it needs the option. Part 2 shipped everything else the RFC asked of it. `addresses` also ships with part 5: it has no use before an option exists. |
+
+#### Call 13. The comparison of options stays deferred (RFC question 1)
+
+No part builds on how options are compared. A decision is written by a person or an agent, with a reason. The existing matrix is enough to attach a comparison later: a list or query matrix whose `context.node_id` is the stake. Weighing options, cost and effect are the research session's.
+
+| | |
+|---|---|
+| **Lean (proposal)** | Leave question 1 open. Part 5 ships the option, the decision and the closure, with no scoring of options. |
+| **Alternative** | Wait for the research session, and ship part 5 after it. Nothing in the proposal depends on its outcome, so the lean does not need to wait. |
+
+### 14.4 What the lean builds, if the owner agrees
+
+Only after the owner answers. Each bullet is a build item, not a call.
+
+- **The answer type is derived.** A stake's species names it: bug to fix, friction to enhancement, need to feature, requirement to diligence, risk to mitigation, defect to resolution. One constant in the schema, nothing stored on the option.
+- **The answer is not a node.** It is the option that an approved or enacted decision generates for the stake.
+- **A definition of done per type.** Testable types point acceptances at the option with `addresses`. A requirement names its criterion through the stake. A risk or a defect carries `metadata.definition_of_done` on the option, or an acceptance.
+- **One atomic write.** A pure planner returns the mutation ops for "select this option for this stake": it creates the decision at `approved` (stored status `backlog`, as `lifecycleStatusForDecision` says) with its `impacts` and `generates` edges, and records the losers' reasons. It is exposed as an MCP tool only if the owner wants one; a new tool changes the tool-catalog count that a test pins.
+- **Validator warnings only.** An option with no `addresses` stake; a stake with more than one approved or enacted decision; a decision with more than one stake or more than one generated option; a generated option that does not address its stake; an option addressing stakes of two answer types.
+- **The proof reader.** A pure, zod-free module taking nodes, edges, the journal events of a stable type list and `now`. It returns the two halves, the platforms concerned and the state. Its event types are `node.status_changed`, `deliverable.shipped`, `decision.status_changed`, the three `quality.finding.*` types and `quality.assessment.scored`, so every consumer shares one query.
+
+### 14.5 What this proposal does not decide
+
+- The interface for options, the decision and the states. Each is a panel and Library question for its own design round.
+- The analysis layer on gains against protections ([§ 12](#12-open-questions), question 4).
+- Whether frequency belongs on bug and friction (question 3). It stays assumed.
+- Anything about migrating bundles: there is nothing to migrate, since no option or proof exists.
