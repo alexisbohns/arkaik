@@ -60,6 +60,8 @@ const NODES = [
     metadata: { gherkin: "Given a link\nWhen I tap it\nThen we connect", values: ["connects"] },
   },
   { id: "V-home", project_id: "demo", species: "view", title: "Home", status: "live", platforms: ["web"] },
+  { id: "STK-slow", project_id: "demo", species: "stake", title: "Finding an invite takes too long", status: "idea", platforms: [], metadata: { stake_species: "need", felt: "wanted", matters: 3, frequency: "often" } },
+  { id: "STK-token", project_id: "demo", species: "stake", title: "A leaked token", status: "idea", platforms: [], metadata: { stake_species: "risk", catalog: { source: "kritik", id: "SAF-01" } } },
 ];
 const BUNDLE = { schema_version: 3, project: { id: "demo", title: "Demo", created_at: ISO, updated_at: ISO }, nodes: NODES, edges: [] };
 const CREATED = NODES.map((n, i) => JSON.stringify({ id: `01A${i}`, ts: ISO, type: "node.created", node_id: n.id, species: n.species, title: n.title }));
@@ -314,6 +316,24 @@ async function main() {
     const withP = (await repo.call("get_matrix", { subject: "AC-invite", probabilities: true })).json.promise.cells.find((c) => c.criterion === "simplifies");
     check("probabilities: true adds them", withP.p_serves === 0.55 && withP.p_costs === 0.2);
     check("filter=uncertain lists it", (await repo.call("get_matrix", { filter: "uncertain" })).json.promises.map((x) => x.node_id).join() === "AC-invite");
+
+    // --- stakes: a reference declares the kinds it scores (stake architecture, part 4) -------------------
+    const stakeRead = await repo.call("get_matrix", { subject: "STK-slow" });
+    check("get_matrix defaults a stake subject to the stakes matrix", !stakeRead.isError && stakeRead.json.matrix.id === "stakes" && stakeRead.json.matrix.set === "value-contribution@2", stakeRead.text.slice(0, 200));
+    check("…and shows the stake's kind, reference, felt, matters and frequency beside the score", JSON.stringify(stakeRead.json.promise.stake) === JSON.stringify({ stake_species: "need", reference: { kind: "weighing-set", set: "value-contribution@2" }, felt: "wanted", matters: 3, frequency: "often" }), JSON.stringify(stakeRead.json.promise.stake));
+    check("a stake is never seeded: no cells until it is scored", stakeRead.json.promise.cells.length === 0 && stakeRead.json.notes?.some((n) => /never seeded/.test(n)), JSON.stringify(stakeRead.json.notes));
+    const stakeScored = await repo.call("assess", { subject: "STK-slow", criterion: "saves-time", level: 1, confidence: 1, evidence: "the list has no search" });
+    check("assess weighs a need on the stakes matrix by default", !stakeScored.isError && stakeScored.json.assessment.matrix === "stakes", stakeScored.text.slice(0, 300));
+    check("…into its own sidecar, never the value matrix's", repo.readJson("docs", "weighing", "assessments", "stakes.json").assessments.length === 1 && repo.readJson("docs", "weighing", "assessments", "value.json").assessments.every((a) => a.subject !== "STK-slow"));
+    const stakeList = (await repo.call("get_matrix", { matrix: "stakes" })).json;
+    check("the stakes matrix lists the weighable stakes only, with their facts", stakeList.promises.map((x) => x.node_id).join() === "STK-slow" && stakeList.promises[0].stake.matters === 3);
+    check("the value matrix still lists the acceptances only", (await repo.call("get_matrix")).json.promises.every((x) => x.node_id.startsWith("AC-")));
+    const riskScored = await repo.call("assess", { subject: "STK-token", criterion: "saves-time", level: 1, confidence: 0 });
+    check("a risk is refused: Kritik reads it, the pyramid never does", riskScored.isError && riskScored.json.refusals?.[0]?.reason === "unknown_subject" && /Kritik/.test(riskScored.json.refusals[0].detail), riskScored.text.slice(0, 300));
+    const kritikScored = await repo.call("assess", { subject: "STK-slow", criterion: "SAF-01", level: 1, confidence: 0 });
+    check("a Kritik criterion is never written as an assessment", kritikScored.isError && kritikScored.json.refusals?.[0]?.reason === "unknown_criterion", kritikScored.text.slice(0, 300));
+    const stakeSummary = (await repo.call("get_node", { node_id: "STK-slow" })).json;
+    check("a stake's node carries felt, matters and frequency", stakeSummary.node.metadata?.felt === "wanted" && stakeSummary.node.metadata.matters === 3, JSON.stringify(stakeSummary).slice(0, 300));
   } finally {
     repo.stop();
   }

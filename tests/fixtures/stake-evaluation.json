@@ -1,0 +1,153 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Stake Evaluation Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-list",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble List",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "felt": "wanted"
+      }
+    },
+    {
+      "id": "STK-slow-list",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Finding a pebble takes too long",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need",
+        "felt": "wanted",
+        "matters": 3,
+        "frequency": "often",
+        "catalog": {
+          "source": "values",
+          "id": "saves-time"
+        }
+      }
+    },
+    {
+      "id": "STK-wrong-bug",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Wrong bug",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "bug",
+        "felt": "wanted",
+        "matters": 2
+      }
+    },
+    {
+      "id": "STK-score-risk",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Quality risk with a mattering",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "risk",
+        "matters": 4,
+        "frequency": "some",
+        "catalog": {
+          "source": "kritik",
+          "id": "SAF-01"
+        }
+      }
+    },
+    {
+      "id": "STK-weighed-risk",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Risk weighed on the pyramid",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "risk"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-slow-list-V-pebble-list",
+      "project_id": "fixture",
+      "source_id": "STK-slow-list",
+      "target_id": "V-pebble-list",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-wrong-bug-V-pebble-list",
+      "project_id": "fixture",
+      "source_id": "STK-wrong-bug",
+      "target_id": "V-pebble-list",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-score-risk-V-pebble-list",
+      "project_id": "fixture",
+      "source_id": "STK-score-risk",
+      "target_id": "V-pebble-list",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-weighed-risk-V-pebble-list",
+      "project_id": "fixture",
+      "source_id": "STK-weighed-risk",
+      "target_id": "V-pebble-list",
+      "edge_type": "concerns"
+    }
+  ],
+  "weighing": {
+    "sets": [],
+    "matrices": [],
+    "assessments": [
+      {
+        "matrix": "stakes",
+        "subject": "STK-slow-list",
+        "criterion": "saves-time",
+        "level": 2,
+        "scorer": {
+          "kind": "human",
+          "id": "owner"
+        },
+        "confidence": 2,
+        "evidence": "Seen on the list",
+        "basis": {
+          "fingerprint": "fp1-0",
+          "set_version": "2.0.0"
+        },
+        "ts": "2026-11-22T10:00:00.000Z"
+      },
+      {
+        "matrix": "stakes",
+        "subject": "STK-weighed-risk",
+        "criterion": "saves-time",
+        "level": 2,
+        "scorer": {
+          "kind": "human",
+          "id": "owner"
+        },
+        "confidence": 2,
+        "evidence": "Seen on the list",
+        "basis": {
+          "fingerprint": "fp1-0",
+          "set_version": "2.0.0"
+        },
+        "ts": "2026-11-22T10:00:00.000Z"
+      }
+    ]
+  }
+}

@@ -56,6 +56,7 @@
     "test:stake": "node tests/schema/stake.test.js",
     "test:signal": "node tests/schema/signal.test.js",
     "test:qualify": "node tests/schema/qualify.test.js",
+    "test:stake-evaluation": "node tests/schema/stake-evaluation.test.js",
     "test:delivery": "node tests/app/delivery.test.js",
     "test:journey-graph": "node tests/app/journey-graph.test.js",
     "test:journey-layout": "node tests/app/journey-layout.test.js",
