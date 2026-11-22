@@ -120,8 +120,8 @@ async function main() {
 
   const listed = await request("tools/list");
   const toolNames = (listed.result?.tools ?? []).map((tool) => tool.name);
-  // 16 graph tools + 14 kritik_* + 3 weighing + 2 qualification (docs/spec/mcp.md § Tool Catalog).
-  check("tools/list exposes the 35-tool catalog", toolNames.length === 35, toolNames.join(", "));
+  // 16 graph tools + 14 kritik_* + 3 weighing + 2 qualification + 1 decision (docs/spec/mcp.md § Tool Catalog).
+  check("tools/list exposes the 36-tool catalog", toolNames.length === 36, toolNames.join(", "));
   for (const name of ["list_nodes", "get_node", "create_node", "update_node", "add_edge", "validate_bundle", "get_map", "record_screenshot", "remove_screenshot"]) {
     check(`catalog includes ${name}`, toolNames.includes(name));
   }
@@ -131,7 +131,7 @@ async function main() {
   for (const name of ["get_matrix", "assess", "save_positioning"]) {
     check(`catalog includes ${name}`, toolNames.includes(name));
   }
-  for (const name of ["qualify_signal", "promote_signal"]) {
+  for (const name of ["qualify_signal", "promote_signal", "decide_option"]) {
     check(`catalog includes ${name}`, toolNames.includes(name));
   }
   const createDef = (listed.result?.tools ?? []).find((tool) => tool.name === "create_node");
