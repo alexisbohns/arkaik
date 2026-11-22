@@ -231,7 +231,7 @@ stake it is lives in `metadata.stake_species`, a field of its own because
 | `risk` | quality and obligation | A threat that can only be mitigated. |
 | `defect` | quality and obligation | A flaw of our own making that leaves a threat. |
 
-Four optional metadata fields, all additive (no `schema_version` bump):
+Seven optional metadata fields, all additive (no `schema_version` bump):
 
 - `stake_species` — one of the six above. Missing is legal and warned about.
 - `provenance` — `observed` (seen in the world; the default when absent) or
@@ -245,6 +245,22 @@ Four optional metadata fields, all additive (no `schema_version` bump):
   stake, one entry per `request.filed` qualified into it. The durable half of
   the signal-to-stake link ([spec/journal.md § Signals](spec/journal.md#signals));
   a signal a stake cites is closed in the backlog.
+- `felt`, `matters`, `frequency` — bug, friction and need only. `felt` is how the
+  person feels it (`expected`, `wanted` or `delight`; a bug is always
+  `expected`), `matters` how much addressing it matters (4 down to 1, worded per
+  felt kind), `frequency` how often it comes up (`rare`, `some`, `often`).
+
+**Evaluation.** A stake carries no score of its own: its species picks the
+reference that reads it, and a reference declares the species it reads. A bug,
+friction or need is weighed on the value pyramid (`value-contribution@2`
+declares them, and its stake assessments live in the built-in `stakes` matrix,
+see [spec/bundle-format.md § Weighing](spec/bundle-format.md#weighing)). A
+requirement, risk or defect is read against a Kritik criterion, and its
+criticality (the criterion's `default_impact` and `weight`, and the severity of
+the finding that raised it) is read when asked, never stored on the stake and
+never written as an assessment. Mattering, a pyramid level and a Kritik
+criticality are three scales about three things: nothing sums or ranks across
+them, and frequency is shown, not sorted by.
 
 **Lifecycle.** The node's own `status` is the stored lifecycle, limited to
 `idea` (proposed, not reviewed: every agent write lands here), `discovery`
@@ -267,8 +283,9 @@ Model source: [packages/schema/src/stake.ts](../packages/schema/src/stake.ts).
 
 Stake surfaces:
 
-- **Node detail panel** — a Stake group: kind, provenance, the catalog link and
-  the three-value lifecycle; the `concerns` line sits in the Relations group.
+- **Node detail panel** — a Stake group: kind, provenance, the catalog link,
+  felt, matters and frequency for a bug, friction or need (or a requirement's,
+  risk's or defect's read-only Kritik criticality) and the three-value lifecycle; the `concerns` line sits in the Relations group.
 - **Library** (`/project/[id]/library?species=stake`) — gallery card and
   directory row like any other species; kind, provenance and lifecycle badges
   stand in for platform chips on the card, and the directory row carries the

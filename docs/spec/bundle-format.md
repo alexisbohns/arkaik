@@ -172,8 +172,8 @@ interface WeighingSection extends Record<string, unknown> {
 }
 
 interface WeighingAssessment extends Record<string, unknown> {
-  matrix: string;               // "value"
-  subject: string;              // an acceptance id
+  matrix: string;               // "value", or "stakes" for a stake
+  subject: string;              // an acceptance id, or a bug / friction / need stake id
   criterion: string;            // an element of value, e.g. "reduces-anxiety"
   level: number;                // -3..+3, whole numbers. 0 = weighed and unrelated. A blank cell is the ABSENCE of the row
   scorer?: { kind: "human" | "agent" | "rule"; id: string; model?: string; on_behalf_of?: string };  // absent on a hand-edited row: it wins no cell, and the validator warns
@@ -189,6 +189,8 @@ interface WeighingAssessment extends Record<string, unknown> {
 ```
 
 **The built-in library.** `value-contribution` (the 30 elements of value in their four tiers, each with its own ladder describing every level −3..+3 in words) and the `value` matrix (every acceptance against that set) ship in `@arkaik/schema` and are pinned by version, as Kritik's pack is. A project cannot redefine them (`validateBundle` warns). The matrix reads **`value-contribution@2`**, the reach ruler; `@1` (centrality) stays in the library, frozen, so a ref to it still resolves, and every level scored against it reads stale. A positioning that still extends `@1` warns `weighing-positioning-old-ruler`.
+
+**A set declares what it scores.** A criteria set's `subject` stays `"acceptance"`; an optional `stake_species?: ("bug" | "friction" | "need" | "requirement" | "risk" | "defect")[]` says which kinds of stake it may also score. `value-contribution@2` declares `["bug", "friction", "need"]`; `@1` declares none (frozen). `referenceForStakeSpecies` follows those declarations and answers Kritik for a species no set declares. The declaration is not part of the set's version or of any subject's fingerprint, so declaring a species never stales a stored cell. A second built-in matrix, **`stakes`** (every stake of a declared kind, against `value-contribution@2`, no positioning), holds a stake's cells; they are never mixed into the `value` matrix's, and a stake with no `matrix` named is weighed there. A stake has no `metadata.values` claim: it is never seeded and raises no claim flag, and it has no kept share. Its `basis.fingerprint` hashes its title and its `stake_species` (a rerouted stake is another thing to weigh), never its evidence, so merging one more signal into a stake does not stale a score. The planner refuses a stake whose kind the set does not declare (`unknown_subject`, naming Kritik for a requirement, risk or defect); the validator warns on such a row already stored (`weighing-subject-stake-species`).
 
 **Signed, never netted — and measured by reach.** A level says how far into a person's life the promise reaches: +3 life-wide, +2 across the product's domain, +1 within the product, 0 is unrelated (weighed, and found to have nothing to do with it — no row at all means nobody has weighed it yet), −1 a small cost within the product, −2 a loss across the domain, −3 the opposite of the value, life-wide. A promise's *served* (sum of positive levels ÷ 3) and *cost* (sum of |negative levels| ÷ 3) are derived separately and never combined: "serves 1.0 · costs 0.67", never "0.33".
 
@@ -219,7 +221,7 @@ The validator warns on each of these (`weighing-assessment-shape`, `-assessment-
 
 **"The first wins" is true.** For two sets (or matrices) with one id, the first *well-formed* one wins and the later one is ignored with a `weighing-duplicate-set` (`-matrix`) warning; a malformed earlier entry never shadows a good later one, and is not counted as a duplicate.
 
-**Validation is warnings only** (never import-blocking): an unknown or retired criterion, an unknown matrix or set, a set ref at another major than the set (`weighing-set-ref-major`), a set or matrix too malformed to use (`weighing-set-shape`, `weighing-matrix-shape`), a level off the set's scale, a confidence outside 0–3, a missing scorer, an unknown scorer kind, a stored `rule` row, a subject that is not an acceptance of this bundle, confidence 2–3 with no evidence, two rows for one cell and scorer kind, a score taken against another major of the set, a positioning naming a non-element or a weight at or below 0, a positioning under an id other than `positioning` (or a set called `positioning` with no role), a positioning whose `extends` is missing, unknown or itself a positioning, a `weighing.*` event with no `actor`.
+**Validation is warnings only** (never import-blocking): an unknown or retired criterion, an unknown matrix or set, a set ref at another major than the set (`weighing-set-ref-major`), a set or matrix too malformed to use (`weighing-set-shape`, `weighing-matrix-shape`), a level off the set's scale, a confidence outside 0–3, a missing scorer, an unknown scorer kind, a stored `rule` row, a subject that is not an acceptance of this bundle (or, on the `stakes` matrix, not a stake of a kind the set declares), a set whose `stake_species` is not an array of stake kinds (`weighing-set-stake-species`), confidence 2–3 with no evidence, two rows for one cell and scorer kind, a score taken against another major of the set, a positioning naming a non-element or a weight at or below 0, a positioning under an id other than `positioning` (or a set called `positioning` with no role), a positioning whose `extends` is missing, unknown or itself a positioning, a `weighing.*` event with no `actor`.
 
 **Publik withholds it by default.** A weighing section holds what a product scores its own promises against its own values, and the costs it has admitted. `POST /api/publik` strips it as it strips the journal and the quality section; `?include_weighing=true` opts in, and opting into either of the others never implies it.
 
@@ -351,6 +353,32 @@ platform-agnostic records, not something that ships. `platforms-non-empty`
 exempts the `decision` species for exactly this reason, the same way the
 Products section's rules gate on species.
 
+#### Evaluation: a reference declares its species
+
+A stake carries no score of its own. The **reference** that reads it is chosen by
+its species, and a reference *declares* the species it reads:
+
+| Stake species | Read against | How |
+|---|---|---|
+| bug, friction, need | the value pyramid, `value-contribution@2` | assessments in the weighing section ([Weighing](#weighing)), plus `felt`, `matters` and `frequency` on the node |
+| requirement, risk, defect | Kritik criteria | the criterion in `catalog`; its criticality is **read** (`kritikCriticality`), never copied onto the stake |
+
+`felt` is how the person feels it: `expected` (a must-be; a bug is always this),
+`wanted` (a performance) or `delight` (an attractive). `matters` is how much
+addressing it matters, 4 (most) to 1, worded per felt kind (for example,
+expected: 4 deal-breaker, 3 clearly annoying, 2 mildly annoying, 1 barely
+noticed). `frequency` is how often the situation comes up. They apply to the
+user-facing species only; an unknown value of any of the three is rejected at the
+schema-parse boundary, as an unknown `stake_species` is. Mattering is a separate
+scale from a pyramid level and from a Kritik criticality: **nothing sums or ranks
+across them**, and `frequency` is shown, not sorted by.
+
+A requirement, risk or defect has no assessment. Its criticality is the
+criterion's `default_impact` (1 to 5) and `weight` (1 to 3), and the severity of
+the finding that raised it when one did; a project whose Kritik library lacks the
+criterion reads "unknown", never a made-up number. A Kritik criterion id is never
+written into the weighing section.
+
 **All of the above is additive: no `schema_version` bump.** Every field is
 optional metadata, every enum member and edge type is new vocabulary, and the
 one new journal event (`decision.status_changed`, [journal.md](journal.md) §
@@ -365,7 +393,7 @@ A `stake` node (id prefix `STK-`) is something that matters about the product: a
 bug, a friction, a need, a requirement, a risk or a defect
 ([rfcs/stake-architecture.md](../rfcs/stake-architecture.md); the model is
 [graph-model.md § Stakes](../graph-model.md)). `title` + `description` say what
-it is. Four metadata fields are meaningful on stake nodes only:
+it is. These metadata fields are meaningful on stake nodes only:
 
 ```ts
 interface NodeMetadata {
@@ -374,6 +402,10 @@ interface NodeMetadata {
   provenance?: "observed" | "anticipated";   // absent reads as observed
   catalog?: { source: "kritik" | "values"; id: string };
   evidence?: { event_id?: string; quote?: string; voice?: "person" | "maintainer" | "agent"; date?: string }[];
+  // Bug, friction and need only (see Evaluation below):
+  felt?: "expected" | "wanted" | "delight";
+  matters?: 1 | 2 | 3 | 4;
+  frequency?: "rare" | "some" | "often";
 }
 ```
 
@@ -413,12 +445,14 @@ hand-edited bundle never bricks:
 | Rule | Raised when |
 |---|---|
 | `stake-species-missing` | a stake has no `stake_species` |
-| `stake-species-wrong-species` | `stake_species`, `provenance`, `catalog` or `evidence` sits on a node that is not a stake |
+| `stake-species-wrong-species` | `stake_species`, `provenance`, `catalog`, `evidence`, `felt`, `matters` or `frequency` sits on a node that is not a stake |
 | `stake-lifecycle` | a stake's `status` is outside idea, discovery, archived |
 | `stake-anticipated-species` | an anticipated stake is a bug or a friction |
 | `stake-catalog-mismatch` | a requirement, risk or defect links to `values`, or a bug, friction or need links to `kritik` |
 | `stake-catalog-unknown-value` | a `values` link names an id outside the value pyramid |
 | `stake-unanchored` | a stake has no outgoing `concerns` edge |
+| `stake-bug-felt` | a bug's `felt` is not `expected` |
+| `stake-evaluation-quality-species` | `felt`, `matters` or `frequency` sits on a requirement, risk or defect |
 
 **All of the above is additive: no `schema_version` bump.** Every field is
 optional metadata and the species and edge type are new vocabulary. Old bundles
