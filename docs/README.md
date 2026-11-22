@@ -27,6 +27,7 @@ Normative specs for the arkaik format and tooling (each carries its own implemen
 Proposals and decision records (internal, not served on the `/docs` site):
 
 - [Weighing](rfcs/weighing.md) — accepted, slice 1 implemented (2026-11-15): weighing promises, journeys and value with signed levels, stories, needs, outcomes, positioning and caps
+- [Need qualification](rfcs/need-qualification.md) — proposed (2026-11-22): a nine-step method from raw input to a qualified need (voice, laddering, felt kind, mattering tiers, frequency), usable by a triage agent
 
 ## LLM & Prompt Surfaces
 
