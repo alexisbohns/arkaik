@@ -233,7 +233,7 @@ export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: St
     delete next.felt;
     delete next.matters;
     delete next.frequency;
-  } else if (species === "bug" && next.felt !== undefined) {
+  } else if (species === "bug") {
     next.felt = "expected";
   }
   return next;

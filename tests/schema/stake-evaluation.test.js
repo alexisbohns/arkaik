@@ -172,6 +172,7 @@ check("…and nothing from a malformed one", stakeFeltOf({ metadata: { felt: "me
 check("a write sets all three", eq(stakeMetadataWith({ stake_species: "need" }, { felt: "delight", matters: 4, frequency: "some" }), { stake_species: "need", felt: "delight", matters: 4, frequency: "some" }));
 check("undefined clears one", !("matters" in stakeMetadataWith({ stake_species: "need", matters: 2 }, { matters: undefined })));
 check("a bug is always expected", stakeMetadataWith({ stake_species: "bug" }, { felt: "wanted" }).felt === "expected");
+check("…and a stake that becomes a bug is written as expected even with no felt stored", stakeMetadataWith({ stake_species: "need" }, { stake_species: "bug" }).felt === "expected");
 check("moving a stake to a quality species drops all three", eq(stakeMetadataWith({ stake_species: "need", ...md }, { stake_species: "risk" }), { stake_species: "risk" }));
 check("moving between user-facing species keeps them", stakeMetadataWith({ stake_species: "need", ...md }, { stake_species: "friction" }).matters === 3);
 
@@ -232,7 +233,7 @@ check("a lower finding reads lower", kritikCriticality("SAF-01", pack, { impact:
 check("an unknown criterion reads unknown, never throws", eq(kritikCriticality("ZZZ-99", pack), { criterion_id: "ZZZ-99", source: "unknown" }));
 check("no library reads unknown", eq(kritikCriticality("SAF-01", undefined), { criterion_id: "SAF-01", source: "unknown" }) && eq(kritikCriticality("SAF-01", null), { criterion_id: "SAF-01", source: "unknown" }));
 const synthesized = { criteria: [{ id: "SAF-01", domain: "SAF", weight: 1 }], domains: [], version: "0" };
-check("a synthesized library (no default impact) reads unknown, weight kept", kritikCriticality("SAF-01", synthesized).source === "unknown" && kritikCriticality("SAF-01", synthesized).weight === 1);
+check("a synthesized library (no default impact) reads unknown, with no invented weight", eq(kritikCriticality("SAF-01", synthesized), { criterion_id: "SAF-01", source: "unknown" }));
 check("a malformed finding is ignored, not trusted", kritikCriticality("SAF-01", pack, { impact: "high", likelihood: 2 }).source === "criterion");
 check("nothing is copied onto the stake: the reading is a pure function of the library", !("criticality" in stakeMetadataWith({ stake_species: "risk", catalog: { source: "kritik", id: "SAF-01" } }, {})));
 
