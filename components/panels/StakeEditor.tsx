@@ -246,7 +246,7 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
               if (readOnly) {
                 return (
                   <p className="text-sm" data-stake-matters="">
-                    {matters && wording ? `${matters} · ${wording.tiers[matters].name}` : "Not set"}
+                    {matters && wording ? `${matters} · ${wording.tiers[matters].name}` : matters ? `${matters} (say how it is felt to read it)` : "Not set"}
                   </p>
                 );
               }
@@ -254,7 +254,7 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
                 <>
                   <Select
                     value={matters ? String(matters) : NO_VALUE}
-                    disabled={!wording}
+                    disabled={!wording && !matters}
                     onValueChange={(value) => write({ matters: value === NO_VALUE ? undefined : (Number(value) as StakeMatters) })}
                   >
                     <SelectTrigger id={`${fieldId}-matters`} aria-label="How much it matters" data-stake-matters="">
@@ -264,12 +264,13 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
                       <SelectItem value={NO_VALUE}>
                         <span className="text-muted-foreground">Not set</span>
                       </SelectItem>
-                      {wording &&
-                        [...STAKE_MATTERS_LEVELS].reverse().map((level) => (
-                          <SelectItem key={level} value={String(level)}>
-                            {level} · {wording.tiers[level].name}
-                          </SelectItem>
-                        ))}
+                      {wording
+                        ? [...STAKE_MATTERS_LEVELS].reverse().map((level) => (
+                            <SelectItem key={level} value={String(level)}>
+                              {level} · {wording.tiers[level].name}
+                            </SelectItem>
+                          ))
+                        : matters && <SelectItem value={String(matters)}>{matters}</SelectItem>}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -320,6 +321,9 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
             const criterionId = catalog?.source === "kritik" ? catalog.id : undefined;
             if (criterionId === undefined) return <p className="text-sm text-muted-foreground">Link a Kritik criterion to read how critical it is.</p>;
             const reading = kritikCriticality(criterionId, library);
+            // A project that carries no pack (the pack lives outside the bundle) or only one rebuilt from assessment ids has
+            // no impacts to read: that is a missing library, not a criterion the library lacks.
+            const libraryLoaded = library?.criteria.some((criterion) => criterion.default_impact !== undefined) === true;
             return reading.impact !== undefined ? (
               <p className="text-sm" data-stake-criticality="">
                 Impact {reading.impact} of 5
@@ -332,7 +336,9 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
               </p>
             ) : (
               <p className="text-sm text-muted-foreground" data-stake-criticality="">
-                Unknown: this project&apos;s Kritik library does not carry {reading.criterion_id}.
+                {libraryLoaded
+                  ? `Unknown: this project's Kritik library does not carry ${reading.criterion_id}.`
+                  : `Unknown: no Kritik library is loaded for this project, so ${reading.criterion_id} cannot be read here.`}
               </p>
             );
           })()}
