@@ -69,6 +69,24 @@ export interface KritikCriticality {
 const isScore = (value: unknown, max: number): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= max;
 
+/**
+ * The version of a Kritik criterion (SPEC § 5): an integer counting changes to
+ * its definition or level anchors, so "changed since I verified it" is one
+ * comparison. A criterion the library lists without a usable version (a
+ * vendored pack, a library rebuilt from assessment ids, a custom criterion)
+ * reads 1, the baseline. An id the library does not list reads `undefined`.
+ * Never throws.
+ */
+export function kritikCriterionVersion(
+  criterionId: string,
+  library: Pick<KritikLibrary, "criteria"> | null | undefined,
+): number | undefined {
+  const criterion = Array.isArray(library?.criteria) ? library.criteria.find((candidate) => candidate?.id === criterionId) : undefined;
+  if (criterion === undefined) return undefined;
+  const version = criterion.version;
+  return typeof version === "number" && Number.isInteger(version) && version >= 1 ? version : 1;
+}
+
 export function kritikCriticality(
   criterionId: string,
   library: Pick<KritikLibrary, "criteria"> & Partial<Pick<KritikLibrary, "scales">> | null | undefined,

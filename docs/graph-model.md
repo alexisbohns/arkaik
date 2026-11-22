@@ -250,6 +250,14 @@ Seven optional metadata fields, all additive (no `schema_version` bump):
   person feels it (`expected`, `wanted` or `delight`; a bug is always
   `expected`), `matters` how much addressing it matters (4 down to 1, worded per
   felt kind), `frequency` how often it comes up (`rare`, `some`, `often`).
+- `reverify_every_days` — a positive number of days, on any stake. The verified
+  half of the proof expires this many days after the latest check. Absent means
+  it does not expire. Clearing the field in the editor removes the key.
+- `verified_criterion_version` — a requirement, risk or defect linked to a Kritik
+  criterion: the criterion's `version` when it was last verified. The criterion
+  moving past it reads the verification as stale. Written by the agent or the
+  MCP tool, not by the editor, and dropped when the species or the link stops
+  fitting.
 
 **Evaluation.** A stake carries no score of its own: its species picks the
 reference that reads it, and a reference declares the species it reads. A bug,

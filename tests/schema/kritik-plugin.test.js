@@ -253,6 +253,7 @@ try {
 
   const overlay = JSON.parse(fs.readFileSync(path.join(repo, "docs/quality/criteria.custom.json"), "utf8"));
   check("scaffold writes the criterion into the overlay", overlay.criteria.length === 1 && overlay.criteria[0].id === "X-01");
+  check("scaffold gives the custom criterion version 1", overlay.criteria[0].version === 1);
   check("scaffold defines the project's new domain alongside it", eq(overlay.domains, [{ code: "RIT", name: "Ritual integrity" }]));
   check("scaffold records the pack version the overlay was authored against", overlay.extends === fixture.section.framework_version);
   check("scaffold generates an issue skeleton for the custom criterion", typeof overlay.criteria[0].issue.body_skeleton === "string");

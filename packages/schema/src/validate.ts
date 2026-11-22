@@ -762,7 +762,17 @@ export function validateBundle(input: unknown): ValidationResult {
     const stakeMd = (node.metadata ?? {}) as Record<string, unknown>;
 
     if (species !== "stake") {
-      for (const field of ["stake_species", "provenance", "catalog", "evidence", "felt", "matters", "frequency"]) {
+      for (const field of [
+        "stake_species",
+        "provenance",
+        "catalog",
+        "evidence",
+        "felt",
+        "matters",
+        "frequency",
+        "reverify_every_days",
+        "verified_criterion_version",
+      ]) {
         if (stakeMd[field] !== undefined) {
           warn(
             `${base}.metadata.${field}`,
@@ -843,6 +853,34 @@ export function validateBundle(input: unknown): ValidationResult {
         "stake-bug-felt",
         `Stake ${nodeId}: a bug is always felt as expected (a must-be), not ${JSON.stringify(stakeMd.felt)}`,
       );
+    }
+
+    // The two stored inputs of the proof (RFC § 14.4). Shape first; the link check only for a well-formed version.
+    if (stakeMd.reverify_every_days !== undefined) {
+      const days = stakeMd.reverify_every_days;
+      if (typeof days !== "number" || !Number.isFinite(days) || days <= 0) {
+        warn(
+          `${base}.metadata.reverify_every_days`,
+          "stake-reverify-invalid",
+          `Stake ${nodeId}: reverify_every_days must be a positive number of days, not ${JSON.stringify(days)}`,
+        );
+      }
+    }
+    if (stakeMd.verified_criterion_version !== undefined) {
+      const version = stakeMd.verified_criterion_version;
+      if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+        warn(
+          `${base}.metadata.verified_criterion_version`,
+          "stake-criterion-version-invalid",
+          `Stake ${nodeId}: verified_criterion_version must be a positive integer, not ${JSON.stringify(version)}`,
+        );
+      } else if (catalog?.source !== "kritik") {
+        warn(
+          `${base}.metadata.verified_criterion_version`,
+          "stake-criterion-version-unlinked",
+          `Stake ${nodeId}: verified_criterion_version names a Kritik criterion version, but the stake has no Kritik catalog link`,
+        );
+      }
     }
 
     if (!concernsSources.has(nodeId)) {

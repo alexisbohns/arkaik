@@ -114,6 +114,46 @@
       "metadata": {
         "stake_species": "bug"
       }
+    },
+    {
+      "id": "STK-bad-interval",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Bad interval",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need",
+        "reverify_every_days": 0
+      }
+    },
+    {
+      "id": "STK-bad-version",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Bad version",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "requirement",
+        "catalog": {
+          "source": "kritik",
+          "id": "SAF-01"
+        },
+        "verified_criterion_version": 1.5
+      }
+    },
+    {
+      "id": "STK-unlinked-version",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Unlinked version",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "requirement",
+        "verified_criterion_version": 1
+      }
     }
   ],
   "edges": [
@@ -156,6 +196,27 @@
       "id": "e-STK-product-V-pebble-detail",
       "project_id": "fixture",
       "source_id": "STK-product",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-bad-interval-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-bad-interval",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-bad-version-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-bad-version",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-unlinked-version-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-unlinked-version",
       "target_id": "V-pebble-detail",
       "edge_type": "concerns"
     }

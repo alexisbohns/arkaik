@@ -193,6 +193,18 @@ export function stakeFrequencyOf(node: Pick<Node, "metadata">): StakeFrequency |
   return (STAKE_FREQUENCY_IDS as readonly string[]).includes(raw as string) ? (raw as StakeFrequency) : undefined;
 }
 
+/** A stake's re-verify interval in days when it is a positive number, else undefined (never expires). */
+export function stakeReverifyDaysOf(node: Pick<Node, "metadata">): number | undefined {
+  const raw = node.metadata?.reverify_every_days;
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : undefined;
+}
+
+/** The Kritik criterion version a stake was last verified against when it is a positive integer, else undefined. */
+export function stakeVerifiedCriterionVersionOf(node: Pick<Node, "metadata">): number | undefined {
+  const raw = node.metadata?.verified_criterion_version;
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 1 ? raw : undefined;
+}
+
 /** One edit to a stake's own metadata. `undefined` clears the field, a missing key leaves it. */
 export interface StakeFieldChange {
   stake_species?: StakeSpeciesId | undefined;
@@ -201,6 +213,10 @@ export interface StakeFieldChange {
   felt?: StakeFelt | undefined;
   matters?: StakeMatters | undefined;
   frequency?: StakeFrequency | undefined;
+  /** The verified half expires this many days after the latest check. */
+  reverify_every_days?: number | undefined;
+  /** The Kritik criterion version a requirement was last verified against. */
+  verified_criterion_version?: number | undefined;
 }
 
 /**
@@ -214,10 +230,12 @@ export interface StakeFieldChange {
  * - felt, matters and frequency are for the user-facing species only (RFC § 6):
  *   a requirement, risk or defect drops all three, and a bug is always
  *   `expected`.
+ * - The verified criterion version is for a quality species linked to a Kritik
+ *   criterion: when the species or the link stops fitting, it goes too.
  */
 export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: StakeFieldChange): NodeMetadata {
   const next: NodeMetadata = { ...(metadata ?? {}) };
-  for (const key of ["stake_species", "provenance", "catalog", "felt", "matters", "frequency"] as const) {
+  for (const key of ["stake_species", "provenance", "catalog", "felt", "matters", "frequency", "reverify_every_days", "verified_criterion_version"] as const) {
     if (!(key in change)) continue;
     const value = change[key];
     if (value === undefined) delete next[key];
@@ -228,6 +246,15 @@ export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: St
   const catalog = stakeCatalogOf({ metadata: next });
   if (species !== undefined && catalog !== undefined && catalog.source !== catalogSourceForStakeSpecies(species)) {
     delete next.catalog;
+  }
+  const fittingCatalog = stakeCatalogOf({ metadata: next });
+  if (
+    species === undefined ||
+    isUserFacingStakeSpecies(species) ||
+    fittingCatalog === undefined ||
+    fittingCatalog.source !== "kritik"
+  ) {
+    delete next.verified_criterion_version;
   }
   if (species !== undefined && !isUserFacingStakeSpecies(species)) {
     delete next.felt;

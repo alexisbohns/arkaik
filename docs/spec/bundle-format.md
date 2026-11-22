@@ -146,6 +146,8 @@ The fold embeds the **effective** library — the pinned pack ⊕ this project's
 
 **What is folded is current state, not one audit.** `assessments` is latest-wins per (criterion × surface) across *every* audit on disk, and `findings` pools every audit's findings — so this section answers *where does the product stand*, while `docs/quality/audits/<id>/matrix.json` and `arkaik kritik matrix` answer *how did that audit go*. The two are meant to disagree: an open Critical from an earlier audit still caps its cell here even if the newest audit never re-scored that criterion, and a partial re-audit does not empty the matrix of everything it left alone. `arkaik pack --audit <id>` pins one audit's snapshot when the roll-up's question is the one you want.
 
+**A criterion carries a `version`.** It is an integer from 1 that counts changes to the criterion's definition or level anchors while its id stays (`packages/kritik-library/SPEC.md` § 8). It is optional: an embedded or vendored library, a library rebuilt from assessment ids and a custom criterion carry none, and an absent or unusable `version` reads as 1. A stake stores the version it was last verified against (below), so the pack can tell it has moved on. `kritikCriterionVersion(id, library)` in `@arkaik/schema` reads it: the version, 1 when absent, `undefined` for an id the library does not list. The framework's own `version` does not move with a criterion's.
+
 **Surfaces are not platforms.** `PLATFORM_IDS` names where a *view* ships; a Kritik **surface** is any independently assessable body of code — a database contract and an admin back-office are audit targets, not user platforms. The surface list is per-project, chosen at install, and a surface MAY carry an optional `platform` mapping where the two coincide. The reserved id `cross-surface` is the contract lens between surfaces: it holds findings only, never assessments, and never becomes a matrix column.
 
 **Derived values are never stored.** Severity, priority, domain scores, grades, and the anti-averaging caps are projections in `@arkaik/schema` (`deriveQualityMatrix`), exactly as delivery and backlog are journal projections. A finding stores `impact`, `likelihood`, and `cost`; storing a `severity` beside them is a warning, because it lets the label drift from the numbers behind it.
@@ -410,8 +412,18 @@ interface NodeMetadata {
   felt?: "expected" | "wanted" | "delight";
   matters?: 1 | 2 | 3 | 4;
   frequency?: "rare" | "some" | "often";
+  // The two stored inputs of the proof (rfcs/stake-architecture.md § 14):
+  reverify_every_days?: number;        // the verified half expires this many days after the latest check
+  verified_criterion_version?: number; // requirement, risk, defect: the Kritik criterion version last verified against
 }
 ```
+
+`reverify_every_days` is a positive number of days and any species may carry it.
+`verified_criterion_version` is a positive integer, written by the agent or the
+MCP tool and never by hand in the editor. It is meaningful only on a quality
+species linked to a Kritik criterion: `stakeMetadataWith` drops it when the
+species or the link stops fitting. An absent value means the stake was never
+verified against a version, and is not read as stale on that axis.
 
 `catalog` stores only an id: a Kritik criterion id (`SAF-01`) for a requirement,
 risk or defect, a value id (`reduces-anxiety`) for a bug, friction or need.
@@ -449,7 +461,7 @@ hand-edited bundle never bricks:
 | Rule | Raised when |
 |---|---|
 | `stake-species-missing` | a stake has no `stake_species` |
-| `stake-species-wrong-species` | `stake_species`, `provenance`, `catalog`, `evidence`, `felt`, `matters` or `frequency` sits on a node that is not a stake |
+| `stake-species-wrong-species` | `stake_species`, `provenance`, `catalog`, `evidence`, `felt`, `matters`, `frequency`, `reverify_every_days` or `verified_criterion_version` sits on a node that is not a stake |
 | `stake-lifecycle` | a stake's `status` is outside idea, discovery, archived |
 | `stake-anticipated-species` | an anticipated stake is a bug or a friction |
 | `stake-catalog-mismatch` | a requirement, risk or defect links to `values`, or a bug, friction or need links to `kritik` |
@@ -457,6 +469,9 @@ hand-edited bundle never bricks:
 | `stake-unanchored` | a stake has no outgoing `concerns` edge |
 | `stake-bug-felt` | a bug's `felt` is not `expected` |
 | `stake-evaluation-quality-species` | `felt`, `matters` or `frequency` sits on a requirement, risk or defect |
+| `stake-reverify-invalid` | `reverify_every_days` is not a positive number |
+| `stake-criterion-version-invalid` | `verified_criterion_version` is not a positive integer |
+| `stake-criterion-version-unlinked` | `verified_criterion_version` is set on a stake with no Kritik catalog link |
 
 **All of the above is additive: no `schema_version` bump.** Every field is
 optional metadata and the species and edge type are new vocabulary. Old bundles
