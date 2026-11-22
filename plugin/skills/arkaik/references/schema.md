@@ -103,6 +103,12 @@ interface NodeMetadata extends Record<string, unknown> {
   catalog?: { source: StakeCatalogSource; id: string };
   /** Stake nodes: the signals behind the stake (written at qualification); the durable half of the signal ↔ stake link. */
   evidence?: StakeEvidence[];
+  /** Bug, friction and need stakes: how the person feels it (a bug is always expected). */
+  felt?: StakeFelt;
+  /** Bug, friction and need stakes: how much addressing it matters, 4 (most) to 1. */
+  matters?: StakeMatters;
+  /** Bug, friction and need stakes: how often the situation comes up. */
+  frequency?: StakeFrequency;
 }
 
 interface PlatformScreenshotMeta {
