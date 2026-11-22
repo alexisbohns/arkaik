@@ -36,6 +36,9 @@ const CASES = [
   { file: "stake-evaluation.json", expectValid: true },
   { file: "signal-valid.json", expectValid: true },
   { file: "signal-warnings.json", expectValid: true },
+  { file: "option-valid.json", expectValid: true },
+  { file: "option-warnings.json", expectValid: true },
+  { file: "option-invalid-edge.json", expectValid: false },
 ];
 
 let failures = 0;

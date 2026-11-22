@@ -8,6 +8,7 @@ export const SPECIES = [
   { id: "acceptance", level: null, label: "Acceptance", description: "a testable promise: What (title), How (gherkin), Why (values), status per platform" },
   { id: "decision",   level: null, label: "Decision",     description: "an ADR-style decision record: Context (why), Decision (what), Consequences (how), with its own decision status" },
   { id: "stake",      level: null, label: "Stake",        description: "something that matters about the product: a bug, friction, need, requirement, risk or defect, anchored to the part of the product it concerns" },
+  { id: "option",     level: null, label: "Option",       description: "one way to address a stake: never without a stake, weighed against the other options for it" },
 ] as const satisfies readonly {
   id: SpeciesId;
   level: number | null;

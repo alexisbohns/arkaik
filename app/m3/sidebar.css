@@ -376,6 +376,9 @@
 :root:not([data-panel-look="calm"]) [data-sidebar="menu-button"][data-species="stake"].ps-mosaic-tile {
   --ps-hue: var(--tone-red);
 }
+:root:not([data-panel-look="calm"]) [data-sidebar="menu-button"][data-species="option"].ps-mosaic-tile {
+  --ps-hue: var(--tone-neutral);
+}
 :root:not([data-panel-look="calm"]) .ps-mosaic-wide > [data-sidebar="menu-button"].ps-mosaic-tile {
   background: var(--md-surface-container-low);
   height: 44px;
@@ -656,6 +659,9 @@
 }
 :root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])) [data-species="stake"] {
   --ps-c-hue: var(--tone-red);
+}
+:root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])) [data-species="option"] {
+  --ps-c-hue: var(--tone-neutral);
 }
 :root :is([data-project-sidebar], [data-mobile="true"]:has([data-sb-header])) :is([data-sb-group], [data-species]) {
   --ps-c-ink: color-mix(in oklab, var(--ps-c-hue) 82%, var(--md-on-surface));

@@ -55,6 +55,7 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   acceptance: "acceptances",
   decision: "decisions",
   stake: "stakes",
+  option: "options",
 };
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(

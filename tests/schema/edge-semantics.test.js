@@ -93,13 +93,17 @@ assert(!isValidEdgeSemantic("supersedes", "decision", "view"), "supersedes only 
 
 assert(isValidEdgeSemantic("generates", "decision", "acceptance"), "generates decision → acceptance is admitted");
 assert(!isValidEdgeSemantic("generates", "acceptance", "decision"), "generates is one-directional");
-assert(!isValidEdgeSemantic("generates", "decision", "view"), "generates only targets acceptances");
+assert(!isValidEdgeSemantic("generates", "decision", "view"), "generates only targets acceptances and options");
+assert(isValidEdgeSemantic("generates", "decision", "option"), "generates decision → option is admitted (part A)");
+assert(!isValidEdgeSemantic("generates", "decision", "stake"), "generates decision → stake stays rejected");
 
 for (const target of ["flow", "view", "data-model", "api-endpoint"]) {
   assert(isValidEdgeSemantic("impacts", "decision", target), `impacts decision → ${target} is admitted`);
 }
 // generates and impacts are deliberately disjoint: an acceptance is generated,
 // never merely impacted (spec §3).
+assert(isValidEdgeSemantic("impacts", "decision", "stake"), "impacts decision → stake is admitted (part A)");
+assert(!isValidEdgeSemantic("impacts", "decision", "option"), "impacts decision → option stays rejected (that's generates)");
 assert(!isValidEdgeSemantic("impacts", "decision", "acceptance"), "impacts decision → acceptance stays rejected");
 assert(!isValidEdgeSemantic("impacts", "decision", "decision"), "impacts decision → decision stays rejected (that's supersedes)");
 assert(!isValidEdgeSemantic("impacts", "view", "decision"), "impacts is one-directional out of the decision");
@@ -111,6 +115,26 @@ assert(
 assert(
   JSON.stringify(edgeTypesForSpeciesPair("decision", "acceptance")) === JSON.stringify(["generates"]),
   "connect dialog offers exactly generates for decision → acceptance",
+);
+
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("decision", "option")) === JSON.stringify(["generates"]),
+  "connect dialog offers exactly generates for decision → option",
+);
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("decision", "stake")) === JSON.stringify(["impacts"]),
+  "connect dialog offers exactly impacts for decision → stake",
+);
+
+// --- Option edge: addresses --------------------------------------------------
+for (const [source, target] of [["option", "stake"], ["acceptance", "stake"], ["acceptance", "option"]]) {
+  assert(isValidEdgeSemantic("addresses", source, target), `addresses ${source} → ${target} is admitted`);
+}
+assert(!isValidEdgeSemantic("addresses", "stake", "option"), "addresses is one-directional into the stake");
+assert(!isValidEdgeSemantic("addresses", "option", "option"), "addresses option → option stays rejected");
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("option", "stake")) === JSON.stringify(["addresses"]),
+  "connect dialog offers exactly addresses for option → stake",
 );
 
 // --- Stake edge: concerns, stake → the product's anatomy only ---------------

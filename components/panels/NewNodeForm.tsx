@@ -93,6 +93,9 @@ export function NewNodeForm({
   const [stakeSpecies, setStakeSpecies] = useState<StakeSpeciesId>("need");
   const [stakeProvenance, setStakeProvenance] = useState<StakeProvenanceId>("observed");
   const isStake = species === "stake";
+  // An option is created at idea with no platforms, like a stake; it is linked
+  // to the stake it addresses afterwards, from the Relations group.
+  const isOption = species === "option";
 
   // Only three species *store* membership; the system layer derives it from who
   // consumes it and must never be offered the control.
@@ -119,8 +122,8 @@ export function NewNodeForm({
 
   // A platform-less product means availability is not a tracked dimension here
   // (a CLI, a public API), so there is nothing to toggle — RFC decision 2.
-  // A stake is platform-agnostic, like a decision record: it names no platforms.
-  const allowsPlatformEditing = species !== "flow" && species !== "stake" && platformMenu.length > 0;
+  // A stake or an option is platform-agnostic, like a decision record: it names no platforms.
+  const allowsPlatformEditing = species !== "flow" && !isStake && !isOption && platformMenu.length > 0;
 
   // A view's status is normally the *default* it stamps onto each platform it
   // claims. Inside a platform-less product there are no platforms to stamp, so
@@ -208,10 +211,10 @@ export function NewNodeForm({
     onSubmit({
       title: title.trim(),
       species,
-      // A stake shows no status field, so a status picked for another species
-      // is invisible here and could be a value the stake lifecycle forbids.
-      status: isStake ? "idea" : status,
-      platforms: isStake ? [] : platforms,
+      // A stake or an option shows no status field, so a status picked for
+      // another species is invisible here and could be a value the lifecycle forbids.
+      status: isStake || isOption ? "idea" : status,
+      platforms: isStake || isOption ? [] : platforms,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
     resetForm();

@@ -105,6 +105,7 @@ export const SPECIES_MINIMAP_FILL: Record<SpeciesId, string> = {
   acceptance:     "#22c55e", // green-500
   decision:       "#f43f5e", // rose-500 — unclaimed by any existing species identity
   stake:          "#ef4444", // red-500 — a stake is a pain point; the map never draws one, only the minimap legend might
+  option:         "#a1a1aa", // zinc-400 — the neutral tone, the one hue no other species claims; an option is a hypothesis, not yet chosen
 };
 
 /**

@@ -25,6 +25,7 @@ export const SPECIES_PREFIXES: Record<SpeciesId, string> = {
   acceptance: "AC-",
   decision: "DEC-",
   stake: "STK-",
+  option: "OPT-",
 };
 
 /**

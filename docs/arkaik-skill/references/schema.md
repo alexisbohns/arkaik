@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake" | "option";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns" | "addresses";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -109,6 +109,10 @@ interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Option nodes: the id of the request.filed journal event that seeded the option. */
+  suggested_by?: string;
+  /** Decision nodes: the options that lost, each with the reason it lost. */
+  closed_options?: { option_id: string; reason: string }[];
 }
 
 interface PlatformScreenshotMeta {
@@ -408,6 +412,15 @@ exist in the bundle's `nodes` array.
 | `queries` | api-endpoint → data-model | API reads or writes this model |
 | `covers` | acceptance → view | Acceptance anchors a testable promise to this view |
 | `covers` | acceptance → flow | Acceptance anchors a testable promise to this flow |
+| `supersedes` | decision → decision | The source decision replaces the target |
+| `generates` | decision → acceptance | The decision produced this testable promise |
+| `generates` | decision → option | The decision selected this option |
+| `impacts` | decision → flow, view, data-model or api-endpoint | The decision affects this existing node |
+| `impacts` | decision → stake | The decision settles this stake |
+| `concerns` | stake → flow, view, data-model or api-endpoint | The part of the product the stake is about |
+| `addresses` | option → stake | The option is one way to answer this stake |
+| `addresses` | acceptance → stake | The acceptance is the definition of done for this stake |
+| `addresses` | acceptance → option | The acceptance carries out this option |
 
 Any other source → target combination for a given edge type is invalid.
 
@@ -421,6 +434,10 @@ Any other source → target combination for a given edge type is invalid.
 | view | `V-` | `V-pebble-detail` |
 | data-model | `DM-` | `DM-emotion-pearl` |
 | api-endpoint | `API-` | `API-create-pebble` |
+| acceptance | `AC-` | `AC-pebble-draw-in-animation` |
+| decision | `DEC-` | `DEC-adopt-glyph-wobble` |
+| stake | `STK-` | `STK-pebble-reveal-too-slow` |
+| option | `OPT-` | `OPT-pebble-skip-reveal-on-reopen` |
 
 After the prefix, use lowercase kebab-case. Keep IDs short but meaningful —
 they appear in the Arkaik UI.
@@ -487,6 +504,26 @@ to the anatomy by `concerns` edges (stake → flow / view / data-model / api-end
 - The node's own `status` is the stored lifecycle and may only be `idea`,
   `discovery` or `archived`; every other state is derived. Anything else is a warning.
 
+## Option nodes
+
+An `option` (id prefix `OPT-`) is one way to address a stake. It never exists
+without one: link it with an outgoing `addresses` edge (option → stake), and the
+validator warns when there is none.
+
+- `platforms` is `[]`, and no product membership is stored.
+- The node's own `status` is the stored lifecycle and may only be `idea`,
+  `discovery` or `archived`. Whether it was selected or closed is read from the
+  decision, never stored on the option. Anything else is a warning.
+- Its answer type is read from the kind of stake it addresses and never stored:
+  a bug is answered by a fix, a friction by an enhancement, a need by a feature, a
+  requirement by diligence, a risk by a mitigation and a defect by a resolution.
+  An option addressing stakes of two answer types is a warning.
+- `metadata.suggested_by` is the id of the `request.filed` journal event that
+  seeded the option (a string). A name matching no journal event is a warning.
+- A decision settles one stake and selects one option: it `impacts` the stake and
+  `generates` the option, and `metadata.closed_options` lists the options that lost
+  as `{ option_id, reason }`. Writing a decision is not part of this skill yet.
+
 ---
 
 ## Validation Checklist
@@ -506,7 +543,7 @@ Before saving any changes, verify:
 11. Every view/flow referenced in a playlist has a corresponding `composes` edge
 12. No playlist cycles (a flow does not contain itself directly or indirectly)
 13. All flow nodes have `metadata.playlist` with at least one entry
-14. All `platforms` arrays have at least one value, except on `decision` and `stake` nodes (platform-agnostic: an empty array is legal)
+14. All `platforms` arrays have at least one value, except on `decision`, `stake` and `option` nodes (platform-agnostic: an empty array is legal)
 15. Any `metadata.stage` is one of `beta` / `monitoring` / `deprecated`
 16. Any `metadata.platformStatuses` / `platformNotes` use valid platforms (and statuses); `platformStatuses` keys are a subset of `node.platforms`
 17. `project.metadata.view_card_variant`, if set, is `compact` or `large` (import **rejects** other values)

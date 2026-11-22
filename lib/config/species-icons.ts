@@ -5,6 +5,8 @@ import {
   Database,
   DatabaseIcon,
   GitBranchIcon,
+  Lightbulb,
+  LightbulbIcon,
   MonitorIcon,
   MonitorSmartphone,
   Network,
@@ -53,6 +55,7 @@ export const SPECIES_GRAPH_ICONS: Record<SpeciesId, LucideIcon> = {
   acceptance: ClipboardList,
   decision: Scale,
   stake: Target,
+  option: Lightbulb,
 };
 
 /** Sidebar, command palette and inventory glyphs — the navigation vocabulary. */
@@ -64,6 +67,7 @@ export const SPECIES_NAV_ICONS: Record<SpeciesId, LucideIcon> = {
   acceptance: ClipboardListIcon,
   decision: ScaleIcon,
   stake: TargetIcon,
+  option: LightbulbIcon,
 };
 
 /**
@@ -79,4 +83,5 @@ export const SPECIES_PLURALS: Record<SpeciesId, string> = {
   acceptance: "Acceptances",
   decision: "Decisions",
   stake: "Stakes",
+  option: "Options",
 };

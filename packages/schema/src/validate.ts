@@ -20,6 +20,7 @@ import {
   stakeProvenanceOf,
   stakeSpeciesOf,
 } from "./stake";
+import { ANSWER_TYPE_FOR_STAKE_SPECIES, OPTION_LIFECYCLE_STATUSES } from "./option";
 import type { NodeMetadata } from "./bundle";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
@@ -223,11 +224,11 @@ export function validateBundle(input: unknown): ValidationResult {
       error(`${base}.status`, "valid-status", `Node ${nodeId}: invalid status "${node.status}"`);
     }
 
-    // Platforms. Decisions and stakes are platform-agnostic records (spec §1):
-    // an empty array is their expected shape, not missing data.
+    // Platforms. Decisions, stakes and options are platform-agnostic records
+    // (spec §1): an empty array is their expected shape, not missing data.
     const platforms = node.platforms as unknown[] | undefined;
     if (!platforms || platforms.length === 0) {
-      if (species !== "decision" && species !== "stake") {
+      if (species !== "decision" && species !== "stake" && species !== "option") {
         error(`${base}.platforms`, "platforms-non-empty", `Node ${nodeId}: platforms array is empty or missing`);
       }
     } else {
@@ -593,11 +594,11 @@ export function validateBundle(input: unknown): ValidationResult {
       // `storesMembership` inverts a three-species allowlist, so "not a
       // flow/view/acceptance" also catches a missing or bogus species (already
       // a `valid-species` error). Name the species only when it is a real one.
-      // Decisions and stakes are not consumed by anything, so "derived from
-      // consumers" would be false for them: they store no product and show
-      // under every scope.
+      // Decisions, stakes and options are not consumed by anything, so
+      // "derived from consumers" would be false for them: they store no product
+      // and show under every scope.
       const detail =
-        species === "decision" || species === "stake"
+        species === "decision" || species === "stake" || species === "option"
           ? `${species} nodes store no product membership (they show under every product scope)`
           : SPECIES_IDS.includes(species as SpeciesId)
             ? `${species} membership is derived from consumers and must not be stored`
@@ -852,6 +853,162 @@ export function validateBundle(input: unknown): ValidationResult {
       );
     }
   });
+
+  // --- Option rules (docs/rfcs/stake-architecture.md § 14). Warnings only:
+  // a hand-edited bundle must never brick on an option or a decision's links. ---
+  {
+    const speciesById = new Map<string, string | undefined>();
+    const nodeById = new Map<string, (typeof nodes)[number]>();
+    nodes.forEach((node) => {
+      if (typeof node.id === "string") {
+        speciesById.set(node.id, node.species as string | undefined);
+        nodeById.set(node.id, node);
+      }
+    });
+    // Targets of one edge type from each source, in edge order, narrowed to a
+    // target species and kept distinct.
+    const targetsOf = (edgeType: string, targetSpecies: string): Map<string, string[]> => {
+      const out = new Map<string, string[]>();
+      for (const edge of edges) {
+        if (edge.edge_type !== edgeType) continue;
+        const from = edge.source_id;
+        const to = edge.target_id;
+        if (typeof from !== "string" || typeof to !== "string") continue;
+        if (speciesById.get(to) !== targetSpecies) continue;
+        const list = out.get(from) ?? [];
+        if (!list.includes(to)) list.push(to);
+        out.set(from, list);
+      }
+      return out;
+    };
+    const stakesAddressed = targetsOf("addresses", "stake");
+    const stakesImpacted = targetsOf("impacts", "stake");
+    const optionsGenerated = targetsOf("generates", "option");
+
+    // A decision's weight on a stake counts only while it is in force.
+    const decisionsInForce = new Map<string, string[]>();
+    for (const [decisionId, stakeIds] of stakesImpacted) {
+      const decision = nodeById.get(decisionId);
+      if (!decision || decision.species !== "decision") continue;
+      const status = decisionStatusOf({ metadata: decision.metadata as NodeMetadata | undefined });
+      if (status !== "approved" && status !== "enacted") continue;
+      for (const stakeId of stakeIds) {
+        const list = decisionsInForce.get(stakeId) ?? [];
+        list.push(decisionId);
+        decisionsInForce.set(stakeId, list);
+      }
+    }
+
+    nodes.forEach((node, index) => {
+      const nodeId = typeof node.id === "string" ? node.id : `#${index}`;
+      const species = node.species as string | undefined;
+      const base = `nodes[${index}]`;
+      const md = (node.metadata ?? {}) as Record<string, unknown>;
+
+      if (species !== "option" && md.suggested_by !== undefined) {
+        warn(
+          `${base}.metadata.suggested_by`,
+          "option-field-wrong-species",
+          `suggested_by is meaningful on option nodes only; "${nodeId}" is a ${species}.`,
+        );
+      }
+      if (species !== "decision" && md.closed_options !== undefined) {
+        warn(
+          `${base}.metadata.closed_options`,
+          "option-field-wrong-species",
+          `closed_options is meaningful on decision nodes only; "${nodeId}" is a ${species}.`,
+        );
+      }
+
+      if (species === "option") {
+        if (!(OPTION_LIFECYCLE_STATUSES as readonly string[]).includes(node.status as string)) {
+          warn(
+            `${base}.status`,
+            "option-lifecycle",
+            `Option ${nodeId}: status "${node.status}" is not stored on an option (idea, discovery or archived only; selected and closed are read from its decision)`,
+          );
+        }
+        const addressed = stakesAddressed.get(nodeId) ?? [];
+        if (addressed.length === 0) {
+          warn(
+            `${base}`,
+            "option-unaddressed",
+            `Option ${nodeId}: no outgoing addresses edge to a stake — an option never exists without the stake it addresses`,
+          );
+        }
+        const answerTypes = new Set<string>();
+        for (const stakeId of addressed) {
+          const stakeSpecies = stakeSpeciesOf({ metadata: nodeById.get(stakeId)?.metadata as NodeMetadata | undefined });
+          if (stakeSpecies !== undefined) answerTypes.add(ANSWER_TYPE_FOR_STAKE_SPECIES[stakeSpecies]);
+        }
+        if (answerTypes.size > 1) {
+          warn(
+            `${base}`,
+            "option-mixed-answer-types",
+            `Option ${nodeId}: addresses stakes that ask for different answers (${[...answerTypes].join(", ")}) — split it into one option per answer type`,
+          );
+        }
+        return;
+      }
+
+      if (species === "decision") {
+        const impacted = stakesImpacted.get(nodeId) ?? [];
+        const generated = optionsGenerated.get(nodeId) ?? [];
+        if (impacted.length > 1) {
+          warn(
+            `${base}`,
+            "decision-multiple-stakes",
+            `Decision ${nodeId}: impacts ${impacted.length} stakes (${impacted.join(", ")}) — a decision settles one stake`,
+          );
+        }
+        if (generated.length > 1) {
+          warn(
+            `${base}`,
+            "decision-multiple-options",
+            `Decision ${nodeId}: generates ${generated.length} options (${generated.join(", ")}) — a decision selects one option; the others go in closed_options`,
+          );
+        }
+        if (impacted.length > 0) {
+          for (const optionId of generated) {
+            const addressed = stakesAddressed.get(optionId) ?? [];
+            if (!impacted.some((stakeId) => addressed.includes(stakeId))) {
+              warn(
+                `${base}`,
+                "decision-option-not-addressing",
+                `Decision ${nodeId}: generates option ${optionId}, which does not address the stake the decision impacts (${impacted.join(", ")})`,
+              );
+            }
+          }
+        }
+        const closed = md.closed_options;
+        if (Array.isArray(closed)) {
+          closed.forEach((entry: unknown, i: number) => {
+            const optionId =
+              typeof entry === "object" && entry !== null ? (entry as { option_id?: unknown }).option_id : undefined;
+            if (typeof optionId !== "string" || speciesById.get(optionId) !== "option") {
+              warn(
+                `${base}.metadata.closed_options[${i}].option_id`,
+                "decision-closed-option-unknown",
+                `Decision ${nodeId}: closed_options[${i}] names ${typeof optionId === "string" ? `"${optionId}"` : "no option id"}, which is not an option in this bundle`,
+              );
+            }
+          });
+        }
+        return;
+      }
+
+      if (species === "stake") {
+        const inForce = decisionsInForce.get(nodeId) ?? [];
+        if (inForce.length > 1) {
+          warn(
+            `${base}`,
+            "stake-multiple-decisions",
+            `Stake ${nodeId}: ${inForce.length} approved or enacted decisions impact it (${inForce.join(", ")}) — supersede the earlier one`,
+          );
+        }
+      }
+    });
+  }
 
   // --- Playlist entry shape checks ---
   // The ref walks below only follow the refs they recognise, so a junction case

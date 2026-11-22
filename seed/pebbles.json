@@ -2451,6 +2451,15 @@
         "stake_species": "friction",
         "catalog": { "source": "values", "id": "saves-time" }
       }
+    },
+    {
+      "id": "OPT-pebble-skip-reveal-on-reopen",
+      "project_id": "pebbles",
+      "species": "option",
+      "title": "Skip the draw-in when a pebble is reopened",
+      "description": "Show a pebble you already know straight away, and keep the full draw-in for the first look. One way to answer the slow reveal, not yet chosen.",
+      "status": "idea",
+      "platforms": []
     }
   ],
   "edges": [
@@ -4449,6 +4458,13 @@
       "source_id": "STK-pebble-reveal-too-slow",
       "target_id": "V-pebble-detail",
       "edge_type": "concerns"
+    },
+    {
+      "id": "e-OPT-pebble-skip-reveal-on-reopen-STK-pebble-reveal-too-slow",
+      "project_id": "pebbles",
+      "source_id": "OPT-pebble-skip-reveal-on-reopen",
+      "target_id": "STK-pebble-reveal-too-slow",
+      "edge_type": "addresses"
     }
   ],
   "journal": [
@@ -6087,6 +6103,25 @@
       "source_id": "STK-pebble-reveal-too-slow",
       "target_id": "V-pebble-detail",
       "edge_type": "concerns"
+    },
+    {
+      "id": "01K0STAKESEED00000000000003",
+      "ts": "2026-11-22T09:00:02.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "OPT-pebble-skip-reveal-on-reopen",
+      "species": "option",
+      "title": "Skip the draw-in when a pebble is reopened"
+    },
+    {
+      "id": "01K0STAKESEED00000000000004",
+      "ts": "2026-11-22T09:00:03.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-OPT-pebble-skip-reveal-on-reopen-STK-pebble-reveal-too-slow",
+      "source_id": "OPT-pebble-skip-reveal-on-reopen",
+      "target_id": "STK-pebble-reveal-too-slow",
+      "edge_type": "addresses"
     },
     {
       "id": "01K0DELIVSEED0000000000001",

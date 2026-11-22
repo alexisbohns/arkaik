@@ -2,10 +2,10 @@
 // Built from packages/schema/src via `npm run generate`
 // (docs/spec/toolchain.md § @arkaik/schema).
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake", "option"] as const;
 export const STATUS_IDS = ["idea", "discovery", "backlog", "development", "releasing", "live", "archived"] as const;
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns", "addresses"] as const;
 
 export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "flow": "F-",
@@ -15,15 +15,16 @@ export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "acceptance": "AC-",
   "decision": "DEC-",
   "stake": "STK-",
+  "option": "OPT-",
 };
 
 export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
 
 \`\`\`typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake" | "option";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns" | "addresses";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -111,6 +112,10 @@ interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Option nodes: the id of the request.filed journal event that seeded the option. */
+  suggested_by?: string;
+  /** Decision nodes: the options that lost, each with the reason it lost. */
+  closed_options?: { option_id: string; reason: string }[];
 }
 
 interface PlatformScreenshotMeta {

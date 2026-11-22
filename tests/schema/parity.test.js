@@ -41,6 +41,9 @@ const FIXTURES = [
   "tests/fixtures/stake-evaluation.json",
   "tests/fixtures/signal-valid.json",
   "tests/fixtures/signal-warnings.json",
+  "tests/fixtures/option-valid.json",
+  "tests/fixtures/option-warnings.json",
+  "tests/fixtures/option-invalid-edge.json",
 ];
 
 /** Run the standalone validator and extract its verdict + finding counts. */

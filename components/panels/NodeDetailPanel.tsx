@@ -22,6 +22,7 @@ import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatfo
 import { WeighingGroup } from "@/components/panels/WeighingGroup";
 import { DecisionEditor, DecisionReasoning, DecisionVerdict, useDecisionEditor } from "@/components/panels/DecisionEditor";
 import { DecisionLineage } from "@/components/panels/DecisionLineage";
+import { OptionGroup } from "@/components/panels/OptionGroup";
 import { StakeEditor } from "@/components/panels/StakeEditor";
 import { Shape, StatusPill, sealShapeOf } from "@/components/decisions/DecisionMarks";
 import { decisionStatusOf, type DecisionStatusId } from "@/lib/utils/decision";
@@ -1090,6 +1091,11 @@ export function NodeDetailPanel({
             controls go. Its anchor is the Relations group's `concerns` line. */}
         {node.species === "stake" && (
           <StakeEditor key={`stake-${node.id}`} node={node} onUpdate={onUpdate} metadataRef={metadataRef} />
+        )}
+        {/* An option's own facts (answer type, suggested-by, stored lifecycle).
+            The stake it addresses is the Relations group's `addresses` line. */}
+        {node.species === "option" && (
+          <OptionGroup key={`option-${node.id}`} node={node} allNodes={allNodes} allEdges={allEdges} onUpdate={onUpdate} />
         )}
         {decisionPanel && decisionPanel.lineage.length > 1 && (
           <DecisionLineage key={`lineage-${node.id}`} model={decisionPanel} onNavigate={onNavigate} />

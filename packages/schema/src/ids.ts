@@ -5,7 +5,7 @@
  * pull the zod runtime in along with it.
  */
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake", "option"] as const;
 export type SpeciesId = (typeof SPECIES_IDS)[number];
 
 export const STATUS_IDS = [
@@ -22,7 +22,7 @@ export type StatusId = (typeof STATUS_IDS)[number];
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
 export type PlatformId = (typeof PLATFORM_IDS)[number];
 
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns", "addresses"] as const;
 export type EdgeTypeId = (typeof EDGE_TYPE_IDS)[number];
 
 /**
@@ -58,17 +58,25 @@ export const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, 
     ["acceptance", "view"],
     ["acceptance", "flow"],
   ],
-  // Decision edges (cycle 2). `generates` and `impacts` are deliberately
-  // disjoint: an acceptance is *generated* by a decision, never merely
-  // impacted, so `impacts` does not admit an acceptance target
-  // (docs/superpowers/specs/2026-08-03-decisions-species-design.md §3).
+  // Decision edges (cycle 2, widened in the stake architecture's part A).
+  // `generates` and `impacts` stay disjoint by pair: no pair is admitted by
+  // both. What a decision edge means now depends on its target species, not
+  // on the edge type alone. `generates` reaches an acceptance or an option (a
+  // decision's output); `impacts` reaches anatomy or a stake (what it acts
+  // on). An acceptance is still *generated*, never merely impacted
+  // (docs/superpowers/specs/2026-08-03-decisions-species-design.md §3,
+  // docs/rfcs/stake-architecture.md § 14.0 call 2).
   supersedes: [["decision", "decision"]],
-  generates: [["decision", "acceptance"]],
+  generates: [
+    ["decision", "acceptance"],
+    ["decision", "option"],
+  ],
   impacts: [
     ["decision", "flow"],
     ["decision", "view"],
     ["decision", "data-model"],
     ["decision", "api-endpoint"],
+    ["decision", "stake"],
   ],
   // Stake edge (docs/rfcs/stake-architecture.md § 4). A stake is anchored to
   // the product's anatomy only, never to an acceptance or a decision, and
@@ -78,6 +86,14 @@ export const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, 
     ["stake", "view"],
     ["stake", "data-model"],
     ["stake", "api-endpoint"],
+  ],
+  // Option edge (docs/rfcs/stake-architecture.md § 14.0). An option addresses a
+  // stake; an acceptance addresses the stake it settles, or the option it
+  // carries out.
+  addresses: [
+    ["option", "stake"],
+    ["acceptance", "stake"],
+    ["acceptance", "option"],
   ],
 };
 

@@ -37,6 +37,15 @@ function StakeBadges({ node }: { node: Node }) {
   );
 }
 
+/** An option's card line: where its stored lifecycle stands. Its answer type needs the edges, so the node panel says it. */
+function OptionBadges({ node }: { node: Node }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-option-badges="">
+      <StatusBadge status={node.status} />
+    </div>
+  );
+}
+
 export interface PlaylistPreviewItem {
   type: "view" | "flow" | "condition" | "junction";
   label: string;
@@ -94,9 +103,9 @@ interface NodeCardProps {
  * scanning a library of hundreds of cards needs pointed out.
  */
 function ProductAnnotation({ species, labels }: { species: SpeciesId; labels: string[] }) {
-  // A stake is product-agnostic (it shows under every scope, no consumer reaches
-  // it), so "Unattached" would name a gap that is not one.
-  if (species === "stake") return null;
+  // A stake or an option is product-agnostic (it shows under every scope, no
+  // consumer reaches it), so "Unattached" would name a gap that is not one.
+  if (species === "stake" || species === "option") return null;
   const derived = !PRODUCT_MEMBERSHIP_SPECIES.includes(species);
 
   if (labels.length === 0) {
@@ -260,11 +269,14 @@ export function NodeCard({
 
           {node.species === "stake" && <StakeBadges node={node} />}
 
+          {node.species === "option" && <OptionBadges node={node} />}
+
           {node.species !== "view" &&
             node.species !== "flow" &&
             node.species !== "acceptance" &&
             node.species !== "decision" &&
-            node.species !== "stake" && (
+            node.species !== "stake" &&
+            node.species !== "option" && (
               <div className="space-y-1.5">
                 <span className="text-muted-foreground">Platforms</span>
                 {platforms.length > 0 ? (

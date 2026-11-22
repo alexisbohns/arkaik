@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Option Invalid Edge Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "STK-a",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "A stake",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need"
+      }
+    },
+    {
+      "id": "OPT-a",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "An option",
+      "status": "idea",
+      "platforms": []
+    },
+    {
+      "id": "OPT-b",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "Another option",
+      "status": "idea",
+      "platforms": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-a-OPT-a",
+      "project_id": "fixture",
+      "source_id": "STK-a",
+      "target_id": "OPT-a",
+      "edge_type": "addresses"
+    },
+    {
+      "id": "e-OPT-a-OPT-b",
+      "project_id": "fixture",
+      "source_id": "OPT-a",
+      "target_id": "OPT-b",
+      "edge_type": "addresses"
+    }
+  ]
+}

@@ -170,7 +170,7 @@ The skill made agents good *writers*; the format made them competent *readers*. 
 
 ### Continuity Guardrails (unchanged)
 
-- **Graph model**: the seven species ([graph-model.md](graph-model.md) is the taxonomy's source of truth), playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Ids: `packages/schema/src/ids.ts`; labels: `lib/config/species.ts`
+- **Graph model**: the eight species ([graph-model.md](graph-model.md) is the taxonomy's source of truth), playlist-driven flows (`metadata.playlist.entries`), optional `project.root_node_id` anchor. Ids: `packages/schema/src/ids.ts`; labels: `lib/config/species.ts`
 - **Platform and status**: per-platform status editing on `view` nodes; `flow` status stays a computed rollup; the journal extends with history, never replaces. `release.tagged` keeps its optional `platform`. Config: `lib/config/platforms.ts`, `lib/config/statuses.ts`
 - **Reuse-first authoring**: where-used visibility, insert-between operations, the shared node detail panel. References: `components/panels/NodeDetailPanel.tsx`, `components/panels/InsertBetweenDialog.tsx`, `lib/utils/where-used.ts`
 - **Data layer**: the `DataProvider` abstraction, local-first operation, import/export. References: `lib/data/data-provider.ts`, `lib/data/local-provider.ts`, `lib/utils/export.ts`

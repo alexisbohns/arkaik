@@ -197,6 +197,10 @@ export interface NodeMetadata extends Record<string, unknown> {
   matters?: StakeMatters;
   /** Bug, friction and need stakes: how often the situation comes up. */
   frequency?: StakeFrequency;
+  /** Option nodes: the id of the request.filed journal event that seeded the option. */
+  suggested_by?: string;
+  /** Decision nodes: the options that lost, each with the reason it lost. */
+  closed_options?: { option_id: string; reason: string }[];
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -262,6 +266,20 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     felt: StakeFeltSchema.optional(),
     matters: StakeMattersSchema.optional(),
     frequency: StakeFrequencySchema.optional(),
+    suggested_by: z.string().optional().meta({
+      description: "Option nodes only: the id of the request.filed journal event that seeded this option.",
+    }),
+    closed_options: z
+      .array(
+        z
+          .object({
+            option_id: z.string().meta({ description: "The id of the option that was not chosen." }),
+            reason: z.string().meta({ description: "Why it was not chosen." }),
+          })
+          .catchall(z.unknown()),
+      )
+      .optional()
+      .meta({ description: "Decision nodes only: the options that lost, each with the reason." }),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });
@@ -278,7 +296,7 @@ export interface Node {
 }
 
 export const NodeSchema: z.ZodType<Node> = z.object({
-  id: z.string().meta({ description: "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint), AC- (acceptance), DEC- (decision), STK- (stake)." }),
+  id: z.string().meta({ description: "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint), AC- (acceptance), DEC- (decision), STK- (stake), OPT- (option)." }),
   project_id: z.string().meta({ description: "Must match project.id." }),
   species: SpeciesSchema,
   title: z.string().meta({ description: "Human-readable node title." }),
