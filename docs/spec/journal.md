@@ -115,6 +115,7 @@ The two `weighing.*` types follow the same rule — facts, not state: the weighi
 - **Backlog**: a signal is closed when its `node_id` exists, **or** any of its `stake_ids` exists, **or** an existing stake's `evidence[].event_id` cites it. Evidence closes by event id, whatever the item's type, so an `idea.proposed` a stake cites is closed too (an idea is the same kind of input, qualified into a stake the same way); `stake_ids` is read on `request.filed` only.
 - **Node timeline**: a stake's timeline lists the signals linked either way.
 - **Cross-check**: a `stake_ids` entry naming a node that never existed is a **warning** (`journal-dangling-stake-ref`), never an error, because a stake can be deleted legitimately and history is not rewritten.
+- **Cross-check**: an option's `metadata.suggested_by` naming a journal event that is absent from a non-empty journal is a **warning** (`option-suggested-by-dangling`), never an error. A missing or empty journal is not checked.
 - A `benchmark` signal is a signal like any other; it simply never counts toward frequency or mattering.
 - Signals are not projected to the pollen feed.
 

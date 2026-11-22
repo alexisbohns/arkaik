@@ -3,7 +3,7 @@
 ## Contents
 
 - [Architecture](architecture.md) — System design, component relationships, data flow
-- [Graph Model](graph-model.md) — **the taxonomy's source of truth**: species, composition model, statuses, products, platforms, edge types (including the decision-only `supersedes`, `generates`, `impacts` and the stake-only `concerns`)
+- [Graph Model](graph-model.md) — **the taxonomy's source of truth**: species, composition model, statuses, products, platforms, edge types (including the decision edges `supersedes`, `generates`, `impacts`, the stake-only `concerns` and the option-side `addresses`)
 - [Data Layer](data-layer.md) — DataProvider interface, local storage, import/export
 - [Conventions](conventions.md) — Coding patterns, file organization, state management
 - [Hosted Projects](hosted-projects.md) — Put a project in your account, point a coding agent at it, and let pull requests move acceptances
