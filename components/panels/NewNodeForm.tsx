@@ -26,7 +26,16 @@ import type { SpeciesId } from "@/lib/config/species";
 import type { StatusId } from "@/lib/config/statuses";
 import type { PlatformId } from "@/lib/config/platforms";
 import type { NodeMetadata } from "@/lib/data/types";
-import { PRODUCT_MEMBERSHIP_SPECIES, type ProductDefinition } from "@arkaik/schema";
+import {
+  PRODUCT_MEMBERSHIP_SPECIES,
+  canBeAnticipated,
+  stakeMetadataWith,
+  stakeSpeciesFor,
+  type ProductDefinition,
+  type StakeProvenanceId,
+  type StakeSpeciesId,
+} from "@arkaik/schema";
+import { STAKE_SPECIES } from "@/lib/config/stake-species";
 import { ProductPicker } from "@/components/panels/ProductPicker";
 import { useSeedOnOpen } from "@/lib/hooks/useSeedOnOpen";
 import {
@@ -79,6 +88,11 @@ export function NewNodeForm({
   const [status, setStatus] = useState<StatusId>("idea");
   const [platforms, setPlatforms] = useState<PlatformId[]>([]);
   const [product, setProduct] = useState<string | null>(defaultProductId);
+  // A stake is asked what kind it is, and whether it was seen or only
+  // anticipated. Both are read only when the species is `stake`.
+  const [stakeSpecies, setStakeSpecies] = useState<StakeSpeciesId>("need");
+  const [stakeProvenance, setStakeProvenance] = useState<StakeProvenanceId>("observed");
+  const isStake = species === "stake";
 
   // Only three species *store* membership; the system layer derives it from who
   // consumes it and must never be offered the control.
@@ -105,7 +119,8 @@ export function NewNodeForm({
 
   // A platform-less product means availability is not a tracked dimension here
   // (a CLI, a public API), so there is nothing to toggle — RFC decision 2.
-  const allowsPlatformEditing = species !== "flow" && platformMenu.length > 0;
+  // A stake is platform-agnostic, like a decision record: it names no platforms.
+  const allowsPlatformEditing = species !== "flow" && species !== "stake" && platformMenu.length > 0;
 
   // A view's status is normally the *default* it stamps onto each platform it
   // claims. Inside a platform-less product there are no platforms to stamp, so
@@ -143,6 +158,8 @@ export function NewNodeForm({
     setStatus("idea");
     setPlatforms([]);
     setProduct(defaultProductId);
+    setStakeSpecies("need");
+    setStakeProvenance("observed");
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -182,13 +199,17 @@ export function NewNodeForm({
       ? withProductMembership(undefined, product)
       : {};
 
-    const metadata: NodeMetadata = { ...membership, ...platformStatuses };
+    const stake = isStake
+      ? stakeMetadataWith(undefined, { stake_species: stakeSpecies, provenance: stakeProvenance })
+      : {};
+
+    const metadata: NodeMetadata = { ...membership, ...platformStatuses, ...stake };
 
     onSubmit({
       title: title.trim(),
       species,
       status,
-      platforms,
+      platforms: isStake ? [] : platforms,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
     resetForm();
@@ -225,6 +246,54 @@ export function NewNodeForm({
               </SelectContent>
             </Select>
           </Field>
+          {isStake && (
+            <>
+              <Field label="Stake" htmlFor={`${fieldId}-stake-species`}>
+                <Select
+                  value={stakeSpecies}
+                  onValueChange={(v) => setStakeSpecies(v as StakeSpeciesId)}
+                >
+                  <SelectTrigger id={`${fieldId}-stake-species`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAKE_SPECIES.filter((entry) => stakeSpeciesFor(stakeProvenance).includes(entry.id)).map((entry) => (
+                      <SelectItem key={entry.id} value={entry.id}>{entry.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field
+                label="Provenance"
+                htmlFor={`${fieldId}-stake-provenance`}
+                hint={
+                  stakeProvenance === "anticipated"
+                    ? "Reasoned about ahead of the world: only a need, requirement, risk or defect."
+                    : canBeAnticipated(stakeSpecies)
+                      ? undefined
+                      : "Seen in the world: a bug or a friction is always observed."
+                }
+              >
+                <Select
+                  value={stakeProvenance}
+                  onValueChange={(v) => {
+                    const next = v as StakeProvenanceId;
+                    setStakeProvenance(next);
+                    // Nothing exists yet to have a bug or a friction: reroute as a need.
+                    if (next === "anticipated" && !canBeAnticipated(stakeSpecies)) setStakeSpecies("need");
+                  }}
+                >
+                  <SelectTrigger id={`${fieldId}-stake-provenance`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="observed">Observed</SelectItem>
+                    <SelectItem value="anticipated">Anticipated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </>
+          )}
           {showsProductPicker && (
             <ProductPicker
               products={products}
