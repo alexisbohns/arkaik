@@ -330,8 +330,35 @@ warned about (`decision-multiple-stakes`, `decision-multiple-options`), as is a
 generated option that does not address the stake the decision impacts
 (`decision-option-not-addressing`), a stake with more than one approved or
 enacted decision (`stake-multiple-decisions`) and a `closed_options` entry that
-names no option (`decision-closed-option-unknown`). Writing the decision is
-not built yet.
+names no option (`decision-closed-option-unknown`).
+
+**Reading the decision.** Everything about the outcome is derived from the graph
+and stored nowhere but on the decision itself (`packages/schema/src/option.ts`).
+
+- A decision **settles** its stake when it reads approved or enacted. A proposed,
+  rejected, deprecated or superseded decision settles nothing.
+- The stake's **answer** is the option its settling decision generates. If two
+  decisions settle one stake (the validator warns), the latest `decided_at`
+  wins, then the id, and the reader names the others.
+- An option's **closure** for a stake is `selected` when the settling decision
+  generates it, `closed` when that decision generates another option (with the
+  reason from `closed_options`, when it gave one), and `open` otherwise. A
+  decision that stops settling reopens every option.
+- An acceptance reads as a **promise** when an approved or enacted decision
+  generates it, directly or through the option it addresses, or when it is
+  already `live` on a platform it applies to. An archived acceptance is never a
+  promise. An acceptance at `idea` or `discovery` that is not a promise is a
+  **candidate**.
+
+**Writing the decision.** The select-option plan (`planSelectOption`, behind the
+MCP tool `decide_option`) creates the decision at approved or enacted with the
+reason as its `context`, an `impacts` edge to the stake and a `generates` edge
+to the option. It closes every other non-archived option addressing the stake,
+with a reason each (a default one when none was given, handed back to a person).
+A stake that already has a settling decision is refused unless the plan
+supersedes it: the old decision moves to `superseded` through an ordinary
+update, so the journal records `decision.status_changed`, and the new decision
+gets a `supersedes` edge to it.
 
 Options carry no `platforms` (an empty array, exempt from `platforms-non-empty`),
 store no product (they show under every product scope), and are excluded from
@@ -343,8 +370,10 @@ Model source: [packages/schema/src/option.ts](../packages/schema/src/option.ts).
 Option surfaces:
 
 - **Node detail panel** — an Option group: the answer type (read, never
-  stored), `suggested_by` read only, and the three-value lifecycle; the
-  `addresses` line sits in the Relations group.
+  stored), where the option stands on each stake it addresses (selected, closed
+  with the reason, or open; read only), the acceptances that address it with
+  their role (promise or candidate), `suggested_by` read only, and the
+  three-value lifecycle; the `addresses` line sits in the Relations group.
 - **Library** (`/project/[id]/library?species=option`) — gallery card and
   directory row like any other species; the lifecycle badge stands in for
   platform chips. **New node** creates an option at `idea` with no platforms.

@@ -512,6 +512,23 @@ no product and show under every product scope.
 | `stake-multiple-decisions` | a stake is impacted by more than one approved or enacted decision |
 | `decision-closed-option-unknown` | a `closed_options` entry names no option |
 
+**Reading the decision.** The outcome is derived and never stored on the
+option. A decision *settles* a stake when its `decision_status` is `approved` or
+`enacted` and it has an `impacts` edge to the stake. The stake's *answer* is the
+option that decision `generates`. An option is `selected` for a stake when the
+settling decision generates it, `closed` when it generates another option (the
+reason is the matching `closed_options` entry, if any) and `open` otherwise; a
+proposed, rejected, deprecated or superseded decision settles nothing, so the
+options reopen. With two settling decisions the reader takes the latest
+`decided_at`, then the highest id. An acceptance reads as a *promise* when a
+settling decision generates it directly or through an option it addresses, or
+when it already resolves to `live` on a platform it applies to (never while
+archived); an acceptance at `idea` or `discovery` that is not a promise is a
+*candidate*. Writers that record a decision (the MCP tool `decide_option`) create
+it at `approved` (stored `backlog`) or `enacted` (stored `live`) with
+`platforms: []`, and supersede an earlier settling decision with an `update_node`
+to `superseded` (stored `archived`) and a `supersedes` edge.
+
 **This is one release, not an additive field.** The two optional metadata
 fields are additive and need no `schema_version` bump, but the species `option`
 and the edge type `addresses` are new vocabulary that an older validator

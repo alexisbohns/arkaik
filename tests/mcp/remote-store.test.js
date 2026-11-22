@@ -357,6 +357,43 @@ async function main() {
       JSON.stringify(state.receivedOps[0]),
     );
 
+    // --- decide_option is ops-only too -------------------------------------
+    // Selecting an option writes a decision node and its two edges: ops the
+    // mutations route accepts, so a hosted session can decide. The stake and its
+    // options are added to the stub's graph for this call only, so the node
+    // counts the cache checks below rely on do not move.
+    const hostedNodes = state.bundle.nodes.length;
+    state.bundle.nodes.push(
+      { id: "STK-slow-toggle", project_id: "gp", species: "stake", title: "Slow toggle", status: "discovery", platforms: [], metadata: { stake_species: "friction" } },
+      { id: "OPT-move-toggle", project_id: "gp", species: "option", title: "Move the toggle", status: "idea", platforms: [] },
+    );
+    state.bundle.edges.push({ id: "e-OPT-move-toggle-STK-slow-toggle", project_id: "gp", source_id: "OPT-move-toggle", target_id: "STK-slow-toggle", edge_type: "addresses" });
+    state.receivedOps.length = 0;
+    const decided = await rpc(
+      remoteEnv,
+      [],
+      [initialize, call(71, "decide_option", { stake_id: "STK-slow-toggle", option_id: "OPT-move-toggle", reason: "It is where people look." })],
+    );
+    state.bundle.nodes.length = hostedNodes;
+    state.bundle.edges.pop();
+    const decidedBody = resultText(decided.responses, 71);
+    check(
+      "decide_option succeeds against the hosted API",
+      decidedBody?.action === "decide" && decidedBody.decision_id === "DEC-select-move-the-toggle-for-slow-toggle",
+      JSON.stringify(decidedBody),
+    );
+    check(
+      "it sent ops: a decision node, an impacts edge and a generates edge",
+      state.receivedOps.length === 1 &&
+        state.receivedOps[0][0]?.op === "create_node" &&
+        state.receivedOps[0][0].node.species === "decision" &&
+        state.receivedOps[0][1]?.op === "create_edge" &&
+        state.receivedOps[0][1].edge.edge_type === "impacts" &&
+        state.receivedOps[0][2]?.op === "create_edge" &&
+        state.receivedOps[0][2].edge.edge_type === "generates",
+      JSON.stringify(state.receivedOps[0]),
+    );
+
     // --- A server refusal reads like a local one ---------------------------
     state.refuseNext = true;
     const refused = await rpc(

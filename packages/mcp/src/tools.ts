@@ -44,6 +44,7 @@ import {
 } from "@arkaik/schema";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import { buildKritikCatalog } from "./kritik-tools";
+import { buildDecideCatalog } from "./decide-tools";
 import { buildQualifyCatalog } from "./qualify-tools";
 import { buildWeighingCatalog } from "./weighing-tools";
 import type { LoadedGraph as StoreLoadedGraph, Store, WriteResult } from "./store";
@@ -855,6 +856,13 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   const qualify = buildQualifyCatalog(ctx, { load: () => load(ctx), mutate, unwrap });
   tools.push(...qualify.tools);
   Object.assign(handlers, qualify.handlers);
+
+  // The decision (docs/rfcs/stake-architecture.md § 14, part B): record the
+  // option chosen for a stake. Ops only, so it works hosted too, through the
+  // same load / mutate / unwrap.
+  const decide = buildDecideCatalog(ctx, { load: () => load(ctx), mutate, unwrap });
+  tools.push(...decide.tools);
+  Object.assign(handlers, decide.handlers);
 
   return { tools, handlers };
 }

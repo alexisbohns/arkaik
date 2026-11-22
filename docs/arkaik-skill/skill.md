@@ -433,9 +433,35 @@ friction or a need is weighed on the value pyramid: `assess` works on it (the
 that field; `null` clears one; on any other species `metadata` is replaced whole). A requirement,
 a risk or a defect is not weighed: it is read against its Kritik criterion
 (`metadata.catalog`), and its criticality comes from the criterion, never from a
-copy. Never add a mattering to a pyramid level or to a criticality. An option (`OPT-`)
-is one way to address a stake, linked to it with an `addresses` edge; see
-`references/schema.md`. Deciding between options is not yet part of this skill.
+copy. Never add a mattering to a pyramid level or to a criticality.
+
+### Ideate and decide
+
+An option (`OPT-`) is one way to address a stake. It never exists without one.
+
+6. **Ideate.** For a stake worth answering, propose one to three options: a
+   `create_node` with `species: "option"`, `platforms: []` and a title that says what
+   the option does, then an `add_edge` of type `addresses` from the option to the
+   stake. Set `metadata.suggested_by` to the `request.filed` event id when a signal
+   seeded the option. What kind of answer it is (fix, enhancement, feature, diligence,
+   mitigation or resolution) comes from the kind of stake, so never put two stakes of
+   different kinds under one option. An acceptance that says what the option would
+   deliver gets an `addresses` edge to the option; it reads as a candidate until a
+   decision chooses it.
+7. **Decide.** `decide_option` with the `stake_id`, the `option_id` and a `reason`.
+   Name why each loser lost in `closed`; an option you do not name is still closed,
+   with a default reason that comes back in `handToHuman`. The tool writes the
+   decision (approved; `status: "enacted"` when the work is already done), its
+   `impacts` edge to the stake and its `generates` edge to the option. A stake that
+   already has a decision is refused unless you pass `supersede: true`, which marks
+   the earlier decision superseded. Whether an option is selected, closed or open is
+   read from the decision and never stored on the option, and the acceptances of the
+   chosen option now read as promises.
+8. **Hand to a person** the choice itself when the options are close: say which you
+   picked and why, and leave a `proposed` decision (a `create_node` of species
+   `decision`) instead of calling `decide_option` when you are not the one to decide.
+
+See `references/schema.md` for the option and decision fields.
 
 ## Full Schema Reference
 

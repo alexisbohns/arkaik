@@ -271,6 +271,9 @@ jobs:
       - name: Option species tests (addresses edge, widened decision edges, answer types, validator warnings)
         run: npm run test:option
 
+      - name: Decision tests (answer, closure and promise readers, the select-option plan through applyOps and the validator)
+        run: npm run test:decide
+
       - name: Signal tests (request.filed fields, stake evidence, backlog and timeline links)
         run: npm run test:signal
 
