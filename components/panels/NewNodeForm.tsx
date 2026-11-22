@@ -208,7 +208,9 @@ export function NewNodeForm({
     onSubmit({
       title: title.trim(),
       species,
-      status,
+      // A stake shows no status field, so a status picked for another species
+      // is invisible here and could be a value the stake lifecycle forbids.
+      status: isStake ? "idea" : status,
       platforms: isStake ? [] : platforms,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
