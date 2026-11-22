@@ -1,7 +1,7 @@
 "use client";
 
 import { GitBranchIcon, SplitIcon } from "lucide-react";
-import { PRODUCT_MEMBERSHIP_SPECIES } from "@arkaik/schema";
+import { PRODUCT_MEMBERSHIP_SPECIES, stakeProvenanceOf, stakeSpeciesOf } from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { PlatformStatusMap } from "@/lib/data/types";
 import type { PlatformStatusRollup } from "@/lib/utils/platform-status";
@@ -22,6 +22,20 @@ import { SpeciesBadge, EntityId } from "@/components/graph/nodes/EntityBadges";
 import { ValueBadge } from "@/components/values/ValueBadge";
 import { DecisionStatusBadge } from "@/components/layout/DecisionStatusBadge";
 import { decisionStatusOf } from "@/lib/utils/decision";
+import { StatusBadge } from "@/components/layout/StatusBadge";
+import { STAKE_SPECIES_LABELS } from "@/lib/config/stake-species";
+
+/** A stake's card line: its kind, whether it is only anticipated, and where its stored lifecycle stands. */
+function StakeBadges({ node }: { node: Node }) {
+  const species = stakeSpeciesOf(node);
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-stake-badges="">
+      <Badge variant="outline">{species ? STAKE_SPECIES_LABELS[species] : "No kind yet"}</Badge>
+      {stakeProvenanceOf(node) === "anticipated" && <Badge variant="outline">Anticipated</Badge>}
+      <StatusBadge status={node.status} />
+    </div>
+  );
+}
 
 export interface PlaylistPreviewItem {
   type: "view" | "flow" | "condition" | "junction";
@@ -80,6 +94,9 @@ interface NodeCardProps {
  * scanning a library of hundreds of cards needs pointed out.
  */
 function ProductAnnotation({ species, labels }: { species: SpeciesId; labels: string[] }) {
+  // A stake is product-agnostic (it shows under every scope, no consumer reaches
+  // it), so "Unattached" would name a gap that is not one.
+  if (species === "stake") return null;
   const derived = !PRODUCT_MEMBERSHIP_SPECIES.includes(species);
 
   if (labels.length === 0) {
@@ -241,10 +258,13 @@ export function NodeCard({
             <DecisionStatusBadge status={decisionStatusOf(node)} showLabel />
           )}
 
+          {node.species === "stake" && <StakeBadges node={node} />}
+
           {node.species !== "view" &&
             node.species !== "flow" &&
             node.species !== "acceptance" &&
-            node.species !== "decision" && (
+            node.species !== "decision" &&
+            node.species !== "stake" && (
               <div className="space-y-1.5">
                 <span className="text-muted-foreground">Platforms</span>
                 {platforms.length > 0 ? (

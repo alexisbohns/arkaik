@@ -2438,6 +2438,19 @@
         "consequences": "Cheap to implement; proved too subtle in testing.",
         "decided_at": "2026-05-01"
       }
+    },
+    {
+      "id": "STK-pebble-reveal-too-slow",
+      "project_id": "pebbles",
+      "species": "stake",
+      "title": "The pebble reveal feels slow on a second look",
+      "description": "People who reopen a pebble they already know wait through the full draw-in each time. It works as designed and still gets in the way.",
+      "status": "discovery",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "friction",
+        "catalog": { "source": "values", "id": "saves-time" }
+      }
     }
   ],
   "edges": [
@@ -4429,6 +4442,13 @@
       "source_id": "DEC-adopt-glyph-wobble",
       "target_id": "V-record-celebration",
       "edge_type": "impacts"
+    },
+    {
+      "id": "e-STK-pebble-reveal-too-slow-V-pebble-detail",
+      "project_id": "pebbles",
+      "source_id": "STK-pebble-reveal-too-slow",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
     }
   ],
   "journal": [
@@ -6048,6 +6068,25 @@
       "source_id": "DEC-adopt-glyph-wobble",
       "target_id": "V-record-celebration",
       "edge_type": "impacts"
+    },
+    {
+      "id": "01K0STAKESEED00000000000001",
+      "ts": "2026-11-22T09:00:00.000Z",
+      "actor": "claude-code",
+      "type": "node.created",
+      "node_id": "STK-pebble-reveal-too-slow",
+      "species": "stake",
+      "title": "The pebble reveal feels slow on a second look"
+    },
+    {
+      "id": "01K0STAKESEED00000000000002",
+      "ts": "2026-11-22T09:00:01.000Z",
+      "actor": "claude-code",
+      "type": "edge.added",
+      "edge_id": "e-STK-pebble-reveal-too-slow-V-pebble-detail",
+      "source_id": "STK-pebble-reveal-too-slow",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
     },
     {
       "id": "01K0DELIVSEED0000000000001",

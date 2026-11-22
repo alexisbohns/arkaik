@@ -67,6 +67,12 @@ interface StatusSelectItemsProps {
    * is nothing to count.
    */
   counts?: ReadonlyMap<string, number>;
+  /**
+   * Offer only these lifecycle statuses, in the vocabulary's own order — for a
+   * species that stores a subset (a stake keeps idea, discovery and archived;
+   * every other state of it is derived). Ignored for the decision vocabulary.
+   */
+  only?: readonly StatusId[];
 }
 
 function renderItems<Id extends string>(
@@ -110,8 +116,13 @@ export function StatusSelectItems({
   vocabulary = "status",
   showIcons = true,
   counts,
+  only,
 }: StatusSelectItemsProps) {
-  return vocabulary === "decision-status"
-    ? renderItems(DECISION_STATUS_VOCABULARY, showIcons, counts)
-    : renderItems(STATUS_VOCABULARY, showIcons, counts);
+  if (vocabulary === "decision-status") return renderItems(DECISION_STATUS_VOCABULARY, showIcons, counts);
+  if (only === undefined) return renderItems(STATUS_VOCABULARY, showIcons, counts);
+  return renderItems(
+    { ...STATUS_VOCABULARY, options: STATUS_VOCABULARY.options.filter((option) => only.includes(option.id)) },
+    showIcons,
+    counts,
+  );
 }

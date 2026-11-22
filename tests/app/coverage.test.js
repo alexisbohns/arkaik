@@ -40,8 +40,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // --- Inventory: all species always present, config order, zero-safe ---------
 const emptyInventory = computeInventory([], [], 0);
 assert(
-  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"]),
-  "inventory lists all six species in config order even when empty",
+  eq(emptyInventory.species.map((s) => s.species), ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake"]),
+  "inventory lists every species in config order even when empty",
 );
 assert(
   emptyInventory.nodeCount === 0 && emptyInventory.edgeCount === 0 && emptyInventory.journalEventCount === 0,
@@ -211,15 +211,15 @@ const nodesById = new Map(bundle.nodes.map((node) => [node.id, node]));
 
 const inventory = computeInventory(bundle.nodes, bundle.edges, bundle.journal.length);
 assert(
-  inventory.nodeCount === 152 && inventory.edgeCount === 283 && inventory.journalEventCount === 183,
-  `seed census 152/283/183 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
+  inventory.nodeCount === 153 && inventory.edgeCount === 284 && inventory.journalEventCount === 185,
+  `seed census 153/284/185 (got ${inventory.nodeCount}/${inventory.edgeCount}/${inventory.journalEventCount})`,
 );
 assert(
   eq(
     inventory.species.map((entry) => [entry.species, entry.total]),
-    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49], ["acceptance", 3], ["decision", 2]],
+    [["flow", 10], ["view", 58], ["data-model", 30], ["api-endpoint", 49], ["acceptance", 3], ["decision", 2], ["stake", 1]],
   ),
-  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3 / decision 2 (pebbles carries a worked decision example: supersedes/generates/impacts)",
+  "seed species totals flow 10 / view 58 / data-model 30 / api-endpoint 49 / acceptance 3 / decision 2 / stake 1 (pebbles carries a worked decision example: supersedes/generates/impacts, and one stake anchored by concerns)",
 );
 
 const seedRollup = computeProductRollup(bundle.nodes, bundle.edges);
@@ -286,8 +286,8 @@ assert(
   "seed ships no screenshots: 58/58 views flagged",
 );
 assert(
-  seedById.get("nodes-without-description").count === 0 && seedById.get("nodes-without-description").total === 152,
-  "every seed node carries a description: 0/152",
+  seedById.get("nodes-without-description").count === 0 && seedById.get("nodes-without-description").total === 153,
+  "every seed node carries a description: 0/153",
 );
 assert(eq(seedById.get("disconnected-nodes").nodeIds, ["DM-bounce"]), "DM-bounce is the seed's one disconnected node");
 assert(seedById.get("open-backlog").count === 3, `seed backlog has 3 open items (got ${seedById.get("open-backlog").count})`);

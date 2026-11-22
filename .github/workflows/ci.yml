@@ -265,6 +265,9 @@ jobs:
       - name: Edge semantics table + dialog lookup tests
         run: npm run test:edge-semantics
 
+      - name: Stake species tests (concerns edge, metadata, validator warnings)
+        run: npm run test:stake
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

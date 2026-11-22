@@ -11,6 +11,15 @@ import {
 } from "./ids";
 import { SPECIES_PREFIXES } from "./id-gen";
 import { decisionStatusOf, lifecycleStatusForDecision } from "./decision";
+import {
+  ANTICIPATED_STAKE_SPECIES,
+  QUALITY_STAKE_SPECIES,
+  STAKE_LIFECYCLE_STATUSES,
+  USER_FACING_STAKE_SPECIES,
+  stakeCatalogOf,
+  stakeProvenanceOf,
+  stakeSpeciesOf,
+} from "./stake";
 import type { NodeMetadata } from "./bundle";
 import type { PlaylistEntry } from "./playlist";
 import { crossCheckJournal } from "./journal";
@@ -214,11 +223,11 @@ export function validateBundle(input: unknown): ValidationResult {
       error(`${base}.status`, "valid-status", `Node ${nodeId}: invalid status "${node.status}"`);
     }
 
-    // Platforms. Decisions are platform-agnostic records (spec §1): an empty
-    // array is their expected shape, not missing data.
+    // Platforms. Decisions and stakes are platform-agnostic records (spec §1):
+    // an empty array is their expected shape, not missing data.
     const platforms = node.platforms as unknown[] | undefined;
     if (!platforms || platforms.length === 0) {
-      if (species !== "decision") {
+      if (species !== "decision" && species !== "stake") {
         error(`${base}.platforms`, "platforms-non-empty", `Node ${nodeId}: platforms array is empty or missing`);
       }
     } else {
@@ -584,9 +593,15 @@ export function validateBundle(input: unknown): ValidationResult {
       // `storesMembership` inverts a three-species allowlist, so "not a
       // flow/view/acceptance" also catches a missing or bogus species (already
       // a `valid-species` error). Name the species only when it is a real one.
-      const detail = SPECIES_IDS.includes(species as SpeciesId)
-        ? `${species} membership is derived from consumers and must not be stored`
-        : "metadata.product is only meaningful on flow, view, and acceptance nodes";
+      // Decisions and stakes are not consumed by anything, so "derived from
+      // consumers" would be false for them: they store no product and show
+      // under every scope.
+      const detail =
+        species === "decision" || species === "stake"
+          ? `${species} nodes store no product membership (they show under every product scope)`
+          : SPECIES_IDS.includes(species as SpeciesId)
+            ? `${species} membership is derived from consumers and must not be stored`
+            : "metadata.product is only meaningful on flow, view, and acceptance nodes";
       warn(`${base}.metadata.product`, "product-membership-wrong-species", `Node ${nodeId}: ${detail}`);
       return;
     }
@@ -730,6 +745,90 @@ export function validateBundle(input: unknown): ValidationResult {
 
     if (edgeType === "composes") {
       composesSet.add(`${sourceId}->${targetId}`);
+    }
+  });
+
+  // --- Stake rules (docs/rfcs/stake-architecture.md). Warnings only: a
+  // hand-edited bundle must never brick on a stake. ---
+  const concernsSources = new Set<string>();
+  for (const edge of edges) {
+    if (edge.edge_type === "concerns" && typeof edge.source_id === "string") concernsSources.add(edge.source_id);
+  }
+  nodes.forEach((node, index) => {
+    const nodeId = typeof node.id === "string" ? node.id : `#${index}`;
+    const species = node.species as string | undefined;
+    const base = `nodes[${index}]`;
+    const stakeMd = (node.metadata ?? {}) as Record<string, unknown>;
+
+    if (species !== "stake") {
+      for (const field of ["stake_species", "provenance", "catalog"]) {
+        if (stakeMd[field] !== undefined) {
+          warn(
+            `${base}.metadata.${field}`,
+            "stake-species-wrong-species",
+            `${field} is meaningful on stake nodes only; "${nodeId}" is a ${species}.`,
+          );
+        }
+      }
+      return;
+    }
+
+    const stakeNode = { metadata: node.metadata as NodeMetadata | undefined };
+    const stakeSpecies = stakeSpeciesOf(stakeNode);
+    if (stakeSpecies === undefined) {
+      warn(
+        `${base}.metadata.stake_species`,
+        "stake-species-missing",
+        `Stake ${nodeId}: metadata.stake_species is missing (bug, friction, need, requirement, risk or defect)`,
+      );
+    }
+
+    if (!(STAKE_LIFECYCLE_STATUSES as readonly string[]).includes(node.status as string)) {
+      warn(
+        `${base}.status`,
+        "stake-lifecycle",
+        `Stake ${nodeId}: status "${node.status}" is not stored on a stake (idea, discovery or archived only; every other state is derived)`,
+      );
+    }
+
+    if (
+      stakeSpecies !== undefined &&
+      stakeProvenanceOf(stakeNode) === "anticipated" &&
+      !(ANTICIPATED_STAKE_SPECIES as readonly string[]).includes(stakeSpecies)
+    ) {
+      warn(
+        `${base}.metadata.provenance`,
+        "stake-anticipated-species",
+        `Stake ${nodeId}: an anticipated stake cannot be a ${stakeSpecies} (nothing exists yet to have one) — reroute it as a need`,
+      );
+    }
+
+    const catalog = stakeCatalogOf(stakeNode);
+    if (catalog && stakeSpecies !== undefined) {
+      const quality = (QUALITY_STAKE_SPECIES as readonly string[]).includes(stakeSpecies);
+      const userFacing = (USER_FACING_STAKE_SPECIES as readonly string[]).includes(stakeSpecies);
+      if ((quality && catalog.source === "values") || (userFacing && catalog.source === "kritik")) {
+        warn(
+          `${base}.metadata.catalog`,
+          "stake-catalog-mismatch",
+          `Stake ${nodeId}: a ${stakeSpecies} links to ${quality ? "a Kritik criterion" : "a value of the pyramid"}, not ${catalog.source}`,
+        );
+      }
+    }
+    if (catalog && catalog.source === "values" && !VALUE_IDS.includes(catalog.id as ValueId)) {
+      warn(
+        `${base}.metadata.catalog`,
+        "stake-catalog-unknown-value",
+        `Stake ${nodeId}: catalog value "${catalog.id}" is not a value of the pyramid`,
+      );
+    }
+
+    if (!concernsSources.has(nodeId)) {
+      warn(
+        `${base}`,
+        "stake-unanchored",
+        `Stake ${nodeId}: no outgoing concerns edge — anchor it to the flow, view, data model or endpoint it is about`,
+      );
     }
   });
 

@@ -113,6 +113,19 @@ assert(
   "connect dialog offers exactly generates for decision → acceptance",
 );
 
+// --- Stake edge: concerns, stake → the product's anatomy only ---------------
+for (const target of ["flow", "view", "data-model", "api-endpoint"]) {
+  assert(isValidEdgeSemantic("concerns", "stake", target), `concerns stake → ${target} is admitted`);
+}
+assert(!isValidEdgeSemantic("concerns", "stake", "acceptance"), "concerns stake → acceptance stays rejected");
+assert(!isValidEdgeSemantic("concerns", "stake", "decision"), "concerns stake → decision stays rejected");
+assert(!isValidEdgeSemantic("concerns", "view", "stake"), "concerns is one-directional out of the stake");
+assert(!isValidEdgeSemantic("impacts", "stake", "view"), "impacts stays decision-only");
+assert(
+  JSON.stringify(edgeTypesForSpeciesPair("stake", "api-endpoint")) === JSON.stringify(["concerns"]),
+  "connect dialog offers exactly concerns for stake → api-endpoint",
+);
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 
 if (failures > 0) {
@@ -120,3 +133,4 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log("\nAll edge-semantics tests passed.");
+

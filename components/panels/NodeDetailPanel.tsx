@@ -22,6 +22,7 @@ import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatfo
 import { WeighingGroup } from "@/components/panels/WeighingGroup";
 import { DecisionEditor, DecisionReasoning, DecisionVerdict, useDecisionEditor } from "@/components/panels/DecisionEditor";
 import { DecisionLineage } from "@/components/panels/DecisionLineage";
+import { StakeEditor } from "@/components/panels/StakeEditor";
 import { Shape, StatusPill, sealShapeOf } from "@/components/decisions/DecisionMarks";
 import { decisionStatusOf, type DecisionStatusId } from "@/lib/utils/decision";
 import { committedDecisionPanel } from "@/lib/utils/decision-panel";
@@ -1080,6 +1081,12 @@ export function NodeDetailPanel({
             allNodes={allNodes}
             allEdges={allEdges}
           />
+        )}
+        {/* A stake's own facts (kind, provenance, catalog link, stored
+            lifecycle). Read-only without a save path: the facts stay, the
+            controls go. Its anchor is the Relations group's `concerns` line. */}
+        {node.species === "stake" && (
+          <StakeEditor key={`stake-${node.id}`} node={node} onUpdate={onUpdate} metadataRef={metadataRef} />
         )}
         {decisionPanel && decisionPanel.lineage.length > 1 && (
           <DecisionLineage key={`lineage-${node.id}`} model={decisionPanel} onNavigate={onNavigate} />

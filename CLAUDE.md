@@ -2,7 +2,7 @@
 
 Arkaik is a product graph browser built with React Flow on Next.js — a
 local-first, navigable map of a product's anatomy (flows, views, data models,
-API endpoints, acceptances, decisions) as an atomic 6-species graph.
+API endpoints, acceptances, decisions, stakes) as an atomic 7-species graph.
 [`docs/graph-model.md`](docs/graph-model.md) is the taxonomy's source of truth;
 orientation lives in [`README.md`](README.md).
 

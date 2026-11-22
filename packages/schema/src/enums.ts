@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS } from "./ids";
 import { LEGACY_STATUS_IDS } from "./legacy-status";
 import { DECISION_STATUS_IDS } from "./decision";
+import { STAKE_CATALOG_SOURCES, STAKE_PROVENANCE_IDS, STAKE_SPECIES_IDS } from "./stake";
 
 export { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS, VALUE_TIERS } from "./ids";
 export { VALID_EDGE_SEMANTICS, isValidEdgeSemantic, edgeTypesForSpeciesPair } from "./ids";
@@ -10,7 +11,7 @@ export type { SpeciesId, StatusId, PlatformId, EdgeTypeId, ValueId, ValueTierId 
 export const SpeciesSchema = z.enum(SPECIES_IDS).meta({
   id: "Species",
   description:
-    "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status.",
+    "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status. decision = an ADR-style record (context, consequences, supersession). stake = something that matters about the product (a bug, friction, need, requirement, risk or defect), anchored to the anatomy by concerns edges.",
 });
 
 export const StatusSchema = z.enum(STATUS_IDS).meta({
@@ -40,7 +41,7 @@ export const PlatformSchema = z.enum(PLATFORM_IDS).meta({
 export const EdgeTypeSchema = z.enum(EDGE_TYPE_IDS).meta({
   id: "EdgeType",
   description:
-    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on).",
+    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on). supersedes = decision → decision. generates = decision → acceptance. impacts = decision → flow/view/data-model/api-endpoint. concerns = stake → flow/view/data-model/api-endpoint (the part of the anatomy the stake is about).",
 });
 
 export const ValueTierSchema = z.enum(VALUE_TIER_IDS).meta({
@@ -57,4 +58,21 @@ export const DecisionStatusSchema = z.enum(DECISION_STATUS_IDS).meta({
   id: "DecisionStatus",
   description:
     "Decision nodes only: proposed → approved (agreed, not yet reality) → enacted (in effect); terminal: rejected, deprecated, superseded. Not a lifecycle status — the node's status field is kept in sync (proposed→discovery, approved→backlog, enacted→live, terminals→archived).",
+});
+
+export const StakeSpeciesSchema = z.enum(STAKE_SPECIES_IDS).meta({
+  id: "StakeSpecies",
+  description:
+    "Stake nodes only: bug | friction | need (user-facing, weighed on the value pyramid) or requirement | risk | defect (quality, read against Kritik criteria).",
+});
+
+export const StakeProvenanceSchema = z.enum(STAKE_PROVENANCE_IDS).meta({
+  id: "StakeProvenance",
+  description:
+    "Stake nodes only: observed (seen in the world; the default when absent) or anticipated (reasoned about ahead of it; never a bug or a friction).",
+});
+
+export const StakeCatalogSourceSchema = z.enum(STAKE_CATALOG_SOURCES).meta({
+  id: "StakeCatalogSource",
+  description: "Where a stake's catalog link points: kritik (a criterion id such as SAF-01) or values (a value id such as reduces-anxiety).",
 });

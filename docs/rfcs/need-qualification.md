@@ -8,7 +8,7 @@ order: 93
 
 > Status: **Proposed. A method, not yet a feature; nothing here is implemented.** 2026-11-22. Worked out with the product owner from 2026-11-16 to 2026-11-21, on the Pebbles backlog. The method was used in a ranking tool and tested on 33 of 77 needs by one labeller. Items marked **(proposal)** were not settled. [§ 8](#8-what-the-pebbles-run-showed) says what the run did and did not show.
 >
-> Precedent: [Weighing](./weighing.md). That RFC defines the `opportunity` species and leaves *opportunity sizing* unslotted ([§ 18, question 9](./weighing.md#18-open-questions)). This RFC answers what sizing could be, and how an opportunity gets its wording.
+> Precedent: [Weighing](./weighing.md). That RFC defines the species now built as `stake` and leaves *stake sizing* unslotted ([§ 18, question 9](./weighing.md#18-open-questions)). This RFC answers what sizing could be, and how a stake gets its wording.
 >
 > Extended by: [Stake architecture](./stake-architecture.md) (2026-11-22, agreed with the product owner). It places this method inside a wider chain (signal, stake, evaluation, options, decision, answer, proof). Where the two disagree, that RFC wins. What it changes in this one:
 >
@@ -32,7 +32,7 @@ This RFC defines that path as nine steps. The output is a **qualified need**:
 - **with a measure of how much it matters**, on a scale that fits the kind;
 - **with a frequency**, kept apart from how much it matters.
 
-It is **not** a bug or QA triage. Many items that arrive as needs are sanity checks on a feature that already exists. The method recognises them and routes them out. It does not weigh them as opportunities.
+It is **not** a bug or QA triage. Many items that arrive as needs are sanity checks on a feature that already exists. The method recognises them and routes them out. It does not weigh them as stakes.
 
 ```
 voice -> classify register -> neutralize and excavate -> merge -> gate -> feel -> matter -> frequency -> (values)
@@ -52,7 +52,7 @@ All three come from asking for a size before asking what the thing is. The metho
 
 | Term | Meaning |
 |---|---|
-| **Need** | A positive, lasting thing a person wants to do, know or have. Something we address, not something we fix. Stored as an `opportunity` ([Weighing § 6](./weighing.md#6-opportunities-and-outcomes)). |
+| **Need** | A positive, lasting thing a person wants to do, know or have. Something we address, not something we fix. Stored as a `stake` ([Weighing § 6](./weighing.md#6-opportunities-and-outcomes)). |
 | **Complaint / feedback** | One real occurrence of a person hitting a gap. Dated and sourced. It is **evidence** for a need, never the need. |
 | **Solution-biased need** | Voiced as a need but names one way of meeting it ("I need to branch ChatGPT on Pebbles"). |
 | **Feature** | A described capability with the need left unstated. |
@@ -117,7 +117,7 @@ Merge items whose chosen need is the same need at the same rung, and only when o
 
 ### Step 5. Gate: is this a need to weigh?
 
-Route out what is not a need to weigh as an opportunity.
+Route out what is not a need to weigh as a stake.
 
 | Route | Where it goes |
 |---|---|
@@ -193,22 +193,22 @@ Which of the 30 elements of value does addressing the need give the person? Phra
 
 ## 4. Where it lands in the graph
 
-**(proposal, all of it.)** A qualified need is an `opportunity` ([Weighing § 6](./weighing.md#6-opportunities-and-outcomes)). The schema does not yet have the species (it is slice 2), so this section only shows the mapping.
+**(proposal, all of it.)** A qualified need is a `stake` ([Weighing § 6](./weighing.md#6-opportunities-and-outcomes)). The species exists ([Stake architecture](./stake-architecture.md), part 1) with `stake_species`, `provenance` and `catalog`; the fields in this table are not built yet, so it only shows the mapping.
 
-| Method output | Opportunity field |
+| Method output | Stake field |
 |---|---|
 | `need` (the chosen rung, positive, first person) | `title` |
 | `evidence[]` (item, voice, date, quote) | `metadata.evidence` (already in Weighing § 6) |
 | `values[]` | `metadata.values` (already in Weighing § 6) |
 | `felt`, `matters`, `frequency` | `metadata.felt`, `metadata.matters`, `metadata.frequency` |
 | `ladder[]`, `workaround`, `solution_test` | `metadata.ladder`, `metadata.workaround`, `metadata.solution_test`, kept so a human can overrule an inferred rung |
-| `route`, `parent` | `route` is not stored (routed-out items are not opportunities). `parent` becomes a link between opportunities. |
+| `route`, `parent` | `route` is not stored (routed-out items are not stakes of the need species). `parent` becomes a link between stakes. |
 | Agent-written records | Land at status `idea`, like every agent write ([Weighing § 6](./weighing.md#6-opportunities-and-outcomes)). |
 
 Two consequences for the Weighing RFC:
 
 1. **Wording.** Its example title, *"I don't find out when someone accepts my invite or shares a moment with me"*, is a deficit. Under this method it would be written positively ("I know when someone accepts my invite or shares a moment with me"), and the deficit would be kept as evidence. Nothing is implemented, so nothing breaks. The example would be updated if this RFC is accepted.
-2. **Sizing.** Weighing leaves *opportunity sizing* open ([§ 18, question 9](./weighing.md#18-open-questions)). The proposal here is that a need is sized by `felt` and `matters`, never by evidence count, and that a need's weight is only compared with the weight of needs of the same kind.
+2. **Sizing.** Weighing leaves *stake sizing* open ([§ 18, question 9](./weighing.md#18-open-questions)). The proposal here is that a need is sized by `felt` and `matters`, never by evidence count, and that a need's weight is only compared with the weight of needs of the same kind.
 
 ## 5. The output record
 
@@ -271,7 +271,7 @@ The method is meant to be run by an agent, with a human confirming what the agen
 | How it feels | Expected, wanted or a delight. A routing question, asked first. |
 | How much it matters | Four tiers per kind, stored as 4 to 1. Never ordered across kinds. |
 | Frequency | Separate from mattering, and separate from the evidence count. |
-| Sanity checks | Recognised and routed out, not weighed as opportunities. |
+| Sanity checks | Recognised and routed out, not weighed as stakes. |
 
 ## 8. What the Pebbles run showed
 
@@ -299,4 +299,4 @@ The QA result comes from the source, not from the method: a backlog of shipped f
 1. Source real opportunities (user voice, roadmap, positioning gaps) and run the method on them.
 2. Reword the Jev need-side question positively and re-run it before comparing it with the owner's ratings, by kind.
 3. Decide product stance as a route.
-4. If accepted, update the example title in [Weighing § 6](./weighing.md#6-opportunities-and-outcomes), and add the fields in [§ 4](#4-where-it-lands-in-the-graph) when slice 2 lands the `opportunity` species.
+4. If accepted, update the example title in [Weighing § 6](./weighing.md#6-opportunities-and-outcomes), and add the fields in [§ 4](#4-where-it-lands-in-the-graph) when slice 2 lands the rest of the weighing chain.

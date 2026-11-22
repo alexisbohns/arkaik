@@ -5,6 +5,9 @@ import {
   EdgeTypeSchema,
   PlatformSchema,
   SpeciesSchema,
+  StakeCatalogSourceSchema,
+  StakeProvenanceSchema,
+  StakeSpeciesSchema,
   StatusSchema,
   ValueSchema,
   type EdgeTypeId,
@@ -14,6 +17,7 @@ import {
   type ValueId,
 } from "./enums";
 import type { DecisionStatusId } from "./decision";
+import type { StakeCatalogSource, StakeProvenanceId, StakeSpeciesId } from "./stake";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
@@ -167,6 +171,12 @@ export interface NodeMetadata extends Record<string, unknown> {
   consequences?: string;
   /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
   decided_at?: string;
+  /** Stake nodes: the kind of stake (RFC § 3). */
+  stake_species?: StakeSpeciesId;
+  /** Stake nodes: observed (default when absent) or anticipated. */
+  provenance?: StakeProvenanceId;
+  /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
+  catalog?: { source: StakeCatalogSource; id: string };
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -203,6 +213,19 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
     decided_at: z.string().optional().meta({
       description: "Decision nodes only: ISO 8601 date the decision was made.",
     }),
+    stake_species: StakeSpeciesSchema.optional().meta({
+      description: "Stake nodes only: bug | friction | need | requirement | risk | defect.",
+    }),
+    provenance: StakeProvenanceSchema.optional().meta({
+      description: "Stake nodes only: observed (default when absent) or anticipated.",
+    }),
+    catalog: z
+      .object({
+        source: StakeCatalogSourceSchema,
+        id: z.string().meta({ description: "A Kritik criterion id (SAF-01) or a value id (reduces-anxiety). Nothing else is copied." }),
+      })
+      .optional()
+      .meta({ description: "Stake nodes only: link into the Kritik criteria or the value pyramid, by id." }),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });
@@ -219,7 +242,7 @@ export interface Node {
 }
 
 export const NodeSchema: z.ZodType<Node> = z.object({
-  id: z.string().meta({ description: "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint)." }),
+  id: z.string().meta({ description: "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint), AC- (acceptance), DEC- (decision), STK- (stake)." }),
   project_id: z.string().meta({ description: "Must match project.id." }),
   species: SpeciesSchema,
   title: z.string().meta({ description: "Human-readable node title." }),

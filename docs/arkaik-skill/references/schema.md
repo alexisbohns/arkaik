@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -95,6 +95,12 @@ interface NodeMetadata extends Record<string, unknown> {
   consequences?: string;
   /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
   decided_at?: string;
+  /** Stake nodes: the kind of stake (RFC § 3). */
+  stake_species?: StakeSpeciesId;
+  /** Stake nodes: observed (default when absent) or anticipated. */
+  provenance?: StakeProvenanceId;
+  /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
+  catalog?: { source: StakeCatalogSource; id: string };
 }
 
 interface PlatformScreenshotMeta {
@@ -436,6 +442,25 @@ Every node's `title` must be present and non-empty regardless of species.
 
 ---
 
+## Stake nodes
+
+A `stake` (id prefix `STK-`) is something that matters about the product, anchored
+to the anatomy by `concerns` edges (stake → flow / view / data-model / api-endpoint).
+
+- `metadata.stake_species` is one of `bug`, `friction`, `need`, `requirement`,
+  `risk`, `defect` (`StakeSpeciesId`). A stake missing it is legal and warned about.
+- `metadata.provenance` is `observed` (the default when absent) or `anticipated`
+  (`StakeProvenanceId`). An anticipated stake may only be a `need`, `requirement`,
+  `risk` or `defect`: nothing exists yet to have a bug or a friction.
+- `metadata.catalog` is `{ source, id }` with `source` `kritik` (a criterion id such
+  as `SAF-01`) or `values` (a value id such as `reduces-anxiety`) (`StakeCatalogSource`).
+  Only the id is stored, never anything copied from the catalog.
+- `platforms` is `[]`, and no product membership is stored.
+- The node's own `status` is the stored lifecycle and may only be `idea`,
+  `discovery` or `archived`; every other state is derived. Anything else is a warning.
+
+---
+
 ## Validation Checklist
 
 Before saving any changes, verify:
@@ -453,7 +478,7 @@ Before saving any changes, verify:
 11. Every view/flow referenced in a playlist has a corresponding `composes` edge
 12. No playlist cycles (a flow does not contain itself directly or indirectly)
 13. All flow nodes have `metadata.playlist` with at least one entry
-14. All `platforms` arrays have at least one value
+14. All `platforms` arrays have at least one value, except on `decision` and `stake` nodes (platform-agnostic: an empty array is legal)
 15. Any `metadata.stage` is one of `beta` / `monitoring` / `deprecated`
 16. Any `metadata.platformStatuses` / `platformNotes` use valid platforms (and statuses); `platformStatuses` keys are a subset of `node.platforms`
 17. `project.metadata.view_card_variant`, if set, is `compact` or `large` (import **rejects** other values)

@@ -494,6 +494,32 @@ async function main() {
   const anchorList = await callTool("list_nodes", { anchor: "V-profile" });
   check("list_nodes anchor filter", anchorList.body?.total === 1 && anchorList.body.nodes[0].id === "AC-profile-shows-avatar");
 
+  // --- Stake species (platform-agnostic, a kind in metadata) -----------------
+  const createdStake = await callTool("create_node", {
+    species: "stake",
+    title: "Avatar upload feels slow",
+    platforms: [],
+    metadata: { stake_species: "friction" },
+  });
+  check(
+    "create_node accepts a stake with platforms: [] (STK- id derived)",
+    !createdStake.isError && createdStake.body?.node?.id === "STK-avatar-upload-feels-slow",
+    JSON.stringify(createdStake.body).slice(0, 200),
+  );
+  check(
+    "create_node persists the stake metadata",
+    createdStake.body?.node?.metadata?.stake_species === "friction",
+    JSON.stringify(createdStake.body?.node?.metadata),
+  );
+
+  const stakeList = await callTool("list_nodes", { species: "stake" });
+  const stakeSummary = stakeList.body?.nodes?.find((n) => n.id === "STK-avatar-upload-feels-slow");
+  check(
+    "stake summaries carry stake_species + provenance (observed by default)",
+    stakeSummary?.stake_species === "friction" && stakeSummary?.provenance === "observed",
+    JSON.stringify(stakeSummary),
+  );
+
   const coveredView = await callTool("get_node", { node_id: "V-profile" });
   check(
     "get_node exposes covered_by on views",

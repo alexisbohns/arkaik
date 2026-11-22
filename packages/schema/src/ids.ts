@@ -5,7 +5,7 @@
  * pull the zod runtime in along with it.
  */
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake"] as const;
 export type SpeciesId = (typeof SPECIES_IDS)[number];
 
 export const STATUS_IDS = [
@@ -22,7 +22,7 @@ export type StatusId = (typeof STATUS_IDS)[number];
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
 export type PlatformId = (typeof PLATFORM_IDS)[number];
 
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns"] as const;
 export type EdgeTypeId = (typeof EDGE_TYPE_IDS)[number];
 
 /**
@@ -69,6 +69,15 @@ export const VALID_EDGE_SEMANTICS: Record<EdgeTypeId, ReadonlyArray<[SpeciesId, 
     ["decision", "view"],
     ["decision", "data-model"],
     ["decision", "api-endpoint"],
+  ],
+  // Stake edge (docs/rfcs/stake-architecture.md § 4). A stake is anchored to
+  // the product's anatomy only, never to an acceptance or a decision, and
+  // `impacts` stays decision-only.
+  concerns: [
+    ["stake", "flow"],
+    ["stake", "view"],
+    ["stake", "data-model"],
+    ["stake", "api-endpoint"],
   ],
 };
 

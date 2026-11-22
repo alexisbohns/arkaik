@@ -37,7 +37,7 @@ const labelsOf = (species) => relationLinesFor(species).map((line) => line.label
 
 // --- 1: the per-species snapshot -------------------------------------------
 
-const SNAPSHOTTED_SPECIES = ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision"];
+const SNAPSHOTTED_SPECIES = ["view", "flow", "data-model", "api-endpoint", "acceptance", "decision", "stake"];
 
 // If a species is ever added to SPECIES_IDS without a snapshot here, this
 // suite's per-species checks below would silently shrink to cover fewer
@@ -49,19 +49,19 @@ assert.deepEqual(
 );
 
 assert.deepEqual(labelsOf("view"), [
-  "Acceptances", "Calls", "Called by", "Displays", "Impacted by",
+  "Acceptances", "Calls", "Called by", "Displays", "Impacted by", "Stakes",
 ], "a view's lines, in order");
 
 assert.deepEqual(labelsOf("flow"), [
-  "Acceptances", "Calls", "Impacted by",
+  "Acceptances", "Calls", "Impacted by", "Stakes",
 ], "a flow's lines, in order");
 
 assert.deepEqual(labelsOf("data-model"), [
-  "Displayed by", "Queried by", "Impacted by",
+  "Displayed by", "Queried by", "Impacted by", "Stakes",
 ], "a data model's lines, in order");
 
 assert.deepEqual(labelsOf("api-endpoint"), [
-  "Calls", "Called by", "Queries", "Impacted by",
+  "Calls", "Called by", "Queries", "Impacted by", "Stakes",
 ], "an api endpoint's lines, in order");
 
 assert.deepEqual(labelsOf("acceptance"), [
@@ -71,6 +71,10 @@ assert.deepEqual(labelsOf("acceptance"), [
 assert.deepEqual(labelsOf("decision"), [
   "Supersedes", "Superseded by", "Generated acceptances", "Impacts",
 ], "a decision's lines, in order");
+
+assert.deepEqual(labelsOf("stake"), [
+  "Concerns",
+], "a stake's lines, in order: its anchor, and nothing else");
 
 // --- 2: composes is excluded outright --------------------------------------
 

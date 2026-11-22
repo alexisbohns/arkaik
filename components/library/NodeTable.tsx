@@ -1,6 +1,11 @@
 "use client";
 
-import { PRODUCT_MEMBERSHIP_SPECIES, resolvePlatformStatus } from "@arkaik/schema";
+import {
+  PRODUCT_MEMBERSHIP_SPECIES,
+  resolvePlatformStatus,
+  stakeProvenanceOf,
+  stakeSpeciesOf,
+} from "@arkaik/schema";
 import type { Node } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { blockedByOf } from "@/lib/utils/blocked";
@@ -9,6 +14,7 @@ import { CopyIdChip, SpeciesBadge } from "@/components/graph/nodes/EntityBadges"
 import { StatusMark } from "@/components/graph/nodes/StatusMark";
 import { RelatedNodesPopover } from "@/components/layout/RelatedNodesPopover";
 import { StatusBadge } from "@/components/layout/StatusBadge";
+import { STAKE_SPECIES_LABELS } from "@/lib/config/stake-species";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import {
@@ -93,6 +99,9 @@ interface NodeTableProps {
  */
 function productCellText(node: Node, labels: string[]): string {
   if (labels.length > 0) return labels.join(", ");
+  // A stake is product-agnostic: it shows under every scope and is reached by
+  // no consumer, so "Unattached" would say a gap that is not one.
+  if (node.species === "stake") return "-";
   return PRODUCT_MEMBERSHIP_SPECIES.includes(node.species) ? "-" : "Unattached";
 }
 
@@ -281,6 +290,12 @@ export function NodeTable({
               <TableCell className="w-full max-w-0">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 truncate">{node.title}</span>
+                  {node.species === "stake" && (
+                    <span className="shrink-0 text-xs text-muted-foreground" data-stake-kind="">
+                      {stakeSpeciesOf(node) ? STAKE_SPECIES_LABELS[stakeSpeciesOf(node)!] : "No kind yet"}
+                      {stakeProvenanceOf(node) === "anticipated" ? " · Anticipated" : ""}
+                    </span>
+                  )}
                   <span
                     onClick={(event) => event.stopPropagation()}
                     className="shrink-0 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100"

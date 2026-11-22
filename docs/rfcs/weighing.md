@@ -22,7 +22,7 @@ This RFC adds weighing in small, optional layers:
 
 1. **A signed level for value.** Each promise gets a level from −3 to +3 on the elements of value it touches. Positive means it serves the element. Negative means it costs it. Served and cost are summed separately, never netted.
 2. **Stories.** An acceptance can have child acceptances, at any depth. The story is the unit we score. The leaves are the unit we deliver and check on each platform.
-3. **Needs and outcomes.** A story can address a need (an *opportunity*), and a need can serve a measurable *outcome*.
+3. **Needs and outcomes.** A story can address a need (a *stake*), and a need can serve a measurable *outcome*.
 4. **Positioning.** The product states, in its own words, which elements it stands on.
 5. **Caps.** A hole in the value we stand for cannot be averaged away. It shows as a visible lid.
 
@@ -31,7 +31,7 @@ All of it rests on one way of judging, the one Kritik already uses: a level on a
 ```
   WHY WE BUILD                 WHAT WE OWE                          WHERE IT LIVES
 
-  Outcome <--serves-- Opportunity <--addresses-- Story --covers--> Journey, view
+  Outcome <--serves-- Stake <--addresses-- Story --covers--> Journey, view
   a number            a need, in the              |
    (new)              user's words               composes
                        (new)                      v
@@ -47,7 +47,7 @@ All of it rests on one way of judging, the one Kritik already uses: a level on a
 
   surfaces       x Kritik's criteria        0..4     grades, findings        today
   stories        x the elements of value   -3..+3    served, cost, gaps      new
-  opportunities  x reach, intensity, ...    0..4     a ranked list of needs  new
+  stakes  x reach, intensity, ...    0..4     a ranked list of needs  new
   options        x a decision's criteria    0..4     a winner and its limits new
 ```
 
@@ -89,7 +89,7 @@ One notion is missing for all three: a way to **weigh**. Today only counting exi
 - The Acceptances page is the parity matrix: acceptances grouped by what they cover, one status column per platform (`docs/graph-model.md` § Acceptances View).
 - An acceptance lists the elements it is *for* in `metadata.values`. It says which elements, not how much ([`docs/spec/bundle-format.md`](../spec/bundle-format.md) § Acceptance Nodes).
 
-Counting cannot say that a promise matters more than another, that a journey is thin where it should be strong, or that a promise costs a value it never claimed. The pyramid should become an evaluation matrix like Kritik's. Its "findings" on the value side are opportunities.
+Counting cannot say that a promise matters more than another, that a journey is thin where it should be strong, or that a promise costs a value it never claimed. The pyramid should become an evaluation matrix like Kritik's. Its "findings" on the value side are stakes.
 
 ## 2. The principles
 
@@ -113,12 +113,12 @@ One meaning per word. "New" means the model does not have it today. "Derived" me
 | **Leaf** | An acceptance with no children. It carries the Gherkin and the platform statuses. A quick win is a lone leaf. | Derived | |
 | **Journey** | A flow. A promise belongs to the journeys its `covers` edges reach. | Exists | Species `flow` |
 | **Value element** | One of 30 reasons a promise can matter, in 4 tiers (functional, emotional, life-changing, social impact). | Exists | `VALUE_IDS` in `packages/schema/src/ids.ts`, labels in `lib/config/values.ts` |
-| **Opportunity** | A need, pain or wish in the user's voice, with evidence. Said **"need"** to a human, the way an acceptance is a promise (owner, 2026-11-15). | New | Species `opportunity`, `OPP-` |
-| **Need** | The same thing as an opportunity, said to a human. `opportunity` stays the word in the schema. | New | A label, not an entity |
+| **Stake** | A need, pain or wish in the user's voice, with evidence. Said **"need"** to a human, the way an acceptance is a promise (owner, 2026-11-15). | New | Species `stake`, `STK-` |
+| **Need** | The same thing as a stake, said to a human. `stake` stays the word in the schema. | New | A label, not an entity |
 | **Feedback** | One real-life occurrence of one or several needs: evidence, dated and sourced (a `request.filed` event, say), linked to needs many-to-many. Not weighed itself; it adds evidence and frequency to a need's size. | New | Slice 2 |
 | **Outcome** | A measurable change in what people do, that the team wants. | New | Species `outcome`, `OUT-` |
-| **Solution** | A story that answers an opportunity. It is a role, drawn as an `addresses` edge. | New | Edge, no species |
-| **Hollow need** | An unnamed opportunity, created when a promise is linked straight to an outcome. A person or an agent names it later. | New | An `opportunity` node flagged as unnamed |
+| **Solution** | A story that answers a stake. It is a role, drawn as an `addresses` edge. | New | Edge, no species |
+| **Hollow need** | An unnamed stake, created when a promise is linked straight to an outcome. A person or an agent names it later. | New | A `stake` node flagged as unnamed |
 | **Status** | Where the acceptance itself stands in its lifecycle. One value. | Exists | `idea`, `discovery`, `backlog`, `development`, `releasing`, `live`, `archived` |
 | **Role** | What an acceptance is for, relative to something else. Several allowed. | New | An edge |
 | **Criterion** | One question on a described scale. | Exists (Kritik) | Generalized |
@@ -141,7 +141,7 @@ Weight is reserved for what a criterion counts in this project. A promise does n
 **Outcome or objective.** The acceptance spec reserved, and did not build, a species `objective` (`OBJ-`) and an edge `serves` from acceptance to objective, measured by "% of served acceptances live" ([`docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md`](../superpowers/specs/2026-07-19-acceptance-value-model-design.md) § 3.6). This design uses the slot differently:
 
 - It is named **outcome**, because it carries a number that comes from users. Measuring it by how much we shipped would be the progress bar we are leaving behind.
-- The `serves` edge keeps its name and runs from opportunity to outcome.
+- The `serves` edge keeps its name and runs from stake to outcome.
 
 Nothing was built on the reservation, so the change costs no migration. The spec's § 3.6 is updated when the outcome ships.
 
@@ -150,7 +150,7 @@ Nothing was built on the reservation, so the change costs no migration. The spec
 They answer different questions, so an acceptance always has both.
 
 - **Status** describes the acceptance itself. It has exactly one value, follows the lifecycle, and answers "how far along is it, and will we build it?".
-- **Role** is a relation to something else. It exists because of the thing on the other end, an acceptance can have several, and it answers "what is it for?". Being a solution is a role: the `addresses` edge to an opportunity.
+- **Role** is a relation to something else. It exists because of the thing on the other end, an acceptance can have several, and it answers "what is it for?". Being a solution is a role: the `addresses` edge to a stake.
 
 The four combinations:
 
@@ -224,7 +224,7 @@ Read at the story level, the photo story serves nostalgia 3, sensory appeal 2, a
 ### Things this design does not decide yet
 
 - A leaf with two parents would be counted twice by every roll-up. The recommendation is **one parent per acceptance**, a tree, with a cycle check as playlists have. The discussion did not settle it ([§ 18](#18-open-questions)).
-- Opportunities may nest the same way, mirroring stories, but they **start flat**.
+- Stakes may nest the same way, mirroring stories, but they **start flat**.
 
 ## 6. Opportunities and outcomes
 
@@ -233,9 +233,9 @@ Read at the story level, the photo story serves nostalgia 3, sensory appeal 2, a
 Both follow the decision precedent: no platforms, excluded from delivery and parity roll-ups, absent from the Journey and System maps by construction ([`docs/graph-model.md`](../graph-model.md) § Decisions).
 
 ```ts
-// Species "opportunity", id prefix OPP-   (all fields are a proposal)
+// Species "stake", id prefix STK-   (all fields are a proposal)
 {
-  id: "OPP-know-when-something-happens",
+  id: "STK-know-when-something-happens",
   title: "I don't find out when someone accepts my invite or shares a moment with me", // the user's voice
   status: "idea",               // idea | discovery | archived (below)
   platforms: [],
@@ -269,7 +269,7 @@ An evidence entry points at something that already exists: a node, a journal eve
 | `discovery` | Accepted by a person. Open and being worked on. |
 | `archived` | Closed: dismissed, parked or, for an outcome, reached. |
 
-The stored lifecycle of an opportunity is the three statuses above: proposed (`idea`), accepted (`discovery`) and closed (`archived`). It is separate from how far the need has been answered. That is a **state**, computed from the stories that address it and never typed in or stored:
+The stored lifecycle of a stake is the three statuses above: proposed (`idea`), accepted (`discovery`) and closed (`archived`). It is separate from how far the need has been answered. That is a **state**, computed from the stories that address it and never typed in or stored:
 
 | State | Derived from |
 |---|---|
@@ -285,10 +285,10 @@ Promises are *kept*; needs are *addressed*. "Addressed" also matches the `addres
 
 | Edge | From to | Meaning |
 |---|---|---|
-| `addresses` | acceptance to opportunity | This story is, or is part of, a solution to this need. |
-| `serves` | opportunity to outcome | Answering this need should move this number. |
+| `addresses` | acceptance to stake | This story is, or is part of, a solution to this need. |
+| `serves` | stake to outcome | Answering this need should move this number. |
 
-`generates` (decision to acceptance) already records that a choice produced a promise. With `addresses`, the path *decision, story, need, outcome* is complete, and no edge is needed between a decision and an opportunity.
+`generates` (decision to acceptance) already records that a choice produced a promise. With `addresses`, the path *decision, story, need, outcome* is complete, and no edge is needed between a decision and a stake.
 
 A solution is rarely one-to-one. In Pebbles the need "bring in one person I chose" is answered by five acceptances together. With stories, that group is one story with five leaves, or one story and four siblings, whichever the team prefers. Either way the model adds one edge, not a `solution` species.
 
@@ -315,8 +315,8 @@ Practical consequences:
 
 - Every path from a promise to an outcome still runs through exactly one need. Totals are computed over the *set* of promises reachable from an outcome, de-duplicated by id ([§ 12](#12-roll-ups-without-double-counting)).
 - A hollow need has no evidence and no size until someone adds them. It is shown as hollow, never as a real need.
-- Naming a hollow need is an ordinary edit, by a person or an agent. Opportunities are at `idea` until a person accepts them, so an agent-named need still waits for review.
-- The record for "hollow" is **(proposal)**: an `opportunity` node with `metadata.hollow: true`, cleared when it is named.
+- Naming a hollow need is an ordinary edit, by a person or an agent. Stakes are at `idea` until a person accepts them, so an agent-named need still waits for review.
+- The record for "hollow" is **(proposal)**: a `stake` node with `metadata.hollow: true`, cleared when it is named.
 
 ## 7. The assessment primitive
 
@@ -328,16 +328,16 @@ Kritik's own RFC settled scorer identity in a smaller way: quality events SHOULD
 
 ### Four instances
 
-| | Kritik (today) | Value matrix | Opportunity sizing | Options Matrix |
+| | Kritik (today) | Value matrix | Stake sizing | Options Matrix |
 |---|---|---|---|---|
-| **Subjects** | Surfaces | Stories (and lone acceptances) | Opportunities | Options: candidate stories |
+| **Subjects** | Surfaces | Stories (and lone acceptances) | Stakes | Options: candidate stories |
 | **Criteria set** | Kritik library, 11 domains | The 30 elements, 4 tiers, plus the positioning | Reach, intensity, leverage | The decision's own criteria |
 | **Scale** | 0 to 4, maturity | **−3 to +3**, signed | 0 to 4 | 0 to 4 |
 | **Project weights** | `domain_weights` | **Positioning** | Optional | Per decision |
 | **Evidence** | `file:line` at a commit | The promise's own text, feedback, decisions | Requests, findings, decisions, interviews | Graph facts. Guesses are confidence 0. |
 | **What is computed** | Domain scores, grades, caps | Served, cost, shares, states, caps | A ranked list | A winner and how fragile it is |
-| **What it produces** | **Findings** | **Opportunities**, drafted from gaps and unclaimed costs | An order to work in | A **decision** |
-| **Attached to** | The project | The project | An outcome | A decision or an opportunity |
+| **What it produces** | **Findings** | **Stakes**, drafted from gaps and unclaimed costs | An order to work in | A **decision** |
+| **Attached to** | The project | The project | An outcome | A decision or a stake |
 
 The Options Matrix no longer needs a guessed "fit" criterion. Fit with what the product stands on is read from the value matrix: a candidate that costs an element the product stands on shows it there ([§ 16](#16-pebbles-worked)).
 
@@ -347,7 +347,7 @@ The Options Matrix no longer needs a guessed "fit" criterion. Fit with what the 
 interface CriteriaSet {
   id: string;                 // "value-contribution", "positioning"
   version: string;            // semver. A criterion is never redefined, only superseded (Kritik's rule)
-  subject: "acceptance" | "flow" | "opportunity" | "option" | ...;
+  subject: "acceptance" | "flow" | "stake" | "option" | ...;
   scale: { min: number; max: number; anchors: Record<string, string> };  // value: min -3, max 3
   groups?: { id: string; title: string }[];     // Kritik's domains, the value tiers
   criteria: {
@@ -365,7 +365,7 @@ interface Matrix {
     | { kind: "query"; species: SpeciesId }
     | { kind: "list"; items: { id: string; title?: string; node_id?: string }[] };
   positioning?: string;       // the positioning set this matrix is read through
-  context?: { node_id: string };   // the decision or opportunity this matrix serves
+  context?: { node_id: string };   // the decision or stake this matrix serves
   status: "draft" | "active";
 }
 
@@ -417,7 +417,7 @@ A probabilistic scorer writes its most likely level and maps its probability ont
 | Subject | Fingerprint covers | Deliberately excluded |
 |---|---|---|
 | Story or acceptance (value matrix) | title, Gherkin, values | Status. Delivery is a fact joined at read time, not something the scorer judged. |
-| Opportunity | title, evidence refs | |
+| Stake | title, evidence refs | |
 | Option | the fingerprint of its node | |
 | Surface (Kritik) | commit | |
 
@@ -520,7 +520,7 @@ The hypothetical is the case that motivates the next sections: a live promise th
 
 ### What becomes of a cost
 
-A cost on a positioned element can become an opportunity (a need to reduce it). It can be accepted by a decision. Both are in [§ 10](#10-costs-and-decisions).
+A cost on a positioned element can become a stake (a need to reduce it). It can be accepted by a decision. Both are in [§ 10](#10-costs-and-decisions).
 
 ## 9. Positioning as criteria
 
@@ -691,7 +691,7 @@ The cap catches a single unexplained hole. The balance catches many small accept
 
 A matrix gives two kinds of number, and keeping them apart avoids most mistakes.
 
-- A **grade** answers *how good*. It is a weighted mean of levels, `Σ(level × weight) / Σ(max × weight) × 100`. Kritik's domain score uses exactly this ([`packages/kritik-library/SPEC.md`](../../packages/kritik-library/SPEC.md) § 4.5). Opportunity size and an Options Matrix score use it too.
+- A **grade** answers *how good*. It is a weighted mean of levels, `Σ(level × weight) / Σ(max × weight) × 100`. Kritik's domain score uses exactly this ([`packages/kritik-library/SPEC.md`](../../packages/kritik-library/SPEC.md) § 4.5). Stake size and an Options Matrix score use it too.
 - A **mass** answers *how much*. It is a sum. The value matrix is read this way, because the mean contribution of 159 promises to one element would be close to zero and would say nothing.
 
 ### The value chain, from the cell up
@@ -717,7 +717,7 @@ A story belongs to the journeys that its own `covers` edges, or its leaves' `cov
 1. **Every roll-up is computed from the set of scored units, never from another roll-up.** The product total is the sum over that set, each unit once. It is not the sum of the journeys. A set is de-duplicated by id, so two paths to one outcome count a promise once.
 2. **Split when the parts must add up. Do not split when asking about one part.** For sizes (the tile of a journey, a share of the whole), a story anchored in *k* journeys gives 1/*k* of its served to each, so the journeys add up to the product exactly. For the reading of a single journey ("what does Connect promise for *connects*?"), the story counts in full, and such readings are never added together.
 
-The same two rules cover a story that addresses two opportunities, and option C ([§ 6](#6-opportunities-and-outcomes)): every path still runs through one need.
+The same two rules cover a story that addresses two stakes, and option C ([§ 6](#6-opportunities-and-outcomes)): every path still runs through one need.
 
 ### Every number says how much of it is guesswork
 
@@ -735,7 +735,7 @@ Each intention is a different question with its own default order. "Absent" is w
 |---|---|---|---|
 | **Question** | Is every promise kept on every platform where it applies? | What does the product promise, journey by journey? | Does it deliver the value it stands for, and where should we invest? |
 | **Reads** | **Leaves** | **Stories** | **Stories**, scored once |
-| **Rows** | Leaves that are owed somewhere | Journeys, then their stories | Value elements, then opportunities |
+| **Rows** | Leaves that are owed somewhere | Journeys, then their stories | Value elements, then stakes |
 | **Default sort** | Heaviest debt first: the story's served plus the leaf's own, and, when needs exist, the size of the need it answers | Walking order of the journey | Gaps first: weighted elements with the smallest share. Then lids by how much they hold back. Then needs, raised first and then considered, largest first. |
 | **Segments** | By platform that owes ("mobile owes 3"), then by journey or by need | By journey and place. Tile size is journey share. | By tier. By state of the need. |
 | **Second lens** | Group debt under the need it blocks | Resize tiles by one element or one tier | Open one element to see the stories behind it, by served |
@@ -745,7 +745,7 @@ Three points stated plainly:
 
 - **Parity never needs the new layers.** They only change the order: the most valuable debt first instead of the first one alphabetically. A leaf inherits its story's levels, so it can sort by value without being scored itself.
 - **Mapping gets its sizes from the same served number.** "Do the same for values" is the journey share restricted to one element.
-- **Value is where the new species appear.** The matrix produces gaps and unclaimed costs. A person or an agent turns a gap, a cost, a request or a finding into an opportunity. Opportunities are the list this page ends on, as findings end a Kritik matrix.
+- **Value is where the new species appear.** The matrix produces gaps and unclaimed costs. A person or an agent turns a gap, a cost, a request or a finding into a stake. Stakes are the list this page ends on, as findings end a Kritik matrix.
 
 ## 14. The progressive layers
 
@@ -757,10 +757,10 @@ Each layer is switched on by adding data. None requires another unless the last 
 | **1. Value levels** | Assessments in the value matrix, −3 to +3 | A rule seeds positives. An agent refines and adds costs. A person overrides in the acceptance panel. | Served and cost per promise. Weighted pyramid. Parity sorted by value. "Claim not supported", "unclaimed value", "unclaimed cost". | 0 |
 | **2. Positioning** | A criteria set: weights, words, state bands, caps | A person writes it. An agent may draft it from the landing page, decisions or a brainstorm. | Gaps. Positioned served. States and caps. | 0. Better with 1. |
 | **3. Stories** | `composes` between acceptances | Person, agent | A named solution. Parity on leaves, mapping on stories. | 0 |
-| **4. Opportunities** | `opportunity` nodes, `addresses` edges with confidence, evidence | An agent proposes at `idea`. A person accepts. Or the reverse. | A list of needs and their state. Debt grouped by need. | 0. Best with 3. |
-| **5. Opportunity sizing** | A matrix: opportunities by reach, intensity, leverage | Person, agent | A ranked list of needs. The size that outcome caps read. | 4 |
+| **4. Stakes** | `stake` nodes, `addresses` edges with confidence, evidence | An agent proposes at `idea`. A person accepts. Or the reverse. | A list of needs and their state. Debt grouped by need. | 0. Best with 3. |
+| **5. Stake sizing** | A matrix: stakes by reach, intensity, leverage | Person, agent | A ranked list of needs. The size that outcome caps read. | 4 |
 | **6. Outcomes** | `outcome` nodes, `serves` edges, a metric, hollow needs for direct links | A person, or an agent drafting | The full tree. Later, readings: "kept, but did it matter?" | 4 |
-| **7. Options matrices** | A matrix attached to a decision or an opportunity | Person, agent | A weighed choice between stories, stored with the decision | 0. Best with 3. |
+| **7. Options matrices** | A matrix attached to a decision or a stake | Person, agent | A weighed choice between stories, stored with the decision | 0. Best with 3. |
 | **8. Experience audit** | A second value matrix: journeys by elements, 0 to 4, evidence required | An agent audit with human review, like Kritik | "Is it actually delivered", not only "is it shipped" | 2 |
 
 Which layers each cap needs:
@@ -789,12 +789,12 @@ The pattern is Kritik's: an agent plans within a budget, scores with evidence, a
 | **Positioning draft** | The landing page, decisions, a brainstorm | A draft criteria set: weights, level words, caps | Activates it. Until then it feeds nothing. | None |
 | **Value audit** | Stories (title, Gherkin, values), the criteria and anchors, the stale and unscored list | Assessments, scorer `agent`, confidence 1 or 2. **Costs the author never claimed.** | Cells where it differs from the claim, or from a person by two levels | `kritik_plan`, `kritik_score`, `kritik_matrix` |
 | **Re-audit** | Only cells whose fingerprint changed | Fresh assessments for them | Nothing, unless a human level went stale | `kritik_scope` |
-| **Cost explanation** | Unexplained costs on chosen or live promises | A proposed link to the deciding decision, a draft decision that accepts the cost, or an opportunity to reduce it | Which exit to take | `kritik_accept_finding` |
-| **Capture** | The output of a brainstorm or a code or design session | Stories and leaves at `idea`, opportunities at `idea`, `addresses` edges. Direct outcome links as hollow needs. | Accepts, dismisses, merges duplicates | None |
-| **Need discovery, from the product** | Gaps and unclaimed costs, decisions' consequences, Kritik findings, promises that address nothing | Opportunities at `idea` with evidence, and `addresses` edges to the stories that already answer them | Accepts (`discovery`), dismisses (`archived`), merges, rewords in the user's voice | Auditor emitting findings |
+| **Cost explanation** | Unexplained costs on chosen or live promises | A proposed link to the deciding decision, a draft decision that accepts the cost, or a stake to reduce it | Which exit to take | `kritik_accept_finding` |
+| **Capture** | The output of a brainstorm or a code or design session | Stories and leaves at `idea`, stakes at `idea`, `addresses` edges. Direct outcome links as hollow needs. | Accepts, dismisses, merges duplicates | None |
+| **Need discovery, from the product** | Gaps and unclaimed costs, decisions' consequences, Kritik findings, promises that address nothing | Stakes at `idea` with evidence, and `addresses` edges to the stories that already answer them | Accepts (`discovery`), dismisses (`archived`), merges, rewords in the user's voice | Auditor emitting findings |
 | **Need discovery, from feedback** | `request.filed` and `idea.proposed` events (`get_backlog`), pasted interviews or reviews | The same, with the events as evidence, one need per cluster | The same | None |
 | **Naming hollow needs** | A hollow need and its linked promises | A proposed name and, where possible, evidence | Confirms the name | None |
-| **Solution proposal** | One opportunity and the nodes around it | Candidate stories at `idea` with an `addresses` edge, and a draft Options Matrix | Which candidates survive | None |
+| **Solution proposal** | One stake and the nodes around it | Candidate stories at `idea` with an `addresses` edge, and a draft Options Matrix | Which candidates survive | None |
 | **Solution weighing** | The candidates, graph facts, and the candidates' value readings including costs | Assessments on the Options Matrix, guesses at confidence 0 | The weights, the guessed cells, the pick. The pick becomes a decision that `generates` the chosen story and covers its costs. | Adversarial verification |
 | **Roadmap** | Everything above | Nothing stored. A computed order: lids by how much they hold back, owed leaves, raised needs. | The order. Moving a promise from `idea` to `backlog` stays a deliberate act. | `kritik_findings` priority lanes |
 
@@ -813,7 +813,7 @@ Tools for matrices, each mirroring a Kritik tool:
 
 The tool names `matrix_scope` and `matrix_plan` and the slice they land in are the lead's reading. The discussion fixed only `get_matrix` and `assess` for the first slice.
 
-The need-to-outcome tree is itself a map. A built-in map kind over `outcome`, `opportunity` and `acceptance` with the `serves`, `addresses` and `composes` edges would give the visual form through the existing map machinery, and `get_map` would give an agent the same subgraph ([`docs/spec/maps.md`](../spec/maps.md)). That is a possibility, not a decision.
+The need-to-outcome tree is itself a map. A built-in map kind over `outcome`, `stake` and `acceptance` with the `serves`, `addresses` and `composes` edges would give the visual form through the existing map machinery, and `get_map` would give an agent the same subgraph ([`docs/spec/maps.md`](../spec/maps.md)). That is a possibility, not a decision.
 
 **What a person can always do.** Every assessment is one form: read a level's description, pick it, say how sure, cite evidence. Every node is the existing panel. Every matrix is a grid, and Kritik's components for levels, scales and matrices already exist (`components/quality/`).
 
@@ -841,12 +841,12 @@ Sizes are grades from three criteria (reach ×2, intensity ×2, leverage ×3), s
 
 | Need (proposal) | Evidence in the bundle | Addressed by | State | Size |
 |---|---|---|---|---|
-| `OPP-know-when-something-happens` "I don't find out when someone accepts my invite or shares a moment with me" | `DEC-connections-single-row-symmetric`: "No push, no realtime." | Nothing | **Raised** | 86 |
-| `OPP-undo-a-block` "I blocked someone by mistake and I can't take it back" | Same decision: "Block management UI is deferred, so until then an accidental block needs a service-role fix." | Nothing | **Raised** | 39 |
-| `OPP-bring-one-person-in` "I want to bring in one person I chose, without being findable by strangers" | `F-connect`: "Accepting is the mutual consent — there is no request queue and no directory to search." | `AC-invite-link-and-qr`, `AC-accept-invite-connects-both`, `AC-invite-link-persists`, `AC-invite-link-rotation`, `AC-connections-list` | **Partly addressed**, 81% kept | 100 |
-| `OPP-invitee-not-on-pebbles-yet` "The person I invite isn't on Pebbles yet, and the invite gets lost on their way in" | `V-invite-accept`: "Signed-out visitors on web get the sign-up-first path and return here afterwards." | `AC-invite-preview-before-account`, `AC-invite-survives-sign-up`, `AC-invite-link-opens-the-app` | **Partly addressed**, 42% kept | 86 |
-| `OPP-see-what-they-share` "Once we're connected, I want to see the moments they chose to share with me" | `V-connection-detail`: "the pebbles that connection shares with you (grades private and public, trimmed by RLS)" | `AC-connection-shared-pebbles`, `AC-pebble-grade-choice`, `AC-pebbles-secret-by-default` | **Addressed** | 93 |
-| `OPP-back-out-safely` "I need to be able to back out of a connection without a scene" | `DEC-connections-single-row-symmetric`: "store guidelines require blocking at launch" | `AC-remove-connection`, `AC-block-on-removal` | **Addressed** | 54 |
+| `STK-know-when-something-happens` "I don't find out when someone accepts my invite or shares a moment with me" | `DEC-connections-single-row-symmetric`: "No push, no realtime." | Nothing | **Raised** | 86 |
+| `STK-undo-a-block` "I blocked someone by mistake and I can't take it back" | Same decision: "Block management UI is deferred, so until then an accidental block needs a service-role fix." | Nothing | **Raised** | 39 |
+| `STK-bring-one-person-in` "I want to bring in one person I chose, without being findable by strangers" | `F-connect`: "Accepting is the mutual consent — there is no request queue and no directory to search." | `AC-invite-link-and-qr`, `AC-accept-invite-connects-both`, `AC-invite-link-persists`, `AC-invite-link-rotation`, `AC-connections-list` | **Partly addressed**, 81% kept | 100 |
+| `STK-invitee-not-on-pebbles-yet` "The person I invite isn't on Pebbles yet, and the invite gets lost on their way in" | `V-invite-accept`: "Signed-out visitors on web get the sign-up-first path and return here afterwards." | `AC-invite-preview-before-account`, `AC-invite-survives-sign-up`, `AC-invite-link-opens-the-app` | **Partly addressed**, 42% kept | 86 |
+| `STK-see-what-they-share` "Once we're connected, I want to see the moments they chose to share with me" | `V-connection-detail`: "the pebbles that connection shares with you (grades private and public, trimmed by RLS)" | `AC-connection-shared-pebbles`, `AC-pebble-grade-choice`, `AC-pebbles-secret-by-default` | **Addressed** | 93 |
+| `STK-back-out-safely` "I need to be able to back out of a connection without a scene" | `DEC-connections-single-row-symmetric`: "store guidelines require blocking at launch" | `AC-remove-connection`, `AC-block-on-removal` | **Addressed** | 54 |
 
 What this shows that no page shows today:
 
@@ -902,7 +902,7 @@ For *reduces anxiety* (the two anchors the owner gave): **3** removes a worry th
 
 ### One Options Matrix, on the new model
 
-The largest raised need is `OPP-know-when-something-happens` (86). Two candidate stories, both new acceptances at `idea` (proposals):
+The largest raised need is `STK-know-when-something-happens` (86). Two candidate stories, both new acceptances at `idea` (proposals):
 
 - `AC-connection-activity-push`: "Hear about it when a connection shares a moment with you" (iOS, Android).
 - `AC-connections-quiet-dot`: "A quiet dot tells you a connection has something new" (all three platforms; covers `V-connections-list` and `V-profile`).
@@ -940,9 +940,9 @@ Without the layers these are three equal rows in title order, and the accept, wi
 **The order of work this gives.**
 
 1. Finish `AC-accept-invite-connects-both` on mobile (need of size 100, and the promise holding the Connect lid).
-2. Decide between the two answers to `OPP-know-when-something-happens` (86, raised, and the need holding the outcome's lid).
+2. Decide between the two answers to `STK-know-when-something-happens` (86, raised, and the need holding the outcome's lid).
 3. Finish the two invitee promises on mobile (86, partly addressed).
-4. `OPP-undo-a-block` (39): real, small, last.
+4. `STK-undo-a-block` (39): real, small, last.
 
 ## 17. Shipping order
 
@@ -951,14 +951,14 @@ Approved. Each slice is its own release. Nothing in slice 1 needs a new species,
 | Slice | Ships | New species or edges | Why this order |
 |---|---|---|---|
 | **1. The weighing section** | `bundle.weighing`: CriteriaSet, Matrix, Assessment (scorer with an optional `on_behalf_of`, confidence, basis and fingerprint), following Kritik's files. The signed value matrix: acceptances by the 30 elements (stories do not exist yet), −3 to +3, positive levels seeded from the order of `values` as guesses, negatives never seeded. A form in the acceptance panel. Positioning as a criteria set. MCP `get_matrix`, `assess` and `save_positioning`. **Served and cost per promise** as the derived sort keys. | **None** | It is the piece every other layer reuses. Old readers ignore it safely. It gives the three pages a sort key at once. |
-| **2. Stories, opportunities and caps** | `composes` acceptance to acceptance. Species `opportunity`, edge `addresses` with confidence. Caps, with states. | Species `opportunity`. Edges: `composes` pair, `addresses`. | One schema release, because they change the closed species and edge-pair tables, and caps need needs and stories to exist. |
+| **2. Stories, stakes and caps** | `composes` acceptance to acceptance. Species `stake`, edge `addresses` with confidence. Caps, with states. | Species `stake`. Edges: `composes` pair, `addresses`. | One schema release, because they change the closed species and edge-pair tables, and caps need needs and stories to exist. |
 | **3. Outcomes and Options Matrices** | Species `outcome`, edge `serves`. Option C placeholders for direct links. Options Matrices attached to decisions. | Species `outcome`. Edge `serves`. | Needs slice 2. |
 
 Also from the discussion and still valid:
 
 - The cheap value matrix (stories by elements) comes first. The expensive journeys-by-elements experience audit is layer 8.
 - The outcome cap switches on when outcomes land, since it reads needs and outcomes. In slice 2 the element and journey caps work. **(The lead's reading.)**
-- Opportunity sizing, which the outcome cap reads, and `matrix_scope` and `matrix_plan` are not slotted by the discussion ([§ 18](#18-open-questions)).
+- Stake sizing, which the outcome cap reads, and `matrix_scope` and `matrix_plan` are not slotted by the discussion ([§ 18](#18-open-questions)).
 
 ## 18. Open questions
 
@@ -972,10 +972,10 @@ The model is decided. These are the details it leaves, each with the lead's lean
 | 4 | Which decisions cover a cost? What *chosen* means is settled ([§ 6](#6-opportunities-and-outcomes)): generated by a decision, or status `backlog` or later. It also decides when a need becomes *promised*. | Covered by a decision at `approved` or `enacted`. |
 | 5 | How many hollow needs does a direct link create: one per link, or one per outcome? | One per link is cheapest to merge later, but 16 back-office promises would make 16 placeholders. Open. |
 | 6 | Do element states exist only for positioned elements, or for all 30? | Positioned only, since the bands and caps live in the positioning. Costs on other elements still list as unexplained. |
-| 7 | Product membership of opportunities and outcomes. Decisions carry none. Pebbles declares products. | Not yet considered. |
+| 7 | Product membership of stakes and outcomes. Decisions carry none. Pebbles declares products. | Not yet considered. |
 | 8 | Can an agent activate its own draft matrix? The draft guard assumes the activator is someone else. | The provenance on the activation is the check. Open. |
-| 9 | Where do opportunity sizing, `matrix_scope` and `matrix_plan` land? | Sizing no later than slice 3, because the outcome cap reads it. |
-| 10 | Wording in the interface. "Promise" for acceptance is established. "Opportunity" or "need" is not. | Open. |
+| 9 | Where do stake sizing, `matrix_scope` and `matrix_plan` land? | Sizing no later than slice 3, because the outcome cap reads it. |
+| 10 | Wording in the interface. "Promise" for acceptance is established. "Stake" or "need" is not. | Open. |
 | 11 | Names of journal events and of the sidecar folder for weighing. | Follow `quality.*`. All proposals. |
 | 12 | Where do outcome readings come from? | Manual entry is enough to start. A connected source is a product decision of its own. |
 | 13 | Pebbles acceptances whose node status disagrees with their platform statuses. | Kept share reads platform statuses only, as `getNodePlatformStatuses` does. A validator warning is worth adding. |
@@ -1015,8 +1015,8 @@ This RFC describes a design, so the documents below keep describing what is buil
 
 | Document | Change |
 |---|---|
-| [`docs/graph-model.md`](../graph-model.md) | § Species: "exactly 6" becomes 7, with `opportunity`. § Edge Types: `composes` gains acceptance to acceptance, new `addresses`. § Status Model: role versus status, derived story status, the three statuses on opportunities. § Acceptances View and § Pyramid View: leaves and stories. § Canvas Visibility: the new species are excluded from the Journey and System maps. A dated Taxonomy Update Checklist note. |
-| [`docs/spec/bundle-format.md`](../spec/bundle-format.md) | § Acceptance Nodes: stories, optional Gherkin on a story, derived status. A new § Opportunity Nodes. The `platforms` exemption for opportunities, as decisions have. The cap rules and states in § Weighing. New validator rules (a cycle in `composes`, a story's stored status ignored). |
+| [`docs/graph-model.md`](../graph-model.md) | § Species: "exactly 6" becomes 7, with `stake`. § Edge Types: `composes` gains acceptance to acceptance, new `addresses`. § Status Model: role versus status, derived story status, the three statuses on stakes. § Acceptances View and § Pyramid View: leaves and stories. § Canvas Visibility: the new species are excluded from the Journey and System maps. A dated Taxonomy Update Checklist note. |
+| [`docs/spec/bundle-format.md`](../spec/bundle-format.md) | § Acceptance Nodes: stories, optional Gherkin on a story, derived status. A new § Stake Nodes. The `platforms` exemption for stakes, as decisions have. The cap rules and states in § Weighing. New validator rules (a cycle in `composes`, a story's stored status ignored). |
 | [`docs/spec/maps.md`](../spec/maps.md) | `KIND_DEFAULTS` keep the new species out of the built-in maps. |
 | [`docs/spec/mcp.md`](../spec/mcp.md) | New species and edge types in the tool enums. A `parity_gap` reading on leaves. |
 | [`docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md`](../superpowers/specs/2026-07-19-acceptance-value-model-design.md) | Nothing yet (the objective reservation changes in slice 3). |
@@ -1028,7 +1028,7 @@ This RFC describes a design, so the documents below keep describing what is buil
 | [`docs/graph-model.md`](../graph-model.md) | § Species: `outcome`. § Edge Types: `serves`. § Decisions: an Options Matrix attached to a decision. |
 | [`docs/spec/bundle-format.md`](../spec/bundle-format.md) | A new § Outcome Nodes. Hollow needs. Options Matrix records. |
 | [`docs/spec/journal.md`](../spec/journal.md) | `outcome.measured`. |
-| [`docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md`](../superpowers/specs/2026-07-19-acceptance-value-model-design.md) | § 3.6 (reserved objectives) is replaced: `outcome` and `serves` from opportunity, as designed here. |
+| [`docs/superpowers/specs/2026-07-19-acceptance-value-model-design.md`](../superpowers/specs/2026-07-19-acceptance-value-model-design.md) | § 3.6 (reserved objectives) is replaced: `outcome` and `serves` from stake, as designed here. |
 | [`docs/rfcs/weighing.md`](./weighing.md) | Status moves from "accepted design" to "shipped". |
 
 ### Always

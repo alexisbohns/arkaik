@@ -30,6 +30,9 @@ const CASES = [
   { file: "sidecar-valid/bundle.json", expectValid: true },
   { file: "sidecar-mismatch/bundle.json", expectValid: false },
   { file: "sidecar-bad-line/bundle.json", expectValid: false },
+  { file: "stake-valid.json", expectValid: true },
+  { file: "stake-warnings.json", expectValid: true },
+  { file: "stake-invalid-edge.json", expectValid: false },
 ];
 
 let failures = 0;

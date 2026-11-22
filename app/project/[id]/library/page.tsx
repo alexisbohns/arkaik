@@ -54,6 +54,7 @@ const SPECIES_EMPTY_LABELS: Record<LibrarySpeciesFilter, string> = {
   "api-endpoint": "API endpoints",
   acceptance: "acceptances",
   decision: "decisions",
+  stake: "stakes",
 };
 
 const SPECIES_LABEL_BY_ID = Object.fromEntries(

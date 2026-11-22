@@ -15,6 +15,7 @@ export const SPECIES_SHAPE: Record<string, ExpressiveShapeName> = {
   "data-model": "cookie9",
   "api-endpoint": "cookie9",
   decision: "flower",
+  stake: "cookie9",
 };
 
 export function SpeciesShape({ species, className }: { species: string; className?: string }) {
