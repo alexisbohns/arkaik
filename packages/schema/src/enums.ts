@@ -2,7 +2,14 @@ import { z } from "zod";
 import { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS } from "./ids";
 import { LEGACY_STATUS_IDS } from "./legacy-status";
 import { DECISION_STATUS_IDS } from "./decision";
-import { STAKE_CATALOG_SOURCES, STAKE_EVIDENCE_VOICES, STAKE_PROVENANCE_IDS, STAKE_SPECIES_IDS } from "./stake";
+import {
+  STAKE_CATALOG_SOURCES,
+  STAKE_EVIDENCE_VOICES,
+  STAKE_FELT_IDS,
+  STAKE_FREQUENCY_IDS,
+  STAKE_PROVENANCE_IDS,
+  STAKE_SPECIES_IDS,
+} from "./stake";
 
 export { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS, VALUE_TIERS } from "./ids";
 export { VALID_EDGE_SEMANTICS, isValidEdgeSemantic, edgeTypesForSpeciesPair } from "./ids";
@@ -80,4 +87,23 @@ export const StakeCatalogSourceSchema = z.enum(STAKE_CATALOG_SOURCES).meta({
 export const StakeEvidenceVoiceSchema = z.enum(STAKE_EVIDENCE_VOICES).meta({
   id: "StakeEvidenceVoice",
   description: "Who voiced a piece of stake evidence: person (the one the signal came from), maintainer, or agent.",
+});
+
+export const StakeFeltSchema = z.enum(STAKE_FELT_IDS).meta({
+  id: "StakeFelt",
+  description:
+    "Bug, friction and need stakes only: how the person feels it. expected (a must-be: a bug is always this), wanted (a performance) or delight (an attractive).",
+});
+
+export const StakeMattersSchema = z
+  .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+  .meta({
+    id: "StakeMatters",
+    description:
+      "Bug, friction and need stakes only: how much addressing it matters to the person, 4 (most) to 1 (least). Worded per felt kind; never summed with a pyramid level or a Kritik criticality.",
+  });
+
+export const StakeFrequencySchema = z.enum(STAKE_FREQUENCY_IDS).meta({
+  id: "StakeFrequency",
+  description: "Bug, friction and need stakes only: how often the situation comes up for the person: rare, some or often. Shown beside mattering, never sorted by.",
 });

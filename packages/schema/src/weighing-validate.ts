@@ -34,8 +34,10 @@ import {
   isWeighingProbability,
   majorOf,
   splitSetRef,
+  stakeSpeciesDeclaredBy,
   type WeighingSection,
 } from "./weighing";
+import { STAKE_SPECIES_IDS, type StakeSpeciesId } from "./stake";
 
 export interface WeighingFinding {
   path: string;
@@ -50,12 +52,15 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
  * Check a `weighing` section against the graph it sits in.
  *
  * @param nodeSpecies node id → species, for the "subject is an acceptance" check.
+ * @param stakeSpecies stake id → stake kind, for the "the set scores this kind of stake" check.
  * @param journal the bundle's embedded journal, for the actor check on `weighing.*` events.
  */
 export function validateWeighingSection(
   section: unknown,
   nodeSpecies: ReadonlyMap<string, string>,
   journal: readonly unknown[],
+  /** stake id → its `metadata.stake_species`, for the "the set scores this kind of stake" check. A stake absent from it has no kind. */
+  stakeSpecies: ReadonlyMap<string, string | undefined> = new Map(),
 ): WeighingFinding[] {
   const out: WeighingFinding[] = [];
   const warn = (path: string, rule: string, message: string) => out.push({ path, rule, message });
@@ -126,6 +131,13 @@ export function validateWeighingSection(
         }
       }
       checkStatus(path, who, entry);
+
+      if (entry.stake_species !== undefined) {
+        const declared = entry.stake_species;
+        if (!Array.isArray(declared) || !declared.every((kind) => (STAKE_SPECIES_IDS as readonly unknown[]).includes(kind))) {
+          warn(`${path}.stake_species`, "weighing-set-stake-species", `${who}: stake_species must be an array of ${STAKE_SPECIES_IDS.join(", ")} — what it does not name, it does not score`);
+        }
+      }
 
       if (isObject(entry.scale)) {
         const scale = entry.scale;
@@ -250,6 +262,17 @@ export function validateWeighingSection(
           warn(`${path}.subject`, "weighing-unknown-subject", `${label}: subject "${entry.subject}" is not a node in this bundle`);
         } else if (species !== matrix.subjects.species) {
           warn(`${path}.subject`, "weighing-subject-species", `${label}: subject "${entry.subject}" is a ${species}, and matrix "${matrix.id}" judges ${String(matrix.subjects.species)} nodes`);
+        } else if (species === "stake" && set !== undefined) {
+          // The reference declares what it scores: a stake of a kind the set does not declare (a requirement,
+          // a risk, a defect) is read against Kritik, never weighed here.
+          const kind = stakeSpecies.get(entry.subject);
+          if (kind === undefined || !stakeSpeciesDeclaredBy(set).includes(kind as StakeSpeciesId)) {
+            warn(
+              `${path}.subject`,
+              "weighing-subject-stake-species",
+              `${label}: stake "${entry.subject}" is ${kind === undefined ? "of no stake kind" : `a ${kind}`}, and set "${set.id}" does not declare it scores that — a requirement, risk or defect is read against Kritik criteria, never weighed`,
+            );
+          }
         }
       }
       if (entry.evidence !== undefined && typeof entry.evidence !== "string") {

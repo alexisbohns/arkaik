@@ -26,11 +26,14 @@
 import type { Node } from "./bundle";
 import { makeEvent } from "./emit";
 import type { JournalEvent } from "./journal";
-import { acceptanceFingerprint } from "./weighing";
+import { QUALITY_STAKE_SPECIES, stakeSpeciesOf } from "./stake";
+import { fingerprintOf, stakeSpeciesDeclaredBy } from "./weighing";
 import {
   POSITIONING_SET_ID,
   VALUE_SET_ID,
   VALUE_MATRIX_ID,
+  STAKE_MATRIX_ID,
+  isMatrixSubject,
   isOlderMajorRef,
   resolveWeighing,
   setOfRef,
@@ -329,9 +332,12 @@ export function planWeighingEvents(
     if (problem !== undefined) return refuse("invalid_entry", problem);
     const input = entry as Extract<WeighingEventInput, { type: typeof WEIGHING_ASSESSMENT_RECORDED }>;
 
-    const matrix = resolved.matrices.find((candidate) => candidate.id === (input.matrix ?? VALUE_MATRIX_ID));
+    const node = byId.get(input.subject);
+    // A stake with no matrix named is weighed on the stake matrix: its cells never share a matrix with the acceptances'.
+    const matrixId = input.matrix ?? (node?.species === "stake" ? STAKE_MATRIX_ID : VALUE_MATRIX_ID);
+    const matrix = resolved.matrices.find((candidate) => candidate.id === matrixId);
     if (matrix === undefined) {
-      return refuse("unknown_matrix", `no matrix "${input.matrix ?? VALUE_MATRIX_ID}" (have: ${resolved.matrices.map((m) => m.id).join(", ")})`);
+      return refuse("unknown_matrix", `no matrix "${matrixId}" (have: ${resolved.matrices.map((m) => m.id).join(", ")})`);
     }
     const set = setOfRef(resolved, matrix.set);
     if (set === undefined) return refuse("unknown_matrix", `matrix "${matrix.id}" names set "${matrix.set}", which is not available`);
@@ -339,9 +345,20 @@ export function planWeighingEvents(
       return refuse("unknown_matrix", `matrix "${matrix.id}" reads ${matrix.set}, an older ruler — nothing new is scored against it; point the matrix at the current major`);
     }
 
-    const node = byId.get(input.subject);
-    const judged = matrix.subjects.kind === "query" ? node?.species === matrix.subjects.species : matrix.subjects.items.some((item) => (item?.node_id ?? item?.id) === input.subject);
-    if (node === undefined || !judged) {
+    if (node === undefined || !isMatrixSubject(node, matrix, set)) {
+      if (node?.species === "stake" && matrix.subjects.kind === "query" && matrix.subjects.species === "stake") {
+        // The reference declares what it scores; a stake of any other kind is read elsewhere, never weighed here.
+        const kind = stakeSpeciesOf(node);
+        const declared = stakeSpeciesDeclaredBy(set);
+        return refuse(
+          "unknown_subject",
+          kind === undefined
+            ? `"${input.subject}" has no stake kind (metadata.stake_species), so no reference can score it`
+            : `"${input.subject}" is a ${kind}, and set "${set.id}" scores ${declared.length > 0 ? declared.join(", ") : "no stake"} only${
+                (QUALITY_STAKE_SPECIES as readonly string[]).includes(kind) ? " — a requirement, risk or defect is read against Kritik criteria, never weighed" : ""
+              }`,
+        );
+      }
       return refuse("unknown_subject", `"${input.subject}" is not a subject of matrix "${matrix.id}"`);
     }
 
@@ -377,7 +394,7 @@ export function planWeighingEvents(
       ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
       ...(input.refs !== undefined ? { refs: input.refs } : {}),
       basis: {
-        fingerprint: acceptanceFingerprint(node),
+        fingerprint: fingerprintOf(node),
         set_version: set.version,
         ...(input.commit !== undefined ? { commit: input.commit } : {}),
       },

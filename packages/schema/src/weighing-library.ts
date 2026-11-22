@@ -20,10 +20,12 @@
  * server and the plugin scripts all read this one copy.
  */
 
+import type { Node } from "./bundle";
 import { VALUE_IDS, VALUE_TIERS, type ValueId, type ValueTierId } from "./ids";
 import { VALUE_REACH_LADDERS } from "./weighing-ladders";
 import type { WeighingCriteriaSet, WeighingMatrix, WeighingScale, WeighingSection } from "./weighing";
-import { majorOf, splitSetRef } from "./weighing";
+import { majorOf, splitSetRef, stakeSpeciesDeclaredBy } from "./weighing";
+import { USER_FACING_STAKE_SPECIES, stakeSpeciesOf } from "./stake";
 
 /**
  * Freeze a value and everything under it. The built-ins are shared by every
@@ -43,6 +45,8 @@ export const VALUE_SET_VERSION = "2.0.0";
 /** The first ruler, kept frozen so an `@1` ref still resolves. */
 export const VALUE_SET_V1_VERSION = "1.0.0";
 export const VALUE_MATRIX_ID = "value";
+/** The built-in matrix that judges stakes against the same ruler. Its own cells, never mixed into {@link VALUE_MATRIX_ID}'s. */
+export const STAKE_MATRIX_ID = "stakes";
 /** The id a project's positioning set carries. */
 export const POSITIONING_SET_ID = "positioning";
 
@@ -145,6 +149,8 @@ export const VALUE_CONTRIBUTION_SET: WeighingCriteriaSet = deepFreeze({
   version: VALUE_SET_VERSION,
   title: "Elements of value",
   subject: "acceptance",
+  // The reference declares what it scores (stake architecture, part 4): the user-facing stakes are weighed on the pyramid.
+  stake_species: [...USER_FACING_STAKE_SPECIES],
   scale: VALUE_SCALE,
   groups: GROUPS,
   criteria: VALUE_IDS.map((id) => ({
@@ -185,12 +191,26 @@ export const VALUE_MATRIX: WeighingMatrix = deepFreeze({
 });
 
 /**
+ * The built-in stake matrix: every stake of a species the ruler declares
+ * (bug, friction, need), judged against the elements of value. No positioning
+ * re-weights it: a positioning speaks about the product's promises, and the
+ * figures of the two matrices are never added.
+ */
+export const STAKE_MATRIX: WeighingMatrix = deepFreeze({
+  id: STAKE_MATRIX_ID,
+  title: "Stakes",
+  set: `${VALUE_SET_ID}@2`,
+  subjects: { kind: "query", species: "stake" },
+  status: "active",
+});
+
+/**
  * The current ruler FIRST: a lookup by id alone (a ref with no `@`, a reader
  * that wants "the value set") finds the current major. {@link setOfRef} picks a
  * major explicitly.
  */
 export const BUILT_IN_SETS: readonly WeighingCriteriaSet[] = [VALUE_CONTRIBUTION_SET, VALUE_CONTRIBUTION_SET_V1];
-export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX];
+export const BUILT_IN_MATRICES: readonly WeighingMatrix[] = [VALUE_MATRIX, STAKE_MATRIX];
 
 /**
  * The built-ins layered under a project's own entries — the WELL-FORMED view of a
@@ -316,4 +336,23 @@ export function isOlderMajorRef(resolved: Pick<ResolvedWeighing, "sets">, ref: s
   if (current === undefined || major === undefined) return false;
   const now = Number(majorOf(current.version));
   return Number.isFinite(now) && Number(major) < now;
+}
+
+/**
+ * Does the matrix judge this node? A query matrix judges the nodes of its
+ * species, and — when that species is `stake` — only the stakes whose kind the
+ * matrix's set declares it scores ({@link stakeSpeciesDeclaredBy}); a list
+ * matrix judges the nodes it lists. The one rule the planner, the derivation
+ * and the validator share.
+ */
+export function isMatrixSubject(
+  node: Pick<Node, "id" | "species" | "metadata">,
+  matrix: Pick<WeighingMatrix, "subjects">,
+  set: Pick<WeighingCriteriaSet, "stake_species"> | undefined,
+): boolean {
+  if (matrix.subjects.kind !== "query") return matrix.subjects.items.some((item) => (item?.node_id ?? item?.id) === node.id);
+  if (node.species !== matrix.subjects.species) return false;
+  if (node.species !== "stake") return true;
+  const kind = stakeSpeciesOf({ metadata: node.metadata });
+  return kind !== undefined && set !== undefined && stakeSpeciesDeclaredBy(set).includes(kind);
 }

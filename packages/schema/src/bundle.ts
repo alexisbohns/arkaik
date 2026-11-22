@@ -7,6 +7,9 @@ import {
   SpeciesSchema,
   StakeCatalogSourceSchema,
   StakeEvidenceVoiceSchema,
+  StakeFeltSchema,
+  StakeFrequencySchema,
+  StakeMattersSchema,
   StakeProvenanceSchema,
   StakeSpeciesSchema,
   StatusSchema,
@@ -18,7 +21,15 @@ import {
   type ValueId,
 } from "./enums";
 import type { DecisionStatusId } from "./decision";
-import type { StakeCatalogSource, StakeEvidence, StakeProvenanceId, StakeSpeciesId } from "./stake";
+import type {
+  StakeCatalogSource,
+  StakeEvidence,
+  StakeFelt,
+  StakeFrequency,
+  StakeMatters,
+  StakeProvenanceId,
+  StakeSpeciesId,
+} from "./stake";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
@@ -180,6 +191,12 @@ export interface NodeMetadata extends Record<string, unknown> {
   catalog?: { source: StakeCatalogSource; id: string };
   /** Stake nodes: the signals behind the stake (written at qualification); the durable half of the signal ↔ stake link. */
   evidence?: StakeEvidence[];
+  /** Bug, friction and need stakes: how the person feels it (a bug is always expected). */
+  felt?: StakeFelt;
+  /** Bug, friction and need stakes: how much addressing it matters, 4 (most) to 1. */
+  matters?: StakeMatters;
+  /** Bug, friction and need stakes: how often the situation comes up. */
+  frequency?: StakeFrequency;
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -242,6 +259,9 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
       )
       .optional()
       .meta({ description: "Stake nodes only: the signals behind the stake, one entry per signal. Written at qualification." }),
+    felt: StakeFeltSchema.optional(),
+    matters: StakeMattersSchema.optional(),
+    frequency: StakeFrequencySchema.optional(),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });
