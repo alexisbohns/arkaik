@@ -1090,7 +1090,7 @@ export function NodeDetailPanel({
             lifecycle). Read-only without a save path: the facts stay, the
             controls go. Its anchor is the Relations group's `concerns` line. */}
         {node.species === "stake" && (
-          <StakeEditor key={`stake-${node.id}`} node={node} onUpdate={onUpdate} metadataRef={metadataRef} />
+          <StakeEditor key={`stake-${node.id}`} node={node} allNodes={allNodes} allEdges={allEdges} onUpdate={onUpdate} metadataRef={metadataRef} />
         )}
         {/* An option's own facts (answer type, suggested-by, stored lifecycle).
             The stake it addresses is the Relations group's `addresses` line. */}

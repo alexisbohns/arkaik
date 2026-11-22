@@ -512,6 +512,8 @@ to the anatomy by `concerns` edges (stake → flow / view / data-model / api-end
 - `platforms` is `[]`, and no product membership is stored.
 - The node's own `status` is the stored lifecycle and may only be `idea`,
   `discovery` or `archived`; every other state is derived. Anything else is a warning.
+  Read the derived state (raised, considered, promised, verified-not-delivered,
+  partly-addressed, addressed) with `stake_proof`; never write it.
 
 ## Option nodes
 

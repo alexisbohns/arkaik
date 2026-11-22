@@ -394,6 +394,45 @@ async function main() {
       JSON.stringify(state.receivedOps[0]),
     );
 
+    // --- stake_proof reads the hosted sections ------------------------------
+    // A read, so there are no ops to send. What it needs is the same as in a
+    // repo, from the places a hosted session has them: the nodes and edges, the
+    // journal, and the quality section the bundle embeds. A requirement scored
+    // after it was raised is verified; without the section it is only promised.
+    const proofCounts = { nodes: state.bundle.nodes.length, edges: state.bundle.edges.length, journal: state.journal.length };
+    state.bundle.nodes.push(
+      { id: "STK-safe", project_id: "gp", species: "stake", title: "Checkout is safe", status: "discovery", platforms: [], metadata: { stake_species: "requirement", catalog: { source: "kritik", id: "SAF-01" } } },
+      { id: "OPT-safe", project_id: "gp", species: "option", title: "Audit checkout", status: "idea", platforms: [] },
+      { id: "DEC-safe", project_id: "gp", species: "decision", title: "Audit it", status: "backlog", platforms: [], metadata: { decision_status: "approved" } },
+    );
+    state.bundle.edges.push(
+      { id: "e-OPT-safe-STK-safe", project_id: "gp", source_id: "OPT-safe", target_id: "STK-safe", edge_type: "addresses" },
+      { id: "e-DEC-safe-STK-safe", project_id: "gp", source_id: "DEC-safe", target_id: "STK-safe", edge_type: "impacts" },
+      { id: "e-DEC-safe-OPT-safe", project_id: "gp", source_id: "DEC-safe", target_id: "OPT-safe", edge_type: "generates" },
+    );
+    state.journal.push({ id: "01KN44ARM0JH4YFMX52BGKNPR1", ts: "2026-02-01T00:00:00.000Z", type: "node.created", node_id: "STK-safe", species: "stake", title: "Checkout is safe" });
+    const asked = { stake_id: "STK-safe", now: "2026-06-01T00:00:00.000Z" };
+    const bare = await rpc(remoteEnv, [], [initialize, call(72, "stake_proof", asked)]);
+    const bareProof = resultText(bare.responses, 72)?.stake;
+    check("stake_proof answers against the hosted API", bareProof?.stake_id === "STK-safe" && !isError(bare.responses, 72), JSON.stringify(resultText(bare.responses, 72)));
+    check("with no quality section a hosted requirement is only promised", bareProof?.state === "promised" && bareProof.answer?.option_id === "OPT-safe", JSON.stringify(bareProof));
+    state.bundle.quality = {
+      framework_version: "0.1.0",
+      profile: { surfaces: [{ id: "web", title: "Web", platforms: ["web"] }] },
+      assessments: [{ criterion_id: "SAF-01", surface: "web", level: 3, evidence: "src/pay.ts:1", audit_id: "2026-03", ts: "2026-03-01T00:00:00.000Z" }],
+      findings: [],
+    };
+    const scored = await rpc(remoteEnv, [], [initialize, call(73, "stake_proof", asked), call(74, "stake_proof", { now: asked.now })]);
+    const scoredProof = resultText(scored.responses, 73)?.stake;
+    check("with the section's score dated after it was raised it is addressed", scoredProof?.state === "addressed" && scoredProof.cells[0]?.verified === true, JSON.stringify(scoredProof));
+    const everyStake = resultText(scored.responses, 74);
+    check("and every stake in the hosted graph is read, with a count per state", everyStake?.count === 1 && everyStake.counts?.addressed === 1, JSON.stringify(everyStake?.counts));
+    check("a read sends no ops", state.receivedOps.length === 1 && state.receivedOps[0][0]?.op === "create_node", JSON.stringify(state.receivedOps.map((ops) => ops.length)));
+    delete state.bundle.quality;
+    state.bundle.nodes.length = proofCounts.nodes;
+    state.bundle.edges.length = proofCounts.edges;
+    state.journal.length = proofCounts.journal;
+
     // --- A server refusal reads like a local one ---------------------------
     state.refuseNext = true;
     const refused = await rpc(

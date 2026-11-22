@@ -286,6 +286,9 @@ jobs:
       - name: Criterion version tests (pack versions, overlay merge, stake expiry and verified version, warnings)
         run: npm run test:criterion-version
 
+      - name: Stake proof tests (the ladder, per-platform cells, the Kritik pass, staleness, the Pebbles seed)
+        run: npm run test:stake-proof
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

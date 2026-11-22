@@ -6,9 +6,9 @@ order: 94
 
 # RFC: Stake architecture: one node, one chain, from signal to proof
 
-> Status: **Architecture agreed with the product owner on 2026-11-22. Parts 1 to 4 shipped. Parts 5 and 6 are not built; the owner answered the thirteen calls of [§ 14](#14-proposal-for-parts-5-and-6) on 2026-11-22, so they are ready to plan.** Written from the design document [arkaik: unified stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC), which this RFC now replaces as the source of truth. One question is deferred to its own research session: how options are compared ([§ 12](#12-open-questions)).
+> Status: **Architecture agreed with the product owner on 2026-11-22. Parts 1 to 6 shipped. The owner answered the thirteen calls of [§ 14](#14-proposal-for-parts-5-and-6) on 2026-11-22, and parts 5 and 6 are built as they settled.** Written from the design document [arkaik: unified stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC), which this RFC now replaces as the source of truth. One question is deferred to its own research session: how options are compared ([§ 12](#12-open-questions)).
 >
-> Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. [§ 10](#10-what-exists-today) lists them, including three places where the design document assumed more than the code holds; it describes the code as it stood before parts 1 to 4, which [§ 11](#11-shipping-order) now says what built. Shapes marked **(proposal)** are the lead's working choice for a detail the owner did not settle.
+> Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. [§ 10](#10-what-exists-today) lists them, including three places where the design document assumed more than the code holds; it describes the code as it stood before parts 1 to 4, and [§ 11](#11-shipping-order) says what built them and parts 5 and 6. Shapes marked **(proposal)** are the lead's working choice for a detail the owner did not settle.
 >
 > Precedents: [Weighing](./weighing.md) (the `opportunity` species, its derived states, the assessment primitive) and [Need qualification](./need-qualification.md) (how raw input becomes a qualified need). This RFC renames the first and widens the second. Where they disagree with this one, this one wins. [§ 11](#11-shipping-order) says what it changes in weighing's slice 2.
 
@@ -234,7 +234,9 @@ An answer that is not naturally an acceptance (a non-reproduction, a followed pr
 | Risk | Required | Not required |
 | Defect | Required | Optional, case by case |
 
-**A proof can expire.** The verified half may carry an expiry, optional and set case by case, as an interval on the stake (`metadata.reverify_every_days`; [§ 14](#14-proposal-for-parts-5-and-6), call 9): a new check restarts the clock. Once it lapses, the half reads stale and the stake falls back to *promised* until a new check passes. This suits a risk, whose mitigation is reviewed and never final, and any requirement audited on a schedule.
+**A proof can expire.** The verified half may carry an expiry, optional and set case by case, as an interval on the stake (`metadata.reverify_every_days`; [§ 14](#14-proposal-for-parts-5-and-6), call 9): a new check restarts the clock. Once it lapses, the half reads stale and the stake falls back to *promised* until a new check passes. This suits a risk, whose mitigation is reviewed and never final, and any requirement audited on a schedule. A requirement also reads stale when its Kritik criterion moved to a newer version than the one it was verified against (`metadata.verified_criterion_version`).
+
+The reader is `deriveStakeProof` in `packages/schema/src/stake-proof.ts`: pure, zod-free, with `now` as an argument. It returns the two halves per platform, the platforms concerned and the state, and reads only facts that already exist (acceptance statuses and their `node.status_changed` events, and for a requirement its findings and scores). `bundle-format.md` § Stake proof gives the rules.
 
 ### Statuses, derived and never stored
 
@@ -285,7 +287,7 @@ Most of the chain already exists under another name. Two entities are new, optio
 | **Definition of done** | The acceptance, said "promise" in the interface. | Generalised to every answer type. "Promise" becomes a role. |
 | **Proof, verified half** | Per-platform acceptance status: the parity matrix on the Acceptances page ([`docs/graph-model.md`](../graph-model.md)). | Generalised: non-reproduction, a passing audit, a followed process. Per [§ 14](#14-proposal-for-parts-5-and-6) call 6, it reads `releasing` or `live`. |
 | **Proof, delivered half** | The `deliverable.shipped` journal event, with `node_ids` and a Lab Note (`packages/schema/src/journal-events.ts`). It is not read as proof today. | Not the proof. Per [§ 14](#14-proposal-for-parts-5-and-6) call 6, the delivered half reads `live`, set per platform by the deploy door; the shipped deliverable stays the trace. |
-| **Statuses** | Raised to addressed are *designed* in weighing § 6, not built. | Built with one more state: verified, not delivered. |
+| **Statuses** | Raised to addressed are *designed* in weighing § 6, not built. | Built with one more state: verified, not delivered (`deriveStakeProof`, part 6). |
 | **Provenance** | Stated and inferred marks in the need-qualification method; `on_behalf_of` and confidence (0 guess, 1 inferred, 2 evidenced, 3 verified) on a weighing assessment. | One more axis: observed or anticipated. |
 
 ### Three corrections to the design document
@@ -296,7 +298,7 @@ Most of the chain already exists under another name. Two entities are new, optio
 
 ## 11. Shipping order
 
-Each part is its own PR, in this order. Each builds on the one before. **Parts 1 to 4 shipped with this stack.** Parts 5 and 6 are not built; the owner's answers to [§ 14](#14-proposal-for-parts-5-and-6) settle their shape.
+Each part is its own PR, in this order. Each builds on the one before. **All six parts shipped.** Parts 1 to 4 came first; parts 5 and 6 were built as the owner's answers to [§ 14](#14-proposal-for-parts-5-and-6) settled them.
 
 | Part | Ships | Depends on | State |
 |---|---|---|---|
@@ -304,12 +306,12 @@ Each part is its own PR, in this order. Each builds on the one before. **Parts 1
 | **2. Signal** | `request.filed` generalised to every source kind, including a Kritik finding, an idea and a benchmark. A verbatim field. Links to many stakes. The "suggested by" link to an option. | 1 | Shipped. The option-side "suggested by" link (`metadata.suggested_by`) landed with part 5's vocabulary ([§ 14](#14-proposal-for-parts-5-and-6), call 12) |
 | **3. Qualification** | Species routing as the first step, ahead of the need-specific steps of need qualification. Merge into an existing stake before creating one. | 1, 2 | Shipped |
 | **4. Evaluation** | A reference declares its species. Kind, mattering and frequency on the user-facing species. Kritik criticality read by criterion id. | 1, 3 | Shipped |
-| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 | Decided in § 14. The vocabulary shipped (species `option`, the `addresses` edge, the two widened decision pairs, `suggested_by`, `closed_options`, warnings), the readers (answer, closure, promise role) and the select-option plan behind the MCP tool `decide_option` (`packages/schema/src/option.ts`, `packages/mcp/src/decide-tools.ts`). Part 5 is built |
-| **6. Proof and statuses** | The two halves, the optional expiry interval, the derived statuses (including "verified, not delivered"), and a version per criterion in the Kritik library with the version a requirement was last verified against. | 5 | Decided in § 14. The stored inputs are built (a `version` on each Kritik criterion, `metadata.reverify_every_days`, `metadata.verified_criterion_version`, three warnings). The reader that derives the halves and the states is not built yet |
+| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 | Shipped. The vocabulary shipped (species `option`, the `addresses` edge, the two widened decision pairs, `suggested_by`, `closed_options`, warnings), the readers (answer, closure, promise role) and the select-option plan behind the MCP tool `decide_option` (`packages/schema/src/option.ts`, `packages/mcp/src/decide-tools.ts`). Part 5 is built |
+| **6. Proof and statuses** | The two halves, the optional expiry interval, the derived statuses (including "verified, not delivered"), and a version per criterion in the Kritik library with the version a requirement was last verified against. | 5 | Shipped. The stored inputs (a `version` on each Kritik criterion, `metadata.reverify_every_days`, `metadata.verified_criterion_version`, three warnings) and the reader that derives the halves, the platforms concerned and the six states (`deriveStakeProof`, the MCP tool `stake_proof`, the state and a mark per platform in the stake editor). Part 6 is built |
 
 ### What parts 1 to 4 built
 
-The names the code settled on, where the RFC had left a **(proposal)**. The last three rows are the vocabulary half of part 5.
+The names the code settled on, where the RFC had left a **(proposal)**.
 
 | Part | Choice built | Where |
 |---|---|---|
@@ -321,13 +323,28 @@ The names the code settled on, where the RFC had left a **(proposal)**. The last
 | 3 | Pure routing and merge-candidate logic, plus MCP `qualify_signal` (read) and `promote_signal` (write, op-only). | `packages/schema/src/qualify.ts` |
 | 4 | A criteria set declares `stake_species`; `value-contribution@2` declares bug, friction and need. Kritik stays read-only. | `weighing.ts`, `weighing-library.ts`, `stake-evaluation.ts` |
 | 4 | `metadata.felt` (expected, wanted, delight), `metadata.matters` (1 to 4) and `metadata.frequency` (rare, some, often), user-facing kinds only. | `stake.ts`, `stake-evaluation.ts` |
-| 5 (vocabulary) | Species `option`, prefix `OPT-`, `platforms: []`, stored lifecycle `idea`, `discovery` or `archived`. Its answer type is read from the kind of stake it addresses (a table, nothing stored). | `ids.ts`, `option.ts` |
-| 5 (vocabulary) | The `addresses` edge: option to stake, acceptance to stake, acceptance to option. `generates` gains decision to option; `impacts` gains decision to stake. They stay disjoint by pair, and a decision edge's meaning now depends on its target species. | `ids.ts` (`VALID_EDGE_SEMANTICS`) |
-| 5 (vocabulary) | `metadata.suggested_by` on an option (a journal event id) and `metadata.closed_options` on a decision (`{ option_id, reason }[]`). Ten validator warnings, none an error. | `bundle.ts`, `validate.ts`, `journal.ts` |
-| 6 (stored inputs) | `version` on every criterion of the Kritik pack: an integer from 1, absent reads as 1, the framework's own version unmoved. An overlay that replaces a pack criterion keeps the pack's version. `kritikCriterionVersion(id, library)` reads it. | `framework.json`, `quality.ts`, `stake-evaluation.ts` |
-| 6 (stored inputs) | `metadata.reverify_every_days` (a positive number) and `metadata.verified_criterion_version` (a positive integer, only on a quality species linked to Kritik; `stakeMetadataWith` drops it when that stops fitting). Warnings `stake-reverify-invalid`, `stake-criterion-version-invalid` and `stake-criterion-version-unlinked`. | `stake.ts`, `bundle.ts`, `validate.ts` |
 
-Nothing parts 1 to 4 built writes a derived state, an option or a proof. The part 5 vocabulary and the part 6 stored inputs write none either: they add vocabulary and two optional fields, and the reader comes next.
+Nothing parts 1 to 4 built writes a derived state, an option or a proof.
+
+### What parts 5 and 6 built
+
+Parts 5 and 6 shipped as one stack of four pull requests: the option vocabulary, the decision, the stored inputs of the proof, and the proof reader. The names the code settled on:
+
+| Part | Choice built | Where |
+|---|---|---|
+| 5 | Species `option`, prefix `OPT-`, `platforms: []`, stored lifecycle `idea`, `discovery` or `archived`. Its answer type is read from the kind of stake it addresses (a table, nothing stored). | `ids.ts`, `option.ts` |
+| 5 | The `addresses` edge: option to stake, acceptance to stake, acceptance to option. `generates` gains decision to option; `impacts` gains decision to stake. They stay disjoint by pair, and a decision edge's meaning now depends on its target species. | `ids.ts` (`VALID_EDGE_SEMANTICS`) |
+| 5 | `metadata.suggested_by` on an option (a journal event id) and `metadata.closed_options` on a decision (`{ option_id, reason }[]`). Ten validator warnings, none an error. | `bundle.ts`, `validate.ts`, `journal.ts` |
+| 5 | The readers: the answer a stake's settling decision chose, an option's closure per stake (selected, closed or open, with the loser's reason), and the promise and candidate roles of an acceptance. A decision settles a stake when it reads approved or enacted. All derived, nothing stored on the option. | `option.ts` |
+| 5 | The select-option planner `planSelectOption` and the MCP tool `decide_option`: one decision, its `impacts` and `generates` edges, every loser closed with a reason. Op-only, so it works hosted. | `option.ts`, `packages/mcp/src/decide-tools.ts` |
+| 6 | `version` on every criterion of the Kritik pack: an integer from 1, absent reads as 1, the framework's own version unmoved. An overlay that replaces a pack criterion keeps the pack's version. `kritikCriterionVersion(id, library)` reads it. | `framework.json`, `quality.ts`, `stake-evaluation.ts` |
+| 6 | `metadata.reverify_every_days` (a positive number) and `metadata.verified_criterion_version` (a positive integer, only on a quality species linked to Kritik; `stakeMetadataWith` drops it when that stops fitting). Warnings `stake-reverify-invalid`, `stake-criterion-version-invalid` and `stake-criterion-version-unlinked`. | `stake.ts`, `bundle.ts`, `validate.ts` |
+| 6 | The proof reader `deriveStakeProof` (and `deriveStakeProofs`): the two halves per platform, the platforms concerned, the six states, the reasons in words. Pure and zod-free, with `now` as an argument. `PROOF_EVENT_TYPES` is the one list of journal event types every consumer reads (`node.created` was added to the RFC's six, for the date a stake was raised). | `packages/schema/src/stake-proof.ts` |
+| 6 | The ladder is read as call 5 settled it, with three readings the RFC left open. A stale cell contributes nothing to *partly addressed*, so a lapsed verification lands in *promised* whatever was delivered. A requirement's delivery is read separately and files under *partly addressed* when it is delivered but not verified. A requirement is promised through its criterion: a decision chose an option and the stake names a Kritik criterion. | `stake-proof.ts` |
+| 6 | MCP `stake_proof` (read): one stake or every stake, with an optional product and clock. The catalog goes from 35 to 37 tools with `decide_option`. | `decide-tools.ts` |
+| 6 | The stake editor shows the derived state as a read-only chip and a mark per platform (verified, delivered, stale), from the nodes, edges, the journal read projected to `PROOF_EVENT_TYPES`, the product scope and the quality and weighing sections the project holds. | `components/panels/StakeProofSection.tsx` |
+
+Nothing parts 5 and 6 built writes a derived state. The only things written are the option, its edges, the decision, and two optional fields on a stake. No `schema_version` bump: every new field is optional, and the new species and edge type shipped together in one release.
 
 ### What it changes in weighing's slice 2
 
@@ -369,7 +386,7 @@ This RFC describes a design, so the documents below keep describing what is buil
 
 Parts 1 to 4 gave the chain its first half: a signal is qualified into a stake, and the stake is evaluated against the reference its species picks. Parts 5 and 6 build the second half: options, the decision, the proof and the derived states. [§ 7](#7-options-and-decision) and [§ 8](#8-done-and-proof) settle the shape. They leave thirteen calls to the owner.
 
-This section lays out each call, with the lean **(proposal)** and the alternative, and records the owner's answer. Nothing here is built. Every "today" below was checked against the code on the tip of the stack that shipped parts 1 to 4.
+This section lays out each call, with the lean **(proposal)** and the alternative, and records the owner's answer. **Status: built.** The calls below are kept as the owner settled them; [§ 11](#what-parts-5-and-6-built) says what the code settled on. Every "today" below was checked against the code on the tip of the stack that shipped parts 1 to 4, so the sentences that say nothing exists describe that ground, not the code now.
 
 ### 14.0 The owner's answers (2026-11-22)
 

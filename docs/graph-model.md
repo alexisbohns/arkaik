@@ -273,9 +273,20 @@ them, and frequency is shown, not sorted by.
 
 **Lifecycle.** The node's own `status` is the stored lifecycle, limited to
 `idea` (proposed, not reviewed: every agent write lands here), `discovery`
-(accepted by a person) and `archived` (closed, dismissed or parked). Raised,
-considered, promised and addressed are derived from the graph and never stored.
+(accepted by a person) and `archived` (closed, dismissed or parked). The state a
+stake stands in (raised, considered, promised, verified-not-delivered,
+partly-addressed, addressed) is derived from the graph and never stored.
 The validator warns on any other stored status (`stake-lifecycle`).
+
+**State and proof.** `deriveStakeProof`
+([packages/schema/src/stake-proof.ts](../packages/schema/src/stake-proof.ts))
+reads a stake's state off the graph: the answer a decision chose, the definition
+of done (the acceptances that address the answer option, or a requirement's Kritik
+criterion), and per platform whether the verified half holds (an acceptance at
+`releasing` or `live`) and the answer is delivered (`live`), with the verification
+going stale when `reverify_every_days` runs out or the criterion moves to a newer
+version. An archived stake derives no state. The rules are in
+[spec/bundle-format.md § Stake proof](spec/bundle-format.md#stake-proof).
 
 **Anchor.** A stake points at the part of the product it is about with
 outgoing `concerns` edges to a `flow`, `view`, `data-model` or `api-endpoint`.
@@ -292,9 +303,15 @@ Model source: [packages/schema/src/stake.ts](../packages/schema/src/stake.ts).
 
 Stake surfaces:
 
-- **Node detail panel** — a Stake group: kind, provenance, the catalog link,
-  felt, matters and frequency for a bug, friction or need (or a requirement's,
-  risk's or defect's read-only Kritik criticality) and the three-value lifecycle; the `concerns` line sits in the Relations group.
+- **Node detail panel** — a Stake group: the derived state as a read-only chip
+  with a mark per platform (verified, delivered or stale), then kind, provenance,
+  the catalog link, felt, matters and frequency for a bug, friction or need (or
+  a requirement's, risk's or defect's read-only Kritik criticality), the
+  re-verify interval and the three-value lifecycle; the `concerns` line sits in
+  the Relations group. The state reads the journal, the product scope and the
+  project's quality and weighing sections; a project that embeds no Kritik
+  library cannot show a requirement as stale for a newer criterion version.
+- **MCP** — `stake_proof` returns the same proof for one stake or every stake.
 - **Library** (`/project/[id]/library?species=stake`) — gallery card and
   directory row like any other species; kind, provenance and lifecycle badges
   stand in for platform chips on the card, and the directory row carries the

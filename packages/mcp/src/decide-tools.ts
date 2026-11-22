@@ -1,6 +1,7 @@
 /**
  * The decision half of the tool catalog (docs/rfcs/stake-architecture.md § 14,
- * part B) — `decide_option` records that one option was chosen to answer a stake.
+ * parts B and D) — `decide_option` records that one option was chosen to answer a
+ * stake, and `stake_proof` reads where a stake stands.
  *
  * **The agent supplies the judgement, the planner writes it down.** Which option
  * wins, and why each other one lost, is a choice, so the caller states it.
@@ -15,13 +16,38 @@
  * stamps the actor: there is no `actor` argument. With `supersede`, the earlier
  * decision moves to superseded through an ordinary node update, so the journal
  * records `decision.status_changed`.
+ *
+ * **`stake_proof` only reads.** It hands `deriveStakeProof` (`@arkaik/schema`'s
+ * stake-proof.ts) the nodes, the edges, the journal, the quality section, the
+ * Kritik library and the weighing section as this session sees them (the
+ * sidecars in a repo, the server's fold when hosted), and the clock. Nothing is
+ * written, so it works hosted and in a repo alike.
  */
 
-import { planSelectOption, type ClosedOption } from "@arkaik/schema";
+import {
+  STAKE_STATES,
+  deriveStakeProof,
+  deriveStakeProofs,
+  planSelectOption,
+  resolveKritikLibrary,
+  resolveProducts,
+  type ClosedOption,
+  type KritikLibrary,
+  type QualitySection,
+  type StakeProof,
+  type WeighingSection,
+} from "@arkaik/schema";
+import { loadCurrentQualitySection } from "@arkaik/schema/src/cli/kritik-audit";
+import { loadWeighingSection } from "@arkaik/schema/src/cli/weighing-files";
+import { loadKritikLibrary } from "arkaik/io";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import type { QualifyIo, QualifyToolContext } from "./qualify-tools";
+import type { LoadedGraph } from "./tools";
 
-export type DecideToolContext = QualifyToolContext;
+export interface DecideToolContext extends QualifyToolContext {
+  /** The repo root holding `docs/quality/` and `docs/weighing/`, or `undefined` when hosted. */
+  qualityRoot?: string;
+}
 export type DecideIo = QualifyIo;
 
 function requireString(args: Record<string, unknown>, key: string): string {
@@ -65,6 +91,41 @@ function readClosed(args: Record<string, unknown>): ClosedOption[] | undefined {
 /** Today, as the ISO date a decision is taken on. */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The quality section, its library and the weighing section as this session
+ * sees them: the sidecars in a repo (falling back to what the bundle embeds),
+ * the server's fold when hosted. Any of them may be absent, and an unreadable
+ * sidecar is the same as an absent one: the proof reader degrades without it.
+ */
+function proofSources(ctx: DecideToolContext, graph: LoadedGraph): { quality?: QualitySection; library?: KritikLibrary; weighing?: WeighingSection } {
+  const bundle = graph.loaded.bundle as { quality?: QualitySection; weighing?: WeighingSection };
+  const embedded = bundle.quality !== undefined && Array.isArray(bundle.quality.findings) && Array.isArray(bundle.quality.assessments) ? bundle.quality : undefined;
+  if (ctx.qualityRoot === undefined) {
+    return {
+      ...(embedded !== undefined ? { quality: embedded, library: resolveKritikLibrary(embedded) } : {}),
+      ...(bundle.weighing !== undefined ? { weighing: bundle.weighing } : {}),
+    };
+  }
+  let library: KritikLibrary | undefined;
+  let quality: QualitySection | undefined;
+  let weighing: WeighingSection | undefined;
+  try {
+    library = loadKritikLibrary(ctx.qualityRoot).library;
+    quality = loadCurrentQualitySection(ctx.qualityRoot, library);
+  } catch {
+    // No pack or no audit on disk: the proof reads what the bundle embeds, then without.
+  }
+  try {
+    weighing = loadWeighingSection(ctx.qualityRoot);
+  } catch {
+    // No weighing sidecars: "considered" reads without them.
+  }
+  quality ??= embedded;
+  library ??= embedded === undefined ? undefined : resolveKritikLibrary(embedded);
+  weighing ??= bundle.weighing;
+  return { ...(quality !== undefined ? { quality } : {}), ...(library !== undefined ? { library } : {}), ...(weighing !== undefined ? { weighing } : {}) };
 }
 
 export function buildDecideCatalog(
@@ -150,6 +211,59 @@ export function buildDecideCatalog(
         warnings,
         handToHuman: plan.handToHuman,
       };
+    },
+  );
+
+  tool(
+    {
+      name: "stake_proof",
+      description:
+        "Read-only. Where a stake stands, derived and never stored: its state (raised, considered, promised, verified-not-delivered, partly-addressed, addressed; null for an archived stake), the answer a decision chose, the definition of done, and one cell per platform concerned saying whether the verified half holds (an acceptance at releasing or live), the answer is delivered (live) or the verification is stale (its reverify_every_days ran out, or the Kritik criterion moved to a newer version). A requirement is read against its Kritik criterion: no open finding at its anchor and a score of at least 3 dated after the stake was raised. Pass stake_id for one stake, or leave it off for every stake with a count per state. product narrows the platforms to a product's menu; now (ISO 8601) defaults to the server's clock. Never writes. Works on a repo and a hosted project.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          stake_id: { type: "string", description: "One stake. Leave off for every stake." },
+          product: { type: "string", description: "A product id declared in the project: read the platforms through its menu. Default: all products." },
+          now: { type: "string", description: "An ISO 8601 instant to read the expiry against. Default: the server's clock." },
+        },
+        additionalProperties: false,
+      },
+    },
+    async (args) => {
+      const graph = await io.load();
+      const stakeId = optionalString(args, "stake_id");
+      const product = optionalString(args, "product");
+      const nowArg = optionalString(args, "now");
+      if (product !== undefined) {
+        const known = resolveProducts(graph.project).map((entry) => entry.id);
+        if (!known.includes(product)) {
+          throw new ToolError(known.length === 0 ? `This project declares no products, so \`product\` "${product}" names none.` : `No product "${product}" (declared: ${known.join(", ")}).`);
+        }
+      }
+      if (nowArg !== undefined && !isIsoDate(nowArg)) throw new ToolError("`now` must be an ISO 8601 date or date-time.");
+      const now = nowArg !== undefined ? new Date(nowArg) : new Date();
+      const input = {
+        nodes: graph.nodes,
+        edges: graph.edges,
+        events: graph.journal,
+        now,
+        project: graph.project,
+        productId: product ?? null,
+        ...proofSources(ctx, graph),
+      };
+      const common = { now: now.toISOString(), product: product ?? null };
+      if (stakeId !== undefined) {
+        const proof = deriveStakeProof({ ...input, stakeId });
+        if (proof === null) {
+          const found = graph.nodes.find((node) => node.id === stakeId);
+          throw new ToolError(found === undefined ? `No node with id "${stakeId}".` : `"${stakeId}" is a ${found.species}, not a stake.`);
+        }
+        return { ...common, stake: proof };
+      }
+      const stakes: StakeProof[] = deriveStakeProofs(input);
+      const counts: Record<string, number> = Object.fromEntries([...STAKE_STATES, "archived"].map((state) => [state, 0]));
+      for (const proof of stakes) counts[proof.state ?? "archived"]++;
+      return { ...common, count: stakes.length, counts, stakes };
     },
   );
 

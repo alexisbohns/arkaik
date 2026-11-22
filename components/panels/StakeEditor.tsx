@@ -33,12 +33,13 @@ import {
 import { StatusSelectItems } from "@/components/layout/StatusSelectItems";
 import { PanelGroup } from "@/components/panels/PanelGroup";
 import { PanelSection } from "@/components/panels/PanelSection";
+import { StakeProofSection } from "@/components/panels/StakeProofSection";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { STAKE_SPECIES, STAKE_SPECIES_LABELS } from "@/lib/config/stake-species";
 import { VALUES } from "@/lib/config/values";
-import type { Node, NodeMetadata } from "@/lib/data/types";
+import type { Edge, Node, NodeMetadata } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
 import { useProject } from "@/lib/hooks/useProject";
 import { useProjectId } from "@/lib/hooks/useProjectId";
@@ -50,6 +51,9 @@ type OnUpdate = (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) =>
 
 interface StakeEditorProps {
   node: Node;
+  /** The graph the derived state is read from. Without it the editor shows no state. */
+  allNodes?: Node[];
+  allEdges?: Edge[];
   /** Absent on a read-only surface (the Changelog): the editor then shows facts and offers nothing. */
   onUpdate?: OnUpdate;
   /** The panel's shared latest-metadata write base — see `NodeDetailPanel`, which owns it. */
@@ -84,7 +88,7 @@ const PROVENANCE_OPTIONS = [
  * the keyboard rather than discovered later. The anchor is not here: it is the
  * `concerns` line of the Relations group.
  */
-export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
+export function StakeEditor({ node, allNodes, allEdges, onUpdate, metadataRef }: StakeEditorProps) {
   const fieldId = useId();
   const species = stakeSpeciesOf(node);
   const provenance = stakeProvenanceOf(node);
@@ -116,6 +120,8 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
 
   return (
     <PanelGroup title="Stake" meta={species ? <span>{STAKE_SPECIES_LABELS[species]}</span> : undefined}>
+      <StakeProofSection node={node} allNodes={allNodes} allEdges={allEdges} />
+
       <PanelSection title="Kind">
         {readOnly ? (
           <p className="text-sm" data-stake-kind="">
