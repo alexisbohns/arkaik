@@ -10,7 +10,7 @@ order: 93
 >
 > Precedent: [Weighing](./weighing.md). That RFC defines the `opportunity` species and leaves *opportunity sizing* unslotted ([§ 18, question 9](./weighing.md#18-open-questions)). This RFC answers what sizing could be, and how an opportunity gets its wording.
 >
-> Extended by: [Unified stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC) (2026-11-22, agreed with the product owner; a design document, not yet an RFC in this repo). It places this method inside a wider chain (signal, stake, evaluation, options, decision, answer, proof). Where the two disagree, that document wins until it lands here as an RFC. What it changes in this one:
+> Extended by: [Stake architecture](./stake-architecture.md) (2026-11-22, agreed with the product owner). It places this method inside a wider chain (signal, stake, evaluation, options, decision, answer, proof). Where the two disagree, that RFC wins. What it changes in this one:
 >
 > - **The node is renamed.** `opportunity` becomes `stake`, in the interface and in the schema.
 > - **A need is one species of six** (bug, friction, need, requirement, risk, defect). Classifying the register ([step 2](#step-2-classify-the-register)) becomes species routing, and the gate ([step 5](#step-5-gate-is-this-a-need-to-weigh)) gives a routed-out item a species instead of parking it.
@@ -290,8 +290,8 @@ The QA result comes from the source, not from the method: a backlog of shipped f
 | 2 | Is a single `felt` question reliable, or does it need the paired present/absent form? | Keep the single question until the answers prove unreliable. |
 | 3 | Is **product stance** its own route? "Not a need" currently absorbs it. | Yes, as its own route. It is a constraint on solutions and not a need. |
 | 4 | Should frequency enter the ordering, and how? | Undecided. Show it, do not sort by it yet. |
-| 5 | Should sanity checks be routed into Kritik as candidate checks? | **Settled 2026-11-22: no.** They become stakes of species requirement or defect and nothing is written into Kritik. See [the stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC). Earlier lean: not decided; the owner chose not to touch Kritik in this work, so routed-out items were only parked. |
-| 6 | Should the safety, legal and accessibility needs get elements, or sit outside the 30? | **Settled 2026-11-22: outside the 30.** They are requirements, risks or defects, scored against the Kritik matrix. See [the stake architecture](https://claude.ai/artifact/Gu2WTyrbsCQf6tTP9UPdvC). |
+| 5 | Should sanity checks be routed into Kritik as candidate checks? | **Settled 2026-11-22: no.** They become stakes of species requirement or defect and nothing is written into Kritik. See [the stake architecture](./stake-architecture.md). Earlier lean: not decided; the owner chose not to touch Kritik in this work, so routed-out items were only parked. |
+| 6 | Should the safety, legal and accessibility needs get elements, or sit outside the 30? | **Settled 2026-11-22: outside the 30.** They are requirements, risks or defects, scored against the Kritik matrix. See [the stake architecture](./stake-architecture.md). |
 | 7 | The expected-need tier wording was never discussed on its own. | Review it with the first expected needs of a real run. |
 
 ## 10. Next steps

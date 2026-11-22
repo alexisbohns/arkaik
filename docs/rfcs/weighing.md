@@ -10,6 +10,8 @@ order: 92
 >
 > Reading guide: sentences about what Arkaik does *today* are checked against the code and cite a path. Shapes marked **(proposal)** are the lead's working choice for a detail the discussion did not settle. Pebbles ids are real (from `pbbls/docs/arkaik/bundle.json`) unless marked proposal or hypothetical.
 >
+> Superseded in part by: [Stake architecture](./stake-architecture.md) (2026-11-22). The `opportunity` species designed in slice 2 is built as `stake` instead, one node with six species; [§ 11 there](./stake-architecture.md#11-shipping-order) says what changes in slice 2.
+>
 > Precedent: [Kritik](./kritik.md). Weighing generalizes the part of Kritik that judges (criteria, levels, assessments, matrices, caps) so that promises, needs and options can be judged the same way surfaces are.
 
 ## Summary
