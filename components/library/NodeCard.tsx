@@ -94,6 +94,9 @@ interface NodeCardProps {
  * scanning a library of hundreds of cards needs pointed out.
  */
 function ProductAnnotation({ species, labels }: { species: SpeciesId; labels: string[] }) {
+  // A stake is product-agnostic (it shows under every scope, no consumer reaches
+  // it), so "Unattached" would name a gap that is not one.
+  if (species === "stake") return null;
   const derived = !PRODUCT_MEMBERSHIP_SPECIES.includes(species);
 
   if (labels.length === 0) {

@@ -267,7 +267,8 @@ Stake surfaces:
   the three-value lifecycle; the `concerns` line sits in the Relations group.
 - **Library** (`/project/[id]/library?species=stake`) — gallery card and
   directory row like any other species; kind, provenance and lifecycle badges
-  stand in for platform chips. **New node** asks for the stake kind.
+  stand in for platform chips on the card, and the directory row carries the
+  kind (and an "Anticipated" marker) beside the title. **New node** asks for the stake kind.
 - **Not present**: the canvas maps and the Delivery board, and no dedicated page.
 
 ## Products
