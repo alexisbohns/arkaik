@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { LightbulbIcon, MessageSquareTextIcon } from "lucide-react";
 
-import { describeJournalEvent, formatEventDate } from "@/components/journal/describe-event";
+import { describeJournalEvent, formatEventDate, signalKindLabel } from "@/components/journal/describe-event";
 import type { Backlog } from "@/lib/utils/journal";
 import type { JournalEvent, Node } from "@/lib/data/types";
 
@@ -93,7 +93,7 @@ export function BacklogItemRow({ item, showDescription = true }: BacklogItemRowP
         )}
       </div>
       <span className="text-xs text-muted-foreground shrink-0">
-        {item.type === "idea.proposed" ? "Idea" : "Request"}
+        {item.type === "idea.proposed" ? "Idea" : (signalKindLabel(item.source_kind) ?? "Request")}
       </span>
     </div>
   );

@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Signal Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-detail",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble Detail",
+      "status": "live",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "V-other",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Other",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "evidence": [
+          {
+            "quote": "not on a view"
+          }
+        ]
+      }
+    },
+    {
+      "id": "STK-a",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "A stake",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-a-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-a",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    }
+  ],
+  "journal": [
+    {
+      "id": "01BASELINE00000000000000B0",
+      "ts": "2026-11-22T01:00:00.000Z",
+      "type": "journal.baseline",
+      "node_ids": [
+        "V-pebble-detail",
+        "V-other",
+        "STK-a"
+      ]
+    },
+    {
+      "id": "01SIGNAL0000000000000000B1",
+      "ts": "2026-11-22T02:00:00.000Z",
+      "type": "request.filed",
+      "title": "Names a stake that never existed",
+      "stake_ids": [
+        "STK-ghost"
+      ]
+    }
+  ]
+}

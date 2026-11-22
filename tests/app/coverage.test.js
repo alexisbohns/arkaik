@@ -203,6 +203,24 @@ assert(
   "backlog items linked to existing nodes are closed; no nodeIds on the backlog indicator",
 );
 
+// A signal qualified into a stake is closed: by stake_ids, or by the stake's evidence.
+{
+  const stakeNodes = [
+    ...healthNodes,
+    { id: "STK-slow", project_id: "p", species: "stake", title: "Slow", status: "idea", platforms: [], metadata: { stake_species: "friction", evidence: [{ event_id: "01E" }] } },
+  ];
+  const stakeEvents = [
+    ...healthEvents,
+    { id: "01D", ts: "2026-01-04T00:00:00Z", type: "request.filed", title: "Names a stake", stake_ids: ["STK-slow"] },
+    { id: "01E", ts: "2026-01-05T00:00:00Z", type: "request.filed", title: "Cited by a stake" },
+    { id: "01F", ts: "2026-01-06T00:00:00Z", type: "request.filed", title: "Still open" },
+  ];
+  const withStakes = new Map(
+    computeHealthIndicators(stakeNodes, healthEdges, stakeEvents, { rootNodeId: "V-root" }).map((indicator) => [indicator.id, indicator]),
+  );
+  assert(withStakes.get("open-backlog").count === 3, "signals closed by stake_ids or by stake evidence leave the open backlog count");
+}
+
 // ============================ Seed goldens =====================================
 
 const ROOT = path.join(__dirname, "..", "..");

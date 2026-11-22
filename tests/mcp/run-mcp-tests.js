@@ -520,6 +520,88 @@ async function main() {
     JSON.stringify(stakeSummary),
   );
 
+  // --- Signals: file_request takes the generalised request.filed fields -------
+  const filed = await callTool("file_request", {
+    title: "Avatar upload is painfully slow",
+    source: "beta-feedback",
+    source_kind: "interview",
+    verbatim: "I wait ages after picking a photo",
+    provenance: "observed",
+    stake_ids: ["STK-not-yet-qualified"],
+    url: "https://example.com/interview/7",
+  });
+  const filedEvent = filed.body?.events?.[0];
+  check(
+    "file_request writes the signal fields onto request.filed",
+    !filed.isError &&
+      filedEvent?.type === "request.filed" &&
+      filedEvent.source === "beta-feedback" &&
+      filedEvent.source_kind === "interview" &&
+      filedEvent.verbatim === "I wait ages after picking a photo" &&
+      filedEvent.provenance === "observed" &&
+      filedEvent.stake_ids?.[0] === "STK-not-yet-qualified" &&
+      filedEvent.url === "https://example.com/interview/7",
+    JSON.stringify(filed.body).slice(0, 300),
+  );
+  const auditSignal = await callTool("file_request", {
+    title: "Contrast fails on the avatar picker",
+    source_kind: "audit-finding",
+    finding_id: "F-2026-08-SEC-web-01",
+    criterion_id: "SAF-01",
+  });
+  check(
+    "file_request carries an audit finding's finding_id and criterion_id",
+    !auditSignal.isError &&
+      auditSignal.body?.events?.[0]?.finding_id === "F-2026-08-SEC-web-01" &&
+      auditSignal.body.events[0].criterion_id === "SAF-01" &&
+      auditSignal.body.events[0].node_id === undefined,
+    JSON.stringify(auditSignal.body).slice(0, 300),
+  );
+  const journalBeforeBad = journalLineCount(journalPath);
+  const badKind = await callTool("file_request", { title: "Bad kind", source_kind: "gossip" });
+  check(
+    "file_request refuses an out-of-vocabulary source_kind and writes nothing",
+    badKind.isError === true && journalLineCount(journalPath) === journalBeforeBad,
+    JSON.stringify(badKind.body).slice(0, 200),
+  );
+  const filedTools = (listed.result?.tools ?? []).find((tool) => tool.name === "file_request");
+  check(
+    "file_request advertises source_kind as an enum and leaves source free",
+    Array.isArray(filedTools?.inputSchema?.properties?.source_kind?.enum) &&
+      filedTools.inputSchema.properties.source_kind.enum.includes("audit-finding") &&
+      filedTools.inputSchema.properties.source.enum === undefined,
+  );
+  const backlogWithSignal = await callTool("get_backlog", {});
+  check(
+    "an unqualified signal is open in the backlog",
+    backlogWithSignal.body?.requests.some((r) => r.id === filedEvent?.id),
+  );
+
+  // Qualification (done by hand here): a stake citing the signal closes it.
+  const evidenced = await callTool("create_node", {
+    species: "stake",
+    title: "Avatar upload hangs on a slow connection",
+    platforms: [],
+    metadata: {
+      stake_species: "friction",
+      evidence: [{ event_id: filedEvent?.id, quote: "I wait ages after picking a photo", voice: "person" }],
+    },
+  });
+  check("create_node accepts a stake with evidence", !evidenced.isError, JSON.stringify(evidenced.body).slice(0, 200));
+  const backlogAfterEvidence = await callTool("get_backlog", {});
+  check(
+    "a signal a stake cites as evidence leaves the backlog",
+    !backlogAfterEvidence.body?.requests.some((r) => r.id === filedEvent?.id) &&
+      backlogAfterEvidence.body?.requests.some((r) => r.id === auditSignal.body?.events?.[0]?.id),
+    JSON.stringify(backlogAfterEvidence.body?.requests?.map((r) => r.title)),
+  );
+  const stakeNodeView = await callTool("get_node", { node_id: "STK-avatar-upload-hangs-on-a-slow-connection" });
+  check(
+    "get_node on a stake lists the signal it cites in its timeline",
+    stakeNodeView.body?.timeline?.some((e) => e.id === filedEvent?.id),
+    JSON.stringify(stakeNodeView.body?.timeline?.map((e) => e.type)),
+  );
+
   const coveredView = await callTool("get_node", { node_id: "V-profile" });
   check(
     "get_node exposes covered_by on views",

@@ -5,7 +5,7 @@ import { computeDeliveryItems, groupItemsByStatus, type DeliveryOptions } from "
 import { computeBacklog, computeReleaseEventCounts, type ReleaseEventCount } from "@/lib/utils/journal";
 import { addEffectiveNodeToRollup, createEmptyRollup, type PlatformStatusRollup } from "@/lib/utils/platform-status";
 import { nodeInScope, scopedPlatforms } from "@/lib/utils/product-scope";
-import { orderEvents } from "@arkaik/schema";
+import { orderEvents, stakeEvidenceEventIds } from "@arkaik/schema";
 
 /**
  * Overview projections — the strategist reading over (snapshot, journal)
@@ -318,7 +318,7 @@ export function computeHealthIndicators(
   const disconnected = nodes.filter((node) => !connectedIds.has(node.id)).map((node) => node.id).sort();
 
   const existingNodeIds = new Set(nodes.map((node) => node.id));
-  const backlog = computeBacklog(events, { existingNodeIds });
+  const backlog = computeBacklog(events, { existingNodeIds, evidencedEventIds: stakeEvidenceEventIds(nodes) });
 
   return [
     {

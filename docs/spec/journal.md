@@ -76,7 +76,7 @@ interface JournalEvent {
 | `release.tagged` | `version`, `notes?`, `platform?` | A version shipped. `platform` optional: absent = project-wide; present = that platform's release rhythm |
 | `deliverable.shipped` | `deliverable_id`, `title`, `summary?`, `url?`, `node_ids?`, `platform?`, `lab_note?` | A unit of shipped work (typically one merged PR): entity changes + a summary note. Re-appending with the same `deliverable_id` **edits** — consumers resolve content latest-wins, anchored at the first occurrence |
 | `idea.proposed` | `title`, `description?`, `node_id?` | An idea, before (or linked to) any node |
-| `request.filed` | `title`, `description?`, `source?`, `node_id?` | An external ask (user feedback, stakeholder request) |
+| `request.filed` | `title`, `description?`, `source?`, `node_id?`, `source_kind?`, `verbatim?`, `provenance?`, `stake_ids?`, `finding_id?`, `criterion_id?`, `url?` | A **signal**: something that arrived from outside the graph (user feedback, a ticket, an interview line, a form answer, an audit finding, an idea, a benchmark). Only `title` is required. See [Signals](#signals) |
 | `ref.added` | `node_id`, `ref_id`, `ref_type`, `url` | External reference attached |
 | `ref.removed` | `node_id`, `ref_id` | External reference detached |
 | `ref.status_changed` | `node_id`, `ref_id`, `from?`, `to`, `synced_at` | Mirrored external status moved (issue closed, PR merged) |
@@ -95,6 +95,28 @@ interface JournalEvent {
 The six `quality.*` types are Kritik's (docs/rfcs/kritik.md § 3.2). They follow the same rule as every other event — facts, not state: current quality is a projection (`deriveQualityMatrix`), the latest audit plus opened-minus-resolved-or-accepted findings, with any hosted `quality.assessment.scored` events folded over the audit's cells latest-wins. Writers SHOULD set `actor` on them so human, agent, and CI scores stay tellable apart; `validateBundle` warns when one does not, and never blocks. A trip written from CI against a hosted project carries the `commit` it observed and, by convention, its run URL in `detail` — the one writer that always knows both, and pays nothing to say so (issue #406).
 
 The two `weighing.*` types follow the same rule — facts, not state: the weighing section a reader sees is a projection, the stored section with these events folded over it. Like `quality.assessment.scored` they are in the strict schema map (`JOURNAL_EVENT_SCHEMAS`) but not in the 22-type `JOURNAL_EVENT_TYPES` list, and `validateBundle` warns when one has no `actor`.
+
+## Signals
+
+`request.filed` is the one event for every signal ([rfcs/stake-architecture.md § 5](../rfcs/stake-architecture.md)). It was generalised **additively**: no new event type, no `v` bump, every `request.filed` written before stays valid, and every reader that already knew it keeps working. Only `title` is required.
+
+| Field | Meaning |
+|---|---|
+| `source` | The source's own name, a **free string** (`"user"`, `"beta-feedback"`). Never retyped |
+| `source_kind` | What sort of source: `ticket`, `interview`, `form`, `feedback`, `audit-finding`, `idea`, `benchmark` or `other`. Absent on a legacy request |
+| `verbatim` | The input exactly as voiced, never edited |
+| `provenance` | `observed` or `anticipated`. Absent reads as `observed` |
+| `stake_ids` | Stakes already known at filing time. Optional: most signals are filed before any stake exists |
+| `finding_id`, `criterion_id` | `source_kind: "audit-finding"`: the Kritik finding and its criterion. A finding id (`F-2026-08-SEC-web-01`) reads like a flow id, so it never goes in `node_id` or `stake_ids` |
+| `url` | An external reference for the source item |
+
+**The signal ↔ stake link runs both ways.** The durable side is the stake's `metadata.evidence[]` (`{ event_id?, quote?, voice?, date? }`, written when a signal is qualified into a stake, see [bundle-format.md § Stake Nodes](bundle-format.md#stake-nodes)); the optional side is `stake_ids[]` on the event. Readers treat either as the link:
+
+- **Backlog**: a signal is closed when its `node_id` exists, **or** any of its `stake_ids` exists, **or** an existing stake's `evidence[].event_id` cites it. Evidence closes by event id, whatever the item's type, so an `idea.proposed` a stake cites is closed too (an idea is the same kind of input, qualified into a stake the same way); `stake_ids` is read on `request.filed` only.
+- **Node timeline**: a stake's timeline lists the signals linked either way.
+- **Cross-check**: a `stake_ids` entry naming a node that never existed is a **warning** (`journal-dangling-stake-ref`), never an error, because a stake can be deleted legitimately and history is not rewritten.
+- A `benchmark` signal is a signal like any other; it simply never counts toward frequency or mattering.
+- Signals are not projected to the pollen feed.
 
 ## Authority & Consistency Model
 
@@ -138,6 +160,6 @@ Projections are pure functions over (snapshot, journal) — the same pattern as 
 | Deliverables | "What units of work shipped, and in which release?" | Changelog page — one section per milestone, deliverables as its timeline; `arkaik release` draft grouping |
 | Commitments | "What moved from idea to committed work?" | Design page (backlog → commitments → decisions) |
 | Release notes | "What do we tell users shipped?" | Generated draft at `arkaik release` |
-| Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it) |
+| Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it; a `request.filed` is also closed once a stake it names exists, and either kind is closed once a stake cites it as evidence, see [Signals](#signals)) |
 
 A bundle without a journal simply renders none of these — the empty state, not an error. That is the whole backward-compatibility story.

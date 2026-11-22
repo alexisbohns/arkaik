@@ -365,7 +365,7 @@ A `stake` node (id prefix `STK-`) is something that matters about the product: a
 bug, a friction, a need, a requirement, a risk or a defect
 ([rfcs/stake-architecture.md](../rfcs/stake-architecture.md); the model is
 [graph-model.md § Stakes](../graph-model.md)). `title` + `description` say what
-it is. Three metadata fields are meaningful on stake nodes only:
+it is. Four metadata fields are meaningful on stake nodes only:
 
 ```ts
 interface NodeMetadata {
@@ -373,6 +373,7 @@ interface NodeMetadata {
   stake_species?: "bug" | "friction" | "need" | "requirement" | "risk" | "defect";
   provenance?: "observed" | "anticipated";   // absent reads as observed
   catalog?: { source: "kritik" | "values"; id: string };
+  evidence?: { event_id?: string; quote?: string; voice?: "person" | "maintainer" | "agent"; date?: string }[];
 }
 ```
 
@@ -381,6 +382,14 @@ risk or defect, a value id (`reduces-anxiety`) for a bug, friction or need.
 Nothing else is copied from the catalog. An unknown `stake_species`, `provenance`
 or `catalog.source` is rejected at the schema-parse boundary, the same posture as
 an unknown `decision_status`.
+
+`evidence[]` is the durable half of the link from a stake back to the signals
+behind it: one entry per signal, written when a `request.filed` is qualified into
+the stake. `event_id` names the journal event, `quote` is the line that matters
+exactly as voiced, `voice` says who voiced it, `date` when. Every field is
+optional. A signal that a stake cites is closed in the backlog, and appears on
+the stake's timeline ([journal.md § Signals](journal.md#signals)). An unknown
+`voice` is rejected at the schema-parse boundary.
 
 The node's own `status` is the stored lifecycle, limited to `idea`, `discovery`
 and `archived`; every other state of a stake is derived and never stored.
@@ -404,7 +413,7 @@ hand-edited bundle never bricks:
 | Rule | Raised when |
 |---|---|
 | `stake-species-missing` | a stake has no `stake_species` |
-| `stake-species-wrong-species` | `stake_species`, `provenance` or `catalog` sits on a node that is not a stake |
+| `stake-species-wrong-species` | `stake_species`, `provenance`, `catalog` or `evidence` sits on a node that is not a stake |
 | `stake-lifecycle` | a stake's `status` is outside idea, discovery, archived |
 | `stake-anticipated-species` | an anticipated stake is a bug or a friction |
 | `stake-catalog-mismatch` | a requirement, risk or defect links to `values`, or a bug, friction or need links to `kritik` |

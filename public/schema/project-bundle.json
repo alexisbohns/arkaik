@@ -452,6 +452,32 @@
             "id"
           ],
           "additionalProperties": false
+        },
+        "evidence": {
+          "description": "Stake nodes only: the signals behind the stake, one entry per signal. Written at qualification.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_id": {
+                "description": "The journal event (a request.filed) the evidence came from.",
+                "type": "string"
+              },
+              "quote": {
+                "description": "The line that matters, exactly as voiced.",
+                "type": "string"
+              },
+              "voice": {
+                "description": "Who voiced it: person | maintainer | agent.",
+                "$ref": "#/$defs/StakeEvidenceVoice"
+              },
+              "date": {
+                "description": "ISO 8601 date the evidence was voiced.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": {}
+          }
         }
       },
       "additionalProperties": {},
@@ -788,6 +814,15 @@
         "values"
       ],
       "description": "Where a stake's catalog link points: kritik (a criterion id such as SAF-01) or values (a value id such as reduces-anxiety)."
+    },
+    "StakeEvidenceVoice": {
+      "type": "string",
+      "enum": [
+        "person",
+        "maintainer",
+        "agent"
+      ],
+      "description": "Who voiced a piece of stake evidence: person (the one the signal came from), maintainer, or agent."
     },
     "Edge": {
       "type": "object",

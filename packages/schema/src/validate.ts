@@ -761,7 +761,7 @@ export function validateBundle(input: unknown): ValidationResult {
     const stakeMd = (node.metadata ?? {}) as Record<string, unknown>;
 
     if (species !== "stake") {
-      for (const field of ["stake_species", "provenance", "catalog"]) {
+      for (const field of ["stake_species", "provenance", "catalog", "evidence"]) {
         if (stakeMd[field] !== undefined) {
           warn(
             `${base}.metadata.${field}`,

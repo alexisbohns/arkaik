@@ -26,6 +26,9 @@ import {
   normalizeStatus,
   orderEvents,
   resolvePlatformStatus,
+  SIGNAL_SOURCE_KINDS,
+  STAKE_PROVENANCE_IDS,
+  stakeEvidenceEventIds,
   type Edge,
   type EventInput,
   type JournalEvent,
@@ -321,7 +324,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         node,
         edges: relatedEdges,
         whereUsedFlows,
-        timeline: computeNodeTimeline(journal, nodeId),
+        timeline: computeNodeTimeline(journal, nodeId, { evidenceEventIds: stakeEvidenceEventIds([node]) }),
         ...(covered_by !== undefined ? { covered_by } : {}),
       };
     },
@@ -356,7 +359,10 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     },
     async () => {
       const { nodes, journal } = await load(ctx);
-      return computeBacklog(journal, { existingNodeIds: new Set(nodes.map((node) => node.id)) });
+      return computeBacklog(journal, {
+        existingNodeIds: new Set(nodes.map((node) => node.id)),
+        evidencedEventIds: stakeEvidenceEventIds(nodes),
+      });
     },
   );
 
@@ -720,7 +726,31 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     const payload: Record<string, unknown> = { title };
     if (typeof args.description === "string") payload.description = args.description;
     if (typeof args.node_id === "string") payload.node_id = args.node_id;
-    if (type === "request.filed" && typeof args.source === "string") payload.source = args.source;
+    if (type === "request.filed") {
+      for (const key of ["source", "verbatim", "finding_id", "criterion_id", "url"] as const) {
+        if (typeof args[key] === "string") payload[key] = args[key];
+      }
+      // Out-of-vocabulary values are refused here with a plain message, before
+      // anything is written (the zod schema would refuse them too, less kindly).
+      if (args.source_kind !== undefined) {
+        if (!(SIGNAL_SOURCE_KINDS as readonly unknown[]).includes(args.source_kind)) {
+          throw new ToolError(`source_kind must be one of: ${SIGNAL_SOURCE_KINDS.join(", ")}.`);
+        }
+        payload.source_kind = args.source_kind;
+      }
+      if (args.provenance !== undefined) {
+        if (!(STAKE_PROVENANCE_IDS as readonly unknown[]).includes(args.provenance)) {
+          throw new ToolError(`provenance must be one of: ${STAKE_PROVENANCE_IDS.join(", ")}.`);
+        }
+        payload.provenance = args.provenance;
+      }
+      if (args.stake_ids !== undefined) {
+        if (!Array.isArray(args.stake_ids) || args.stake_ids.some((id) => typeof id !== "string" || id === "")) {
+          throw new ToolError("stake_ids must be an array of stake node ids.");
+        }
+        payload.stake_ids = args.stake_ids;
+      }
+    }
 
     const input: EventInput = { type, payload };
     const result = await ctx.store.persist(graph, {}, [input]);
@@ -749,14 +779,22 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   tool(
     {
       name: "file_request",
-      description: "Record an external request in the journal backlog (request.filed).",
+      description:
+        "Record a signal in the journal backlog (request.filed): feedback, a ticket, an interview line, a form answer, an audit finding, an idea or a benchmark. Only title is required. source is the source's free name; source_kind says what sort it is; verbatim is the input exactly as voiced, never edited; provenance is observed (default) or anticipated; stake_ids names stakes already known; an audit-finding carries finding_id and criterion_id (never an F-… id in node_id or stake_ids). A signal is closed once a stake cites it as evidence.",
       inputSchema: {
         type: "object",
         properties: {
           title: { type: "string" },
           description: { type: "string" },
-          source: { type: "string" },
+          source: { type: "string", description: "The source's own name, free text (\"beta-feedback\"). Not an enum." },
           node_id: { type: "string" },
+          source_kind: { type: "string", enum: [...SIGNAL_SOURCE_KINDS] },
+          verbatim: { type: "string", description: "The input exactly as voiced." },
+          provenance: { type: "string", enum: [...STAKE_PROVENANCE_IDS] },
+          stake_ids: { type: "array", items: { type: "string" }, description: "Stakes known at filing time." },
+          finding_id: { type: "string", description: "source_kind audit-finding: the Kritik finding id." },
+          criterion_id: { type: "string", description: "source_kind audit-finding: the criterion id." },
+          url: { type: "string" },
         },
         required: ["title"],
         additionalProperties: false,

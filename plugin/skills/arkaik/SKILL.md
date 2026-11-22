@@ -113,7 +113,7 @@ Each graph operation has a matching event. Append one line per operation:
 
 Other event types you may append when the change warrants it: `release.tagged`
 (a version shipped), `idea.proposed` (an idea, before or linked to a node),
-`request.filed` (an external ask), `ref.status_changed` (a mirrored external
+`request.filed` (a signal: an external ask, interview line, audit finding), `ref.status_changed` (a mirrored external
 status moved). See the [event vocabulary](#event-vocabulary) for full payloads.
 
 ### Event envelope
@@ -408,7 +408,7 @@ known type whenever one fits.
 | `edge.removed` | `edge_id` | Relationship removed (non-cascade) |
 | `release.tagged` | `version`, `notes?`, `platform?` | A version shipped. `platform` absent = project-wide; present = that platform's rhythm |
 | `idea.proposed` | `title`, `description?`, `node_id?` | An idea, before (or linked to) any node |
-| `request.filed` | `title`, `description?`, `source?`, `node_id?` | An external ask (user feedback, stakeholder request) |
+| `request.filed` | `title`, `description?`, `source?`, `node_id?`, `source_kind?`, `verbatim?`, `provenance?`, `stake_ids?`, `finding_id?`, `criterion_id?`, `url?` | A signal: feedback, a ticket, an interview line, an audit finding, a benchmark. `source` is a free name; `source_kind` is `ticket`, `interview`, `form`, `feedback`, `audit-finding`, `idea`, `benchmark` or `other`; `verbatim` is the input exactly as voiced. A signal is closed once a stake it names (`stake_ids`) or a stake that cites it (`metadata.evidence[].event_id`) exists. Never put an `F-…` finding id in `node_id` or `stake_ids` |
 | `ref.added` | `node_id`, `ref_id`, `ref_type`, `url` | External reference attached |
 | `ref.removed` | `node_id`, `ref_id` | External reference detached |
 | `ref.status_changed` | `node_id`, `ref_id`, `from?`, `to`, `synced_at` | Mirrored external status moved (issue closed, PR merged) |

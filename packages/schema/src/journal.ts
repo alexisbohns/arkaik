@@ -16,6 +16,7 @@
 
 import type { SpeciesId, StatusId, PlatformId, EdgeTypeId } from "./ids";
 import type { DecisionStatusId } from "./decision";
+import type { StakeProvenanceId } from "./stake";
 import { normalizeStatus } from "./legacy-status";
 // Other half of the journal.ts <-> screenshots.ts cycle (screenshots.ts value-imports
 // `orderEvents`). Both sides only call the other inside functions, never at module
@@ -176,13 +177,53 @@ export interface IdeaProposedEvent extends JournalEvent {
   node_id?: string;
 }
 
-/** An external ask (user feedback, stakeholder request). */
+/**
+ * What kind of thing a signal is (docs/rfcs/stake-architecture.md § 5). The
+ * closed vocabulary beside the free `source` name: `source` says who or where
+ * ("beta-feedback"), `source_kind` says what sort of source it is.
+ */
+export const SIGNAL_SOURCE_KINDS = ["ticket", "interview", "form", "feedback", "audit-finding", "idea", "benchmark", "other"] as const;
+export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number];
+
+/**
+ * A signal: something that arrived from outside the graph (user feedback, a
+ * ticket, an interview line, an audit finding, a benchmark). Only `title` is
+ * required, so every `request.filed` written before the generalisation is
+ * still valid. A signal becomes a stake at qualification.
+ */
 export interface RequestFiledEvent extends JournalEvent {
   type: "request.filed";
   title: string;
   description?: string;
+  /** The source's own name, a free string ("user", "beta-feedback"). Never retyped. */
   source?: string;
   node_id?: string;
+  /** What sort of source: see {@link SIGNAL_SOURCE_KINDS}. Absent on a legacy request. */
+  source_kind?: SignalSourceKind;
+  /** The input exactly as voiced, never edited. */
+  verbatim?: string;
+  /** Seen in the world, or reasoned about ahead of it. Absent reads as observed. */
+  provenance?: StakeProvenanceId;
+  /** Stakes known at filing time. The durable link is the stake's `metadata.evidence[]`. */
+  stake_ids?: string[];
+  /** `source_kind: "audit-finding"`: the Kritik finding. Never put an `F-…` id in `node_id` or `stake_ids` (it reads like a flow id). */
+  finding_id?: string;
+  /** `source_kind: "audit-finding"`: the criterion the finding was raised against. */
+  criterion_id?: string;
+  url?: string;
+}
+
+/** A signal's source kind when it is in the vocabulary, else undefined (a legacy request has none). */
+export function signalSourceKindOf(event: Pick<RequestFiledEvent, "source_kind">): SignalSourceKind | undefined {
+  return (SIGNAL_SOURCE_KINDS as readonly string[]).includes(event.source_kind as string)
+    ? (event.source_kind as SignalSourceKind)
+    : undefined;
+}
+
+/** The stake ids a signal names, keeping only non-empty strings. */
+export function signalStakeIds(event: Pick<RequestFiledEvent, "stake_ids">): string[] {
+  const raw: unknown = event.stake_ids;
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && id !== "") : [];
 }
 
 /** External reference attached. */
@@ -693,6 +734,22 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
             rule: "journal-dangling-node-ref",
             message: `journal[${index}] (${ev.type}): references node "${ref}" that never existed in the snapshot or journal.`,
             severity: "error",
+          });
+        }
+      });
+    }
+    // request.filed.stake_ids: a journal fact about stakes known at filing. A
+    // stake can be deleted legitimately and history is never rewritten, so a
+    // name that never existed is a warning, never an error.
+    if (ev.type === "request.filed" && Array.isArray(ev.stake_ids)) {
+      (ev.stake_ids as unknown[]).forEach((raw, i) => {
+        const ref = str(raw);
+        if (ref !== undefined && !everNodes.has(ref)) {
+          findings.push({
+            path: `journal[${index}].stake_ids[${i}]`,
+            rule: "journal-dangling-stake-ref",
+            message: `journal[${index}] (${ev.type}): names stake "${ref}" that never existed in the snapshot or journal.`,
+            severity: "warning",
           });
         }
       });

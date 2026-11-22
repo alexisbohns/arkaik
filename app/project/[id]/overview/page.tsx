@@ -7,6 +7,7 @@ import {
   deriveQualityMatrix,
   listMaps,
   resolveKritikLibrary,
+  stakeEvidenceEventIds,
 } from "@arkaik/schema";
 import { BacklogCard } from "@/components/overview/BacklogCard";
 import { DeliverySnapshotCard } from "@/components/overview/DeliverySnapshotCard";
@@ -129,7 +130,11 @@ export default function OverviewPage() {
   );
 
   const backlog = useMemo(
-    () => computeBacklog(journal, { existingNodeIds: new Set(dataNodes.map((node) => node.id)) }),
+    () =>
+      computeBacklog(journal, {
+        existingNodeIds: new Set(dataNodes.map((node) => node.id)),
+        evidencedEventIds: stakeEvidenceEventIds(dataNodes),
+      }),
     [dataNodes, journal],
   );
 

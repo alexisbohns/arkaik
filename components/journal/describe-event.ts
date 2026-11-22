@@ -93,6 +93,15 @@ function resolveTitle(id: unknown, nodesById?: ReadonlyMap<string, Pick<Node, "t
   return nodesById?.get(nodeId)?.title ?? nodeId;
 }
 
+/**
+ * A signal's source kind as a reader sees it ("audit-finding" → "audit finding").
+ * Undefined for a legacy request that carries none, so the row falls back to the
+ * source name alone.
+ */
+export function signalKindLabel(kind: unknown): string | undefined {
+  return typeof kind === "string" && kind !== "" ? kind.replace(/-/g, " ") : undefined;
+}
+
 export function describeJournalEvent(
   event: JournalEvent,
   nodesById?: ReadonlyMap<string, Pick<Node, "title">>,
@@ -179,7 +188,7 @@ export function describeJournalEvent(
       return {
         icon,
         text: `Request: ${str(event.title) ?? "Untitled"}`,
-        meta: str(event.source),
+        meta: [signalKindLabel(event.source_kind), str(event.source)].filter(Boolean).join(" · ") || undefined,
       };
     case "ref.added":
       return {
