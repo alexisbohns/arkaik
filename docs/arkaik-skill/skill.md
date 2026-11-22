@@ -378,6 +378,50 @@ When in doubt, leave membership off. An unassigned flow or view is a visible
 triage state the validator names (`unassigned-membership`); a *wrongly* assigned
 one is invisible, and quietly wrong in every rollup that reads it.
 
+## Qualifying a signal — from a request to a stake
+
+A **signal** is something that came in (`request.filed`: feedback, a ticket, an
+interview line, an audit finding, a benchmark). A **stake** is something that
+matters about the product: a `bug`, a `friction`, a `need`, a `requirement`, a
+`risk` or a `defect` (`species: "stake"`, the kind in `metadata.stake_species`,
+anchored to a flow, view, data model or endpoint by a `concerns` edge).
+Qualification turns one into the other. Use the MCP tools; they apply the
+decision table for you, and they write through the same validator gate as every
+other writer.
+
+1. **Read the backlog** (`get_backlog`) and take one signal at a time.
+2. **Route the species** with `qualify_signal` (read-only). You answer the
+   questions; the table decides. You never pick the species directly.
+
+   | Question | Answers |
+   |---|---|
+   | `scope`: is it about the product a person meets? | `product`; `internal` (about operating the product) and `off-scope` are routed out |
+   | `door`: does the product exist and get used, or is it being shaped? | `collect` (observed; default for an observed signal); `imagine` (anticipated; no bug or friction, reroute as need) |
+   | `facing`: a person's value, or quality and obligation? | `value`; `quality` |
+   | `expectation` (value): was something expected to work? | `broken` is a bug; `as-designed` (works as designed and still gets in the way) is a friction; `absent` is a need |
+   | `threat` (quality): what kind of threat? | `obligation` is a requirement; `own-flaw` is a defect; `mitigable-only` is a risk |
+   | `basis`: did the source say it, or is it your hypothesis? | `stated` (default); `inferred` |
+
+3. **Merge before you create.** `qualify_signal` lists existing stakes of the same
+   species the signal could join, scored, archived ones flagged. A high or medium
+   candidate that really is the same need at the same level: `promote_signal` with
+   `merge_into`. Otherwise `promote_signal` with `create: true`. Never merge across
+   species, and never merge a person-facing stake with an operator-facing one.
+4. **Write the stake's own wording** (`stake_title`) positively and
+   solution-neutral, in the person's terms ("What I filled in is kept when I leave",
+   not "fix draft loss"). Never invent a quote: the evidence quote is the signal's
+   `verbatim`, untouched. Name the `anchors` (the flow, view, data model or endpoint
+   it concerns); an audit finding's criterion becomes the stake's `catalog` link.
+5. **Hand to a person**, in your reply, everything `handToHuman` lists: every
+   signal routed out (internal, off-scope, refused), every answer you inferred, a
+   merge you are less than sure about, an archived stake the evidence might
+   reopen. A person can overrule any of it. A signal routed out writes nothing and
+   stays in the journal; a stake is never deleted to undo a qualification, it is
+   archived.
+
+A stake lands at `idea`. Evaluation, options and decisions are not yet part of
+this skill.
+
 ## Full Schema Reference
 
 For the complete TypeScript types, allowed values for `status`, `species`,

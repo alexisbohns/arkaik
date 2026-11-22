@@ -84,6 +84,8 @@ All tool results are JSON text content. Read tools are projections; write tools 
 | `remove_edge` | `edge_id` | ack | `edge.removed` |
 | `propose_idea` | `title`, `description?`, `node_id?` | event | `idea.proposed` |
 | `file_request` | `title`, `description?`, `source?`, `node_id?`, `source_kind?`, `verbatim?`, `provenance?`, `stake_ids?`, `finding_id?`, `criterion_id?`, `url?` | event | `request.filed` (a signal; `source_kind` and `provenance` are enums, an out-of-vocabulary value is refused before anything is written) |
+| `qualify_signal` | `signal_id?` or `title?`, `verbatim?`, the routing answers (`scope`, `door?`, `facing`, `expectation?`, `threat?`, `basis?`), `anchors?`, `catalog_id?` | `{ routing, anchors, candidates, suggestion }`: the species the RFC's table reaches, the existing stakes of that species the signal could join (scored, archived ones flagged), and a suggestion (`ask`, `route-out`, `refused`, `create`, `merge`, `already-qualified`). Read-only; never merges | — |
+| `promote_signal` | the `qualify_signal` inputs, then exactly one of `create: true` (+ `stake_title?`) or `merge_into`; `voice?` | the stake (created at `idea`, or the stake that gained one evidence entry), its anchors, the ops, `handToHuman` (every route out, refusal and inferred answer). Ops only, so it works against a hosted project; a signal a stake already cites is a no-op | `node.created` + `edge.added` per anchor (create), or `node.updated` (merge) |
 | `get_changelog` | `version?` | release list, or one `computeChangelog` slice | — |
 | `get_backlog` | — | `computeBacklog` (open ideas & requests; a signal a stake names, or an idea or signal a stake cites, is closed) | — |
 | `list_maps` | — | built-in + stored `MapDefinition`s with node/edge counts | — |
@@ -248,11 +250,22 @@ A flow's playlist and its `composes` edges are two views of one relationship: th
 - **npm:** `npx -y arkaik-mcp` — zero-install for any MCP host.
 - **Claude Code plugin:** the plugin gains a generated `plugin/.mcp.json` declaring the server (`command: "npx", args: ["-y", "arkaik-mcp"]`), emitted by `scripts/generate/generate-plugin.js` and covered by the CI drift check. Installing the plugin then delivers **skill + MCP together**: the doctrine and the tools, one install.
 
+### Qualification tools
+
+Two tools turn a signal into a stake ([docs/rfcs/stake-architecture.md](../rfcs/stake-architecture.md) § 9; the routing is `packages/schema/src/qualify.ts`). They are the only tools that decide a stake's species, and they never decide it themselves: the caller answers the routing questions (`ROUTING_QUESTIONS`, the single source of the tool descriptions and the skill text) and `routeSpecies` applies the RFC's table.
+
+- **`qualify_signal` is a read.** It returns the route (`stake`, `internal`, `off-scope`, `refused` or `incomplete`, with the questions still to answer), the existing stakes of the same species the signal could join (`findMergeCandidates`: a shared catalog id, a shared anchor, shared words; archived stakes flagged, never hidden; a benchmark flagged as not counting toward frequency), and a suggestion. It never writes and never merges.
+- **`promote_signal` is ops only** (`create_node` + one `create_edge` per anchor, or one `update_node` appending an evidence entry), so it works against a hosted project where `file_request` is refused. A created stake lands at `idea` with no platforms, the species, the provenance the door implies (collect is observed, imagine is anticipated), a catalog link when one applies, and a first `metadata.evidence[]` entry (`event_id`, `quote` = the signal's `verbatim`, `voice`, `date`). A merge is always an explicit `merge_into`, appends one entry de-duplicated by `event_id`, and is refused across species. Promoting a signal a stake already cites is a no-op. The imagine door refuses a bug or a friction ("reroute as need"). Anything routed out, refused or inferred comes back in `handToHuman` for a person to confirm.
+
+Both read a signal from the journal (`signal_id`, a `request.filed` or `idea.proposed` event) or take an inline `title`; an inline signal records evidence without an `event_id`.
+
 ## Testing
 
 `tests/mcp/run-mcp-tests.js` follows the CLI harness pattern: spawn the built server against a tmpdir fixture bundle + journal sidecar, speak JSON-RPC over stdio (`initialize`, `tools/list`, `tools/call`), and assert: read-tool shapes; a write round-trip (update → journal line appended → `validate_bundle` clean → snapshot canonical); and the gate (a mutation that would dangle an edge is refused with pathed findings and the files untouched).
 
 `tests/mcp/remote-store.test.js` runs the same built server against a stub of the hosted API. Assertions that a tool *behaves the same through both stores* belong here rather than in the file-mode suite, which by construction cannot see hosted-only drift: `validate_bundle` returning a verdict identical to repo mode — clean and broken — is checked that way.
+
+`tests/mcp/qualify-tools.test.js` covers the two qualification tools over a tmpdir repo (the hosted, ops-only path is in `remote-store.test.js`); `tests/schema/qualify.test.js` covers the routing table, the merge candidates and the plans through the real `applyOps` and validator.
 
 `tests/mcp/weighing-tools.test.js` covers the weighing tools over a tmpdir repo and a stub of the hosted API, and finishes by running the built CLI's `pack` over what an agent wrote. Its `on_behalf_of` cases use a temp git repo with local config and run the server with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so "none set" never depends on the machine's own git identity.
 
