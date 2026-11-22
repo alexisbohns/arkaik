@@ -39,3 +39,4 @@ export * from "./weighing-validate";
 export * from "./weighing-events";
 export * from "./weighing-derive";
 export * from "./qualify";
+export * from "./stake-evaluation";

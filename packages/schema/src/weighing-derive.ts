@@ -39,7 +39,7 @@ import { DEFAULT_DELIVERED_STATUSES, resolvePlatformStatus } from "./acceptance"
 import type { Node } from "./bundle";
 import {
   CONFIDENCE_LEVELS,
-  acceptanceFingerprint,
+  fingerprintOf,
   cellKey,
   isActiveWeighingSet,
   isUncertainCell,
@@ -53,7 +53,7 @@ import {
   type WeighingScorer,
   type WeighingSection,
 } from "./weighing";
-import { VALUE_MATRIX_ID, resolveWeighing, setOfRef, weighingScaleOf } from "./weighing-library";
+import { VALUE_MATRIX_ID, isMatrixSubject, resolveWeighing, setOfRef, weighingScaleOf } from "./weighing-library";
 
 /** The seeding rule's scorer id — what a `rule` cell reads as. Never stored, so it can change with the rule. */
 export const SEED_SCORER_ID = "seed-claimed";
@@ -101,7 +101,7 @@ export function claimedElements(node: Pick<Node, "metadata">, set: Pick<Weighing
 
 /** The seeded assessments of a node, one per claimed element. Computed on read, never stored. */
 export function seedAssessments(node: WeighedNode, matrix: Pick<WeighingMatrix, "id">, set: WeighingCriteriaSet): WeighingAssessment[] {
-  const fingerprint = acceptanceFingerprint(node);
+  const fingerprint = fingerprintOf(node);
   return claimedElements(node, set).map((criterion, position) => ({
     matrix: matrix.id,
     subject: node.id,
@@ -366,11 +366,14 @@ const share = (guess: number, total: number): number => (total > 0 ? guess / tot
 
 /** Weigh one promise against a resolved context. */
 export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWeighing {
-  const fingerprint = acceptanceFingerprint(node);
+  const fingerprint = fingerprintOf(node);
   const current = { fingerprint, setVersion: ctx.set.version };
-  const claimedList = claimedElements(node, ctx.set);
+  // A stake claims nothing: `metadata.values` is an acceptance's claim, so a stake is never seeded
+  // (a guess would read as "claimed") and never raises a claim flag. Its cells are stored scores only.
+  const isStake = node.species === "stake";
+  const claimedList = isStake ? [] : claimedElements(node, ctx.set);
   const claimedSet = new Set(claimedList);
-  const seeds = new Map(seedAssessments(node, ctx.matrix, ctx.set).map((seed) => [seed.criterion, seed] as const));
+  const seeds = new Map((isStake ? [] : seedAssessments(node, ctx.matrix, ctx.set)).map((seed) => [seed.criterion, seed] as const));
 
   const order = [...claimedList, ...ctx.set.criteria.map((criterion) => criterion.id).filter((id) => !claimedSet.has(id))];
   const cells: EffectiveCell[] = [];
@@ -415,7 +418,7 @@ export function weighPromise(node: WeighedNode, ctx: WeighingContext): PromiseWe
     if (cell.stale) stale.push(cell.criterion);
     if (cell.review) review.push(cell.criterion);
     if (cell.uncertain) uncertain.push(cell.criterion);
-    if (cell.source === "stored") {
+    if (cell.source === "stored" && !isStake) {
       if (cell.claimed) {
         if (cell.level < 0) flags.claim_contradicted.push(cell.criterion);
         else if (cell.level === 0) flags.claim_not_supported.push(cell.criterion);
@@ -484,18 +487,25 @@ export interface WeighingView {
   };
 }
 
-/** The nodes a matrix judges, each node id once (the first wins). */
-export function matrixSubjects<N extends Pick<Node, "id" | "species">>(nodes: readonly N[], matrix: WeighingMatrix): N[] {
-  const wanted =
-    matrix.subjects.kind === "query"
-      ? undefined
-      : new Set(matrix.subjects.items.map((item) => item?.node_id ?? item?.id));
-  const species = matrix.subjects.kind === "query" ? matrix.subjects.species : undefined;
+/**
+ * The nodes a matrix judges, each node id once (the first wins). Given the
+ * matrix's set, a stake matrix keeps only the stakes of a kind the set
+ * declares ({@link isMatrixSubject}); without it, a stake matrix keeps every stake.
+ */
+export function matrixSubjects<N extends Pick<Node, "id" | "species"> & Partial<Pick<Node, "metadata">>>(
+  nodes: readonly N[],
+  matrix: WeighingMatrix,
+  set?: Pick<WeighingCriteriaSet, "stake_species">,
+): N[] {
   const seen = new Set<string>();
   const out: N[] = [];
   for (const node of nodes) {
     if (seen.has(node.id)) continue;
-    if (wanted === undefined ? node.species !== species : !wanted.has(node.id)) continue;
+    const judged =
+      set === undefined && matrix.subjects.kind === "query"
+        ? node.species === matrix.subjects.species
+        : isMatrixSubject(node, matrix, set);
+    if (!judged) continue;
     seen.add(node.id);
     out.push(node);
   }
@@ -518,7 +528,7 @@ export function deriveWeighing(
   const ctx = buildWeighingContext(section, matrixId);
   if (ctx === undefined) return undefined;
 
-  const promises = matrixSubjects(nodes, ctx.matrix).map((node) => weighPromise(node, ctx));
+  const promises = matrixSubjects(nodes, ctx.matrix, ctx.set).map((node) => weighPromise(node, ctx));
   // Whole levels (kept: levels times a kept share), summed; each mass is divided by 3 once at the end.
   interface Raw {
     promised: number;

@@ -478,6 +478,15 @@
             },
             "additionalProperties": {}
           }
+        },
+        "felt": {
+          "$ref": "#/$defs/StakeFelt"
+        },
+        "matters": {
+          "$ref": "#/$defs/StakeMatters"
+        },
+        "frequency": {
+          "$ref": "#/$defs/StakeFrequency"
         }
       },
       "additionalProperties": {},
@@ -823,6 +832,45 @@
         "agent"
       ],
       "description": "Who voiced a piece of stake evidence: person (the one the signal came from), maintainer, or agent."
+    },
+    "StakeFelt": {
+      "type": "string",
+      "enum": [
+        "expected",
+        "wanted",
+        "delight"
+      ],
+      "description": "Bug, friction and need stakes only: how the person feels it. expected (a must-be: a bug is always this), wanted (a performance) or delight (an attractive)."
+    },
+    "StakeMatters": {
+      "anyOf": [
+        {
+          "type": "number",
+          "const": 1
+        },
+        {
+          "type": "number",
+          "const": 2
+        },
+        {
+          "type": "number",
+          "const": 3
+        },
+        {
+          "type": "number",
+          "const": 4
+        }
+      ],
+      "description": "Bug, friction and need stakes only: how much addressing it matters to the person, 4 (most) to 1 (least). Worded per felt kind; never summed with a pyramid level or a Kritik criticality."
+    },
+    "StakeFrequency": {
+      "type": "string",
+      "enum": [
+        "rare",
+        "some",
+        "often"
+      ],
+      "description": "Bug, friction and need stakes only: how often the situation comes up for the person: rare, some or often. Shown beside mattering, never sorted by."
     },
     "Edge": {
       "type": "object",
@@ -1458,6 +1506,9 @@
         },
         "subject": {
           "description": "What the set judges: acceptance today."
+        },
+        "stake_species": {
+          "description": "The kinds of stake this set may also score (bug, friction, need, requirement, risk, defect). Absent means none; the value ruler declares bug, friction and need."
         },
         "scale": {
           "description": "The scale. A positioning may leave it out and use its ruler's.",

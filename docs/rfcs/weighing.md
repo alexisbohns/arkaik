@@ -348,6 +348,7 @@ interface CriteriaSet {
   id: string;                 // "value-contribution", "positioning"
   version: string;            // semver. A criterion is never redefined, only superseded (Kritik's rule)
   subject: "acceptance" | "flow" | "stake" | "option" | ...;
+  stake_species?: ("bug" | "friction" | "need" | "requirement" | "risk" | "defect")[];  // built (stake architecture, part 4): the kinds of stake this set may also score. `value-contribution@2` declares bug, friction and need
   scale: { min: number; max: number; anchors: Record<string, string> };  // value: min -3, max 3
   groups?: { id: string; title: string }[];     // Kritik's domains, the value tiers
   criteria: {

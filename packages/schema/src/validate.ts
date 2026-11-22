@@ -761,7 +761,7 @@ export function validateBundle(input: unknown): ValidationResult {
     const stakeMd = (node.metadata ?? {}) as Record<string, unknown>;
 
     if (species !== "stake") {
-      for (const field of ["stake_species", "provenance", "catalog", "evidence"]) {
+      for (const field of ["stake_species", "provenance", "catalog", "evidence", "felt", "matters", "frequency"]) {
         if (stakeMd[field] !== undefined) {
           warn(
             `${base}.metadata.${field}`,
@@ -820,6 +820,27 @@ export function validateBundle(input: unknown): ValidationResult {
         `${base}.metadata.catalog`,
         "stake-catalog-unknown-value",
         `Stake ${nodeId}: catalog value "${catalog.id}" is not a value of the pyramid`,
+      );
+    }
+
+    // Felt, matters and frequency are about a person's experience: the user-facing species only (RFC § 6).
+    // A requirement, risk or defect is read against a Kritik criterion's criticality, never these.
+    if (stakeSpecies !== undefined && (QUALITY_STAKE_SPECIES as readonly string[]).includes(stakeSpecies)) {
+      for (const field of ["felt", "matters", "frequency"] as const) {
+        if (stakeMd[field] !== undefined) {
+          warn(
+            `${base}.metadata.${field}`,
+            "stake-evaluation-quality-species",
+            `Stake ${nodeId}: ${field} is for bugs, frictions and needs; a ${stakeSpecies} is read against a Kritik criterion's criticality`,
+          );
+        }
+      }
+    }
+    if (stakeSpecies === "bug" && stakeMd.felt !== undefined && stakeMd.felt !== "expected") {
+      warn(
+        `${base}.metadata.felt`,
+        "stake-bug-felt",
+        `Stake ${nodeId}: a bug is always felt as expected (a must-be), not ${JSON.stringify(stakeMd.felt)}`,
       );
     }
 
@@ -1233,7 +1254,11 @@ export function validateBundle(input: unknown): ValidationResult {
   const embeddedJournal = Array.isArray((bundle as { journal?: unknown }).journal) ? ((bundle as { journal?: unknown[] }).journal as unknown[]) : [];
   const weighingSpecies = new Map<string, string>();
   for (const [id, node] of nodeMap) weighingSpecies.set(id, String(node.species));
-  for (const finding of validateWeighingSection(weighing, weighingSpecies, embeddedJournal)) {
+  const weighingStakeSpecies = new Map<string, string | undefined>();
+  for (const [id, node] of nodeMap) {
+    if (node.species === "stake") weighingStakeSpecies.set(id, stakeSpeciesOf({ metadata: node.metadata as NodeMetadata | undefined }));
+  }
+  for (const finding of validateWeighingSection(weighing, weighingSpecies, embeddedJournal, weighingStakeSpecies)) {
     warn(finding.path, finding.rule, finding.message);
   }
 

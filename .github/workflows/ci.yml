@@ -274,6 +274,9 @@ jobs:
       - name: Qualification tests (species routing, merge candidates, signal to stake plans)
         run: npm run test:qualify
 
+      - name: Stake evaluation tests (reference declares species, stake assessments, felt/matters/frequency, criticality)
+        run: npm run test:stake-evaluation
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

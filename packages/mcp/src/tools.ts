@@ -29,6 +29,7 @@ import {
   SIGNAL_SOURCE_KINDS,
   STAKE_PROVENANCE_IDS,
   stakeEvidenceEventIds,
+  stakeMetadataWith,
   type Edge,
   type EventInput,
   type JournalEvent,
@@ -118,7 +119,16 @@ function nodeSummary(node: Node) {
   const base = { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
   // A stake's kind is what tells one stake from another in a list.
   if (node.species === "stake") {
-    return { ...base, stake_species: node.metadata?.stake_species ?? null, provenance: node.metadata?.provenance ?? "observed" };
+    const md = node.metadata;
+    return {
+      ...base,
+      stake_species: md?.stake_species ?? null,
+      provenance: md?.provenance ?? "observed",
+      // The user-facing kinds only carry these (a requirement, risk or defect is read against a Kritik criterion).
+      ...(md?.felt !== undefined ? { felt: md.felt } : {}),
+      ...(md?.matters !== undefined ? { matters: md.matters } : {}),
+      ...(md?.frequency !== undefined ? { frequency: md.frequency } : {}),
+    };
   }
   if (node.species !== "acceptance") return base;
   // Acceptances are the parity unit — without resolved per-platform statuses
@@ -487,7 +497,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "update_node",
       description:
-        "Patch a node's title, description, status, platforms, or metadata. Journal events derive from the diff; refused if validation fails. When a flow's metadata.playlist gains a view/sub-flow, the matching composes edge is synthesized in the same mutation.",
+        "Patch a node's title, description, status, platforms, or metadata. Journal events derive from the diff; refused if validation fails. When a flow's metadata.playlist gains a view/sub-flow, the matching composes edge is synthesized in the same mutation. A patched `metadata` REPLACES the node's metadata whole — send every key you keep — except on a stake, where it is MERGED key by key (a key set to null is cleared) and the stake rules apply: a bug is felt as expected, and a requirement, risk or defect carries no felt, matters or frequency. So `{metadata:{felt:\"wanted\"}}` on a need sets only that field.",
       inputSchema: {
         type: "object",
         properties: {
@@ -525,6 +535,20 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       const graph = await load(ctx);
       const current = findNode(graph.nodes, nodeId);
+
+      // A stake's metadata is the durable link to its signal and its kind (evidence, stake_species, catalog), so a patch
+      // that names one field must not erase the rest: merge it, null clearing a key, and let the stake rules apply.
+      if (current.species === "stake" && patch.metadata !== undefined) {
+        if (typeof patch.metadata !== "object" || patch.metadata === null || Array.isArray(patch.metadata)) {
+          throw new ToolError("`patch.metadata` must be an object.");
+        }
+        const merged: Record<string, unknown> = { ...(current.metadata ?? {}) };
+        for (const [key, value] of Object.entries(patch.metadata as Record<string, unknown>)) {
+          if (value === null) delete merged[key];
+          else merged[key] = value;
+        }
+        patch.metadata = stakeMetadataWith(merged as Node["metadata"], {});
+      }
 
       // applyOps derives no events for a patch that changes nothing, which is
       // how a no-op stays a no-op: nothing is written and no journal line lands.

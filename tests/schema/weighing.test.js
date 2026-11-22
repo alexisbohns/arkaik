@@ -86,7 +86,7 @@ check("the built-in matrix judges every acceptance against value-contribution@2"
 check("the built-in matrix names the positioning set", VALUE_MATRIX.positioning === POSITIONING_SET_ID);
 
 const resolved = resolveWeighing(undefined);
-check("an absent section resolves to the built-ins alone: both majors of the ruler, one matrix", eq(resolved.sets.map((s) => s.version), ["2.0.0", "1.0.0"]) && resolved.matrices.length === 1);
+check("an absent section resolves to the built-ins alone: both majors of the ruler, the value matrix and the stake matrix", eq(resolved.sets.map((s) => s.version), ["2.0.0", "1.0.0"]) && eq(resolved.matrices.map((m) => m.id), ["value", "stakes"]));
 check("a ref resolves to its set", setOfRef(resolved, "value-contribution@2")?.id === "value-contribution");
 check("an unknown ref resolves to nothing", setOfRef(resolved, "nope@1") === undefined);
 check("a ref picks its major among those the library holds", setOfRef(resolved, "value-contribution@2")?.version === "2.0.0" && setOfRef(resolved, "value-contribution@1")?.version === "1.0.0");
@@ -100,9 +100,9 @@ const withOwn = resolveWeighing({
 check("a project cannot redefine a pinned set", eq(withOwn.sets.filter((s) => s.id === "value-contribution").map((s) => s.version), ["2.0.0", "1.0.0"]));
 check("the project's own sets are layered on", withOwn.sets.some((s) => s.id === "positioning"));
 const matrixOf = (...extra) => resolveWeighing({ sets: [], matrices: extra }).matrices.map((m) => m.id);
-check("a matrix with only an id is skipped, not thrown on", eq(matrixOf({ id: "m" }), ["value"]));
-check("a matrix with no subjects is skipped", eq(matrixOf({ id: "m", set: "value-contribution@2" }), ["value"]));
-check("a well-formed matrix is layered on", eq(matrixOf({ id: "m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" } }), ["value", "m"]));
+check("a matrix with only an id is skipped, not thrown on", eq(matrixOf({ id: "m" }), ["value", "stakes"]));
+check("a matrix with no subjects is skipped", eq(matrixOf({ id: "m", set: "value-contribution@2" }), ["value", "stakes"]));
+check("a well-formed matrix is layered on", eq(matrixOf({ id: "m", set: "value-contribution@2", subjects: { kind: "query", species: "acceptance" } }), ["value", "stakes", "m"]));
 check("a set with no criteria or no scale is skipped", resolveWeighing({ sets: [{ id: "s" }, { id: "t", scale: set.scale }, { id: "u", criteria: [] }], matrices: [] }).sets.length === 2);
 check("a later well-formed duplicate beats an earlier malformed one", resolveWeighing({ sets: [{ id: "s" }, { id: "s", version: "1.0.0", scale: set.scale, criteria: [] }], matrices: [] }).sets.some((s) => s.id === "s"));
 check(

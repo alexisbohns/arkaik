@@ -424,8 +424,17 @@ other writer.
    would come back on the next pass. Remember which ids you already routed out
    (and told a person about) instead of re-qualifying them.
 
-A stake lands at `idea`. Evaluation, options and decisions are not yet part of
-this skill.
+A stake lands at `idea`. **Evaluating it depends on its species.** A bug, a
+friction or a need is weighed on the value pyramid: `assess` works on it (the
+`stakes` matrix, no `matrix` argument needed), and `felt` (`expected`, `wanted`,
+`delight`; a bug is always `expected`), `matters` (4 to 1) and `frequency`
+(`rare`, `some`, `often`) are set on the node with `update_node` (on a stake a
+`metadata` patch is merged key by key, so `{metadata:{felt:"wanted"}}` changes only
+that field; `null` clears one; on any other species `metadata` is replaced whole). A requirement,
+a risk or a defect is not weighed: it is read against its Kritik criterion
+(`metadata.catalog`), and its criticality comes from the criterion, never from a
+copy. Never add a mattering to a pyramid level or to a criticality. Options and
+decisions are not yet part of this skill.
 
 ## Full Schema Reference
 

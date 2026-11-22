@@ -1,17 +1,30 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
+  STAKE_FELT_IDS,
+  STAKE_FREQUENCY_IDS,
   STAKE_LIFECYCLE_STATUSES,
+  STAKE_MATTERS_LEVELS,
+  STAKE_MATTERS_WORDING,
   VALUE_IDS,
   canBeAnticipated,
   catalogSourceForStakeSpecies,
+  isUserFacingStakeSpecies,
+  kritikCriticality,
+  resolveKritikLibrary,
   stakeCatalogOf,
+  stakeFeltOf,
+  stakeFrequencyOf,
+  stakeMattersOf,
   stakeMetadataWith,
   stakeProvenanceOf,
   stakeSpeciesFor,
   stakeSpeciesOf,
+  type StakeFelt,
   type StakeFieldChange,
+  type StakeFrequency,
+  type StakeMatters,
   type StakeProvenanceId,
   type StakeSpeciesId,
 } from "@arkaik/schema";
@@ -26,6 +39,8 @@ import { STAKE_SPECIES, STAKE_SPECIES_LABELS } from "@/lib/config/stake-species"
 import { VALUES } from "@/lib/config/values";
 import type { Node, NodeMetadata } from "@/lib/data/types";
 import type { StatusId } from "@/lib/config/statuses";
+import { useProject } from "@/lib/hooks/useProject";
+import { useProjectId } from "@/lib/hooks/useProjectId";
 
 const AUTOSAVE_DELAY_MS = 350;
 const NO_VALUE = "__none";
@@ -40,6 +55,13 @@ interface StakeEditorProps {
   metadataRef: React.MutableRefObject<NodeMetadata | undefined>;
 }
 
+const FELT_LABELS: Record<StakeFelt, { label: string; hint: string }> = {
+  expected: { label: "Expected", hint: "A must-be: the person takes it for granted, and notices only when it is missing" },
+  wanted: { label: "Wanted", hint: "A performance: the more of it, the better" },
+  delight: { label: "Delight", hint: "An attractive: nobody asks for it, and it pleases when it is there" },
+};
+const FREQUENCY_LABELS: Record<StakeFrequency, string> = { rare: "Rare", some: "Some", often: "Often" };
+
 const PROVENANCE_OPTIONS = [
   { id: "observed", label: "Observed", title: "Seen in the world: a signal, a ticket, a test" },
   { id: "anticipated", label: "Anticipated", title: "Reasoned about ahead of the world: nothing exists yet to have a bug or a friction" },
@@ -49,7 +71,11 @@ const PROVENANCE_OPTIONS = [
  * A stake's own facts: what kind it is (bug, friction, need, requirement, risk
  * or defect), whether it was observed or anticipated, the catalog entry it
  * points at, and where it stands in its stored lifecycle (idea, discovery,
- * archived; every other state is derived, never typed in).
+ * archived; every other state is derived, never typed in). A bug, a friction
+ * or a need also says how it is felt, how much it matters and how often it
+ * comes up; a requirement, a risk or a defect shows its Kritik criterion's
+ * criticality instead, read and never stored. The two scales are never
+ * combined with each other or with the pyramid's levels.
  *
  * Every write is one metadata patch built by `stakeMetadataWith` over the
  * panel's shared write base, so the rules the validator warns about (a
@@ -63,6 +89,14 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
   const provenance = stakeProvenanceOf(node);
   const catalog = stakeCatalogOf(node);
   const readOnly = !onUpdate;
+  const userFacing = isUserFacingStakeSpecies(species);
+  const felt = stakeFeltOf(node);
+  const matters = stakeMattersOf(node);
+  const frequency = stakeFrequencyOf(node);
+  const projectId = useProjectId();
+  const { project } = useProject(projectId);
+  const quality = project?.quality;
+  const library = useMemo(() => resolveKritikLibrary(quality), [quality]);
 
   function write(change: StakeFieldChange) {
     if (!onUpdate) return;
@@ -170,6 +204,147 @@ export function StakeEditor({ node, onUpdate, metadataRef }: StakeEditorProps) {
               </SelectContent>
             </Select>
           )}
+        </PanelSection>
+      )}
+
+      {userFacing && (
+        <>
+          <PanelSection title="Felt">
+            {readOnly || species === "bug" ? (
+              <p className="text-sm" data-stake-felt="">
+                {species === "bug" ? FELT_LABELS.expected.label : felt ? FELT_LABELS[felt].label : "Not set"}
+              </p>
+            ) : (
+              <Select
+                value={felt ?? NO_VALUE}
+                onValueChange={(value) => write({ felt: value === NO_VALUE ? undefined : (value as StakeFelt) })}
+              >
+                <SelectTrigger id={`${fieldId}-felt`} aria-label="How it is felt" data-stake-felt="">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_VALUE}>
+                    <span className="text-muted-foreground">Not set</span>
+                  </SelectItem>
+                  {STAKE_FELT_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {FELT_LABELS[id].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {species === "bug" ? "A bug is always felt as expected." : felt ? FELT_LABELS[felt].hint : "Whether the person expects it, wants it or would be delighted by it."}
+            </p>
+          </PanelSection>
+
+          <PanelSection title="Matters">
+            {(() => {
+              const kind = species === "bug" ? "expected" : felt;
+              const wording = kind ? STAKE_MATTERS_WORDING[kind] : undefined;
+              if (readOnly) {
+                return (
+                  <p className="text-sm" data-stake-matters="">
+                    {matters && wording ? `${matters} · ${wording.tiers[matters].name}` : matters ? `${matters} (say how it is felt to read it)` : "Not set"}
+                  </p>
+                );
+              }
+              return (
+                <>
+                  <Select
+                    value={matters ? String(matters) : NO_VALUE}
+                    disabled={!wording && !matters}
+                    onValueChange={(value) => write({ matters: value === NO_VALUE ? undefined : (Number(value) as StakeMatters) })}
+                  >
+                    <SelectTrigger id={`${fieldId}-matters`} aria-label="How much it matters" data-stake-matters="">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_VALUE}>
+                        <span className="text-muted-foreground">Not set</span>
+                      </SelectItem>
+                      {wording
+                        ? [...STAKE_MATTERS_LEVELS].reverse().map((level) => (
+                            <SelectItem key={level} value={String(level)}>
+                              {level} · {wording.tiers[level].name}
+                            </SelectItem>
+                          ))
+                        : matters && <SelectItem value={String(matters)}>{matters}</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {wording
+                      ? `${wording.question}${matters ? ` ${wording.tiers[matters].hint}.` : ""}`
+                      : "Say how it is felt first: the question changes with it."}
+                  </p>
+                </>
+              );
+            })()}
+          </PanelSection>
+
+          <PanelSection title="Frequency">
+            {readOnly ? (
+              <p className="text-sm" data-stake-frequency="">
+                {frequency ? FREQUENCY_LABELS[frequency] : "Not set"}
+              </p>
+            ) : (
+              <Select
+                value={frequency ?? NO_VALUE}
+                onValueChange={(value) => write({ frequency: value === NO_VALUE ? undefined : (value as StakeFrequency) })}
+              >
+                <SelectTrigger id={`${fieldId}-frequency`} aria-label="How often it comes up" data-stake-frequency="">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_VALUE}>
+                    <span className="text-muted-foreground">Not set</span>
+                  </SelectItem>
+                  {STAKE_FREQUENCY_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {FREQUENCY_LABELS[id]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-xs text-muted-foreground">
+              How often the situation comes up for the person. Shown beside what it matters, never sorted by.
+            </p>
+          </PanelSection>
+        </>
+      )}
+
+      {species && !userFacing && (
+        <PanelSection title="Criticality">
+          {(() => {
+            const criterionId = catalog?.source === "kritik" ? catalog.id : undefined;
+            if (criterionId === undefined) return <p className="text-sm text-muted-foreground">Link a Kritik criterion to read how critical it is.</p>;
+            const reading = kritikCriticality(criterionId, library);
+            // A project that carries no pack (the pack lives outside the bundle) or only one rebuilt from assessment ids has
+            // no impacts to read: that is a missing library, not a criterion the library lacks.
+            const libraryLoaded = library?.criteria.some((criterion) => criterion.default_impact !== undefined) === true;
+            return reading.impact !== undefined ? (
+              <p className="text-sm" data-stake-criticality="">
+                Impact {reading.impact} of 5
+                {reading.weight !== undefined ? ` · weight ${reading.weight} of 3` : ""}
+                <span className="text-muted-foreground">
+                  {" "}
+                  from {reading.criterion_id}
+                  {reading.name ? `, ${reading.name}` : ""}
+                </span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-stake-criticality="">
+                {libraryLoaded
+                  ? `Unknown: this project's Kritik library does not carry ${reading.criterion_id}.`
+                  : `Unknown: no Kritik library is loaded for this project, so ${reading.criterion_id} cannot be read here.`}
+              </p>
+            );
+          })()}
+          <p className="text-xs text-muted-foreground">
+            Read from the criterion, never stored here. It is a different scale from what a need matters or a value&apos;s reach: they are never added.
+          </p>
         </PanelSection>
       )}
 

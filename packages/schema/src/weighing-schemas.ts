@@ -92,6 +92,7 @@ export const WeighingCriteriaSetSchema = z
     version: leaf("Semver. Levels are comparable only within a major."),
     title: leaf("A human title."),
     subject: leaf("What the set judges: acceptance today."),
+    stake_species: leaf("The kinds of stake this set may also score (bug, friction, need, requirement, risk, defect). Absent means none; the value ruler declares bug, friction and need."),
     scale: documented(WeighingScaleSchema).optional().meta({ description: "The scale. A positioning may leave it out and use its ruler's." }),
     groups: documented(z.array(documented(WeighingGroupSchema))).optional(),
     criteria: documented(z.array(documented(WeighingCriterionSchema))).optional(),

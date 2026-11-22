@@ -42,6 +42,7 @@
  */
 
 import type { Node } from "./bundle";
+import { STAKE_SPECIES_IDS, type StakeSpeciesId } from "./stake";
 
 // --- Scales ------------------------------------------------------------------
 
@@ -137,6 +138,14 @@ export interface WeighingCriteriaSet extends Record<string, unknown> {
   title?: string;
   /** What the set judges. Slice 1 uses `acceptance`; the rest is reserved. */
   subject?: string;
+  /**
+   * The kinds of stake this set may also score (stake architecture, part 4):
+   * a reference declares its own species. Absent or empty means it scores no
+   * stake. Read it through {@link stakeSpeciesDeclaredBy}. It is not part of
+   * the set's version or of any subject's fingerprint, so declaring a species
+   * never stales a stored cell.
+   */
+  stake_species?: StakeSpeciesId[];
   /** Absent on a positioning, which then uses its `extends` ruler's scale ({@link weighingScaleOf}). */
   scale?: WeighingScale;
   groups?: WeighingGroup[];
@@ -366,6 +375,34 @@ export function acceptanceFingerprint(node: Pick<Node, "title" | "metadata">): s
   const values = Array.isArray(node.metadata?.values) ? node.metadata.values : [];
   const text = JSON.stringify([squash(node.title ?? ""), squash(gherkin), values]);
   return `fp1-${hash53(text).toString(16).padStart(14, "0")}`;
+}
+
+/**
+ * The fingerprint of a stake: its title and its kind, whitespace-normalized.
+ * A stake rerouted from a bug to a need is a different thing to weigh, so the
+ * kind is in the hash; evidence is not, so merging one more signal into a
+ * stake never stales its cells. Tagged so it can never equal an acceptance's.
+ */
+export function stakeFingerprint(node: Pick<Node, "title" | "metadata">): string {
+  const species = typeof node.metadata?.stake_species === "string" ? node.metadata.stake_species : "";
+  const text = JSON.stringify(["stake", squash(node.title ?? ""), species]);
+  return `fp1-${hash53(text).toString(16).padStart(14, "0")}`;
+}
+
+/** The fingerprint of whatever a matrix judges: a stake's own, else an acceptance's (whose hash is never changed). */
+export function fingerprintOf(node: Pick<Node, "species" | "title" | "metadata">): string {
+  return node.species === "stake" ? stakeFingerprint(node) : acceptanceFingerprint(node);
+}
+
+/**
+ * The stake species a set declares it may score: its `stake_species` entries
+ * that are in the vocabulary, in order. Total: a missing or mistyped field
+ * reads as none (the validator warns).
+ */
+export function stakeSpeciesDeclaredBy(set: Pick<WeighingCriteriaSet, "stake_species">): StakeSpeciesId[] {
+  const raw: unknown = set.stake_species;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is StakeSpeciesId => (STAKE_SPECIES_IDS as readonly unknown[]).includes(entry));
 }
 
 // --- Writing assessments -----------------------------------------------------

@@ -58,6 +58,63 @@ export interface StakeCatalogLink {
   id: string;
 }
 
+/**
+ * How a person feels a stake's absence (need qualification § 3, step 6): a
+ * must-be they expect, a performance they want, or an attractive they would be
+ * delighted by. User-facing species only; a bug is always `expected`.
+ */
+export const STAKE_FELT_IDS = ["expected", "wanted", "delight"] as const;
+export type StakeFelt = (typeof STAKE_FELT_IDS)[number];
+
+/**
+ * How much addressing a stake matters to the person, 4 (most) to 1 (least).
+ * One scale for every felt kind, worded per kind ({@link STAKE_MATTERS_WORDING}).
+ * It is a separate scale from the value pyramid's -3..+3: the two are never
+ * summed, and neither is ever summed with a Kritik criticality.
+ */
+export const STAKE_MATTERS_LEVELS = [1, 2, 3, 4] as const;
+export type StakeMatters = (typeof STAKE_MATTERS_LEVELS)[number];
+
+/** How often the situation comes up for the person. Shown beside mattering, never sorted by (RFC open question 4). */
+export const STAKE_FREQUENCY_IDS = ["rare", "some", "often"] as const;
+export type StakeFrequency = (typeof STAKE_FREQUENCY_IDS)[number];
+
+/** The question and the four tiers of the mattering scale for one felt kind (need qualification § 3, step 7). */
+export interface StakeMattersWording {
+  question: string;
+  tiers: Record<StakeMatters, { name: string; hint: string }>;
+}
+
+export const STAKE_MATTERS_WORDING: Record<StakeFelt, StakeMattersWording> = {
+  wanted: {
+    question: "How much does addressing this matter to the person?",
+    tiers: {
+      4: { name: "Transformative", hint: "Changes what the person gets from the product" },
+      3: { name: "Valuable", hint: "Would clearly feel the difference" },
+      2: { name: "Nice to have", hint: "Pleased, but not much would change" },
+      1: { name: "Marginal", hint: "Would barely register" },
+    },
+  },
+  delight: {
+    question: "How much would it please the person?",
+    tiers: {
+      4: { name: "Memorable", hint: "Would remember it and mention it" },
+      3: { name: "Pleasing", hint: "Would clearly enjoy it" },
+      2: { name: "Pleasant", hint: "A small smile, not much more" },
+      1: { name: "Barely registers", hint: "Most would hardly notice" },
+    },
+  },
+  expected: {
+    question: "How much would it hurt if it were missing?",
+    tiers: {
+      4: { name: "Deal-breaker", hint: "Would stop using or trusting the product" },
+      3: { name: "Clearly annoying", hint: "Would notice and be bothered each time" },
+      2: { name: "Mildly annoying", hint: "Would notice now and then" },
+      1: { name: "Barely noticed", hint: "Most would shrug" },
+    },
+  },
+};
+
 /** Who voiced a piece of evidence: the person the signal came from, the maintainer, or an agent reading on their behalf. */
 export const STAKE_EVIDENCE_VOICES = ["person", "maintainer", "agent"] as const;
 export type StakeEvidenceVoice = (typeof STAKE_EVIDENCE_VOICES)[number];
@@ -118,11 +175,32 @@ export function canBeAnticipated(species: StakeSpeciesId | undefined): boolean {
   return species === undefined || (ANTICIPATED_STAKE_SPECIES as readonly string[]).includes(species);
 }
 
+/** A stake's felt kind when it is in the vocabulary, else undefined. */
+export function stakeFeltOf(node: Pick<Node, "metadata">): StakeFelt | undefined {
+  const raw = node.metadata?.felt;
+  return (STAKE_FELT_IDS as readonly string[]).includes(raw as string) ? (raw as StakeFelt) : undefined;
+}
+
+/** A stake's mattering when it is one of 1 to 4, else undefined. */
+export function stakeMattersOf(node: Pick<Node, "metadata">): StakeMatters | undefined {
+  const raw = node.metadata?.matters;
+  return (STAKE_MATTERS_LEVELS as readonly unknown[]).includes(raw) ? (raw as StakeMatters) : undefined;
+}
+
+/** A stake's frequency when it is in the vocabulary, else undefined. */
+export function stakeFrequencyOf(node: Pick<Node, "metadata">): StakeFrequency | undefined {
+  const raw = node.metadata?.frequency;
+  return (STAKE_FREQUENCY_IDS as readonly string[]).includes(raw as string) ? (raw as StakeFrequency) : undefined;
+}
+
 /** One edit to a stake's own metadata. `undefined` clears the field, a missing key leaves it. */
 export interface StakeFieldChange {
   stake_species?: StakeSpeciesId | undefined;
   provenance?: StakeProvenanceId | undefined;
   catalog?: StakeCatalogLink | undefined;
+  felt?: StakeFelt | undefined;
+  matters?: StakeMatters | undefined;
+  frequency?: StakeFrequency | undefined;
 }
 
 /**
@@ -133,10 +211,13 @@ export interface StakeFieldChange {
  *   link that no longer fits it (a `values` link on a requirement is wrong, and
  *   the validator warns on it).
  * - `observed` is the default, so it is stored as absence, not as a value.
+ * - felt, matters and frequency are for the user-facing species only (RFC § 6):
+ *   a requirement, risk or defect drops all three, and a bug is always
+ *   `expected`.
  */
 export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: StakeFieldChange): NodeMetadata {
   const next: NodeMetadata = { ...(metadata ?? {}) };
-  for (const key of ["stake_species", "provenance", "catalog"] as const) {
+  for (const key of ["stake_species", "provenance", "catalog", "felt", "matters", "frequency"] as const) {
     if (!(key in change)) continue;
     const value = change[key];
     if (value === undefined) delete next[key];
@@ -147,6 +228,13 @@ export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: St
   const catalog = stakeCatalogOf({ metadata: next });
   if (species !== undefined && catalog !== undefined && catalog.source !== catalogSourceForStakeSpecies(species)) {
     delete next.catalog;
+  }
+  if (species !== undefined && !isUserFacingStakeSpecies(species)) {
+    delete next.felt;
+    delete next.matters;
+    delete next.frequency;
+  } else if (species === "bug") {
+    next.felt = "expected";
   }
   return next;
 }
