@@ -271,6 +271,9 @@ jobs:
       - name: Signal tests (request.filed fields, stake evidence, backlog and timeline links)
         run: npm run test:signal
 
+      - name: Qualification tests (species routing, merge candidates, signal to stake plans)
+        run: npm run test:qualify
+
       - name: Delivery board grouping tests
         run: npm run test:delivery
 

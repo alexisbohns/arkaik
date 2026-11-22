@@ -325,6 +325,38 @@ async function main() {
       JSON.stringify(state.receivedOps[0]).slice(0, 200),
     );
 
+    // --- promote_signal is ops-only, so it works hosted ---------------------
+    // file_request is a journal-only write and is refused hosted; promoting a
+    // signal writes a node and its edge, which the mutations route accepts.
+    state.receivedOps.length = 0;
+    const promoted = await rpc(
+      remoteEnv,
+      [],
+      [
+        initialize,
+        call(70, "promote_signal", {
+          title: "Settings hide the toggle",
+          scope: "product",
+          facing: "value",
+          expectation: "as-designed",
+          anchors: ["V-settings"],
+          create: true,
+          stake_title: "I find the toggle where I look for it",
+        }),
+      ],
+    );
+    const promotedBody = resultText(promoted.responses, 70);
+    check("promote_signal succeeds against the hosted API", promotedBody?.action === "create" && promotedBody.stake_id === "STK-i-find-the-toggle-where-i-look-for-it", JSON.stringify(promotedBody));
+    check(
+      "it sent ops: a stake node and its concerns edge",
+      state.receivedOps.length === 1 &&
+        state.receivedOps[0][0]?.op === "create_node" &&
+        state.receivedOps[0][0].node.species === "stake" &&
+        state.receivedOps[0][1]?.op === "create_edge" &&
+        state.receivedOps[0][1].edge.edge_type === "concerns",
+      JSON.stringify(state.receivedOps[0]),
+    );
+
     // --- A server refusal reads like a local one ---------------------------
     state.refuseNext = true;
     const refused = await rpc(

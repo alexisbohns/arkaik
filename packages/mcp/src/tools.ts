@@ -42,6 +42,7 @@ import {
 } from "@arkaik/schema";
 import { ToolError, type ToolDefinition, type ToolHandler } from "./protocol";
 import { buildKritikCatalog } from "./kritik-tools";
+import { buildQualifyCatalog } from "./qualify-tools";
 import { buildWeighingCatalog } from "./weighing-tools";
 import type { LoadedGraph as StoreLoadedGraph, Store, WriteResult } from "./store";
 
@@ -56,7 +57,7 @@ interface ToolContext {
 }
 
 /** The tools' view of a loaded graph — narrowed from the Store's shape. */
-interface LoadedGraph {
+export interface LoadedGraph {
   loaded: StoreLoadedGraph["loaded"];
   nodes: Node[];
   edges: Edge[];
@@ -817,6 +818,13 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
   const weighing = buildWeighingCatalog(ctx);
   tools.push(...weighing.tools);
   Object.assign(handlers, weighing.handlers);
+
+  // Qualification (docs/rfcs/stake-architecture.md § 9): route a signal to a
+  // species and promote it to a stake. Ops only, so it works hosted too; it
+  // shares this module's load / mutate / unwrap so it writes through the same gate.
+  const qualify = buildQualifyCatalog(ctx, { load: () => load(ctx), mutate, unwrap });
+  tools.push(...qualify.tools);
+  Object.assign(handlers, qualify.handlers);
 
   return { tools, handlers };
 }

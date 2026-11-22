@@ -6,7 +6,7 @@ order: 93
 
 # RFC: Need qualification: from raw input to a qualified need
 
-> Status: **Proposed. A method, not yet a feature; nothing here is implemented.** 2026-11-22. Worked out with the product owner from 2026-11-16 to 2026-11-21, on the Pebbles backlog. The method was used in a ranking tool and tested on 33 of 77 needs by one labeller. Items marked **(proposal)** were not settled. [§ 8](#8-what-the-pebbles-run-showed) says what the run did and did not show.
+> Status: **Proposed. A method, mostly not yet a feature.** Species routing and the merge-before-create check are implemented ([stake architecture](./stake-architecture.md), part 3); the rest of the pipeline is not. 2026-11-22. Worked out with the product owner from 2026-11-16 to 2026-11-21, on the Pebbles backlog. The method was used in a ranking tool and tested on 33 of 77 needs by one labeller. Items marked **(proposal)** were not settled. [§ 8](#8-what-the-pebbles-run-showed) says what the run did and did not show.
 >
 > Precedent: [Weighing](./weighing.md). That RFC defines the species now built as `stake` and leaves *stake sizing* unslotted ([§ 18, question 9](./weighing.md#18-open-questions)). This RFC answers what sizing could be, and how a stake gets its wording.
 >
@@ -75,7 +75,15 @@ Voice matters. On Pebbles, 99 of 100 items were found by the maintainer (audits,
 
 ### Step 2. Classify the register
 
-Decide what the input is, because the next steps differ.
+**First, route the species.** Under the [stake architecture](./stake-architecture.md#3-species) this is the first judgement a qualifier makes, and it is built (`routeSpecies` in `packages/schema/src/qualify.ts`, behind the MCP tools `qualify_signal` and `promote_signal`). The qualifier answers a few questions and the table decides:
+
+1. Is it about the product a person meets? If not, it is routed out as internal or off scope (kept, with the reason, for a person to overrule).
+2. Does the product exist (collect) or is it being shaped (imagine)? The imagine door never yields a bug or a friction; reroute those as a need.
+3. Does it face a person's value or the product's quality? Value: broken is a **bug**, works as designed and still gets in the way is a **friction**, absent is a **need**. Quality: an obligation is a **requirement**, a flaw of our own making is a **defect**, a threat that can only be mitigated is a **risk**.
+
+An inferred answer, a route out and a refusal are always handed to a person. A merge into an existing stake of the same species is proposed before a new stake is created ([step 4](#step-4-merge)) and is never automatic.
+
+The rest of this step applies to the stakes that face a person's value (bug, friction, need). Decide what the input is, because the next steps differ.
 
 - **Complaint:** describes something that happened to a person. *"I backgrounded the app and lost the pebble I was creating; I had to reupload, resize and rename my picture."*
 - **Need:** says what the person wants, in their terms. *"When I record, I need to be reassured that what I filled in is kept even if I quit the app or lose connection."*
