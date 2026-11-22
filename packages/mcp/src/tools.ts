@@ -118,7 +118,16 @@ function nodeSummary(node: Node) {
   const base = { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
   // A stake's kind is what tells one stake from another in a list.
   if (node.species === "stake") {
-    return { ...base, stake_species: node.metadata?.stake_species ?? null, provenance: node.metadata?.provenance ?? "observed" };
+    const md = node.metadata;
+    return {
+      ...base,
+      stake_species: md?.stake_species ?? null,
+      provenance: md?.provenance ?? "observed",
+      // The user-facing kinds only carry these (a requirement, risk or defect is read against a Kritik criterion).
+      ...(md?.felt !== undefined ? { felt: md.felt } : {}),
+      ...(md?.matters !== undefined ? { matters: md.matters } : {}),
+      ...(md?.frequency !== undefined ? { frequency: md.frequency } : {}),
+    };
   }
   if (node.species !== "acceptance") return base;
   // Acceptances are the parity unit — without resolved per-platform statuses
