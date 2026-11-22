@@ -88,6 +88,10 @@ check("clearing the catalog link drops the verified version", !("verified_criter
 check("a values link (which stops fitting) drops the verified version", !("verified_criterion_version" in stakeMetadataWith(withVersion, { catalog: { source: "values", id: "saves-time" } })));
 check("a stake with no species yet cannot hold a verified version", !("verified_criterion_version" in stakeMetadataWith({ catalog: kritikLink, verified_criterion_version: 1 }, {})));
 check("a stake with no Kritik link cannot be given a verified version", !("verified_criterion_version" in stakeMetadataWith({ stake_species: "risk" }, { verified_criterion_version: 1 })));
+const moved = stakeMetadataWith(withVersion, { catalog: { source: "kritik", id: "SAF-02" } });
+check("moving the link to another criterion drops the verified version", moved.catalog.id === "SAF-02" && !("verified_criterion_version" in moved));
+check("…unless the same change states the version it was verified against", stakeMetadataWith(withVersion, { catalog: { source: "kritik", id: "SAF-02" }, verified_criterion_version: 3 }).verified_criterion_version === 3);
+check("restating the same link keeps the verified version", stakeMetadataWith(withVersion, { catalog: { source: "kritik", id: "SAF-01" } }).verified_criterion_version === 2);
 const frozen = JSON.stringify(withVersion);
 stakeMetadataWith(withVersion, { stake_species: "need" });
 check("stakeMetadataWith never mutates its input", JSON.stringify(withVersion) === frozen);

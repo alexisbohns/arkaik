@@ -261,6 +261,32 @@ try {
   const duplicate = runExpectingFailure("scaffold-criterion.js", ["--from", path.join(repo, "docs/quality/criteria.custom.json")], repo);
   check("scaffold refuses to silently replace an overlay criterion", duplicate !== null);
 
+  // A forced rewrite is a changed definition, so it bumps the version instead of writing 1 again.
+  const overlayFile = path.join(repo, "docs/quality/criteria.custom.json");
+  const readOverlay = () => JSON.parse(fs.readFileSync(overlayFile, "utf8"));
+  const rewrite = (name, extra = []) =>
+    run("scaffold-criterion.js", [
+      "--force", "--id", "X-01", "--domain", "RIT",
+      "--name", name, "--question", "Does a streak stay correct across a timezone change?",
+      "--applies-to", "web,ios", "--weight", "2", "--impact", "4",
+      ...["l0", "l1", "l2", "l3"].flatMap((k) => ["--anchor", `${k}=level ${k}`]),
+      "--anchor", "l4=A CI harness replays a timezone move and blocks merge on drift.",
+      ...extra,
+    ], repo);
+  rewrite("Streaks survive a timezone move, reworded");
+  check("a forced rewrite of an overlay criterion bumps its version", readOverlay().criteria[0].version === 2, String(readOverlay().criteria[0].version));
+  rewrite("Streaks survive a timezone move, reworded");
+  check("restating the same criterion keeps its version", readOverlay().criteria[0].version === 2);
+  const realPack = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/kritik-library/framework.json"), "utf8"));
+  const shadow = JSON.parse(JSON.stringify(realPack.criteria.find((c) => c.id === "SEC-01")));
+  const shadowFile = path.join(repo, "shadow.json");
+  fs.writeFileSync(shadowFile, JSON.stringify({ ...shadow, name: "A local override", version: undefined }));
+  run("scaffold-criterion.js", ["--force", "--from", shadowFile], repo);
+  const shadowed = readOverlay().criteria.find((c) => c.id === "SEC-01");
+  check("a forced override of a pack criterion moves one past the pack's version", shadowed.version === shadow.version + 1, String(shadowed.version));
+  fs.rmSync(shadowFile);
+  fs.writeFileSync(overlayFile, JSON.stringify({ ...readOverlay(), criteria: readOverlay().criteria.filter((c) => c.id !== "SEC-01") }, null, 2));
+
   // The custom criterion must now score and roll up exactly like a pack one.
   const scores = JSON.parse(fs.readFileSync(path.join(auditDir, "scores.json"), "utf8"));
   scores.assessments.push(

@@ -149,6 +149,27 @@ export function buildCriterion(draft: CriterionDraft): KritikCriterion {
   };
 }
 
+const statedVersion = (criterion: KritikCriterion | undefined): number | undefined =>
+  typeof criterion?.version === "number" && Number.isInteger(criterion.version) && criterion.version >= 1 ? criterion.version : undefined;
+
+const withoutVersion = (criterion: KritikCriterion): string => JSON.stringify({ ...criterion, version: undefined });
+
+/**
+ * The criterion as it is written. A brand-new id keeps the version it came with
+ * (`buildCriterion` says 1). A forced replacement of an overlay criterion or a
+ * pack one is a changed definition, so it moves one past the version it
+ * replaces (the overlay's own, else the pack's, else the baseline 1), and never
+ * below a version the caller stated. Restating the same criterion changes
+ * nothing, so it keeps the version it had (SPEC § 8).
+ */
+function stampVersion(criterion: KritikCriterion, inOverlay: KritikCriterion | undefined, inPack: KritikCriterion | undefined): KritikCriterion {
+  const replaced = inOverlay ?? inPack;
+  if (replaced === undefined) return criterion;
+  const before = statedVersion(inOverlay) ?? statedVersion(inPack) ?? 1;
+  const unchanged = withoutVersion(criterion) === withoutVersion(replaced);
+  return { ...criterion, version: Math.max(statedVersion(criterion) ?? 1, unchanged ? before : before + 1) };
+}
+
 /** What {@link addCriterionToOverlay} did, so the caller can report it. */
 export interface OverlayWrite {
   path: string;
@@ -192,8 +213,9 @@ export function addCriterionToOverlay(
   if (at >= 0 && !options.force) {
     throw new Error(`"${criterion.id}" is already in the overlay — pass --force to replace it`);
   }
-  if (at >= 0) overlay.criteria[at] = criterion;
-  else overlay.criteria.push(criterion);
+  const stamped = stampVersion(criterion, overlay.criteria[at], (pack.criteria ?? []).find((c) => c.id === criterion.id));
+  if (at >= 0) overlay.criteria[at] = stamped;
+  else overlay.criteria.push(stamped);
 
   const domainCode = criterion.domain;
   const knownDomain =

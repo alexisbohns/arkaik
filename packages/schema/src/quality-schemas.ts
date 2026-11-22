@@ -70,7 +70,7 @@ export const KritikDomainSchema: z.ZodType<KritikDomain> = z
 
 export const KritikCriterionSchema: z.ZodType<KritikCriterion> = z
   .object({
-    id: z.string().meta({ description: "Stable identifier, `<DOMAIN>-NN`. Never redefined — retired via superseded_by." }),
+    id: z.string().meta({ description: "Stable identifier, `<DOMAIN>-NN`. A changed definition bumps `version` and keeps the id; a replacement is retired via superseded_by." }),
     domain: z.string(),
     subcategory: z.string().optional(),
     name: z.string().optional(),

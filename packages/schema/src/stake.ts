@@ -231,10 +231,14 @@ export interface StakeFieldChange {
  *   a requirement, risk or defect drops all three, and a bug is always
  *   `expected`.
  * - The verified criterion version is for a quality species linked to a Kritik
- *   criterion: when the species or the link stops fitting, it goes too.
+ *   criterion: when the species or the link stops fitting, it goes too. It also
+ *   goes when the link moves to another criterion, because the number belongs
+ *   to the criterion it was verified against. A change that sets the version
+ *   itself keeps it.
  */
 export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: StakeFieldChange): NodeMetadata {
   const next: NodeMetadata = { ...(metadata ?? {}) };
+  const catalogBefore = stakeCatalogOf({ metadata: next });
   for (const key of ["stake_species", "provenance", "catalog", "felt", "matters", "frequency", "reverify_every_days", "verified_criterion_version"] as const) {
     if (!(key in change)) continue;
     const value = change[key];
@@ -248,11 +252,13 @@ export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: St
     delete next.catalog;
   }
   const fittingCatalog = stakeCatalogOf({ metadata: next });
+  const linkMoved = catalogBefore?.source !== fittingCatalog?.source || catalogBefore?.id !== fittingCatalog?.id;
   if (
     species === undefined ||
     isUserFacingStakeSpecies(species) ||
     fittingCatalog === undefined ||
-    fittingCatalog.source !== "kritik"
+    fittingCatalog.source !== "kritik" ||
+    (linkMoved && !("verified_criterion_version" in change))
   ) {
     delete next.verified_criterion_version;
   }

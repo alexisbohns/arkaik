@@ -340,6 +340,11 @@ async function main() {
     check("…a null clears one key", !cleared.isError && !("frequency" in cleared.json.node.metadata) && cleared.json.node.metadata.matters === 3, cleared.text.slice(0, 300));
     const asBug = await repo.call("update_node", { node_id: "STK-treat", patch: { metadata: { stake_species: "bug" } } });
     check("…and the stake rules apply: a bug is felt as expected", !asBug.isError && asBug.json.node.metadata.felt === "expected", asBug.text.slice(0, 300));
+    await repo.call("update_node", { node_id: "STK-token", patch: { metadata: { verified_criterion_version: 2 } } });
+    const sameLink = await repo.call("update_node", { node_id: "STK-token", patch: { metadata: { catalog: { source: "kritik", id: "SAF-01" }, frequency: null } } });
+    check("update_node keeps the verified criterion version while the link stays put", !sameLink.isError && (sameLink.json.node ?? (await repo.call("get_node", { node_id: "STK-token" })).json.node).metadata.verified_criterion_version === 2, sameLink.text.slice(0, 300));
+    const moveLink = await repo.call("update_node", { node_id: "STK-token", patch: { metadata: { catalog: { source: "kritik", id: "SAF-02" } } } });
+    check("…and drops it when the patch moves the link to another criterion", !moveLink.isError && moveLink.json.node.metadata.catalog.id === "SAF-02" && !("verified_criterion_version" in moveLink.json.node.metadata), moveLink.text.slice(0, 300));
     check("the value matrix still lists the acceptances only", (await repo.call("get_matrix")).json.promises.every((x) => x.node_id.startsWith("AC-")));
     const riskScored = await repo.call("assess", { subject: "STK-token", criterion: "saves-time", level: 1, confidence: 0 });
     check("a risk is refused: Kritik reads it, the pyramid never does", riskScored.isError && riskScored.json.refusals?.[0]?.reason === "unknown_subject" && /Kritik/.test(riskScored.json.refusals[0].detail), riskScored.text.slice(0, 300));

@@ -1087,7 +1087,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Stable identifier, `<DOMAIN>-NN`. Never redefined — retired via superseded_by."
+          "description": "Stable identifier, `<DOMAIN>-NN`. A changed definition bumps `version` and keeps the id; a replacement is retired via superseded_by."
         },
         "domain": {
           "type": "string"

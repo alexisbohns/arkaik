@@ -185,7 +185,7 @@ Rows = domains, columns = surfaces, cell = `score (grade)` with cap asterisks, p
 ## 8. Versioning & evolution
 
 - The framework is semver'd (`framework.json → version`). A criterion has its own integer `version`, which is not the framework's. A change to a criterion's definition or level anchors bumps that criterion's `version` and keeps its id, so a stake that was verified against it can tell that the criterion has moved since. Bump nothing for a typo or a reworded reference. The framework's own version does not move for it.
-- A replacement, a criterion that means something else, is still **append-and-supersede**: the old id is deprecated (`superseded_by`) and a new id introduced, mirroring `docs/decisions/log.md` discipline. An id keeps its meaning across a version bump, and a score recorded under an older version is not rewritten.
+- A replacement, a criterion that means something else, is still **append-and-supersede**: the old id is deprecated (`superseded_by`) and a new id introduced, mirroring `docs/decisions/log.md` discipline. A score stays attached to the criterion version it was recorded under and is not rewritten. A bump marks that older scores and verifications rest on an earlier definition. A criterion that now means something else gets a new id.
 - An overlay that replaces a pack criterion and states no `version` keeps the pack's.
 - Adding a domain or surface is a minor bump; changing a scale is a major bump (matrices across a major bump are not comparable).
 - The critic pass of the authoring workflow (overlaps/gaps/applicability) reruns on every library change.
