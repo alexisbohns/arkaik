@@ -8,6 +8,7 @@ export * from "./validate";
 export * from "./acceptance";
 export * from "./decision";
 export * from "./stake";
+export * from "./option";
 export * from "./parse";
 export * from "./serialize";
 export * from "./projections";

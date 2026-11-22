@@ -13,6 +13,7 @@ import {
   VALUE_IDS,
   MutationError,
   acceptancesCovering,
+  answerTypesOf,
   applyOps,
   buildProductGraph,
   computeBacklog,
@@ -115,7 +116,7 @@ function findNode(nodes: Node[], nodeId: string): Node {
   return node;
 }
 
-function nodeSummary(node: Node) {
+function nodeSummary(node: Node, graph?: { nodes: Node[]; edges: Edge[] }) {
   const base = { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
   // A stake's kind is what tells one stake from another in a list.
   if (node.species === "stake") {
@@ -129,6 +130,11 @@ function nodeSummary(node: Node) {
       ...(md?.matters !== undefined ? { matters: md.matters } : {}),
       ...(md?.frequency !== undefined ? { frequency: md.frequency } : {}),
     };
+  }
+  // An option's answer types are what tell one option from another in a list. They are read from the stakes it
+  // addresses, so a summary built without the graph leaves them out.
+  if (node.species === "option") {
+    return graph ? { ...base, answer_types: answerTypesOf(node.id, graph.nodes, graph.edges) } : base;
   }
   if (node.species !== "acceptance") return base;
   // Acceptances are the parity unit — without resolved per-platform statuses
@@ -273,7 +279,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
         return true;
       });
 
-      return { total: matches.length, nodes: matches.slice(0, limit).map(nodeSummary) };
+      return { total: matches.length, nodes: matches.slice(0, limit).map((node) => nodeSummary(node, { nodes, edges })) };
     },
   );
 
@@ -328,7 +334,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
 
       const covered_by =
         node.species === "view" || node.species === "flow"
-          ? acceptancesCovering(nodeId, nodes, edges).map(nodeSummary)
+          ? acceptancesCovering(nodeId, nodes, edges).map((node) => nodeSummary(node))
           : undefined;
 
       return {
@@ -445,7 +451,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "create_node",
       description:
-        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation. For a flow, pass its populated metadata.playlist here — the matching composes edges to every referenced view/sub-flow are synthesized in the same mutation, so a full flow lands in one call. A decision or a stake takes platforms: []; a stake also takes metadata.stake_species (bug, friction, need, requirement, risk or defect) and is anchored with a concerns edge to the flow, view, data model or endpoint it is about.",
+        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation. For a flow, pass its populated metadata.playlist here — the matching composes edges to every referenced view/sub-flow are synthesized in the same mutation, so a full flow lands in one call. A decision, a stake or an option takes platforms: []; a stake also takes metadata.stake_species (bug, friction, need, requirement, risk or defect) and is anchored with a concerns edge to the flow, view, data model or endpoint it is about; an option never exists without a stake, so link it to the stake it addresses with an addresses edge.",
       inputSchema: {
         type: "object",
         properties: {

@@ -707,6 +707,26 @@ export function crossCheckJournal(bundle: Record<string, unknown>): JournalFindi
     }
   }
 
+  // --- An option's suggested_by names a journal event (warning) ---
+  // The signal can be pruned legitimately, so a name that matches no event is a
+  // warning, never an error.
+  const eventIds = new Set<string>();
+  for (const { ev } of valid) eventIds.add(ev.id as string);
+  nodesRaw.forEach((n, index) => {
+    if (n?.species !== "option") return;
+    const metadata = n.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return;
+    const ref = str((metadata as Record<string, unknown>).suggested_by);
+    if (ref !== undefined && ref !== "" && !eventIds.has(ref)) {
+      findings.push({
+        path: `nodes[${index}].metadata.suggested_by`,
+        rule: "option-suggested-by-dangling",
+        message: `Option "${String(n.id)}": suggested_by names journal event "${ref}", which is not in the journal.`,
+        severity: "warning",
+      });
+    }
+  });
+
   // --- No dangling references ---
   for (const { ev, index } of valid) {
     const nodeFields = NODE_REF_FIELDS[ev.type];

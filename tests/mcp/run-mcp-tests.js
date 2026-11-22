@@ -580,6 +580,37 @@ async function main() {
     backlogWithSignal.body?.requests.some((r) => r.id === filedEvent?.id),
   );
 
+  // --- Option species (platform-agnostic, linked to its stake by addresses) --
+  const createdOption = await callTool("create_node", {
+    species: "option",
+    title: "Compress the photo before upload",
+    platforms: [],
+  });
+  check(
+    "create_node accepts an option with platforms: [] (OPT- id derived)",
+    !createdOption.isError && createdOption.body?.node?.id === "OPT-compress-the-photo-before-upload",
+    JSON.stringify(createdOption.body).slice(0, 200),
+  );
+  const optionEdge = await callTool("add_edge", {
+    source_id: "OPT-compress-the-photo-before-upload",
+    target_id: "STK-avatar-upload-feels-slow",
+    edge_type: "addresses",
+  });
+  check("add_edge accepts addresses from an option to a stake", !optionEdge.isError, JSON.stringify(optionEdge.body).slice(0, 200));
+  const badOptionEdge = await callTool("add_edge", {
+    source_id: "STK-avatar-upload-feels-slow",
+    target_id: "OPT-compress-the-photo-before-upload",
+    edge_type: "addresses",
+  });
+  check("add_edge refuses addresses from a stake to an option", badOptionEdge.isError === true);
+  const optionList = await callTool("list_nodes", { species: "option" });
+  const optionSummary = optionList.body?.nodes?.find((n) => n.id === "OPT-compress-the-photo-before-upload");
+  check(
+    "option summaries carry their answer types, read from the stake they address",
+    JSON.stringify(optionSummary?.answer_types) === JSON.stringify(["enhancement"]),
+    JSON.stringify(optionSummary),
+  );
+
   // Qualification (done by hand here): a stake citing the signal closes it.
   const evidenced = await callTool("create_node", {
     species: "stake",

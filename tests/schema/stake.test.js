@@ -50,10 +50,10 @@ function assert(cond, message, detail) {
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // --- Registration -----------------------------------------------------------
-assert(SPECIES_IDS.includes("stake") && SPECIES_IDS[SPECIES_IDS.length - 1] === "stake", "stake is a species id, appended last");
+assert(SPECIES_IDS.includes("stake") && SPECIES_IDS.indexOf("stake") === SPECIES_IDS.indexOf("decision") + 1, "stake is a species id, appended after decision");
 assert(SPECIES_PREFIXES.stake === "STK-", "stake nodes get the STK- prefix");
 assert(deriveNodeId("stake", "Slow reveal") === "STK-slow-reveal", "deriveNodeId builds an STK- id");
-assert(EDGE_TYPE_IDS[EDGE_TYPE_IDS.length - 1] === "concerns", "concerns is an edge type, appended last");
+assert(EDGE_TYPE_IDS.indexOf("concerns") === EDGE_TYPE_IDS.indexOf("impacts") + 1, "concerns is an edge type, appended after impacts");
 
 // --- The concerns edge ------------------------------------------------------
 for (const target of ["flow", "view", "data-model", "api-endpoint"]) {

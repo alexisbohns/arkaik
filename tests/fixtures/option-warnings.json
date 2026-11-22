@@ -1,0 +1,252 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Option Warnings Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z",
+    "products": [
+      {
+        "id": "core",
+        "title": "Core"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-detail",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble Detail",
+      "status": "live",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "STK-friction",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "A friction",
+      "status": "discovery",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "friction"
+      }
+    },
+    {
+      "id": "STK-bug",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "A bug",
+      "status": "discovery",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "bug"
+      }
+    },
+    {
+      "id": "STK-friction-two",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Another friction",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "friction"
+      }
+    },
+    {
+      "id": "OPT-live",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "Live option",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "suggested_by": "01GHOST00000000000000000B9"
+      }
+    },
+    {
+      "id": "OPT-orphan",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "Orphan option",
+      "status": "idea",
+      "platforms": []
+    },
+    {
+      "id": "OPT-mixed",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "Mixed option",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "product": "core"
+      }
+    },
+    {
+      "id": "OPT-third",
+      "project_id": "fixture",
+      "species": "option",
+      "title": "Third option",
+      "status": "idea",
+      "platforms": []
+    },
+    {
+      "id": "DEC-wide",
+      "project_id": "fixture",
+      "species": "decision",
+      "title": "Wide decision",
+      "status": "backlog",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "approved",
+        "closed_options": [
+          {
+            "option_id": "OPT-ghost",
+            "reason": "Never existed."
+          }
+        ]
+      }
+    },
+    {
+      "id": "DEC-enacted",
+      "project_id": "fixture",
+      "species": "decision",
+      "title": "Enacted decision",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "decision_status": "enacted"
+      }
+    },
+    {
+      "id": "V-misplaced",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Misplaced fields",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "suggested_by": "01JOURNAL00000000000000B1",
+        "closed_options": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-friction-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-friction",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-bug-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-bug",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-friction-two-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-friction-two",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-OPT-live-STK-friction",
+      "project_id": "fixture",
+      "source_id": "OPT-live",
+      "target_id": "STK-friction",
+      "edge_type": "addresses"
+    },
+    {
+      "id": "e-OPT-mixed-STK-friction",
+      "project_id": "fixture",
+      "source_id": "OPT-mixed",
+      "target_id": "STK-friction",
+      "edge_type": "addresses"
+    },
+    {
+      "id": "e-OPT-mixed-STK-bug",
+      "project_id": "fixture",
+      "source_id": "OPT-mixed",
+      "target_id": "STK-bug",
+      "edge_type": "addresses"
+    },
+    {
+      "id": "e-OPT-third-STK-friction-two",
+      "project_id": "fixture",
+      "source_id": "OPT-third",
+      "target_id": "STK-friction-two",
+      "edge_type": "addresses"
+    },
+    {
+      "id": "e-DEC-wide-STK-friction",
+      "project_id": "fixture",
+      "source_id": "DEC-wide",
+      "target_id": "STK-friction",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-wide-STK-bug",
+      "project_id": "fixture",
+      "source_id": "DEC-wide",
+      "target_id": "STK-bug",
+      "edge_type": "impacts"
+    },
+    {
+      "id": "e-DEC-wide-OPT-live",
+      "project_id": "fixture",
+      "source_id": "DEC-wide",
+      "target_id": "OPT-live",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-wide-OPT-third",
+      "project_id": "fixture",
+      "source_id": "DEC-wide",
+      "target_id": "OPT-third",
+      "edge_type": "generates"
+    },
+    {
+      "id": "e-DEC-enacted-STK-friction",
+      "project_id": "fixture",
+      "source_id": "DEC-enacted",
+      "target_id": "STK-friction",
+      "edge_type": "impacts"
+    }
+  ],
+  "journal": [
+    {
+      "id": "01BASELINE00000000000000B0",
+      "ts": "2026-11-22T01:00:00.000Z",
+      "type": "journal.baseline",
+      "node_ids": [
+        "V-pebble-detail",
+        "STK-friction",
+        "STK-bug",
+        "STK-friction-two",
+        "OPT-live",
+        "OPT-orphan",
+        "OPT-mixed",
+        "OPT-third",
+        "DEC-wide",
+        "DEC-enacted",
+        "V-misplaced"
+      ]
+    },
+    {
+      "id": "01JOURNAL00000000000000B1",
+      "ts": "2026-11-22T02:00:00.000Z",
+      "type": "request.filed",
+      "title": "A request"
+    }
+  ]
+}

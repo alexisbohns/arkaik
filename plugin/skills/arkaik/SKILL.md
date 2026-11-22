@@ -433,8 +433,9 @@ friction or a need is weighed on the value pyramid: `assess` works on it (the
 that field; `null` clears one; on any other species `metadata` is replaced whole). A requirement,
 a risk or a defect is not weighed: it is read against its Kritik criterion
 (`metadata.catalog`), and its criticality comes from the criterion, never from a
-copy. Never add a mattering to a pyramid level or to a criticality. Options and
-decisions are not yet part of this skill.
+copy. Never add a mattering to a pyramid level or to a criticality. An option (`OPT-`)
+is one way to address a stake, linked to it with an `addresses` edge; see
+`references/schema.md`. Deciding between options is not yet part of this skill.
 
 ## Full Schema Reference
 

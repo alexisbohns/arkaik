@@ -18,7 +18,7 @@ export type { SpeciesId, StatusId, PlatformId, EdgeTypeId, ValueId, ValueTierId 
 export const SpeciesSchema = z.enum(SPECIES_IDS).meta({
   id: "Species",
   description:
-    "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status. decision = an ADR-style record (context, consequences, supersession). stake = something that matters about the product (a bug, friction, need, requirement, risk or defect), anchored to the anatomy by concerns edges.",
+    "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status. decision = an ADR-style record (context, consequences, supersession). stake = something that matters about the product (a bug, friction, need, requirement, risk or defect), anchored to the anatomy by concerns edges. option = one way to address a stake, never without a stake, weighed against the other options for it.",
 });
 
 export const StatusSchema = z.enum(STATUS_IDS).meta({
@@ -48,7 +48,7 @@ export const PlatformSchema = z.enum(PLATFORM_IDS).meta({
 export const EdgeTypeSchema = z.enum(EDGE_TYPE_IDS).meta({
   id: "EdgeType",
   description:
-    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on). supersedes = decision → decision. generates = decision → acceptance. impacts = decision → flow/view/data-model/api-endpoint. concerns = stake → flow/view/data-model/api-endpoint (the part of the anatomy the stake is about).",
+    "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on). supersedes = decision → decision. generates = decision → acceptance or option (what the decision produced). impacts = decision → flow/view/data-model/api-endpoint or stake (what the decision acts on). concerns = stake → flow/view/data-model/api-endpoint (the part of the anatomy the stake is about). addresses = option → stake, acceptance → stake or acceptance → option (what answers a stake).",
 });
 
 export const ValueTierSchema = z.enum(VALUE_TIER_IDS).meta({

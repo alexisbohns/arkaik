@@ -9,7 +9,7 @@
  * green, red, amber, plum).
  */
 import type { ReactNode } from "react";
-import { DiamondPlusIcon, LoaderIcon } from "lucide-react";
+import { DiamondPlusIcon, LightbulbIcon, LoaderIcon, TargetIcon } from "lucide-react";
 import type { Node } from "@/lib/data/types";
 import type { DecisionStatusId } from "@/lib/utils/decision";
 import { DECISION_STATUS_LABEL, type DecisionRowModel } from "@/lib/utils/decision-log";
@@ -80,15 +80,24 @@ export function StatusPill({ status, children, className }: { status: DecisionSt
  * A word as well as a number ("3 surfaces"), because two glyphs on one line
  * cannot both be self-evident; the accessible name carries the list's name.
  *
- * **Both tiles are neutral.** The one thing colour means on a decision row is
+ * **Every tile is neutral.** The one thing colour means on a decision row is
  * its status: a green acceptance tile beside a green `enacted` chip would be
  * two greens saying different things at one glance.
+ *
+ * **A tile is split by what it points at.** What a decision edge means depends
+ * on its target species: `impacts` reaches a surface or a stake, `generates` an
+ * acceptance or an option. One tile for both would call a stake a surface or an
+ * option an acceptance, so each target species gets its own.
  */
 export function RelatedTiles({ row, onSelect }: { row: DecisionRowModel; onSelect: (node: Node) => void }) {
+  const isStake = (node: Node) => node.species === "stake";
+  const isOption = (node: Node) => node.species === "option";
   return (
     <>
-      <RelatedTile icon={<LoaderIcon aria-hidden="true" />} label="Impacted surfaces" unit="surface" nodes={row.impacted} onSelect={onSelect} />
-      <RelatedTile icon={<DiamondPlusIcon aria-hidden="true" />} label="Generated acceptances" unit="acceptance" nodes={row.generated} onSelect={onSelect} />
+      <RelatedTile icon={<LoaderIcon aria-hidden="true" />} label="Impacted surfaces" unit="surface" nodes={row.impacted.filter((n) => !isStake(n))} onSelect={onSelect} />
+      <RelatedTile icon={<TargetIcon aria-hidden="true" />} label="Impacted stakes" unit="stake" nodes={row.impacted.filter(isStake)} onSelect={onSelect} />
+      <RelatedTile icon={<DiamondPlusIcon aria-hidden="true" />} label="Generated acceptances" unit="acceptance" nodes={row.generated.filter((n) => !isOption(n))} onSelect={onSelect} />
+      <RelatedTile icon={<LightbulbIcon aria-hidden="true" />} label="Generated options" unit="option" nodes={row.generated.filter(isOption)} onSelect={onSelect} />
     </>
   );
 }

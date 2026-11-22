@@ -8,7 +8,7 @@ The graph is built from nodes and edges with structure driven by persisted relat
 
 ## Species
 
-Current taxonomy has exactly 7 species.
+Current taxonomy has exactly 8 species.
 
 | Level | Species | Role | React Flow node type |
 |---|---|---|---|
@@ -19,6 +19,7 @@ Current taxonomy has exactly 7 species.
 | — | `acceptance` | A testable promise: What (`title`), How (`metadata.gherkin`, one Given/When/Then), Why (`metadata.values`, Bain elements), with per-platform status in `metadata.platformStatuses`. Id prefix `AC-`. | `acceptance` |
 | — | `decision` | an ADR-style decision record: Context (why), Decision (what), Consequences (how), with its own decision status (`metadata.decision_status`). Id prefix `DEC-`. | `decision` |
 | — | `stake` | Something that matters about the product: a bug, a friction, a need, a requirement, a risk or a defect (`metadata.stake_species`), anchored to the anatomy by `concerns` edges. Id prefix `STK-`. | `stake` |
+| — | `option` | One way to address a stake: never without a stake, weighed against the other options for it. Anchored to its stake by an outgoing `addresses` edge. Id prefix `OPT-`. | `option` |
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
@@ -39,7 +40,7 @@ Project library is available at `/project/[id]/library` with two browsing modes:
 
 Filtering:
 
-- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`, `decision`, `stake`); the in-page bar carries search and the display-mode toggle only.
+- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`, `decision`, `stake`, `option`); the in-page bar carries search and the display-mode toggle only.
 - Search matches node title and description text.
 
 Library source:
@@ -292,6 +293,66 @@ Stake surfaces:
   kind (and an "Anticipated" marker) beside the title. **New node** asks for the stake kind.
 - **Not present**: the canvas maps and the Delivery board, and no dedicated page.
 
+## Options
+
+`option` (§ Species) is one way to address a stake: a candidate answer, never
+without the stake it answers ([rfcs/stake-architecture.md § 7](rfcs/stake-architecture.md)).
+It is a graph species of its own, so it can carry a description, be linked and
+be searched; several options can address one stake, and a decision selects one.
+
+Two optional metadata fields, both additive (no `schema_version` bump):
+
+- `suggested_by` — on an option: the id of the `request.filed` journal event
+  that seeded it. A string only; the link back to a signal. A name that matches
+  no journal event is warned about (`option-suggested-by-dangling`).
+- `closed_options` — on a decision: `{ option_id, reason }[]`, the options that
+  lost, each with the reason it lost. The reason is what a later reader needs;
+  the loser is not deleted.
+
+**Lifecycle.** The node's own `status` is the stored lifecycle, limited to
+`idea`, `discovery` and `archived`, as for a stake. Selected, closed and open
+are read from the decision, never stored. The validator warns on any other
+stored status (`option-lifecycle`).
+
+**The stake.** An option points at the stake it addresses with an outgoing
+`addresses` edge. An option with none is warned about (`option-unaddressed`).
+
+**Answer type.** What kind of answer an option is comes from the kind of stake
+it addresses, through a table and nothing stored on the option: a bug is
+answered by a **fix**, a friction by an **enhancement**, a need by a
+**feature**, a requirement by **diligence**, a risk by a **mitigation** and a
+defect by a **resolution**. An option addressing stakes that ask for different
+answers is warned about (`option-mixed-answer-types`).
+
+**The decision.** A decision `impacts` the stake it settles and `generates` the
+option it selects. A decision settles one stake and selects one option; more is
+warned about (`decision-multiple-stakes`, `decision-multiple-options`), as is a
+generated option that does not address the stake the decision impacts
+(`decision-option-not-addressing`), a stake with more than one approved or
+enacted decision (`stake-multiple-decisions`) and a `closed_options` entry that
+names no option (`decision-closed-option-unknown`). Writing the decision is
+not built yet.
+
+Options carry no `platforms` (an empty array, exempt from `platforms-non-empty`),
+store no product (they show under every product scope), and are excluded from
+delivery and parity roll-ups and from the Journey, System and Screens maps by
+construction.
+
+Model source: [packages/schema/src/option.ts](../packages/schema/src/option.ts).
+
+Option surfaces:
+
+- **Node detail panel** — an Option group: the answer type (read, never
+  stored), `suggested_by` read only, and the three-value lifecycle; the
+  `addresses` line sits in the Relations group.
+- **Library** (`/project/[id]/library?species=option`) — gallery card and
+  directory row like any other species; the lifecycle badge stands in for
+  platform chips. **New node** creates an option at `idea` with no platforms.
+- **Decision Log** — the decision row's related tiles are split by what they
+  point at: impacted surfaces and impacted stakes, generated acceptances and
+  generated options.
+- **Not present**: the canvas maps and the Delivery board, and no dedicated page.
+
 ## Products
 
 A project describes a *family* of apps sharing one graph — an end-user app, a web-only back office, a public API — not one product with three platforms. A **product** names one app in that family and the platforms it may ship on.
@@ -370,14 +431,18 @@ Source:
 | `queries` | API to data-model relationship |
 | `covers` | Acceptance to view/flow relationship — anchors a testable promise to the surface(s) it covers |
 | `supersedes` | Decision to decision — the source replaces the target; recording it also moves the target to `decision_status: superseded` |
-| `generates` | Decision to acceptance — the decision produced this testable promise |
-| `impacts` | Decision to flow \| view \| data-model \| api-endpoint — the decision affects this existing node (or spawned it) |
+| `generates` | Decision to acceptance \| option — the decision produced this testable promise, or selected this option |
+| `impacts` | Decision to flow \| view \| data-model \| api-endpoint \| stake — the decision affects this existing node (or spawned it), or settles this stake |
 | `concerns` | Stake to flow \| view \| data-model \| api-endpoint — the part of the product's anatomy the stake is about |
+| `addresses` | Option to stake, acceptance to stake, or acceptance to option — what answers a stake: an option names the stake it addresses, and an acceptance names the stake it settles or the option it carries out |
 
-`generates` and `impacts` are deliberately disjoint by design: an acceptance
-is *generated* by a decision, never merely *impacted*, so `impacts` does not
-admit an `acceptance` target — consumers must never infer an edge's meaning
-from its endpoints.
+`generates` and `impacts` stay disjoint **by pair**: no source and target
+species is admitted by both, so an acceptance is *generated* by a decision,
+never merely *impacted*, and an option is *generated*, never impacted. What a
+decision edge means now depends on its target species, not on the edge type
+alone: `impacts` reaches the anatomy or a stake (what the decision acts on),
+`generates` reaches an acceptance or an option (what it produced). Consumers
+must read both endpoints, and never infer an edge's meaning from its type.
 
 Config source: [lib/config/edge-types.ts](../lib/config/edge-types.ts)
 
@@ -442,6 +507,8 @@ Current custom registrations:
 `decision` nodes and the `supersedes`/`generates`/`impacts` edges have no custom Canvas registration either, same posture — the map-kind defaults exclude them too (see the 2026-08-03 note under the Taxonomy Update Checklist).
 
 `stake` nodes and the `concerns` edge have none either, and the map-kind defaults exclude them (see the 2026-11-22 note under the Taxonomy Update Checklist).
+
+`option` nodes and the `addresses` edge have none either, and the map-kind defaults exclude them (see the second 2026-11-22 note under the Taxonomy Update Checklist).
 
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 
@@ -529,3 +596,21 @@ stake created from a panel's Relations "link new" has `stake_species` left
 unset: the validator warns and the panel offers the picker. Step 5 is done:
 `seed/pebbles.json` carries one friction anchored to `V-pebble-detail`. Step 6
 is this note.
+
+2026-11-22 — options: steps 1, 2, 4 and 5 are done; step 3 (Canvas
+registration) is **deferred**, same posture as stake. Step 1 is done
+([lib/config/species.ts](../lib/config/species.ts),
+[lib/config/edge-types.ts](../lib/config/edge-types.ts), the species icon, hue
+and shape, the answer-type labels in
+[lib/config/answer-types.ts](../lib/config/answer-types.ts) and the
+relation-line labels, where `generates` now reads "Generates" because it also
+reaches an option). Step 2 needed no change: the `KIND_DEFAULTS` of the
+`journey`, `system` and `screens` map kinds are allow-lists that do not include
+`option`. `lib/utils/graph-build.ts` maps `option` to the unregistered React
+Flow node type `"option"` and `addresses` to its own edge type as forward-fix
+placeholders. Step 4 is done: the node detail panel gets an `OptionGroup`, the
+Library card swaps the platforms block for the lifecycle badge, **New node**
+creates an option at `idea` with no platforms, and the Decision Log splits its
+related tiles by target species. An option created from a panel's Relations
+"link new" carries no metadata. Step 5 is done: `seed/pebbles.json` carries one
+option addressing the slow-reveal friction. Step 6 is this note.

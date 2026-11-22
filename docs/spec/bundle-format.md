@@ -335,18 +335,19 @@ is also a warning (`decision-status-wrong-species`); an unknown
 `decision_status` value is rejected at the schema-parse boundary, same
 posture as an unknown lifecycle status.
 
-Three edge types are decision-only:
+Three edge types run out of a decision (and only a decision):
 
 | Edge type | Legal pairs | Meaning |
 |---|---|---|
 | `supersedes` | `decision → decision` | Source replaces target; recording it also moves the target to `decision_status: superseded` |
-| `generates` | `decision → acceptance` | The decision produced this testable promise |
-| `impacts` | `decision → flow \| view \| data-model \| api-endpoint` | The decision affects this existing node (or spawned it) |
+| `generates` | `decision → acceptance \| option` | The decision produced this testable promise, or selected this option |
+| `impacts` | `decision → flow \| view \| data-model \| api-endpoint \| stake` | The decision affects this existing node (or spawned it), or settles this stake |
 
-`generates` and `impacts` are deliberately disjoint: an acceptance is
-*generated* by a decision, never merely *impacted*, so `impacts` does not
-admit an `acceptance` target — consumers MUST NOT infer an edge's meaning
-from its endpoints.
+`generates` and `impacts` stay disjoint **by pair**: no pair is admitted by
+both, so an acceptance is *generated* by a decision, never merely *impacted*,
+and an option is *generated*, never impacted. What a decision edge means now
+depends on its target species, not on the edge type alone, so consumers MUST
+read both endpoints and MUST NOT infer an edge's meaning from its type.
 
 Decisions legitimately carry an empty `platforms` array — they are
 platform-agnostic records, not something that ships. `platforms-non-empty`
@@ -460,6 +461,62 @@ hand-edited bundle never bricks:
 **All of the above is additive: no `schema_version` bump.** Every field is
 optional metadata and the species and edge type are new vocabulary. Old bundles
 parse unchanged; a bundle with no `stake` nodes renders empty states.
+
+### Option Nodes
+
+An `option` node (id prefix `OPT-`) is one way to address a stake
+([rfcs/stake-architecture.md](../rfcs/stake-architecture.md); the model is
+[graph-model.md § Options](../graph-model.md)). `title` + `description` say what
+it is and what effect it is expected to have. These metadata fields are
+meaningful on one species each:
+
+```ts
+interface NodeMetadata {
+  // ... unchanged fields
+  suggested_by?: string;                                      // option: the id of the request.filed event that seeded it
+  closed_options?: { option_id: string; reason: string }[];   // decision: the options that lost, and why
+}
+```
+
+A `closed_options` entry without an `option_id` or a `reason` is rejected at the
+schema-parse boundary. The node's own `status` is the stored lifecycle, limited
+to `idea`, `discovery` and `archived`; selected, closed and open are read from
+the decision and never stored. An option's **answer type** (fix, enhancement,
+feature, diligence, mitigation or resolution) is read from the kind of stake it
+addresses and is never stored.
+
+One edge type is new:
+
+| Edge type | Legal pairs | Meaning |
+|---|---|---|
+| `addresses` | `option → stake`, `acceptance → stake`, `acceptance → option` | What answers a stake: an option names the stake it addresses; an acceptance names the stake it settles, or the option it carries out |
+
+`generates` and `impacts` are widened as the decision section above says.
+
+Options legitimately carry an empty `platforms` array, so `platforms-non-empty`
+exempts the `option` species as it exempts `decision` and `stake`. They store
+no product and show under every product scope.
+
+`validateBundle()` reports the option rules as **warnings** only:
+
+| Rule | Raised when |
+|---|---|
+| `option-lifecycle` | an option's `status` is outside idea, discovery, archived |
+| `option-unaddressed` | an option has no outgoing `addresses` edge to a stake |
+| `option-mixed-answer-types` | an option addresses stakes of two answer types |
+| `option-field-wrong-species` | `suggested_by` sits on a node that is not an option, or `closed_options` on one that is not a decision |
+| `option-suggested-by-dangling` | a non-empty journal holds no event with an option's `suggested_by` id |
+| `decision-multiple-stakes` | a decision `impacts` more than one stake |
+| `decision-multiple-options` | a decision `generates` more than one option |
+| `decision-option-not-addressing` | a decision generates an option that addresses none of the stakes it impacts |
+| `stake-multiple-decisions` | a stake is impacted by more than one approved or enacted decision |
+| `decision-closed-option-unknown` | a `closed_options` entry names no option |
+
+**This is one release, not an additive field.** The two optional metadata
+fields are additive and need no `schema_version` bump, but the species `option`
+and the edge type `addresses` are new vocabulary that an older validator
+rejects. Old bundles parse unchanged; a bundle with no `option` nodes renders
+empty states.
 
 ## Identifier Conventions
 

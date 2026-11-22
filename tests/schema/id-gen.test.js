@@ -78,7 +78,8 @@ assert(
     SPECIES_PREFIXES["api-endpoint"] === "API-" &&
     SPECIES_PREFIXES.acceptance === "AC-" &&
     SPECIES_PREFIXES.decision === "DEC-" &&
-    SPECIES_PREFIXES.stake === "STK-",
+    SPECIES_PREFIXES.stake === "STK-" &&
+    SPECIES_PREFIXES.option === "OPT-",
   "SPECIES_PREFIXES: every species maps to its conventional prefix",
 );
 

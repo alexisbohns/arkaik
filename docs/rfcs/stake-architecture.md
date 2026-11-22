@@ -301,15 +301,15 @@ Each part is its own PR, in this order. Each builds on the one before. **Parts 1
 | Part | Ships | Depends on | State |
 |---|---|---|---|
 | **1. Schema** | Graph species `stake` (id prefix `STK-`), `metadata.stake_species`, the anchor, provenance (observed or anticipated) and the optional catalog link. Like decisions: no platforms, excluded from delivery and parity roll-ups and from the Journey and System maps. | Nothing | Shipped |
-| **2. Signal** | `request.filed` generalised to every source kind, including a Kritik finding, an idea and a benchmark. A verbatim field. Links to many stakes. The "suggested by" link to an option. | 1 | Shipped, except "suggested by" (it needs an option; [§ 14](#14-proposal-for-parts-5-and-6), call 12) |
+| **2. Signal** | `request.filed` generalised to every source kind, including a Kritik finding, an idea and a benchmark. A verbatim field. Links to many stakes. The "suggested by" link to an option. | 1 | Shipped. The option-side "suggested by" link (`metadata.suggested_by`) landed with part 5's vocabulary ([§ 14](#14-proposal-for-parts-5-and-6), call 12) |
 | **3. Qualification** | Species routing as the first step, ahead of the need-specific steps of need qualification. Merge into an existing stake before creating one. | 1, 2 | Shipped |
 | **4. Evaluation** | A reference declares its species. Kind, mattering and frequency on the user-facing species. Kritik criticality read by criterion id. | 1, 3 | Shipped |
-| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 | Decided in § 14, not built |
+| **5. Option and decision** | The option entity. A decision links one option to one stake. The derived promise role. | 1, 4 | Decided in § 14. The vocabulary shipped (species `option`, the `addresses` edge, the two widened decision pairs, `suggested_by`, `closed_options`, warnings); the decision write and the readers are not built |
 | **6. Proof and statuses** | The two halves, the optional expiry interval, the derived statuses (including "verified, not delivered"), and a version per criterion in the Kritik library with the version a requirement was last verified against. | 5 | Decided in § 14, not built |
 
 ### What parts 1 to 4 built
 
-The names the code settled on, where the RFC had left a **(proposal)**.
+The names the code settled on, where the RFC had left a **(proposal)**. The last three rows are the vocabulary half of part 5.
 
 | Part | Choice built | Where |
 |---|---|---|
@@ -321,8 +321,11 @@ The names the code settled on, where the RFC had left a **(proposal)**.
 | 3 | Pure routing and merge-candidate logic, plus MCP `qualify_signal` (read) and `promote_signal` (write, op-only). | `packages/schema/src/qualify.ts` |
 | 4 | A criteria set declares `stake_species`; `value-contribution@2` declares bug, friction and need. Kritik stays read-only. | `weighing.ts`, `weighing-library.ts`, `stake-evaluation.ts` |
 | 4 | `metadata.felt` (expected, wanted, delight), `metadata.matters` (1 to 4) and `metadata.frequency` (rare, some, often), user-facing kinds only. | `stake.ts`, `stake-evaluation.ts` |
+| 5 (vocabulary) | Species `option`, prefix `OPT-`, `platforms: []`, stored lifecycle `idea`, `discovery` or `archived`. Its answer type is read from the kind of stake it addresses (a table, nothing stored). | `ids.ts`, `option.ts` |
+| 5 (vocabulary) | The `addresses` edge: option to stake, acceptance to stake, acceptance to option. `generates` gains decision to option; `impacts` gains decision to stake. They stay disjoint by pair, and a decision edge's meaning now depends on its target species. | `ids.ts` (`VALID_EDGE_SEMANTICS`) |
+| 5 (vocabulary) | `metadata.suggested_by` on an option (a journal event id) and `metadata.closed_options` on a decision (`{ option_id, reason }[]`). Ten validator warnings, none an error. | `bundle.ts`, `validate.ts`, `journal.ts` |
 
-Nothing parts 1 to 4 built writes a derived state, an option or a proof.
+Nothing parts 1 to 4 built writes a derived state, an option or a proof. The part 5 vocabulary writes none either: it adds the species and the edges, and the decision that selects an option comes next.
 
 ### What it changes in weighing's slice 2
 

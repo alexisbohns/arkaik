@@ -86,7 +86,7 @@ export function DuplicateNodeDialog({
       ? null
       : !id.startsWith(prefix)
         ? // No article: "A acceptance id" and "A api-endpoint id" are both
-          // wrong, and this sentence has to be right for all six species.
+          // wrong, and this sentence has to be right for every species.
           `${speciesLabel} ids start with ${prefix}`
         : existingIds.has(id)
           ? `${id} is already in use`

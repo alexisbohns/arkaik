@@ -99,9 +99,9 @@ interface NodeTableProps {
  */
 function productCellText(node: Node, labels: string[]): string {
   if (labels.length > 0) return labels.join(", ");
-  // A stake is product-agnostic: it shows under every scope and is reached by
-  // no consumer, so "Unattached" would say a gap that is not one.
-  if (node.species === "stake") return "-";
+  // A stake or an option is product-agnostic: it shows under every scope and is
+  // reached by no consumer, so "Unattached" would say a gap that is not one.
+  if (node.species === "stake" || node.species === "option") return "-";
   return PRODUCT_MEMBERSHIP_SPECIES.includes(node.species) ? "-" : "Unattached";
 }
 

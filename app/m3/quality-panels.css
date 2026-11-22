@@ -178,6 +178,9 @@
 [data-species="stake"] {
   --kp-sp: var(--tone-red);
 }
+[data-species="option"] {
+  --kp-sp: var(--tone-neutral);
+}
 .kp-seal {
   position: relative;
   display: inline-grid;
