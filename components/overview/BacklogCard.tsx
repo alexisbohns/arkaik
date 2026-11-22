@@ -1,6 +1,7 @@
 "use client";
 
 import { InboxIcon, LightbulbIcon, MessageSquareTextIcon } from "lucide-react";
+import { signalKindLabel } from "@/components/journal/describe-event";
 import type { Backlog } from "@/lib/utils/journal";
 import { OverviewSection } from "./OverviewSection";
 
@@ -54,7 +55,7 @@ export function BacklogCard({ backlog, projectId, pending = false, error = null 
                   <Icon className="size-3.5 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
                   <p className="min-w-0 flex-1 truncate font-medium">{item.title}</p>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {item.type === "idea.proposed" ? "Idea" : "Request"}
+                    {item.type === "idea.proposed" ? "Idea" : (signalKindLabel(item.source_kind) ?? "Request")}
                   </span>
                 </div>
               );

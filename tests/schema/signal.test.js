@@ -129,6 +129,16 @@ const signals = [
   ];
   assert(!ids(computeBacklog(withCreate).items).includes("S3"), "a stake created in the journal closes a signal naming it");
 
+  // Evidence closes by event id whatever the item's type: a cited idea is closed too.
+  const ideaCited = computeBacklog(
+    [
+      { id: "I1", ts: "2026-11-22T01:00:00.000Z", type: "idea.proposed", title: "open idea" },
+      { id: "I2", ts: "2026-11-22T02:00:00.000Z", type: "idea.proposed", title: "cited idea" },
+    ],
+    { existingNodeIds: new Set(["STK-b"]), evidencedEventIds: new Set(["I2"]) },
+  );
+  assert(ids(ideaCited.items) === "I1", "an idea.proposed a stake cites as evidence is closed", ids(ideaCited.items));
+
   const legacy = computeBacklog([{ id: "L1", ts: "2026-01-01T00:00:00.000Z", type: "request.filed", title: "old", source: "user" }]);
   assert(legacy.requests.length === 1, "a legacy request is still an open request");
 }

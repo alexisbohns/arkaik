@@ -112,7 +112,7 @@ The two `weighing.*` types follow the same rule — facts, not state: the weighi
 
 **The signal ↔ stake link runs both ways.** The durable side is the stake's `metadata.evidence[]` (`{ event_id?, quote?, voice?, date? }`, written when a signal is qualified into a stake, see [bundle-format.md § Stake Nodes](bundle-format.md#stake-nodes)); the optional side is `stake_ids[]` on the event. Readers treat either as the link:
 
-- **Backlog**: a signal is closed when its `node_id` exists, **or** any of its `stake_ids` exists, **or** an existing stake's `evidence[].event_id` cites it.
+- **Backlog**: a signal is closed when its `node_id` exists, **or** any of its `stake_ids` exists, **or** an existing stake's `evidence[].event_id` cites it. Evidence closes by event id, whatever the item's type, so an `idea.proposed` a stake cites is closed too (an idea is the same kind of input, qualified into a stake the same way); `stake_ids` is read on `request.filed` only.
 - **Node timeline**: a stake's timeline lists the signals linked either way.
 - **Cross-check**: a `stake_ids` entry naming a node that never existed is a **warning** (`journal-dangling-stake-ref`), never an error, because a stake can be deleted legitimately and history is not rewritten.
 - A `benchmark` signal is a signal like any other; it simply never counts toward frequency or mattering.
@@ -160,6 +160,6 @@ Projections are pure functions over (snapshot, journal) — the same pattern as 
 | Deliverables | "What units of work shipped, and in which release?" | Changelog page — one section per milestone, deliverables as its timeline; `arkaik release` draft grouping |
 | Commitments | "What moved from idea to committed work?" | Design page (backlog → commitments → decisions) |
 | Release notes | "What do we tell users shipped?" | Generated draft at `arkaik release` |
-| Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it; a `request.filed` is also closed once a stake it names, or one that cites it as evidence, exists, see [Signals](#signals)) |
+| Backlog | "Which ideas and requests are open?" | Ideas/requests list (an `idea.proposed` is *open* until a linked node exists or a resolving event closes it; a `request.filed` is also closed once a stake it names exists, and either kind is closed once a stake cites it as evidence, see [Signals](#signals)) |
 
 A bundle without a journal simply renders none of these — the empty state, not an error. That is the whole backward-compatibility story.
