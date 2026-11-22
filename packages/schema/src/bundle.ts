@@ -6,6 +6,7 @@ import {
   PlatformSchema,
   SpeciesSchema,
   StakeCatalogSourceSchema,
+  StakeEvidenceVoiceSchema,
   StakeProvenanceSchema,
   StakeSpeciesSchema,
   StatusSchema,
@@ -17,7 +18,7 @@ import {
   type ValueId,
 } from "./enums";
 import type { DecisionStatusId } from "./decision";
-import type { StakeCatalogSource, StakeProvenanceId, StakeSpeciesId } from "./stake";
+import type { StakeCatalogSource, StakeEvidence, StakeProvenanceId, StakeSpeciesId } from "./stake";
 import { FlowPlaylistSchema, type FlowPlaylist } from "./playlist";
 import { JournalEventSchema } from "./journal-events";
 import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
@@ -177,6 +178,8 @@ export interface NodeMetadata extends Record<string, unknown> {
   provenance?: StakeProvenanceId;
   /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
   catalog?: { source: StakeCatalogSource; id: string };
+  /** Stake nodes: the signals behind the stake (written at qualification); the durable half of the signal ↔ stake link. */
+  evidence?: StakeEvidence[];
 }
 
 export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
@@ -226,6 +229,19 @@ export const NodeMetadataSchema: z.ZodType<NodeMetadata> = z
       })
       .optional()
       .meta({ description: "Stake nodes only: link into the Kritik criteria or the value pyramid, by id." }),
+    evidence: z
+      .array(
+        z
+          .object({
+            event_id: z.string().optional().meta({ description: "The journal event (a request.filed) the evidence came from." }),
+            quote: z.string().optional().meta({ description: "The line that matters, exactly as voiced." }),
+            voice: StakeEvidenceVoiceSchema.optional().meta({ description: "Who voiced it: person | maintainer | agent." }),
+            date: z.string().optional().meta({ description: "ISO 8601 date the evidence was voiced." }),
+          })
+          .catchall(z.unknown()),
+      )
+      .optional()
+      .meta({ description: "Stake nodes only: the signals behind the stake, one entry per signal. Written at qualification." }),
   })
   .catchall(z.unknown())
   .meta({ id: "NodeMetadata", description: "Optional metadata for a node." });

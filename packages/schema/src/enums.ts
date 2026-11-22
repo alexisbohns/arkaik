@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS } from "./ids";
 import { LEGACY_STATUS_IDS } from "./legacy-status";
 import { DECISION_STATUS_IDS } from "./decision";
-import { STAKE_CATALOG_SOURCES, STAKE_PROVENANCE_IDS, STAKE_SPECIES_IDS } from "./stake";
+import { STAKE_CATALOG_SOURCES, STAKE_EVIDENCE_VOICES, STAKE_PROVENANCE_IDS, STAKE_SPECIES_IDS } from "./stake";
 
 export { SPECIES_IDS, STATUS_IDS, PLATFORM_IDS, EDGE_TYPE_IDS, VALUE_IDS, VALUE_TIER_IDS, VALUE_TIERS } from "./ids";
 export { VALID_EDGE_SEMANTICS, isValidEdgeSemantic, edgeTypesForSpeciesPair } from "./ids";
@@ -75,4 +75,9 @@ export const StakeProvenanceSchema = z.enum(STAKE_PROVENANCE_IDS).meta({
 export const StakeCatalogSourceSchema = z.enum(STAKE_CATALOG_SOURCES).meta({
   id: "StakeCatalogSource",
   description: "Where a stake's catalog link points: kritik (a criterion id such as SAF-01) or values (a value id such as reduces-anxiety).",
+});
+
+export const StakeEvidenceVoiceSchema = z.enum(STAKE_EVIDENCE_VOICES).meta({
+  id: "StakeEvidenceVoice",
+  description: "Who voiced a piece of stake evidence: person (the one the signal came from), maintainer, or agent.",
 });

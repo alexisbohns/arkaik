@@ -58,6 +58,25 @@ export interface StakeCatalogLink {
   id: string;
 }
 
+/** Who voiced a piece of evidence: the person the signal came from, the maintainer, or an agent reading on their behalf. */
+export const STAKE_EVIDENCE_VOICES = ["person", "maintainer", "agent"] as const;
+export type StakeEvidenceVoice = (typeof STAKE_EVIDENCE_VOICES)[number];
+
+/**
+ * One signal behind a stake (`metadata.evidence[]`, written at qualification).
+ * `event_id` names the journal event (a `request.filed`) it came from; `quote`
+ * is the line that matters, exactly as voiced; `date` is when it was voiced.
+ * Every field is optional so a hand-written note is as legal as a promoted
+ * signal. This is the durable half of the signal ↔ stake link; the other half
+ * is the optional `stake_ids[]` on the event.
+ */
+export interface StakeEvidence {
+  event_id?: string;
+  quote?: string;
+  voice?: StakeEvidenceVoice;
+  date?: string;
+}
+
 /** The catalog source a stake species links to: quality species to Kritik, user-facing species to the value pyramid. */
 export function catalogSourceForStakeSpecies(species: StakeSpeciesId): StakeCatalogSource {
   return (QUALITY_STAKE_SPECIES as readonly string[]).includes(species) ? "kritik" : "values";
@@ -130,4 +149,27 @@ export function stakeMetadataWith(metadata: NodeMetadata | undefined, change: St
     delete next.catalog;
   }
   return next;
+}
+
+/** A stake's evidence entries, keeping only well-formed objects (a stray scalar in a hand-edited array is skipped, not trusted). */
+export function stakeEvidenceOf(node: Pick<Node, "metadata">): StakeEvidence[] {
+  const raw = node.metadata?.evidence;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is StakeEvidence => typeof entry === "object" && entry !== null && !Array.isArray(entry));
+}
+
+/**
+ * The journal event ids the given stakes cite as evidence. Non-stake nodes are
+ * ignored, so a caller can hand over the whole node list. This is what lets a
+ * projection read the stake-to-signal link without owning the nodes itself.
+ */
+export function stakeEvidenceEventIds(nodes: Iterable<Pick<Node, "species" | "metadata">>): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.species !== "stake") continue;
+    for (const entry of stakeEvidenceOf(node)) {
+      if (typeof entry.event_id === "string" && entry.event_id !== "") ids.add(entry.event_id);
+    }
+  }
+  return ids;
 }

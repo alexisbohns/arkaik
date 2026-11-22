@@ -12,8 +12,8 @@
  */
 
 import { z } from "zod";
-import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema } from "./enums";
-import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES } from "./journal";
+import { AnyStatusSchema, DecisionStatusSchema, EdgeTypeSchema, PlatformSchema, SpeciesSchema, StakeProvenanceSchema } from "./enums";
+import { SCREENSHOT_FORMS, SCREENSHOT_SOURCES, SIGNAL_SOURCE_KINDS } from "./journal";
 import { WeighingAssessmentBasisSchema, WeighingConfidenceSchema, WeighingCriteriaSetSchema, WeighingScorerSchema } from "./weighing-schemas";
 import type { JournalEvent } from "./journal";
 
@@ -148,8 +148,17 @@ export const RequestFiledEventSchema = z
     type: z.literal("request.filed"),
     title: z.string(),
     description: z.string().optional(),
-    source: z.string().optional(),
+    source: z.string().optional().meta({ description: "The source's own name, a free string (\"user\", \"beta-feedback\"). Never retyped." }),
     node_id: z.string().optional(),
+    source_kind: z.enum(SIGNAL_SOURCE_KINDS).optional().meta({
+      description: "What sort of source: ticket | interview | form | feedback | audit-finding | idea | benchmark | other. Absent on a legacy request.",
+    }),
+    verbatim: z.string().optional().meta({ description: "The input exactly as voiced, never edited." }),
+    provenance: StakeProvenanceSchema.optional().meta({ description: "observed (default when absent) or anticipated." }),
+    stake_ids: z.array(z.string()).optional().meta({ description: "Stakes known at filing time. The durable link is the stake's metadata.evidence[]." }),
+    finding_id: z.string().optional().meta({ description: "source_kind audit-finding: the Kritik finding. Never put an F-… id in node_id or stake_ids." }),
+    criterion_id: z.string().optional().meta({ description: "source_kind audit-finding: the criterion the finding was raised against." }),
+    url: z.string().optional().meta({ description: "An external reference for the source item." }),
   })
   .catchall(z.unknown());
 

@@ -18,7 +18,7 @@
  * whole backward-compatibility story (docs/spec/journal.md § Projections).
  */
 
-import { orderEvents } from "./journal";
+import { orderEvents, signalStakeIds } from "./journal";
 import type {
   JournalEvent,
   EdgeAddedEvent,
@@ -40,15 +40,30 @@ function asString(value: unknown): string | undefined {
 /** The ordered events touching a single node (docs/spec/journal.md:102). */
 export type NodeTimeline = JournalEvent[];
 
+export interface NodeTimelineOptions {
+  /**
+   * For a stake: the journal event ids its `metadata.evidence[]` cites (see
+   * `stakeEvidenceEventIds`). A signal reaches a stake's timeline either by
+   * naming it in `stake_ids` or by being cited here, whichever side was
+   * written.
+   */
+  evidenceEventIds?: ReadonlySet<string>;
+}
+
 /**
  * Every event touching `nodeId`, in journal order. An event touches a node when
  * it carries that `node_id` (creation, updates, status changes, deletion, refs,
  * a linked idea/request) or when the node is an endpoint of an edge event —
  * `edge.added` directly, `edge.removed` resolved back to the endpoints its
  * earlier `edge.added` recorded. Returns a fresh array; an empty journal (or a
- * node nothing references) yields `[]`.
+ * node nothing references) yields `[]`. A `request.filed` also touches every
+ * stake it names in `stake_ids`, and the stake an `evidenceEventIds` entry cites.
  */
-export function computeNodeTimeline(events: readonly JournalEvent[], nodeId: string): NodeTimeline {
+export function computeNodeTimeline(
+  events: readonly JournalEvent[],
+  nodeId: string,
+  options: NodeTimelineOptions = {},
+): NodeTimeline {
   // Resolve edge endpoints from edge.added so a later edge.removed — which
   // carries only edge_id — can still be attributed to the nodes it connected.
   const edgeEndpoints = new Map<string, { source?: string; target?: string }>();
@@ -66,6 +81,10 @@ export function computeNodeTimeline(events: readonly JournalEvent[], nodeId: str
 
   const touches = (ev: JournalEvent): boolean => {
     if (asString(ev.node_id) === nodeId) return true;
+    if (ev.type === "request.filed") {
+      if (signalStakeIds(ev as RequestFiledEvent).includes(nodeId)) return true;
+      if (options.evidenceEventIds?.has(ev.id)) return true;
+    }
     if (ev.type === "edge.added") {
       const edge = ev as EdgeAddedEvent;
       return asString(edge.source_id) === nodeId || asString(edge.target_id) === nodeId;
@@ -301,9 +320,16 @@ export interface BacklogOptions {
    * Ids of nodes that currently exist — the authoritative snapshot. An item
    * whose `node_id` is present here has a linked node and is closed. When
    * omitted, existence is derived from the journal's `node.created` /
-   * `node.deleted` events instead.
+   * `node.deleted` events instead. A signal naming an existing stake in
+   * `stake_ids` is closed the same way.
    */
   existingNodeIds?: ReadonlySet<string>;
+  /**
+   * Journal event ids cited by an existing stake's `metadata.evidence[]` (see
+   * `stakeEvidenceEventIds`). An item cited here has been qualified into a
+   * stake and is closed. Omit it when the caller has no nodes to read.
+   */
+  evidencedEventIds?: ReadonlySet<string>;
 }
 
 /** Nodes that exist after replaying the journal's create/delete events. */
@@ -322,8 +348,10 @@ function deriveExistingNodeIds(orderedEvents: readonly JournalEvent[]): Set<stri
  * The open backlog: every `idea.proposed` / `request.filed` that has not yet
  * been resolved. An item is *open* until a linked node exists — its `node_id`
  * points at a node in the snapshot (or, when no snapshot is supplied, at a node
- * the journal created and has not deleted). An item with no `node_id`, or one
- * whose linked node no longer exists, stays open. An empty journal yields an
+ * the journal created and has not deleted) — or until it has been qualified
+ * into a stake: a `request.filed` whose `stake_ids` names an existing stake, or
+ * an item an existing stake's evidence cites by event id. An item with none of
+ * these, or whose linked nodes no longer exist, stays open. An empty journal yields an
  * empty backlog.
  */
 export function computeBacklog(events: readonly JournalEvent[], options: BacklogOptions = {}): Backlog {
@@ -334,7 +362,10 @@ export function computeBacklog(events: readonly JournalEvent[], options: Backlog
   for (const ev of ordered) {
     if (ev.type !== "idea.proposed" && ev.type !== "request.filed") continue;
     const linkedId = asString(ev.node_id);
-    const closed = linkedId !== undefined && existing.has(linkedId);
+    const closed =
+      (linkedId !== undefined && existing.has(linkedId)) ||
+      (ev.type === "request.filed" && signalStakeIds(ev as RequestFiledEvent).some((id) => existing.has(id))) ||
+      (options.evidencedEventIds?.has(ev.id) ?? false);
     if (!closed) items.push(ev as IdeaProposedEvent | RequestFiledEvent);
   }
 
