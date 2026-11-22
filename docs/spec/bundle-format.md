@@ -550,6 +550,73 @@ and the edge type `addresses` are new vocabulary that an older validator
 rejects. Old bundles parse unchanged; a bundle with no `option` nodes renders
 empty states.
 
+### Stake proof
+
+A stake's **state** and **proof** are derived and never stored. They are read by
+`deriveStakeProof` (`packages/schema/src/stake-proof.ts`, pure and zod-free) from
+the nodes, the edges, journal events, the `quality` and `weighing` sections and
+the Kritik library, with the clock as an argument. Nothing here adds a field to a
+bundle beyond the two optional stake fields above, so there is no
+`schema_version` bump.
+
+**The reading.** For each stake the reader returns the state (`null` for an
+archived stake), the answer (the decision and the option it chose), the
+definition of done, the delivery the kind needs, one cell per platform concerned
+(`{ platform, verified, delivered, stale, checked_at? }`) and the reasons in
+words.
+
+| Kind | Verified | Delivered | Definition of done |
+|---|---|---|---|
+| bug, friction, need | required | required | the non-archived acceptances that address the answer option, plus any that address the stake directly and read as promises |
+| defect | required | optional | the same |
+| risk | required | not required | the same |
+| requirement | required | optional | its Kritik criterion (`metadata.catalog`), so no acceptance id |
+
+**Per platform.** The platforms concerned are the union of the definition of
+done's acceptances' platforms, read through the active product's menu (an
+acceptance that belongs to a product reads through that product). *Verified* on a
+platform means every definition-of-done acceptance that applies there resolves to
+`releasing` or `live` and none is archived; *delivered* means every one resolves
+to `live`. A requirement, or a definition of done that resolves no platform, has
+one platform-less cell.
+
+**A requirement's Kritik pass.** Verified means no open finding of the stake's
+criterion whose `node_ids` meet the stake's `concerns` anchors, and at least one
+score of the criterion dated after the stake was raised, with the latest such
+score on every surface at or above level 3. A finding's status is the stored
+section's when the section holds it, else the journal replay's (opened, then
+resolved or accepted). Scores come from the section's assessments and from
+`quality.assessment.scored` events. The raised date is the stake's `node.created`
+event, else its earliest `evidence[].date`, else unknown (then every score counts).
+
+**Staleness.** With `reverify_every_days` set, a verified cell is stale when its
+latest check is older than the interval at `now`, or has no dated check. The
+latest check is the latest `node.status_changed` into `releasing` or `live` for
+each acceptance on that platform (an event that names no platform counts for a
+platform with no status entry of its own), and the cell takes the oldest of them;
+for a requirement it is the latest score or finding closure on the criterion. A
+requirement is also stale when the library's version of the criterion is newer
+than `verified_criterion_version`; an absent stored version, or a library that does
+not carry the criterion, is not stale on that axis.
+
+**The ladder**, top rule first, on a stake that is not archived:
+
+| State | True when |
+|---|---|
+| `addressed` | an answer or a promise exists, and every required half holds on every cell |
+| `verified-not-delivered` | delivery is required, it holds on no cell, and verification holds on every cell |
+| `partly-addressed` | some required half holds on some cell that is not stale (a requirement's delivery counts when it is read separately) |
+| `promised` | a settling decision's answer has a definition of done, or a promise addresses the stake directly. A stale verification lands here, whatever was delivered |
+| `considered` | an option or a candidate acceptance addresses it; or, for a bug, friction or need, a weighing assessment of the stake or a `matters` score; or, for a requirement, risk or defect, a Kritik catalog link |
+| `raised` | otherwise |
+
+The reader is lenient and total: an unknown value, a malformed event or an
+unparseable date degrades to "not known" and never throws. The journal event
+types it reads are `PROOF_EVENT_TYPES` (`node.created`, `node.status_changed`,
+`decision.status_changed`, the three `quality.finding.*` types and
+`quality.assessment.scored`). The MCP tool `stake_proof` and the stake editor
+both call it.
+
 ## Identifier Conventions
 
 IDs are deterministic and human-readable. This subsumes and canonicalizes the rules in `docs/arkaik-skill/references/schema.md`.
