@@ -231,7 +231,7 @@ stake it is lives in `metadata.stake_species`, a field of its own because
 | `risk` | quality and obligation | A threat that can only be mitigated. |
 | `defect` | quality and obligation | A flaw of our own making that leaves a threat. |
 
-Three optional metadata fields, all additive (no `schema_version` bump):
+Four optional metadata fields, all additive (no `schema_version` bump):
 
 - `stake_species` — one of the six above. Missing is legal and warned about.
 - `provenance` — `observed` (seen in the world; the default when absent) or
@@ -241,6 +241,10 @@ Three optional metadata fields, all additive (no `schema_version` bump):
   only: a Kritik criterion id (`SAF-01`) for a requirement, risk or defect, a
   value id (`reduces-anxiety`) for a bug, friction or need. Nothing else is
   copied from the catalog.
+- `evidence` — `{ event_id?, quote?, voice?, date? }[]`, the signals behind the
+  stake, one entry per `request.filed` qualified into it. The durable half of
+  the signal-to-stake link ([spec/journal.md § Signals](spec/journal.md#signals));
+  a signal a stake cites is closed in the backlog.
 
 **Lifecycle.** The node's own `status` is the stored lifecycle, limited to
 `idea` (proposed, not reviewed: every agent write lands here), `discovery`

@@ -83,9 +83,9 @@ All tool results are JSON text content. Read tools are projections; write tools 
 | `add_edge` | `source_id`, `target_id`, `edge_type` | created edge (id via `edgeId`) | `edge.added` |
 | `remove_edge` | `edge_id` | ack | `edge.removed` |
 | `propose_idea` | `title`, `description?`, `node_id?` | event | `idea.proposed` |
-| `file_request` | `title`, `description?`, `source?`, `node_id?` | event | `request.filed` |
+| `file_request` | `title`, `description?`, `source?`, `node_id?`, `source_kind?`, `verbatim?`, `provenance?`, `stake_ids?`, `finding_id?`, `criterion_id?`, `url?` | event | `request.filed` (a signal; `source_kind` and `provenance` are enums, an out-of-vocabulary value is refused before anything is written) |
 | `get_changelog` | `version?` | release list, or one `computeChangelog` slice | — |
-| `get_backlog` | — | `computeBacklog` (open ideas & requests) | — |
+| `get_backlog` | — | `computeBacklog` (open ideas & requests; a signal a stake names or cites is closed) | — |
 | `list_maps` | — | built-in + stored `MapDefinition`s with node/edge counts | — |
 | `get_map` | `map_id` | `computeMapSubgraph` result | — |
 | `validate_bundle` | — | `validateBundle` findings (errors + warnings, with paths) | — |
