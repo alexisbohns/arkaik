@@ -77,8 +77,9 @@ import type { WeighingSection } from "./weighing";
 
 /**
  * The journal event types the proof reads, shared by every consumer so they ask
- * one query: the app projects its journal read to these, the MCP tool and the
- * CLI filter to them. `node.created` dates a stake for the requirement's pass;
+ * one query. The app projects its journal read to these. The reader keeps only
+ * these types itself, so any other consumer may pass the full journal.
+ * `node.created` dates a stake for the requirement's pass;
  * `node.status_changed` dates the check behind an acceptance; the three
  * `quality.finding.*` types and `quality.assessment.scored` carry a requirement's
  * findings and scores. `decision.status_changed` is part of the query so a

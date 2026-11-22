@@ -472,11 +472,12 @@ you do the work and move the acceptance, and the state follows.
    written as an acceptance too, so it is proved the same way). A merged change moves
    an acceptance to `releasing` (verified); a deploy moves it to `live`, one platform
    at a time (delivered). A bug, a friction and a need need both halves on every
-   platform the answer concerns. A defect needs the verified half, a risk needs only
-   that. A requirement has no acceptance of its own: its definition of done is its
-   Kritik criterion (`metadata.catalog`), and it passes when no finding of that
-   criterion is open at the stake's anchor and the criterion was scored at level 3 or
-   more after the stake was raised (`kritik_score`, `kritik_resolve_finding`).
+   platform the answer concerns. A defect and a risk need only the verified
+   half; a defect's delivery is read but never required. A requirement has no
+   acceptance of its own: its definition of done is its Kritik criterion
+   (`metadata.catalog`), and it passes when no finding of that criterion is open at
+   the stake's anchor and the criterion was scored at level 3 or more after the
+   stake was raised (`kritik_score`, `kritik_resolve_finding`).
 10. **Read the state.** `stake_proof` with a `stake_id` (or none, for every stake)
     returns the state, the answer, the definition of done and one cell per platform
     saying whether it is verified, delivered or stale, with the reasons in words.
