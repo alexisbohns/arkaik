@@ -23,6 +23,7 @@
 
 import type { Edge, Node } from "./bundle";
 import { deriveNodeId, edgeId, kebabCase } from "./id-gen";
+import { VALUE_IDS } from "./ids";
 import type { SignalSourceKind } from "./journal";
 import type { MutationOp } from "./mutate";
 import {
@@ -169,7 +170,7 @@ export interface SpeciesRouting {
   /** Question ids still to answer (route incomplete). */
   ask: RoutingQuestion["id"][];
   reasons: string[];
-  /** What a person must confirm: every route out, every refusal, every inferred answer. */
+  /** What a person must confirm: every route out, every refusal, every inferred answer, every anticipated stake. */
   handToHuman: string[];
 }
 
@@ -182,13 +183,21 @@ function inList<T extends string>(list: readonly T[], value: unknown): value is 
 
 /**
  * The RFC § 3 decision as a table: facts in, a route out. An unknown answer
- * reads as unanswered, never as a guess. Anything routed out, refused or
- * inferred is handed to a person (need-qualification § 6).
+ * reads as unanswered, never as a guess. Anything routed out, refused,
+ * inferred or anticipated (the imagine door) is handed to a person
+ * (need-qualification § 6; RFC § 4: anticipated is inferred until confirmed).
  */
 export function routeSpecies(answers: RoutingAnswers): SpeciesRouting {
   const handToHuman: string[] = [];
   const reasons: string[] = [];
   const out = (route: RoutingRoute, extra: Partial<SpeciesRouting> = {}): SpeciesRouting => ({ route, ask: [], reasons, handToHuman, ...extra });
+  // A species was reached. An anticipated stake is inferred until a person confirms it (RFC § 4).
+  const reached = (species: StakeSpeciesId, provenance: StakeProvenanceId): SpeciesRouting => {
+    if (provenance === "anticipated") {
+      handToHuman.push("Anticipated (imagine door): nobody has met this yet, so the stake is inferred until a person confirms it.");
+    }
+    return out("stake", { species, provenance });
+  };
 
   const basis = inList(QUALIFY_BASES, answers.basis) ? answers.basis : "stated";
   if (basis === "inferred") handToHuman.push("The answers are inferred, not stated: a person confirms the species before it is trusted.");
@@ -218,14 +227,14 @@ export function routeSpecies(answers: RoutingAnswers): SpeciesRouting {
       return out("refused", { provenance, rerouteAs: "need" });
     }
     reasons.push(`Value-facing, ${expectation}: ${species}.`);
-    return out("stake", { species, provenance });
+    return reached(species, provenance);
   }
 
   const threat = inList(QUALIFY_THREATS, answers.threat) ? answers.threat : undefined;
   if (threat === undefined) return out("incomplete", { ask: ["threat"], provenance, reasons: ["threat is not answered"] });
   const species = SPECIES_BY_THREAT[threat];
   reasons.push(`Quality-facing, ${threat}: ${species}.`);
-  return out("stake", { species, provenance });
+  return reached(species, provenance);
 }
 
 // --- 2. Merge candidates --------------------------------------------------------
@@ -343,10 +352,20 @@ export function findMergeCandidates(
       const anchorScore = jaccard(signalAnchors, anchors);
       const catalog = stakeCatalogOf(stake);
       const sameCatalog = signal.catalog_id !== undefined && catalog?.id === signal.catalog_id;
-      const anchorsAgree = anchorScore > 0 || signalAnchors.size === 0 || anchors.size === 0;
+      // A catalog id alone is not identity: one criterion raises several
+      // requirements (RFC § 5). Full weight only when an anchor is shared; with
+      // no shared anchor (different, or one side or both unanchored) the match
+      // is half weight, so it can never reach a merge suggestion on its own.
+      const anchorsAgree = anchorScore > 0;
       if (sameCatalog) {
         score += anchorsAgree ? WEIGHT_CATALOG : WEIGHT_CATALOG / 2;
-        reasons.push(anchorsAgree ? `Same catalog id (${signal.catalog_id}).` : `Same catalog id (${signal.catalog_id}) but a different anchor: a related stake, not necessarily the same one.`);
+        reasons.push(
+          anchorsAgree
+            ? `Same catalog id (${signal.catalog_id}).`
+            : signalAnchors.size > 0 && anchors.size > 0
+              ? `Same catalog id (${signal.catalog_id}) but a different anchor: a related stake, not necessarily the same one.`
+              : `Same catalog id (${signal.catalog_id}) but no anchor to confirm it: a related stake, not necessarily the same one.`,
+        );
       }
       if (anchorScore > 0) {
         score += WEIGHT_ANCHOR * anchorScore;
@@ -407,20 +426,24 @@ export interface QualificationPlan {
 }
 
 function evidenceEntryFor(signal: QualificationSignal): StakeEvidence {
-  return {
+  const entry: StakeEvidence = {
     ...(signal.event_id !== undefined ? { event_id: signal.event_id } : {}),
     ...(signal.verbatim !== undefined && signal.verbatim !== "" ? { quote: signal.verbatim } : {}),
     ...(signal.voice !== undefined ? { voice: signal.voice } : {}),
     ...(signal.date !== undefined ? { date: signal.date } : {}),
   };
+  // An inline signal with nothing but a title would append an empty `{}`:
+  // no information and no way to de-duplicate. The title is what was voiced.
+  if (Object.keys(entry).length === 0) entry.quote = signal.title;
+  return entry;
 }
 
 function refused(reasons: string[]): QualificationPlan {
   return { action: "refused", ops: [], reasons, handToHuman: [] };
 }
 
-/** The stake (if any) that already cites this event. */
-function stakeCiting(nodes: readonly Node[], eventId: string | undefined): Node | undefined {
+/** The stake (if any), of any species, that already cites this event as evidence. */
+export function stakeCiting(nodes: readonly Node[], eventId: string | undefined): Node | undefined {
   if (eventId === undefined) return undefined;
   return nodes.find((node) => node.species === "stake" && stakeEvidenceOf(node).some((entry) => entry.event_id === eventId));
 }
@@ -445,14 +468,19 @@ export interface PlanToStakeInput {
  * the species, provenance, catalog and a first evidence entry) and one
  * `concerns` edge per anchor. Refuses, instead of writing something the
  * validator would warn about, an anticipated bug or friction, a catalog link
- * from the wrong family, and an anchor that does not exist or is not a flow,
+ * from the wrong family, a value link whose id is not one of the pyramid's, and an anchor that does not exist or is not a flow,
  * view, data model or endpoint. A signal some stake already cites is a noop.
  */
 export function planSignalToStake(input: PlanToStakeInput): QualificationPlan {
   const { signal, species, provenance, nodes } = input;
   const cited = stakeCiting(nodes, signal.event_id);
   if (cited !== undefined) {
-    return { action: "noop", ops: [], stake_id: cited.id, reasons: [`${cited.id} already cites this signal as evidence.`], handToHuman: [] };
+    const citedSpecies = stakeSpeciesOf(cited);
+    const handToHuman =
+      citedSpecies !== species
+        ? [`${cited.id} already cites this signal as ${citedSpecies === undefined ? "a stake with no species" : `a ${citedSpecies}`}, but it now routes as ${species}: a person decides which species is right.`]
+        : [];
+    return { action: "noop", ops: [], stake_id: cited.id, reasons: [`${cited.id} already cites this signal as evidence.`], handToHuman };
   }
 
   const problems: string[] = [];
@@ -461,6 +489,9 @@ export function planSignalToStake(input: PlanToStakeInput): QualificationPlan {
   }
   if (input.catalog !== undefined && input.catalog.source !== catalogSourceForStakeSpecies(species)) {
     problems.push(`A ${species} links to the ${catalogSourceForStakeSpecies(species)} catalog, not ${input.catalog.source}.`);
+  }
+  if (input.catalog !== undefined && input.catalog.source === "values" && !(VALUE_IDS as readonly string[]).includes(input.catalog.id)) {
+    problems.push(`"${input.catalog.id}" is not a value of the pyramid: a ${species} links to one of the 30 value ids.`);
   }
   const anchors = [...new Set(input.anchors ?? [])];
   const byId = new Map(nodes.map((node) => [node.id, node] as const));

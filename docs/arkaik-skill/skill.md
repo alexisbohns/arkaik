@@ -396,7 +396,7 @@ other writer.
    | Question | Answers |
    |---|---|
    | `scope`: is it about the product a person meets? | `product`; `internal` (about operating the product) and `off-scope` are routed out |
-   | `door`: does the product exist and get used, or is it being shaped? | `collect` (observed; default for an observed signal); `imagine` (anticipated; no bug or friction, reroute as need) |
+   | `door`: does the product exist and get used, or is it being shaped? | `collect` (observed; default for an observed signal); `imagine` (anticipated; default for an idea; no bug or friction, reroute as need) |
    | `facing`: a person's value, or quality and obligation? | `value`; `quality` |
    | `expectation` (value): was something expected to work? | `broken` is a bug; `as-designed` (works as designed and still gets in the way) is a friction; `absent` is a need |
    | `threat` (quality): what kind of threat? | `obligation` is a requirement; `own-flaw` is a defect; `mitigable-only` is a risk |
@@ -413,11 +413,16 @@ other writer.
    `verbatim`, untouched. Name the `anchors` (the flow, view, data model or endpoint
    it concerns); an audit finding's criterion becomes the stake's `catalog` link.
 5. **Hand to a person**, in your reply, everything `handToHuman` lists: every
-   signal routed out (internal, off-scope, refused), every answer you inferred, a
-   merge you are less than sure about, an archived stake the evidence might
-   reopen. A person can overrule any of it. A signal routed out writes nothing and
-   stays in the journal; a stake is never deleted to undo a qualification, it is
-   archived.
+   signal routed out (internal, off-scope, refused), every answer you inferred,
+   every anticipated stake (the imagine door: inferred until a person confirms it),
+   a signal a stake of another species already cites, a merge you are less than
+   sure about, an archived stake the evidence might reopen. A person can overrule
+   any of it. A signal routed out writes nothing and stays in the journal; a stake
+   is never deleted to undo a qualification, it is archived.
+
+   A routed-out signal is not recorded anywhere, so it stays in `get_backlog` and
+   would come back on the next pass. Remember which ids you already routed out
+   (and told a person about) instead of re-qualifying them.
 
 A stake lands at `idea`. Evaluation, options and decisions are not yet part of
 this skill.

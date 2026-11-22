@@ -70,6 +70,11 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   }
   const need = routeSpecies({ scope: "product", door: "imagine", facing: "value", expectation: "absent" });
   assert(need.route === "stake" && need.species === "need" && need.provenance === "anticipated", "imagine accepts a need, anticipated");
+  assert(need.handToHuman.length === 1 && /imagine/.test(need.handToHuman[0]), "an anticipated stake is handed to a person even with the default (stated) basis", JSON.stringify(need.handToHuman));
+  const quality = routeSpecies({ scope: "product", door: "imagine", facing: "quality", threat: "obligation" });
+  assert(quality.handToHuman.length === 1, "the quality-facing imagine route is handed over too");
+  const both = routeSpecies({ scope: "product", door: "imagine", facing: "value", expectation: "absent", basis: "inferred" });
+  assert(both.handToHuman.length === 2, "anticipated and inferred are two separate hand-offs");
   for (const [threat, species] of [["obligation", "requirement"], ["own-flaw", "defect"], ["mitigable-only", "risk"]]) {
     const r = routeSpecies({ scope: "product", door: "imagine", facing: "quality", threat });
     assert(r.route === "stake" && r.species === species && r.provenance === "anticipated", `imagine accepts a ${species}`);
@@ -157,6 +162,11 @@ const concerns = (from, to) => ({ id: `e-${from}-${to}`, project_id: P, source_i
   const bug = findMergeCandidates({ title: "Lost draft when I background the app", species: "bug" }, nodes, { edges });
   assert(bug.length === 1 && bug[0].stake_id === "STK-lost-draft-bug", "the bug finds the bug");
 
+  // A catalog id alone is not identity: with no shared anchor it is half weight and never reaches a merge.
+  const unanchored = findMergeCandidates({ title: "Zebra giraffe", species: "requirement", catalog_id: "PRV-01" }, nodes, { edges });
+  assert(unanchored.length === 2 && unanchored.every((c) => c.score < MERGE_MEDIUM && c.confidence === "low"), "an unanchored signal matching only a catalog id stays low", JSON.stringify(unanchored));
+  assert(/no anchor/.test(unanchored[0].reasons.join(" ")), "and says the anchor could not confirm it");
+
   const unrelated = findMergeCandidates({ title: "Dark mode follows my phone", species: "need" }, nodes, { edges });
   assert(unrelated.length === 0, "an unrelated signal has no candidate", JSON.stringify(unrelated));
 
@@ -219,6 +229,11 @@ const signal = { event_id: "01SIG", title: "Lost draft", verbatim: "I background
   const bare = planSignalToStake({ projectId: P, signal: { title: "Hello there" }, species: "friction", provenance: "observed", nodes: baseNodes, edges: [] });
   assert(bare.action === "create" && bare.ops.length === 1 && bare.handToHuman.length === 2, "no anchor and no wording is handed to a person", JSON.stringify(bare.handToHuman));
   assert(bare.ops[0].node.metadata.evidence.length === 1 && bare.ops[0].node.metadata.evidence[0].event_id === undefined, "an inline signal still records an evidence entry, without an event id");
+  assert(same(bare.ops[0].node.metadata.evidence, [{ quote: "Hello there" }]), "an inline signal with only a title never stores an empty evidence entry", JSON.stringify(bare.ops[0].node.metadata.evidence));
+
+  // Re-qualifying a signal a stake cites under another species is a noop, handed to a person.
+  const reSpecies = planSignalToStake({ projectId: P, signal, species: "friction", provenance: "observed", anchors: ["V-compose"], nodes: outcome.nodes, edges: outcome.edges });
+  assert(reSpecies.action === "noop" && reSpecies.stake_id === plan.stake_id && reSpecies.handToHuman.length === 1, "a species mismatch on a noop is flagged", JSON.stringify(reSpecies));
 
   // Ids never collide.
   const second = planSignalToStake({ projectId: P, signal: { event_id: "01B", title: "x" }, species: "need", provenance: "observed", title: "What I have filled in is kept", nodes: outcome.nodes, edges: outcome.edges });
@@ -241,6 +256,8 @@ const signal = { event_id: "01SIG", title: "Lost draft", verbatim: "I background
     ["a missing anchor", { anchors: ["V-ghost"] }],
     ["an acceptance anchor", { anchors: ["AC-x"] }],
     ["an empty wording", { title: "   " }],
+    ["a bogus value id", { species: "need", catalog: { source: "values", id: "bogus" } }],
+    ["a kritik criterion id on a need", { species: "need", catalog: { source: "values", id: "PRV-01" } }],
   ];
   for (const [label, input] of cases) {
     const plan = refuse(input);

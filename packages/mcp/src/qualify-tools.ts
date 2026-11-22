@@ -34,6 +34,8 @@ import {
   routeSpecies,
   signalSourceKindOf,
   stakeAnchors,
+  stakeCiting,
+  stakeSpeciesOf,
   type JournalEvent,
   type MergeCandidate,
   type MutationOp,
@@ -80,7 +82,7 @@ const questionText = ROUTING_QUESTIONS.map((q) => `${q.id}: ${q.question} (${Obj
 
 const ANSWER_PROPERTIES = {
   scope: { type: "string", enum: [...QUALIFY_SCOPES] },
-  door: { type: "string", enum: [...QUALIFY_DOORS], description: "Default: collect for an observed signal, imagine for an anticipated one." },
+  door: { type: "string", enum: [...QUALIFY_DOORS], description: "Default: collect for an observed signal, imagine for an anticipated one or an idea." },
   facing: { type: "string", enum: [...QUALIFY_FACINGS] },
   expectation: { type: "string", enum: [...QUALIFY_EXPECTATIONS], description: "When facing is value." },
   threat: { type: "string", enum: [...QUALIFY_THREATS], description: "When facing is quality." },
@@ -111,8 +113,13 @@ function readEnum<T extends string>(args: Record<string, unknown>, key: string, 
   return value as T;
 }
 
+/** An idea is shaped, not observed: it comes through the imagine door unless the caller says otherwise (RFC § 4). */
+function isIdea(signal: ResolvedSignal): boolean {
+  return signal.provenance === "anticipated" || signal.source_kind === "idea";
+}
+
 function readAnswers(args: Record<string, unknown>, signal: ResolvedSignal): RoutingAnswers {
-  const answers: RoutingAnswers = { door: readEnum(args, "door", QUALIFY_DOORS) ?? (signal.provenance === "anticipated" ? "imagine" : "collect") };
+  const answers: RoutingAnswers = { door: readEnum(args, "door", QUALIFY_DOORS) ?? (isIdea(signal) ? "imagine" : "collect") };
   const scope = readEnum(args, "scope", QUALIFY_SCOPES);
   const facing = readEnum(args, "facing", QUALIFY_FACINGS);
   const expectation = readEnum(args, "expectation", QUALIFY_EXPECTATIONS);
@@ -174,10 +181,23 @@ type Suggestion =
   | { action: "already-qualified"; stake_id: string }
   | { action: "merge"; merge_into: string; confidence: MergeCandidate["confidence"] };
 
-function suggestionFor(routing: SpeciesRouting, candidates: readonly MergeCandidate[]): Suggestion {
+/** Routing with the cross-checks that need the signal and the graph: an idea sent through collect. */
+function routeFor(args: Record<string, unknown>, signal: ResolvedSignal): SpeciesRouting {
+  const answers = readAnswers(args, signal);
+  const routing = routeSpecies(answers);
+  if (routing.route === "stake" && answers.door === "collect" && isIdea(signal)) {
+    routing.handToHuman.push("This signal is an idea but came through the collect door: it is read as observed. A person confirms the door.");
+  }
+  return routing;
+}
+
+function suggestionFor(routing: SpeciesRouting, candidates: readonly MergeCandidate[], citing?: Node): Suggestion {
   if (routing.route === "incomplete") return { action: "ask" };
   if (routing.route === "refused") return { action: "refused" };
   if (routing.route !== "stake") return { action: "route-out" };
+  // A stake of any species already cites the signal: it is qualified, whatever
+  // the species the answers now route to (the matcher is same-species only).
+  if (citing !== undefined) return { action: "already-qualified", stake_id: citing.id };
   const top = candidates[0];
   if (top?.alreadyCited) return { action: "already-qualified", stake_id: top.stake_id };
   if (top !== undefined && (top.confidence === "high" || top.confidence === "medium")) {
@@ -200,7 +220,7 @@ export function buildQualifyCatalog(
   tool(
     {
       name: "qualify_signal",
-      description: `Read-only. Route a signal (a backlog event or an inline title) to a stake species and list the existing stakes it could merge into. You answer the routing questions; the table decides. ${questionText} A bug or friction cannot come through the imagine door: reroute as need. Anything routed out, refused or inferred is for a person to confirm. Returns { routing, candidates, suggestion }; it never writes and never merges on its own.`,
+      description: `Read-only. Route a signal (a backlog event or an inline title) to a stake species and list the existing stakes it could merge into. You answer the routing questions; the table decides. ${questionText} A bug or friction cannot come through the imagine door: reroute as need. Anything routed out, refused or inferred is for a person to confirm. Returns { signal, routing, anchors, catalog_id?, candidates, suggestion, questions? (when the route is incomplete) }; it never writes and never merges on its own.`,
       inputSchema: {
         type: "object",
         properties: { ...SIGNAL_PROPERTIES, ...ANSWER_PROPERTIES },
@@ -210,8 +230,15 @@ export function buildQualifyCatalog(
     async (args) => {
       const graph = await io.load();
       const signal = resolveSignal(args, graph.journal);
-      const routing = routeSpecies(readAnswers(args, signal));
+      const routing = routeFor(args, signal);
       const anchors = resolveAnchors(args, signal, graph.nodes);
+      const citing = routing.route === "stake" ? stakeCiting(graph.nodes, signal.event_id) : undefined;
+      if (citing !== undefined && routing.species !== undefined && stakeSpeciesOf(citing) !== routing.species) {
+        const was = stakeSpeciesOf(citing);
+        routing.handToHuman.push(
+          `${citing.id} already cites this signal as ${was === undefined ? "a stake with no species" : `a ${was}`}, but the answers route it as ${routing.species}: a person decides which species is right.`,
+        );
+      }
       const catalog_id = routing.species !== undefined ? resolveCatalogId(args, signal, routing.species) : undefined;
 
       let candidates: MergeCandidate[] = [];
@@ -239,7 +266,7 @@ export function buildQualifyCatalog(
         anchors,
         ...(catalog_id !== undefined ? { catalog_id } : {}),
         candidates,
-        suggestion: suggestionFor(routing, candidates),
+        suggestion: suggestionFor(routing, candidates, citing),
         ...(routing.route === "incomplete" ? { questions: ROUTING_QUESTIONS.filter((question) => routing.ask.includes(question.id)) } : {}),
       };
     },
@@ -269,7 +296,7 @@ export function buildQualifyCatalog(
       if ((mergeInto !== undefined) === (args.create === true)) {
         throw new ToolError("Pass exactly one of `create: true` or `merge_into` (a stake id).");
       }
-      const routing = routeSpecies(readAnswers(args, signal));
+      const routing = routeFor(args, signal);
       if (routing.route !== "stake" || routing.species === undefined || routing.provenance === undefined) {
         throw new ToolError(
           routing.route === "incomplete"

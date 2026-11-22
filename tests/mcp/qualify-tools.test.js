@@ -177,6 +177,16 @@ async function main() {
     const lines = s.journalLines();
     check("a noop writes nothing", s.bundle().nodes.length === 3 && s.journalLines() === lines);
 
+    // --- one signal, two species: qualify agrees with promote ----------------------
+    const crossQualify = await s.call("qualify_signal", { signal_id: "01SIGA", scope: "product", facing: "value", expectation: "as-designed" });
+    check(
+      "a signal a stake of another species already cites reads as already-qualified, and flags the species",
+      crossQualify.json.suggestion.action === "already-qualified" && crossQualify.json.suggestion.stake_id === node.id && crossQualify.json.routing.handToHuman.some((h) => /friction/.test(h)),
+      crossQualify.text.slice(0, 400),
+    );
+    const crossPromote = await s.call("promote_signal", { signal_id: "01SIGA", scope: "product", facing: "value", expectation: "as-designed", create: true });
+    check("promote agrees: a noop that hands the species mismatch to a person", crossPromote.json.action === "noop" && crossPromote.json.handToHuman.some((h) => /friction/.test(h)), crossPromote.text.slice(0, 300));
+
     // --- merge: suggested, never automatic --------------------------------------
     const second = await s.call("qualify_signal", { signal_id: "01SIGB", ...FEEL, anchors: ["V-compose"] });
     check("the second signal finds the stake as a candidate", second.json.candidates[0]?.stake_id === node.id, second.text.slice(0, 400));
@@ -195,6 +205,22 @@ async function main() {
     const needLink = await s.call("promote_signal", { title: "Quick wins matter", ...FEEL, create: true, catalog_id: "saves-time" });
     check("a need takes a values link", needLink.json.stake?.metadata?.catalog?.source === "values");
 
+    // --- the catalog id is checked, not just its family ---------------------------------
+    const nodesBefore = s.bundle().nodes.length;
+    check("a bogus value id is refused", (await s.call("promote_signal", { title: "zzz bogus", ...FEEL, create: true, catalog_id: "bogus" })).isError);
+    check("a Kritik criterion id on a need is refused", (await s.call("promote_signal", { title: "zzz criterion", ...FEEL, create: true, catalog_id: "PRV-01" })).isError);
+    check("neither refusal wrote anything", s.bundle().nodes.length === nodesBefore);
+
+    // --- an idea defaults to the imagine door ----------------------------------------------
+    const ideaBug = await s.call("qualify_signal", { signal_id: "01IDEA", scope: "product", facing: "value", expectation: "broken" });
+    check("an idea.proposed signal defaults to imagine: a bug is refused", ideaBug.json.suggestion.action === "refused" && ideaBug.json.routing.provenance === "anticipated", ideaBug.text.slice(0, 300));
+    const ideaNeed = await s.call("qualify_signal", { signal_id: "01IDEA", scope: "product", facing: "value", expectation: "absent" });
+    check("an idea reads as an anticipated need, handed to a person with the default basis", ideaNeed.json.routing.species === "need" && ideaNeed.json.routing.provenance === "anticipated" && ideaNeed.json.routing.handToHuman.length >= 1, ideaNeed.text.slice(0, 300));
+    const ideaCollect = await s.call("qualify_signal", { signal_id: "01IDEA", scope: "product", door: "collect", facing: "value", expectation: "absent" });
+    check("an idea sent through collect on purpose is flagged for a person", ideaCollect.json.routing.provenance === "observed" && ideaCollect.json.routing.handToHuman.some((h) => /idea/.test(h)), ideaCollect.text.slice(0, 300));
+    const inlineImagine = await s.call("qualify_signal", { title: "A night shift", scope: "product", door: "imagine", facing: "quality", threat: "mitigable-only" });
+    check("an anticipated inline signal is handed to a person without any basis", inlineImagine.json.routing.handToHuman.some((h) => /imagine/.test(h)), inlineImagine.text.slice(0, 300));
+
     // --- an idea is a signal too; an anticipated need -------------------------------
     const idea = await s.call("promote_signal", { signal_id: "01IDEA", scope: "product", door: "imagine", facing: "value", expectation: "absent", create: true, stake_title: "I can rest my eyes at night", basis: "inferred" });
     check("an idea promotes through the imagine door as an anticipated need", idea.json.stake?.metadata?.provenance === "anticipated" && idea.json.stake.metadata.stake_species === "need", idea.text.slice(0, 300));
@@ -203,6 +229,7 @@ async function main() {
     // --- inline signal ----------------------------------------------------------------
     const inline = await s.call("promote_signal", { title: "Bus factor of one", ...{ scope: "product", facing: "quality", threat: "mitigable-only" }, create: true, anchors: ["V-compose"] });
     check("an inline signal promotes without an event id", inline.json.action === "create" && inline.json.stake.metadata.evidence[0].event_id === undefined && inline.json.stake.metadata.stake_species === "risk", inline.text.slice(0, 300));
+    check("an inline signal with only a title stores its title as the quote, never an empty entry", JSON.stringify(inline.json.stake.metadata.evidence) === JSON.stringify([{ quote: "Bus factor of one" }]), JSON.stringify(inline.json.stake.metadata.evidence));
 
     const verdict = await s.call("validate_bundle");
     check("the resulting bundle is valid", verdict.json.valid === true, JSON.stringify(verdict.json.errors));
