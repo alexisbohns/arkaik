@@ -307,7 +307,7 @@ Four examples decided it. The first, second and fourth outcomes and needs are **
 | 1 | Profile stats to "people keep up their practice" | Forces you to write the need ("I want to see I'm keeping it up"). That is a test of whether the need is real. | Learns nothing. | Links instantly and shows a hollow need to name. |
 | 2 | The Pebbles back-office (16 acceptances) to "moderation takes under a day" | Awkward. The need is in the team's voice, not a user's. | Natural. | Lets the needs stay unnamed until they are worth the effort. |
 | 3 | The invite link reaches the outcome through "bring in one person I chose". Someone also links it straight to the outcome. | One path, no double count. | Counts it twice, unless every roll-up removes duplicates. | One path. A placeholder redundant with a real path can be flagged. |
-| 4 | A raw idea, "less alone", to "shared pebbles" | Asks "what need does this answer?". That is the stake tree's discipline, but it slows a brainstorm. | Skips the question forever. | Skips it now. An agent comes back with a proposed need to confirm. |
+| 4 | A raw idea, "less alone", to "shared pebbles" | Asks "what need does this answer?". That is the opportunity tree's discipline, but it slows a brainstorm. | Skips the question forever. | Skips it now. An agent comes back with a proposed need to confirm. |
 
 **The owner chose C.** It keeps A's single path (totals are not doubled) and B's speed (a brainstorm is not slowed). The price is a node that exists to be named.
 
