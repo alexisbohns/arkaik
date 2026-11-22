@@ -73,9 +73,9 @@ All tool results are JSON text content. Read tools are projections; write tools 
 
 | Tool | Input | Returns | Journal events |
 |---|---|---|---|
-| `list_nodes` | `species?`, `status?`, `platform?`, `value?`, `anchor?`, `parity_gap?`, `query?`, `limit?` | node summaries `{id, title, species, status, platforms}` (acceptances add `platform_statuses`, `values`) | — |
+| `list_nodes` | `species?`, `status?`, `platform?`, `value?`, `anchor?`, `parity_gap?`, `query?`, `limit?` | node summaries `{id, title, species, status, platforms}` (acceptances add `platform_statuses`, `values`; stakes add `stake_species`, `provenance`) | — |
 | `get_node` | `node_id` | full node + edges with neighbor titles + where-used flows + `computeNodeTimeline` + (views/flows) `covered_by` | — |
-| `create_node` | `species`, `title`, `description?`, `status?`, `platforms`, `metadata?` | created node (id via `deriveNodeId`) + any synthesized `composes` edges | `node.created` (+ one `edge.added` per synthesized composes edge — see Playlist Composition) |
+| `create_node` | `species`, `title`, `description?`, `status?`, `platforms` (`[]` for a decision or a stake), `metadata?` (a stake carries `stake_species`) | created node (id via `deriveNodeId`) + any synthesized `composes` edges | `node.created` (+ one `edge.added` per synthesized composes edge — see Playlist Composition) |
 | `update_node` | `node_id`, `patch` | updated node + any synthesized `composes` edges | via `diffNodeUpdate`: `node.updated` / `node.status_changed` (± `platform`) / `ref.added` / `ref.removed` (+ `edge.added` per synthesized composes edge) |
 | `record_screenshot` | `node_id`, `platform`, `form` (`url` \| `path` \| `data`), `value`, `detail?` | updated node | `screenshot.recorded` (source `manual`); a no-op when the value is unchanged or a newer CI shot outranks it |
 | `remove_screenshot` | `node_id`, `platform` | updated node | `screenshot.removed` |

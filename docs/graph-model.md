@@ -8,7 +8,7 @@ The graph is built from nodes and edges with structure driven by persisted relat
 
 ## Species
 
-Current taxonomy has exactly 6 species.
+Current taxonomy has exactly 7 species.
 
 | Level | Species | Role | React Flow node type |
 |---|---|---|---|
@@ -18,6 +18,7 @@ Current taxonomy has exactly 6 species.
 | — | `api-endpoint` | API endpoint | `apiEndpoint` |
 | — | `acceptance` | A testable promise: What (`title`), How (`metadata.gherkin`, one Given/When/Then), Why (`metadata.values`, Bain elements), with per-platform status in `metadata.platformStatuses`. Id prefix `AC-`. | `acceptance` |
 | — | `decision` | an ADR-style decision record: Context (why), Decision (what), Consequences (how), with its own decision status (`metadata.decision_status`). Id prefix `DEC-`. | `decision` |
+| — | `stake` | Something that matters about the product: a bug, a friction, a need, a requirement, a risk or a defect (`metadata.stake_species`), anchored to the anatomy by `concerns` edges. Id prefix `STK-`. | `stake` |
 
 Config source: [lib/config/species.ts](../lib/config/species.ts)
 
@@ -38,7 +39,7 @@ Project library is available at `/project/[id]/library` with two browsing modes:
 
 Filtering:
 
-- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`); the in-page bar carries search and the display-mode toggle only.
+- Species selection is owned by the **sidebar** (`?species=` deep links: `all` when absent, or one of `flow`, `view`, `data-model`, `api-endpoint`, `acceptance`, `decision`, `stake`); the in-page bar carries search and the display-mode toggle only.
 - Search matches node title and description text.
 
 Library source:
@@ -213,6 +214,62 @@ Decision surfaces:
   same posture as acceptance today (no custom Canvas registration; excluded
   from `SPECIES_OPTIONS` / map-kind species defaults).
 
+## Stakes
+
+`stake` (§ Species) is one node for everything that matters about the product
+and is not yet part of it: the unit the whole chain from signal to proof hangs
+off ([rfcs/stake-architecture.md](rfcs/stake-architecture.md)). What kind of
+stake it is lives in `metadata.stake_species`, a field of its own because
+*species* already names the node kind:
+
+| `stake_species` | Faces | What it is |
+|---|---|---|
+| `bug` | the user's value | Something expected to work one way that does not. |
+| `friction` | the user's value | Something that works as designed and still gets in the way. |
+| `need` | the user's value | A value people expect, want or would enjoy. |
+| `requirement` | quality and obligation | An obligation from outside, such as GDPR. |
+| `risk` | quality and obligation | A threat that can only be mitigated. |
+| `defect` | quality and obligation | A flaw of our own making that leaves a threat. |
+
+Three optional metadata fields, all additive (no `schema_version` bump):
+
+- `stake_species` — one of the six above. Missing is legal and warned about.
+- `provenance` — `observed` (seen in the world; the default when absent) or
+  `anticipated` (reasoned about ahead of it). An anticipated stake is never a
+  bug or a friction: nothing exists yet to have one.
+- `catalog` — `{ source: "kritik" | "values", id }`, a link into a catalog by id
+  only: a Kritik criterion id (`SAF-01`) for a requirement, risk or defect, a
+  value id (`reduces-anxiety`) for a bug, friction or need. Nothing else is
+  copied from the catalog.
+
+**Lifecycle.** The node's own `status` is the stored lifecycle, limited to
+`idea` (proposed, not reviewed: every agent write lands here), `discovery`
+(accepted by a person) and `archived` (closed, dismissed or parked). Raised,
+considered, promised and addressed are derived from the graph and never stored.
+The validator warns on any other stored status (`stake-lifecycle`).
+
+**Anchor.** A stake points at the part of the product it is about with
+outgoing `concerns` edges to a `flow`, `view`, `data-model` or `api-endpoint`.
+A stake with none is legal while it waits on an unnamed target, and warned
+about (`stake-unanchored`). `concerns` never reaches an acceptance or a
+decision, and `impacts` stays decision-only.
+
+Stakes carry no `platforms` (an empty array, exempt from `platforms-non-empty`),
+store no product (they show under every product scope, as decisions do), and
+are excluded from delivery and parity roll-ups and from the Journey, System and
+Screens maps by construction (see the Taxonomy Update Checklist note below).
+
+Model source: [packages/schema/src/stake.ts](../packages/schema/src/stake.ts).
+
+Stake surfaces:
+
+- **Node detail panel** — a Stake group: kind, provenance, the catalog link and
+  the three-value lifecycle; the `concerns` line sits in the Relations group.
+- **Library** (`/project/[id]/library?species=stake`) — gallery card and
+  directory row like any other species; kind, provenance and lifecycle badges
+  stand in for platform chips. **New node** asks for the stake kind.
+- **Not present**: the canvas maps and the Delivery board, and no dedicated page.
+
 ## Products
 
 A project describes a *family* of apps sharing one graph — an end-user app, a web-only back office, a public API — not one product with three platforms. A **product** names one app in that family and the platforms it may ship on.
@@ -293,6 +350,7 @@ Source:
 | `supersedes` | Decision to decision — the source replaces the target; recording it also moves the target to `decision_status: superseded` |
 | `generates` | Decision to acceptance — the decision produced this testable promise |
 | `impacts` | Decision to flow \| view \| data-model \| api-endpoint — the decision affects this existing node (or spawned it) |
+| `concerns` | Stake to flow \| view \| data-model \| api-endpoint — the part of the product's anatomy the stake is about |
 
 `generates` and `impacts` are deliberately disjoint by design: an acceptance
 is *generated* by a decision, never merely *impacted*, so `impacts` does not
@@ -360,6 +418,8 @@ Current custom registrations:
 `acceptance` nodes and `covers` edges have no custom Canvas registration yet — they render with generic node/edge components, and the map-kind defaults exclude them (see the dated note under the Taxonomy Update Checklist).
 
 `decision` nodes and the `supersedes`/`generates`/`impacts` edges have no custom Canvas registration either, same posture — the map-kind defaults exclude them too (see the 2026-08-03 note under the Taxonomy Update Checklist).
+
+`stake` nodes and the `concerns` edge have none either, and the map-kind defaults exclude them (see the 2026-11-22 note under the Taxonomy Update Checklist).
 
 Edge registration is also in [components/graph/Canvas.tsx](../components/graph/Canvas.tsx).
 
@@ -430,3 +490,20 @@ and `seed/arkaik-self-map.json` carries cycle 1's own standing decisions
 (§7 of
 [2026-08-03-decisions-species-design.md](superpowers/specs/2026-08-03-decisions-species-design.md)).
 Step 6 is this note.
+
+2026-11-22 — stakes: steps 1, 2, 4 and 5 are done; step 3 (Canvas registration)
+is **deferred**, same posture as decision. Step 1 is done
+([lib/config/species.ts](../lib/config/species.ts),
+[lib/config/edge-types.ts](../lib/config/edge-types.ts), the species icon, hue
+and shape, and the relation-line labels). Step 2 needed no change: the
+`KIND_DEFAULTS` of the `journey`, `system` and `screens` map kinds in
+[packages/schema/src/maps.ts](../packages/schema/src/maps.ts) are allow-lists
+that do not include `stake`. `lib/utils/graph-build.ts` maps `stake` to the
+unregistered React Flow node type `"stake"` and `concerns` to its own edge type
+as forward-fix placeholders. Step 4 is done: the node detail panel gets a
+`StakeEditor` group, the Library card swaps the platforms block for the stake
+badges, and **New node** asks for the stake kind and offers no platforms. A
+stake created from a panel's Relations "link new" has `stake_species` left
+unset: the validator warns and the panel offers the picker. Step 5 is done:
+`seed/pebbles.json` carries one friction anchored to `V-pebble-detail`. Step 6
+is this note.

@@ -359,6 +359,62 @@ Envelope — this is the same posture as the Products addition earlier in this
 document. Old bundles parse unchanged; a bundle with no `decision` nodes
 renders empty states.
 
+### Stake Nodes
+
+A `stake` node (id prefix `STK-`) is something that matters about the product: a
+bug, a friction, a need, a requirement, a risk or a defect
+([rfcs/stake-architecture.md](../rfcs/stake-architecture.md); the model is
+[graph-model.md § Stakes](../graph-model.md)). `title` + `description` say what
+it is. Three metadata fields are meaningful on stake nodes only:
+
+```ts
+interface NodeMetadata {
+  // ... unchanged fields
+  stake_species?: "bug" | "friction" | "need" | "requirement" | "risk" | "defect";
+  provenance?: "observed" | "anticipated";   // absent reads as observed
+  catalog?: { source: "kritik" | "values"; id: string };
+}
+```
+
+`catalog` stores only an id: a Kritik criterion id (`SAF-01`) for a requirement,
+risk or defect, a value id (`reduces-anxiety`) for a bug, friction or need.
+Nothing else is copied from the catalog. An unknown `stake_species`, `provenance`
+or `catalog.source` is rejected at the schema-parse boundary, the same posture as
+an unknown `decision_status`.
+
+The node's own `status` is the stored lifecycle, limited to `idea`, `discovery`
+and `archived`; every other state of a stake is derived and never stored.
+
+One edge type is stake-only:
+
+| Edge type | Legal pairs | Meaning |
+|---|---|---|
+| `concerns` | `stake → flow \| view \| data-model \| api-endpoint` | The part of the product's anatomy the stake is about |
+
+`concerns` does not admit an `acceptance` or a `decision` target, and `impacts`
+stays decision-only.
+
+Stakes legitimately carry an empty `platforms` array, so `platforms-non-empty`
+exempts the `stake` species as it exempts `decision`. They store no product and
+show under every product scope.
+
+`validateBundle()` reports the stake rules as **warnings** only, so a
+hand-edited bundle never bricks:
+
+| Rule | Raised when |
+|---|---|
+| `stake-species-missing` | a stake has no `stake_species` |
+| `stake-species-wrong-species` | `stake_species`, `provenance` or `catalog` sits on a node that is not a stake |
+| `stake-lifecycle` | a stake's `status` is outside idea, discovery, archived |
+| `stake-anticipated-species` | an anticipated stake is a bug or a friction |
+| `stake-catalog-mismatch` | a requirement, risk or defect links to `values`, or a bug, friction or need links to `kritik` |
+| `stake-catalog-unknown-value` | a `values` link names an id outside the value pyramid |
+| `stake-unanchored` | a stake has no outgoing `concerns` edge |
+
+**All of the above is additive: no `schema_version` bump.** Every field is
+optional metadata and the species and edge type are new vocabulary. Old bundles
+parse unchanged; a bundle with no `stake` nodes renders empty states.
+
 ## Identifier Conventions
 
 IDs are deterministic and human-readable. This subsumes and canonicalizes the rules in `docs/arkaik-skill/references/schema.md`.
@@ -369,6 +425,9 @@ IDs are deterministic and human-readable. This subsumes and canonicalizes the ru
 | View | `V-` + kebab-case of title | `V-set-intensity` |
 | Data model | `DM-` + kebab-case of title | `DM-bounce` |
 | API endpoint | `API-` + kebab-case of title | `API-create-bounce` |
+| Acceptance | `AC-` + kebab-case of title | `AC-pebble-draw-in-animation` |
+| Decision | `DEC-` + kebab-case of title | `DEC-adopt-glyph-wobble` |
+| Stake | `STK-` + kebab-case of title | `STK-pebble-reveal-too-slow` |
 | Edge | `e-{source_id}-{target_id}` | `e-V-home-API-list-bounces` |
 | Ref | free kebab-case, unique per node | `gh-142` |
 | Journal event | ULID | `01J9ZK4E4NVQ9K4YB2Q6WPXC1T` |

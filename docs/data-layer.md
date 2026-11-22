@@ -278,4 +278,4 @@ To add a new provider: implement the `DataProvider` interface and inject it via 
 
 ## Seed Data
 
-`seed/pebbles.json` contains an example project ("Pebbles") exercising all six species, persisted compose edges for structure, and playlist-driven flow ordering. `seed/arkaik-self-map.json` is Arkaik's own map, served read-write-in-memory as the built-in public project by `seed-provider.ts`. Both are validated in CI (`npm run validate:seeds`).
+`seed/pebbles.json` contains an example project ("Pebbles") exercising every species, persisted compose edges for structure, and playlist-driven flow ordering. `seed/arkaik-self-map.json` is Arkaik's own map, served read-write-in-memory as the built-in public project by `seed-provider.ts`. Both are validated in CI (`npm run validate:seeds`).

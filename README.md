@@ -10,7 +10,7 @@ It's not a task tracker, not a wiki, not a design tool. It's a navigable, multi-
 
 ## Features
 
-- **6-species graph** — flows, views, data models, API endpoints, acceptances, and decisions as first-class node types ([the taxonomy](docs/graph-model.md) is the source of truth)
+- **7-species graph** — flows, views, data models, API endpoints, acceptances, decisions, and stakes as first-class node types ([the taxonomy](docs/graph-model.md) is the source of truth)
 - **Playlist composition** — flows contain ordered sequences of views and sub-flows, with condition and junction branching
 - **Per-platform tracking** — Web, iOS, Android variants with independent statuses and notes per view
 - **7 lifecycle statuses** — idea, discovery, backlog, development, releasing, live, archived — plus a `blocked_by` flag for nodes stalled by a dependency
@@ -107,7 +107,7 @@ docs/                         # Architecture, graph model, data layer, conventio
 See [`docs/`](docs/README.md) for detailed documentation:
 
 - [Architecture](docs/architecture.md) — system design, component map, data flow
-- [Graph Model](docs/graph-model.md) — **the taxonomy's source of truth**: species, composition, statuses, and edge types (including the decision-only `supersedes`, `generates`, `impacts`)
+- [Graph Model](docs/graph-model.md) — **the taxonomy's source of truth**: species, composition, statuses, and edge types (including the decision-only `supersedes`, `generates`, `impacts` and the stake-only `concerns`)
 - [Data Layer](docs/data-layer.md) — DataProvider interface, local storage, import/export
 - [Hosted Projects](docs/hosted-projects.md) — put a project in your account, point a coding agent at it, and let pull requests move acceptances
 - [Bootstrap](docs/bootstrap.md) — onboarding an existing repo onto Arkaik in one run
