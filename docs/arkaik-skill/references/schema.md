@@ -101,6 +101,8 @@ interface NodeMetadata extends Record<string, unknown> {
   provenance?: StakeProvenanceId;
   /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
   catalog?: { source: StakeCatalogSource; id: string };
+  /** Stake nodes: the signals behind the stake (written at qualification); the durable half of the signal ↔ stake link. */
+  evidence?: StakeEvidence[];
 }
 
 interface PlatformScreenshotMeta {
@@ -261,8 +263,22 @@ interface RequestFiledEvent extends JournalEvent {
   type: "request.filed";
   title: string;
   description?: string;
+  /** The source's own name, a free string ("user", "beta-feedback"). Never retyped. */
   source?: string;
   node_id?: string;
+  /** What sort of source: see {@link SIGNAL_SOURCE_KINDS}. Absent on a legacy request. */
+  source_kind?: SignalSourceKind;
+  /** The input exactly as voiced, never edited. */
+  verbatim?: string;
+  /** Seen in the world, or reasoned about ahead of it. Absent reads as observed. */
+  provenance?: StakeProvenanceId;
+  /** Stakes known at filing time. The durable link is the stake's `metadata.evidence[]`. */
+  stake_ids?: string[];
+  /** `source_kind: "audit-finding"`: the Kritik finding. Never put an `F-…` id in `node_id` or `stake_ids` (it reads like a flow id). */
+  finding_id?: string;
+  /** `source_kind: "audit-finding"`: the criterion the finding was raised against. */
+  criterion_id?: string;
+  url?: string;
 }
 
 interface RefAddedEvent extends JournalEvent {
