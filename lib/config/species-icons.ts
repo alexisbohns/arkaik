@@ -12,6 +12,8 @@ import {
   Scale,
   ScaleIcon,
   ServerIcon,
+  Target,
+  TargetIcon,
 } from "lucide-react";
 import type { SpeciesId } from "@/lib/config/species";
 
@@ -50,6 +52,7 @@ export const SPECIES_GRAPH_ICONS: Record<SpeciesId, LucideIcon> = {
   "api-endpoint": Plug,
   acceptance: ClipboardList,
   decision: Scale,
+  stake: Target,
 };
 
 /** Sidebar, command palette and inventory glyphs — the navigation vocabulary. */
@@ -60,6 +63,7 @@ export const SPECIES_NAV_ICONS: Record<SpeciesId, LucideIcon> = {
   "api-endpoint": ServerIcon,
   acceptance: ClipboardListIcon,
   decision: ScaleIcon,
+  stake: TargetIcon,
 };
 
 /**
@@ -74,4 +78,5 @@ export const SPECIES_PLURALS: Record<SpeciesId, string> = {
   "api-endpoint": "API Endpoints",
   acceptance: "Acceptances",
   decision: "Decisions",
+  stake: "Stakes",
 };

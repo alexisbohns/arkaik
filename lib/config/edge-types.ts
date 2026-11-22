@@ -9,6 +9,7 @@ export const EDGE_TYPES = [
   { id: "supersedes", label: "Supersedes" },
   { id: "generates",  label: "Generates" },
   { id: "impacts",    label: "Impacts" },
+  { id: "concerns",   label: "Concerns" },
 ] as const satisfies readonly { id: EdgeTypeId; label: string }[];
 
 export type { EdgeTypeId };

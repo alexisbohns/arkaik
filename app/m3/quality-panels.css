@@ -175,6 +175,9 @@
 [data-species="decision"] {
   --kp-sp: var(--tone-amber);
 }
+[data-species="stake"] {
+  --kp-sp: var(--tone-red);
+}
 .kp-seal {
   position: relative;
   display: inline-grid;

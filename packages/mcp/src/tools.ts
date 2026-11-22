@@ -112,6 +112,10 @@ function findNode(nodes: Node[], nodeId: string): Node {
 
 function nodeSummary(node: Node) {
   const base = { id: node.id, title: node.title, species: node.species, status: node.status, platforms: node.platforms };
+  // A stake's kind is what tells one stake from another in a list.
+  if (node.species === "stake") {
+    return { ...base, stake_species: node.metadata?.stake_species ?? null, provenance: node.metadata?.provenance ?? "observed" };
+  }
   if (node.species !== "acceptance") return base;
   // Acceptances are the parity unit — without resolved per-platform statuses
   // and values in the summary, reading parity costs one get_node per node.
@@ -424,7 +428,7 @@ export function buildCatalog(ctx: ToolContext): { tools: ToolDefinition[]; handl
     {
       name: "create_node",
       description:
-        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation. For a flow, pass its populated metadata.playlist here — the matching composes edges to every referenced view/sub-flow are synthesized in the same mutation, so a full flow lands in one call.",
+        "Create a node. The id derives from species + title; the mutation is refused (nothing written) if the result fails validation. For a flow, pass its populated metadata.playlist here — the matching composes edges to every referenced view/sub-flow are synthesized in the same mutation, so a full flow lands in one call. A decision or a stake takes platforms: []; a stake also takes metadata.stake_species (bug, friction, need, requirement, risk or defect) and is anchored with a concerns edge to the flow, view, data model or endpoint it is about.",
       inputSchema: {
         type: "object",
         properties: {

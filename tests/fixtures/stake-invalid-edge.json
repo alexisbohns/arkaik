@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Stake Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-detail",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble Detail",
+      "status": "live",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "STK-bad-edge",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Anchored to an acceptance",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need"
+      }
+    },
+    {
+      "id": "AC-x",
+      "project_id": "fixture",
+      "species": "acceptance",
+      "title": "X",
+      "status": "idea",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "gherkin": "When x, Then y.",
+        "values": [
+          "saves-time"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-bad-edge-AC-x",
+      "project_id": "fixture",
+      "source_id": "STK-bad-edge",
+      "target_id": "AC-x",
+      "edge_type": "concerns"
+    }
+  ]
+}

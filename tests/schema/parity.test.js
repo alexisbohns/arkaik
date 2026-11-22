@@ -35,6 +35,9 @@ const FIXTURES = [
   "tests/fixtures/journal-status-mismatch.json",
   "tests/fixtures/acceptance-valid.json",
   "tests/fixtures/acceptance-invalid.json",
+  "tests/fixtures/stake-valid.json",
+  "tests/fixtures/stake-warnings.json",
+  "tests/fixtures/stake-invalid-edge.json",
 ];
 
 /** Run the standalone validator and extract its verdict + finding counts. */

@@ -24,6 +24,7 @@ export const SPECIES_PREFIXES: Record<SpeciesId, string> = {
   "api-endpoint": "API-",
   acceptance: "AC-",
   decision: "DEC-",
+  stake: "STK-",
 };
 
 /**

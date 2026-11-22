@@ -295,7 +295,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint)."
+          "description": "Unique node ID. Convention: prefix with species — F- (flow), V- (view), DM- (data-model), API- (api-endpoint), AC- (acceptance), DEC- (decision), STK- (stake)."
         },
         "project_id": {
           "type": "string",
@@ -344,9 +344,10 @@
         "data-model",
         "api-endpoint",
         "acceptance",
-        "decision"
+        "decision",
+        "stake"
       ],
-      "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status."
+      "description": "The species of a node. flow = ordered sequence of views/sub-flows. view = reusable page or screen. data-model = data entity/table. api-endpoint = API endpoint. acceptance = a testable promise (one Given/When/Then) with per-platform status. decision = an ADR-style record (context, consequences, supersession). stake = something that matters about the product (a bug, friction, need, requirement, risk or defect), anchored to the anatomy by concerns edges."
     },
     "AnyStatus": {
       "type": "string",
@@ -425,6 +426,32 @@
         "decided_at": {
           "description": "Decision nodes only: ISO 8601 date the decision was made.",
           "type": "string"
+        },
+        "stake_species": {
+          "description": "Stake nodes only: bug | friction | need | requirement | risk | defect.",
+          "$ref": "#/$defs/StakeSpecies"
+        },
+        "provenance": {
+          "description": "Stake nodes only: observed (default when absent) or anticipated.",
+          "$ref": "#/$defs/StakeProvenance"
+        },
+        "catalog": {
+          "description": "Stake nodes only: link into the Kritik criteria or the value pyramid, by id.",
+          "type": "object",
+          "properties": {
+            "source": {
+              "$ref": "#/$defs/StakeCatalogSource"
+            },
+            "id": {
+              "type": "string",
+              "description": "A Kritik criterion id (SAF-01) or a value id (reduces-anxiety). Nothing else is copied."
+            }
+          },
+          "required": [
+            "source",
+            "id"
+          ],
+          "additionalProperties": false
         }
       },
       "additionalProperties": {},
@@ -734,6 +761,34 @@
       ],
       "description": "Decision nodes only: proposed → approved (agreed, not yet reality) → enacted (in effect); terminal: rejected, deprecated, superseded. Not a lifecycle status — the node's status field is kept in sync (proposed→discovery, approved→backlog, enacted→live, terminals→archived)."
     },
+    "StakeSpecies": {
+      "type": "string",
+      "enum": [
+        "bug",
+        "friction",
+        "need",
+        "requirement",
+        "risk",
+        "defect"
+      ],
+      "description": "Stake nodes only: bug | friction | need (user-facing, weighed on the value pyramid) or requirement | risk | defect (quality, read against Kritik criteria)."
+    },
+    "StakeProvenance": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "anticipated"
+      ],
+      "description": "Stake nodes only: observed (seen in the world; the default when absent) or anticipated (reasoned about ahead of it; never a bug or a friction)."
+    },
+    "StakeCatalogSource": {
+      "type": "string",
+      "enum": [
+        "kritik",
+        "values"
+      ],
+      "description": "Where a stake's catalog link points: kritik (a criterion id such as SAF-01) or values (a value id such as reduces-anxiety)."
+    },
     "Edge": {
       "type": "object",
       "properties": {
@@ -784,9 +839,10 @@
         "covers",
         "supersedes",
         "generates",
-        "impacts"
+        "impacts",
+        "concerns"
       ],
-      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on)."
+      "description": "composes = structural hierarchy (flow↔view). calls = view/flow → api-endpoint, or api-endpoint → api-endpoint (endpoint fan-out to internal/external APIs). displays = view → data-model. queries = api-endpoint → data-model. covers = acceptance → view/flow (which surface the acceptance is proven on). supersedes = decision → decision. generates = decision → acceptance. impacts = decision → flow/view/data-model/api-endpoint. concerns = stake → flow/view/data-model/api-endpoint (the part of the anatomy the stake is about)."
     },
     "JournalEvent": {
       "type": "object",

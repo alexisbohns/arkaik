@@ -2,10 +2,10 @@
 // Built from packages/schema/src via `npm run generate`
 // (docs/spec/toolchain.md § @arkaik/schema).
 
-export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision"] as const;
+export const SPECIES_IDS = ["flow", "view", "data-model", "api-endpoint", "acceptance", "decision", "stake"] as const;
 export const STATUS_IDS = ["idea", "discovery", "backlog", "development", "releasing", "live", "archived"] as const;
 export const PLATFORM_IDS = ["web", "ios", "android"] as const;
-export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts"] as const;
+export const EDGE_TYPE_IDS = ["composes", "calls", "displays", "queries", "covers", "supersedes", "generates", "impacts", "concerns"] as const;
 
 export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "flow": "F-",
@@ -14,15 +14,16 @@ export const SPECIES_PREFIXES: Record<(typeof SPECIES_IDS)[number], string> = {
   "api-endpoint": "API-",
   "acceptance": "AC-",
   "decision": "DEC-",
+  "stake": "STK-",
 };
 
 export const SCHEMA_BLOCK = `## TypeScript Types (ProjectBundle Schema)
 
 \`\`\`typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -96,6 +97,12 @@ interface NodeMetadata extends Record<string, unknown> {
   consequences?: string;
   /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
   decided_at?: string;
+  /** Stake nodes: the kind of stake (RFC § 3). */
+  stake_species?: StakeSpeciesId;
+  /** Stake nodes: observed (default when absent) or anticipated. */
+  provenance?: StakeProvenanceId;
+  /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
+  catalog?: { source: StakeCatalogSource; id: string };
 }
 
 interface PlatformScreenshotMeta {

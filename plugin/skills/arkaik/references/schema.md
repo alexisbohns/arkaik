@@ -18,10 +18,10 @@ block below — run `npm run generate`.
 
 <!-- GENERATED:SCHEMA:START -->
 ```typescript
-type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision";
+type SpeciesId = "flow" | "view" | "data-model" | "api-endpoint" | "acceptance" | "decision" | "stake";
 type StatusId = "idea" | "discovery" | "backlog" | "development" | "releasing" | "live" | "archived";
 type PlatformId = "web" | "ios" | "android";
-type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts";
+type EdgeTypeId = "composes" | "calls" | "displays" | "queries" | "covers" | "supersedes" | "generates" | "impacts" | "concerns";
 
 type PlaylistEntry =
   | { type: "view"; view_id: string }
@@ -95,6 +95,12 @@ interface NodeMetadata extends Record<string, unknown> {
   consequences?: string;
   /** Decision nodes: ISO 8601 date the decision was actually made (backfill-friendly; node.created events carry the write date, not this). */
   decided_at?: string;
+  /** Stake nodes: the kind of stake (RFC § 3). */
+  stake_species?: StakeSpeciesId;
+  /** Stake nodes: observed (default when absent) or anticipated. */
+  provenance?: StakeProvenanceId;
+  /** Stake nodes: a link into a catalog; only the id is stored, nothing is copied. */
+  catalog?: { source: StakeCatalogSource; id: string };
 }
 
 interface PlatformScreenshotMeta {

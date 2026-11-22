@@ -1,0 +1,163 @@
+{
+  "schema_version": 2,
+  "project": {
+    "id": "fixture",
+    "title": "Stake Fixture",
+    "created_at": "2026-11-22T00:00:00.000Z",
+    "updated_at": "2026-11-22T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "V-pebble-detail",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Pebble Detail",
+      "status": "live",
+      "platforms": [
+        "web"
+      ]
+    },
+    {
+      "id": "STK-no-kind",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "No kind",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {}
+    },
+    {
+      "id": "STK-live",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Live status",
+      "status": "live",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need"
+      }
+    },
+    {
+      "id": "STK-future-bug",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Future bug",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "bug",
+        "provenance": "anticipated"
+      }
+    },
+    {
+      "id": "STK-mismatch",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Mismatched catalog",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "risk",
+        "catalog": {
+          "source": "values",
+          "id": "saves-time"
+        }
+      }
+    },
+    {
+      "id": "STK-unknown-value",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Unknown value",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need",
+        "catalog": {
+          "source": "values",
+          "id": "not-a-value"
+        }
+      }
+    },
+    {
+      "id": "STK-product",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Stores a product",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need",
+        "product": "x"
+      }
+    },
+    {
+      "id": "STK-orphan",
+      "project_id": "fixture",
+      "species": "stake",
+      "title": "Unanchored",
+      "status": "idea",
+      "platforms": [],
+      "metadata": {
+        "stake_species": "need"
+      }
+    },
+    {
+      "id": "V-misplaced",
+      "project_id": "fixture",
+      "species": "view",
+      "title": "Misplaced stake field",
+      "status": "live",
+      "platforms": [
+        "web"
+      ],
+      "metadata": {
+        "stake_species": "bug"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-STK-no-kind-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-no-kind",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-live-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-live",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-future-bug-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-future-bug",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-mismatch-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-mismatch",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-unknown-value-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-unknown-value",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    },
+    {
+      "id": "e-STK-product-V-pebble-detail",
+      "project_id": "fixture",
+      "source_id": "STK-product",
+      "target_id": "V-pebble-detail",
+      "edge_type": "concerns"
+    }
+  ]
+}

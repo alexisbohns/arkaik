@@ -29,6 +29,7 @@
 :root .mark-halo[data-species="data-model"] { --mark-hue: var(--tone-slate); }
 :root .mark-halo[data-species="api-endpoint"] { --mark-hue: var(--tone-ember); }
 :root .mark-halo[data-species="decision"] { --mark-hue: var(--tone-amber); }
+:root .mark-halo[data-species="stake"] { --mark-hue: var(--tone-red); }
 :root .mark-halo::before {
   content: "";
   position: absolute;
