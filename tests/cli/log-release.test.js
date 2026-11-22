@@ -260,5 +260,30 @@ const created = [];
 
 for (const dir of created) rmSync(dir, { recursive: true, force: true });
 
+// --- Signals: the source kind shows, and a stake's timeline lists its signals --
+{
+  const fixture = path.join(ROOT, "tests", "fixtures", "signal-valid.json");
+  const all = runCli(["log", fixture]);
+  check(
+    "log shows a signal's source kind before its source name",
+    all.status === 0 && all.stdout.includes("Request: Pebble takes forever to show (interview, beta-feedback)"),
+    all.stdout,
+  );
+  check(
+    "log shows a signal with a kind and no source name",
+    all.stdout.includes("Request: Contrast fails on the reveal (audit-finding)"),
+    all.stdout,
+  );
+  check("log keeps the legacy request line", all.stdout.includes("Request: Legacy request (user)"), all.stdout);
+  const timeline = runCli(["log", "--node", "STK-slow-reveal", fixture]);
+  check(
+    "log --node on a stake lists the signal that names it and cites it",
+    timeline.status === 0 &&
+      timeline.stdout.includes("Pebble takes forever to show") &&
+      !timeline.stdout.includes("Legacy request"),
+    timeline.stdout,
+  );
+}
+
 console.log(`\n${passes} passed, ${failures} failed.`);
 process.exit(failures > 0 ? 1 : 0);

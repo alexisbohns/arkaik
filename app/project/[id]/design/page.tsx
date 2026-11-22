@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { HandshakeIcon, LightbulbIcon, ScaleIcon } from "lucide-react";
-import { orderEvents } from "@arkaik/schema";
+import { orderEvents, stakeEvidenceEventIds } from "@arkaik/schema";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
 import { PageShell } from "@/components/layout/PageShell";
@@ -65,7 +65,11 @@ export default function DesignPage() {
   const nodesById = useMemo(() => new Map(dataNodes.map((node) => [node.id, node])), [dataNodes]);
 
   const backlog = useMemo(
-    () => computeBacklog(journal, { existingNodeIds: new Set(dataNodes.map((node) => node.id)) }),
+    () =>
+      computeBacklog(journal, {
+        existingNodeIds: new Set(dataNodes.map((node) => node.id)),
+        evidencedEventIds: stakeEvidenceEventIds(dataNodes),
+      }),
     [journal, dataNodes],
   );
 

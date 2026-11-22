@@ -12,7 +12,7 @@
  * Read-only, never writes. An empty or absent journal prints an empty-state
  * line and exits 0 — never an error (the whole no-history backward-compat story).
  */
-import { orderEvents, computeNodeTimeline, type JournalEvent } from "@arkaik/schema";
+import { orderEvents, computeNodeTimeline, stakeEvidenceEventIds, type JournalEvent, type Node } from "@arkaik/schema";
 import { readBundle, nodesByIdOf } from "../lib/bundle-io";
 import { loadJournalEvents } from "../lib/journal-io";
 import { renderEventLine, formatEventDate } from "../lib/render-event";
@@ -42,8 +42,13 @@ function line(event: JournalEvent, nodesById: Map<string, { title: string }>): s
 }
 
 /** `--node`: the node's timeline. */
-function logNode(events: JournalEvent[], nodeId: string, nodesById: Map<string, { title: string }>): never {
-  const timeline = computeNodeTimeline(events, nodeId);
+function logNode(
+  events: JournalEvent[],
+  nodeId: string,
+  nodesById: Map<string, { title: string }>,
+  evidenceEventIds: ReadonlySet<string>,
+): never {
+  const timeline = computeNodeTimeline(events, nodeId, { evidenceEventIds });
   const label = nodesById.get(nodeId)?.title ?? nodeId;
   console.log(`\n  Timeline — ${label}\n`);
   if (timeline.length === 0) {
@@ -109,7 +114,9 @@ export function runLog(args: string[]): void {
   const events = loadJournalEvents(bundle, filePath);
 
   if (nodeId !== undefined) {
-    logNode(events, nodeId, nodesById);
+    // A stake's timeline also lists the signals its evidence cites.
+    const nodes = Array.isArray(bundle.nodes) ? (bundle.nodes as Node[]) : [];
+    logNode(events, nodeId, nodesById, stakeEvidenceEventIds(nodes.filter((node) => node?.id === nodeId)));
   } else {
     logChangelog(events, nodesById);
   }

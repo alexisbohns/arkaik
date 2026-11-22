@@ -37,7 +37,7 @@ import {
 } from "@/lib/utils/platform-status";
 import type { ProductScope } from "@/lib/utils/product-scope";
 import { withProductMembership } from "@/lib/utils/product-editing";
-import { acceptancesCovering } from "@arkaik/schema";
+import { acceptancesCovering, stakeEvidenceEventIds } from "@arkaik/schema";
 import { describeProductMembership, isMembershipSettled } from "@/lib/utils/product-membership";
 import type { PlatformScreenshotMetaMap } from "@arkaik/schema";
 import { useScreenshotStaleness } from "@/lib/hooks/useScreenshotStaleness";
@@ -461,7 +461,10 @@ const NO_NODES: Node[] = [];
 function HistorySection({ node, allNodes }: HistorySectionProps) {
   const projectId = useProjectId();
   const { journal, loading, error } = useJournal(projectId);
-  const timeline = useMemo(() => computeNodeTimeline(journal, node.id), [journal, node.id]);
+  const timeline = useMemo(
+    () => computeNodeTimeline(journal, node.id, { evidenceEventIds: stakeEvidenceEventIds([node]) }),
+    [journal, node],
+  );
   const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
 
   // The group is the section's own, not the caller's, because emptiness is only

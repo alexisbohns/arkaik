@@ -74,8 +74,9 @@ export function renderEventLine(
     case "idea.proposed":
       return `Idea: ${str(event.title) ?? "Untitled"}`;
     case "request.filed": {
-      const source = str(event.source);
-      return `Request: ${str(event.title) ?? "Untitled"}${source ? ` (${source})` : ""}`;
+      // The source kind (interview, audit-finding, ...) leads the source name.
+      const origin = [str(event.source_kind), str(event.source)].filter(Boolean).join(", ");
+      return `Request: ${str(event.title) ?? "Untitled"}${origin ? ` (${origin})` : ""}`;
     }
     case "ref.added": {
       const refType = str(event.ref_type);
