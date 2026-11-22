@@ -376,7 +376,10 @@ across them**, and `frequency` is shown, not sorted by.
 A requirement, risk or defect has no assessment. Its criticality is the
 criterion's `default_impact` (1 to 5) and `weight` (1 to 3), and the severity of
 the finding that raised it when one did; a project whose Kritik library lacks the
-criterion reads "unknown", never a made-up number. A Kritik criterion id is never
+criterion — or whose library was only rebuilt from assessment ids, so it has no
+impacts and no real weights — reads "unknown" (no `impact`, no `weight`), never a
+made-up number; a finding's own severity still stands, since it is the finding's.
+A Kritik criterion id is never
 written into the weighing section.
 
 **All of the above is additive: no `schema_version` bump.** Every field is

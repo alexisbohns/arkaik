@@ -477,6 +477,12 @@ to the anatomy by `concerns` edges (stake → flow / view / data-model / api-end
 - `metadata.catalog` is `{ source, id }` with `source` `kritik` (a criterion id such
   as `SAF-01`) or `values` (a value id such as `reduces-anxiety`) (`StakeCatalogSource`).
   Only the id is stored, never anything copied from the catalog.
+- `metadata.felt` (`expected`, `wanted`, `delight`; a bug is always `expected`),
+  `metadata.matters` (1 to 4) and `metadata.frequency` (`rare`, `some`, `often`) apply
+  to `bug`, `friction` and `need` only; a requirement, risk or defect carries none of
+  them (the validator warns). They are shown beside a stake's pyramid score and never
+  summed with it. A requirement, risk or defect is read against its Kritik criterion's
+  criticality (`kritikCriticality`), never copied onto the stake.
 - `platforms` is `[]`, and no product membership is stored.
 - The node's own `status` is the stored lifecycle and may only be `idea`,
   `discovery` or `archived`; every other state is derived. Anything else is a warning.
