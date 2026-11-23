@@ -38,6 +38,7 @@ export * from "./weighing-library";
 export * from "./weighing-ladders";
 export * from "./weighing-validate";
 export * from "./weighing-events";
+export * from "./backlog-events";
 export * from "./weighing-derive";
 export * from "./qualify";
 export * from "./stake-evaluation";

@@ -108,6 +108,60 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
     return body as T;
   }
 
+  /**
+   * POST the backlog events (idea.proposed, request.filed) to `/journal` and
+   * return what the server recorded — the ids there are the ones a later
+   * `qualify_signal` / `promote_signal` names as `signal_id`.
+   *
+   * A server from before this route answers the POST with a 405 (the journal
+   * route only had a GET); that is refused loudly, naming the fix, rather than
+   * dropped.
+   */
+  async function appendBacklog(inputs: readonly EventInput[]): Promise<WriteResult> {
+    if (inputs.length === 0) return { ok: true, warnings: [], events: [] };
+    const refused = (rule: string, message: string): WriteResult => ({
+      ok: false,
+      errors: [{ path: "", rule, message, severity: "error" }],
+      warnings: [],
+    });
+    try {
+      const result = await request<{ events: JournalEvent[]; warnings?: ValidationFinding[] }>("/journal", {
+        method: "POST",
+        body: JSON.stringify({ events: inputs.map((input) => ({ ...input.payload, type: input.type })) }),
+      });
+      return { ok: true, warnings: result.warnings ?? [], events: result.events ?? [] };
+    } catch (err) {
+      const e = err as Error & {
+        status?: number;
+        body?: { error?: string; message?: string; refusals?: { index: number; reason: string; detail?: string }[] } | null;
+      };
+      if (e.status === 405) {
+        return refused(
+          "remote-unsupported",
+          "This hosted server does not accept journal-only events (idea.proposed, request.filed) yet — it predates POST …/journal. Update the server, or run against a repo bundle.",
+        );
+      }
+      // 400 is a shape the server would not parse, 422 a refusal per entry:
+      // both map onto the file store's refusal shape, one error per entry.
+      if (e.status === 422 && e.body?.refusals?.length) {
+        return {
+          ok: false,
+          errors: e.body.refusals.map((r) => ({
+            path: `events[${r.index}]`,
+            rule: r.reason,
+            message: r.detail ?? r.reason,
+            severity: "error" as const,
+          })),
+          warnings: [],
+        };
+      }
+      if (e.status === 400 || e.status === 422) {
+        return refused(e.body?.error ?? "journal-refused", e.body?.message ?? e.message);
+      }
+      throw err;
+    }
+  }
+
   return {
     async load(): Promise<LoadedGraph> {
       // Two reads rather than one /export: the journal can be large and most
@@ -166,30 +220,17 @@ export function createRemoteStore(options: RemoteStoreOptions): Store {
       };
     },
 
-    // `inputs` is deliberately not accepted: the locally-derived events are not
-    // sent. The server derives its own from the ops it applies, so that the
-    // events stored alongside a graph are always the ones that produced it —
-    // a client cannot describe a change differently from how it was made.
-    async persist(_graph, next): Promise<WriteResult> {
+    // For a graph change, `inputs` is deliberately not sent: the server derives
+    // its own events from the ops it applies, so that the events stored
+    // alongside a graph are always the ones that produced it — a client cannot
+    // describe a change differently from how it was made.
+    //
+    // A journal-only tool (propose_idea, file_request) has no ops and nothing
+    // to derive from, so its inputs ARE the write: they go to the journal's
+    // append route, which stamps the envelope and checks them server-side.
+    async persist(_graph, next, inputs): Promise<WriteResult> {
       const ops = next.ops;
-      if (!ops || ops.length === 0) {
-        // A journal-only tool (propose_idea, file_request) has no graph ops.
-        // Those are not yet expressible through the mutations endpoint, so they
-        // are refused loudly rather than silently dropped.
-        return {
-          ok: false,
-          errors: [
-            {
-              path: "",
-              rule: "remote-unsupported",
-              message:
-                "This tool writes a journal-only event, which the hosted API does not accept yet. Run against a repo bundle for now.",
-              severity: "error",
-            },
-          ],
-          warnings: [],
-        };
-      }
+      if (!ops || ops.length === 0) return appendBacklog(inputs);
 
       try {
         const result = await request<{

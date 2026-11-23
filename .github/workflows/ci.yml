@@ -205,6 +205,12 @@ jobs:
       - name: Weighing events tests (parser, planner gate, all-or-nothing, fold)
         run: npm run test:weighing-events
 
+      # The hosted backlog write path (POST .../journal): idea.proposed and
+      # request.filed, parsed and planned against the project's nodes. Pure —
+      # the route's SQL is in `services`.
+      - name: Backlog events tests (parser, planner, refusals, validator parity)
+        run: npm run test:backlog-events
+
       # The webhook half of the quality loop — the mention grammar and the
       # resolution pass. DB-free on purpose: the grammar imports nothing and
       # the project read is injected, so a Postgres-less runner still gates it.

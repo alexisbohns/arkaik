@@ -174,6 +174,7 @@ function loadGraphApi() {
     GET_NODES: req("nodes-route.js").GET,
     GET_EDGES: req("edges-route.js").GET,
     GET_JOURNAL: req("journal-route.js").GET,
+    APPEND_JOURNAL: req("journal-route.js").POST,
     GET_JOURNAL_STATS: req("journal-stats-route.js").GET,
     GET_JOURNAL_PAGE: req("journal-page-route.js").GET,
     EXPORT: req("export-route.js").GET,

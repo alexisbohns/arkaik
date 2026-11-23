@@ -1732,6 +1732,93 @@ async function main() {
       check("another owner's token cannot weigh this project (404, not 403)", res.status === 404, String(res.status));
     }
 
+    // --- POST .../journal: the backlog, idea.proposed and request.filed -----
+    // The journal-only events an MCP session files on a hosted project
+    // (file_request, propose_idea). A fresh owner, for the reason above.
+    const userJ = await seedUser(client, "journal-append");
+    const ownerJ = (await owners.resolveOwnerIds(userJ))[0];
+    const jWrite = await tokens.mintToken({ ownerId: ownerJ, userId: userJ, name: "j-write", scopes: ["graph:read", "graph:write"] });
+    const jRead = await tokens.mintToken({ ownerId: ownerJ, userId: userJ, name: "j-read", scopes: ["graph:read"] });
+    setSession(sessionFor(userJ));
+    const jCreated = await api.CREATE_PROJECT(jsonReq(`${ORIGIN}/api/graph/projects`, "POST", bundle([node("V-j", "view", { status: "live" })])));
+    const jProjectId = (await jCreated.json()).id;
+    check("journal-append fixture project imports", jCreated.status === 201, String(jCreated.status));
+    setSession(null);
+
+    const jPost = (events, token, raw) =>
+      api.APPEND_JOURNAL(
+        raw !== undefined
+          ? new Request(`${ORIGIN}/api/graph/projects/${jProjectId}/journal`, { method: "POST", body: raw, headers: { "content-type": "application/json", ...(token ? bearer(token) : {}) } })
+          : jsonReq(`${ORIGIN}/api/graph/projects/${jProjectId}/journal`, "POST", { events }, token ? bearer(token) : {}),
+        ctx(jProjectId),
+      );
+    const signal = (over = {}) => ({ type: "request.filed", title: "Sync hangs", source_kind: "feedback", verbatim: "it just spins", ...over });
+
+    check("journal append without credentials is 401", (await jPost([signal()])).status === 401);
+    {
+      const res = await jPost([signal()], jRead.plaintext);
+      const body = await res.json();
+      check("a graph:read token is refused 403 naming graph:write", res.status === 403 && body.required === "graph:write", `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const res = await jPost(undefined, jWrite.plaintext, "{not json");
+      check("malformed JSON is a 400", res.status === 400, String(res.status));
+    }
+    {
+      const res = await jPost([{ type: "node.created", node_id: "V-x", species: "view", title: "x" }], jWrite.plaintext);
+      const body = await res.json();
+      check("any other event type is refused 400 — this is not a general append", res.status === 400 && body.error === "invalid_events", `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const res = await jPost([signal({ actor: "human" })], jWrite.plaintext);
+      const body = await res.json();
+      check("a body that claims the envelope is a 400", res.status === 400 && /stamped by the server/.test(body.message), `${res.status} ${JSON.stringify(body)}`);
+    }
+    {
+      const before = await store.loadValidators(jProjectId, [ownerJ]);
+      const res = await jPost([signal(), signal({ node_id: "V-gone" })], jWrite.plaintext);
+      const body = await res.json();
+      check("a dangling node_id refuses the whole batch with 422, naming the index", res.status === 422 && body.error === "refused" && body.refusals?.[0].index === 1 && body.refusals[0].reason === "unknown_node", `${res.status} ${JSON.stringify(body)}`);
+      const after = await store.loadValidators(jProjectId, [ownerJ]);
+      check("…and nothing was written", after.version === before.version && JSON.stringify(after) === JSON.stringify(before), `${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+    }
+    let filedId;
+    {
+      const res = await jPost([signal({ node_id: "V-j", stake_ids: ["STK-unknown"] }), { type: "idea.proposed", title: "Offline mode" }], jWrite.plaintext);
+      const body = await res.json();
+      filedId = body.events?.[0]?.id;
+      check(
+        "a graph:write token appends both, stamped by the server as the agent",
+        res.status === 200 && body.events?.length === 2 && body.events.every((e) => e.actor === "arkaik-agent" && typeof e.ts === "string" && typeof e.id === "string"),
+        `${res.status} ${JSON.stringify(body)}`,
+      );
+      check("an unknown stake id comes back as a warning, not a refusal", body.warnings?.[0]?.rule === "journal-dangling-stake-ref", JSON.stringify(body.warnings));
+    }
+    {
+      const res = await api.GET_JOURNAL(new Request(`${ORIGIN}/api/graph/projects/${jProjectId}/journal`, { headers: bearer(jRead.plaintext) }), ctx(jProjectId));
+      const body = await res.json();
+      const found = (body.journal ?? []).find((e) => e.id === filedId);
+      check("the journal GET serves the filed signal under the id the POST returned", found?.type === "request.filed" && found.verbatim === "it just spins", JSON.stringify(body.journal?.slice(-2)));
+    }
+    {
+      const stored = await store.getProject(jProjectId, [ownerJ]);
+      check("the snapshot is untouched — no node was written", stored.bundle.nodes.length === 1, String(stored.bundle.nodes.length));
+    }
+    setSession(sessionFor(userJ));
+    {
+      const res = await jPost([{ type: "idea.proposed", title: "From the browser" }]);
+      const body = await res.json();
+      check("a signed-in session appends as the app", res.status === 200 && body.events?.[0].actor === "arkaik-app", `${res.status} ${JSON.stringify(body)}`);
+    }
+    setSession(null);
+    {
+      const stranger = await seedUser(client, "journal-stranger");
+      const strangerOwner = (await owners.resolveOwnerIds(stranger))[0];
+      const strangerToken = await tokens.mintToken({ ownerId: strangerOwner, userId: stranger, name: "stranger", scopes: ["graph:read", "graph:write"] });
+      const res = await jPost([signal()], strangerToken.plaintext);
+      check("another owner's token cannot append to this journal (404)", res.status === 404, String(res.status));
+    }
+
     // --- POST .../live: the deployment door (issue #424) --------------------
     // A fresh owner, as for quality/events above: userA sits at its project cap.
     const userL = await seedUser(client, "live");

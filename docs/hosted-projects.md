@@ -956,9 +956,10 @@ then on.
   three correctness hazards it has to answer, are recorded in
   [superpowers/plans/2026-09-10-reactive-data-layer.md](superpowers/plans/2026-09-10-reactive-data-layer.md)
   § Deferred.
-- **`propose_idea` / `file_request` do not work against hosted projects** — the
-  hosted write path has no journal-only operation yet. They are refused with an
-  explicit message rather than silently dropped.
+- **`propose_idea` / `file_request` need a current server.** They write
+  journal-only events through `POST /api/graph/projects/{id}/journal`; a server
+  from before that route answers 405, and the MCP tools refuse with
+  `remote-unsupported` rather than silently dropping the signal.
 - **A refusal, a partial file list, and a freeze scope the *delivery* — not the
   ref.** A ref a webhook declined to promote from is still attached, and if an
   earlier delivery had already mirrored it to a promotable state it is still
