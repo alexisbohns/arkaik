@@ -34,6 +34,7 @@
     "test:weighing": "node tests/schema/weighing.test.js",
     "test:weighing-derive": "node tests/schema/weighing-derive.test.js",
     "test:weighing-events": "node tests/schema/weighing-events.test.js",
+    "test:backlog-events": "node tests/schema/backlog-events.test.js",
     "test:weighing-provider": "node tests/data/weighing-provider.test.js",
     "test:weighing-panel": "node tests/app/weighing-panel.test.js",
     "test:value-order": "node tests/app/value-order.test.js",

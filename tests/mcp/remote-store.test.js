@@ -119,6 +119,33 @@ function startStubServer(state) {
       });
       return undefined;
     }
+    // POST /journal: the backlog append. Mirrors the server — stamps the
+    // envelope and appends to the journal the next GET serves. `noJournalPost`
+    // plays a server from before the route (the journal route was GET only, so
+    // Next answers 405); `refuseJournal` is a 422 body to answer with once.
+    if (req.url === `/api/graph/projects/${PROJECT_ID}/journal` && req.method === "POST") {
+      if (state.noJournalPost) return json(405, null);
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        state.receivedJournalBodies.push(parsed);
+        if (state.refuseJournal) {
+          const refusal = state.refuseJournal;
+          state.refuseJournal = undefined;
+          return json(422, refusal);
+        }
+        const events = parsed.events.map((e, i) => ({
+          id: `01KN44ARM0JH4YFMX52BGKS${String(state.journal.length + i).padStart(3, "0")}`,
+          ts: "2026-11-24T00:00:00.000Z",
+          actor: "arkaik-agent",
+          ...e,
+        }));
+        state.journal.push(...events);
+        return json(200, { events, warnings: [] });
+      });
+      return undefined;
+    }
     if (req.url === `/api/graph/projects/${PROJECT_ID}/mutations` && req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -194,6 +221,7 @@ async function main() {
     journal: [],
     requests: [],
     receivedOps: [],
+    receivedJournalBodies: [],
     notModified: 0,
     refuseNext: false,
   };
@@ -325,9 +353,72 @@ async function main() {
       JSON.stringify(state.receivedOps[0]).slice(0, 200),
     );
 
+    // --- file_request → qualify_signal → promote_signal, hosted ------------
+    // file_request has no ops: it goes to POST /journal, and the id the server
+    // returns is the signal_id the next two tools resolve off the journal.
+    const journalBefore = state.journal.length;
+    state.receivedOps.length = 0;
+    const filed = await rpc(remoteEnv, [], [
+      initialize,
+      call(60, "file_request", { title: "The toggle is buried", source_kind: "feedback", verbatim: "I never find the toggle" }),
+    ]);
+    const filedBody = resultText(filed.responses, 60);
+    const signalId = filedBody?.events?.[0]?.id;
+    check("file_request succeeds against the hosted API", !isError(filed.responses, 60) && filedBody?.events?.[0]?.type === "request.filed" && typeof signalId === "string", JSON.stringify(filedBody));
+    const sent = state.receivedJournalBodies.at(-1)?.events?.[0];
+    check(
+      "it posted the event to /journal, without an envelope",
+      sent?.type === "request.filed" && sent.verbatim === "I never find the toggle" && !("id" in sent) && !("ts" in sent) && !("actor" in sent),
+      JSON.stringify(state.receivedJournalBodies.at(-1)),
+    );
+    check("and sent no ops", state.receivedOps.length === 0, JSON.stringify(state.receivedOps));
+    check("the server journal grew by one", state.journal.length === journalBefore + 1);
+
+    const idea = await rpc(remoteEnv, [], [initialize, call(61, "propose_idea", { title: "Offline mode" })]);
+    check("propose_idea succeeds against the hosted API", resultText(idea.responses, 61)?.events?.[0]?.type === "idea.proposed", JSON.stringify(resultText(idea.responses, 61)));
+
+    const FEEL = { scope: "product", facing: "value", expectation: "as-designed" };
+    const flow = await rpc(remoteEnv, [], [
+      initialize,
+      call(62, "get_backlog"),
+      call(63, "qualify_signal", { signal_id: signalId, ...FEEL }),
+      call(64, "promote_signal", { signal_id: signalId, ...FEEL, create: true, stake_title: "I find the toggle where I look" }),
+    ]);
+    const backlog = resultText(flow.responses, 62);
+    check("get_backlog lists the hosted signal", backlog?.requests?.some((r) => r.id === signalId), JSON.stringify(backlog).slice(0, 300));
+    const qualified = resultText(flow.responses, 63);
+    check("qualify_signal resolves it by signal_id", !isError(flow.responses, 63) && qualified?.signal?.event_id === signalId, JSON.stringify(qualified).slice(0, 300));
+    const promotedSignal = resultText(flow.responses, 64);
+    const stakeOp = state.receivedOps.at(-1)?.[0];
+    check("promote_signal creates the stake from it", !isError(flow.responses, 64) && promotedSignal?.action === "create" && stakeOp?.node?.species === "stake", JSON.stringify(promotedSignal).slice(0, 300));
+    check(
+      "the stake's evidence carries the signal's event_id and its verbatim",
+      stakeOp?.node?.metadata?.evidence?.[0]?.event_id === signalId && stakeOp.node.metadata.evidence[0].quote === "I never find the toggle",
+      JSON.stringify(stakeOp?.node?.metadata),
+    );
+
+    // --- a refused filing, and an older server -------------------------------
+    state.refuseJournal = { error: "refused", message: "entry 0: unknown_node", refusals: [{ index: 0, reason: "unknown_node", detail: 'node_id "V-x" is not a node of this project' }] };
+    const refusedFiling = await rpc(remoteEnv, [], [initialize, call(65, "file_request", { title: "x", node_id: "V-x" })]);
+    const refusedText = refusedFiling.responses.find((r) => r.id === 65)?.result?.content?.[0]?.text ?? "";
+    check("a 422 from /journal surfaces as a refusal naming the reason", isError(refusedFiling.responses, 65) && /unknown_node/.test(refusedText), refusedText);
+
+    state.noJournalPost = true;
+    const oldServer = await rpc(remoteEnv, [], [initialize, call(66, "file_request", { title: "On an old server" })]);
+    state.noJournalPost = false;
+    const oldText = oldServer.responses.find((r) => r.id === 66)?.result?.content?.[0]?.text ?? "";
+    check(
+      "a server without POST /journal (405) is refused loudly, naming the fix",
+      isError(oldServer.responses, 66) && /remote-unsupported/.test(oldText) && /Update the server/.test(oldText),
+      oldText,
+    );
+    // Restore the stub's journal so the counts below are the ones they expect.
+    state.journal.length = journalBefore;
+    state.receivedOps.length = 0;
+
     // --- promote_signal is ops-only, so it works hosted ---------------------
-    // file_request is a journal-only write and is refused hosted; promoting a
-    // signal writes a node and its edge, which the mutations route accepts.
+    // Promoting an inline signal writes a node and its edge, which the
+    // mutations route accepts.
     state.receivedOps.length = 0;
     const promoted = await rpc(
       remoteEnv,

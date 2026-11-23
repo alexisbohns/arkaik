@@ -321,6 +321,7 @@ The names the code settled on, where the RFC had left a **(proposal)**.
 | 1 | Stored lifecycle is `idea`, `discovery` or `archived`; every other state stays derived. Validator rules are warnings. | `stake.ts`, `validate.ts` |
 | 2 | `request.filed` gained optional fields (source kind, verbatim, provenance, `stake_ids`, `finding_id`, `criterion_id`, `url`). The durable signal-to-stake link is `metadata.evidence[]` on the stake. | `journal.ts`, `journal-events.ts` |
 | 3 | Pure routing and merge-candidate logic, plus MCP `qualify_signal` (read) and `promote_signal` (write, op-only). | `packages/schema/src/qualify.ts` |
+| 3 | Signals work hosted too. `file_request` (and `propose_idea`) were refused on a hosted project at first, since a journal-only event has no ops for `/mutations`; `POST …/journal` now appends them, so a hosted signal has a journal id and a promoted stake's evidence carries it as `event_id`. | `backlog-events.ts`, `app/api/graph/projects/[projectId]/journal/route.ts` |
 | 4 | A criteria set declares `stake_species`; `value-contribution@2` declares bug, friction and need. Kritik stays read-only. | `weighing.ts`, `weighing-library.ts`, `stake-evaluation.ts` |
 | 4 | `metadata.felt` (expected, wanted, delight), `metadata.matters` (1 to 4) and `metadata.frequency` (rare, some, often), user-facing kinds only. | `stake.ts`, `stake-evaluation.ts` |
 
