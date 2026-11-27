@@ -391,6 +391,9 @@ jobs:
       - name: Acceptance matrix util tests
         run: npm run test:acceptance-matrix
 
+      - name: Acceptances model tests
+        run: npm run test:acceptances-model
+
       - name: Acceptance-first intake rule tests
         run: npm run test:acceptance-intake
 

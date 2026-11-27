@@ -39,6 +39,7 @@
 /tests/services/.test-build-arkademy/
 /tests/mcp/.test-build-remote-store/
 /tests/app/.test-build-delivery/
+/tests/app/.test-build-acceptances-model/
 /tests/app/.test-build-journey-graph/
 /tests/app/.test-build-graph-spotlight/
 /tests/app/.test-build-sidebar-nav/
