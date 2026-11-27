@@ -61,6 +61,9 @@ function makeTable(keyOf) {
     async get(key) {
       return clone(rows.get(key));
     },
+    async bulkGet(keys) {
+      return keys.map((key) => clone(rows.get(key)));
+    },
     async put(row) {
       rows.set(keyOf(row), clone(row));
       return keyOf(row);
@@ -174,6 +177,12 @@ function loadLocalProvider() {
     rewriteSchemaRequire(transpile(path.join(ROOT, "lib", "data", "journal-projection.ts"), "journal-projection.ts")),
   );
 
+  // project-anatomy.js — the listing's per-project anatomy; types only, nothing to rewrite.
+  fs.writeFileSync(
+    path.join(BUILD_DIR, "project-anatomy.js"),
+    transpile(path.join(ROOT, "lib", "data", "project-anatomy.ts"), "project-anatomy.ts"),
+  );
+
   let localProviderOut = transpile(path.join(ROOT, "lib", "data", "local-provider.ts"), "local-provider.ts");
   localProviderOut = rewriteSchemaRequire(localProviderOut);
   localProviderOut = localProviderOut.replace(
@@ -187,7 +196,7 @@ function loadLocalProvider() {
   const outFile = path.join(BUILD_DIR, "local-provider.js");
   fs.writeFileSync(outFile, localProviderOut);
 
-  for (const name of ["db", "cycle", "quality", "emit-events", "migrate", "journal-projection", "local-provider"]) {
+  for (const name of ["db", "cycle", "quality", "emit-events", "migrate", "journal-projection", "project-anatomy", "local-provider"]) {
     delete require.cache[path.join(BUILD_DIR, `${name}.js`)];
   }
 

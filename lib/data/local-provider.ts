@@ -18,6 +18,7 @@ import {
   type ProjectRecord,
 } from "./db";
 import { toJournalEvents } from "./emit-events";
+import { anatomyOf } from "./project-anatomy";
 import { foldQualityEvents } from "@/lib/utils/quality";
 
 /**
@@ -184,20 +185,27 @@ export const localProvider: DataProvider = {
   },
 
   /**
-   * Summaries only — the journals table is no longer read here at all. Rendering
-   * a list of titles never needed every project's full history.
+   * Summaries, each with its anatomy (species, platforms, journal events per
+   * month — lib/data/project-anatomy.ts) for the projects page's cards. The
+   * journals are read in ONE pass over the table and reduced to counts here;
+   * nothing but the counts leaves this function.
    */
   async listProjects() {
     const db = await getDb();
     if (!db) return [];
-    return (await db.projects.toArray())
-      .filter((record) => !isArchived(record))
-      .map((record) => ({
-        project: record.snapshot.project,
-        nodeCount: record.snapshot.nodes.length,
-        edgeCount: record.snapshot.edges.length,
-        hosted: false,
-      }));
+    const records = (await db.projects.toArray()).filter((record) => !isArchived(record));
+    const journals = new Map(
+      (await db.journals.bulkGet(records.map((r) => r.snapshot.project.id))).flatMap((row) =>
+        row ? [[row.projectId, row.events] as const] : [],
+      ),
+    );
+    return records.map((record) => ({
+      project: record.snapshot.project,
+      nodeCount: record.snapshot.nodes.length,
+      edgeCount: record.snapshot.edges.length,
+      hosted: false,
+      anatomy: anatomyOf(record.snapshot.nodes, journals.get(record.snapshot.project.id) ?? []),
+    }));
   },
 
   async saveProject(bundle: ProjectBundle) {

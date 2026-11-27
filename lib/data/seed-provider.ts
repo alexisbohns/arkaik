@@ -4,6 +4,7 @@ import type { DataProvider, MutationResult } from "./data-provider";
 import { toJournalEvents } from "./emit-events";
 import { journalPageOf, journalStatsOf, projectJournal } from "./journal-projection";
 import { migrateBundle } from "./migrate";
+import { anatomyOf } from "./project-anatomy";
 import type { JournalEvent, Node, ProjectBundle } from "./types";
 
 /**
@@ -93,6 +94,7 @@ export function createSeedProvider(loadBundle: () => ProjectBundle): DataProvide
           edgeCount: current.edges.length,
           hosted: false,
           seed: true,
+          anatomy: anatomyOf(current.nodes, current.journal ?? []),
         },
       ];
     },

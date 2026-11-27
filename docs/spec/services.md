@@ -195,6 +195,7 @@ Rules:
 
 | Endpoint | Body | Read validator |
 |---|---|---|
+| `GET /api/graph/projects` | `{ projects }`: id, title, `nodeCount`, `edgeCount`, dates, and `anatomy` — species and platform counts plus the journal's events per `YYYY-MM` month (last 13), `lastAt` and `total` (`lib/data/project-anatomy.ts`). The anatomy is a separate statement; if it fails the list still answers, without it | none |
 | `GET /api/graph/projects/{id}` | The bundle with quality decisions and hosted scores folded in, plus `version` | `W/"<version>.<folded quality event count>"` |
 | `GET /api/graph/projects/{id}/nodes` | `{ nodes }` | `W/"<version>"` |
 | `GET /api/graph/projects/{id}/edges` | `{ edges }` | `W/"<version>"` |
