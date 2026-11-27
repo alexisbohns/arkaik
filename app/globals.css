@@ -9,6 +9,7 @@
 @import "./m3/icons.css";
 @import "./m3/sidebar.css";
 @import "./m3/acceptances.css";
+@import "./m3/acceptances-directory.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

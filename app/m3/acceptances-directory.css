@@ -1,0 +1,573 @@
+/* The Acceptances directory — the view switch (`ka-views-`), the Contents view
+ * (`ka-contents-`) and the journey tokens they share (`ka-mapping-`: the
+ * `--ka-mapping-*` palette, DynaPuff display face and tabular numbers every
+ * journey surface in the directory reads). Components: components/acceptances/
+ * ViewSwitch.tsx, ContentsView.tsx, journey-kit.tsx.
+ *
+ * Hues are identity, not status: a journey is a flow (plum), a screen a view
+ * (indigo), a promise an acceptance (green) — the panel header's own species
+ * hues. STATUS stays in the marks (components/acceptances/kit.tsx); only the gap
+ * edge (amber) borrows a status hue, as the Parity rows do.
+ *
+ * Springs sit behind `prefers-reduced-motion: no-preference`; borderless
+ * surfaces get an edge under `forced-colors`; sticky things pin at
+ * `top: var(--surface-sticky-top, 0px)`. Ported from the 2026-11 tweaker
+ * exploration (owner's recipe "lead-owner-2"), so declarations read
+ * machine-ordered. */
+:root {
+  --ka-mapping-card: hsl(var(--card));
+}
+:root .ka-mapping-scope {
+  --ka-mapping-ink: var(--tone-green);
+  --ka-mapping-flow: var(--tone-plum);
+  --ka-mapping-view: var(--tone-indigo);
+  --ka-mapping-gap: var(--tone-amber);
+  --ka-mapping-cost: var(--tone-red);
+  --ka-mapping-raised: var(--md-surface-container-lowest);
+  --ka-mapping-tint: color-mix(in oklab, var(--tone-green) 11%, var(--md-surface-container-lowest));
+  --ka-mapping-tint-2: color-mix(in oklab, var(--tone-green) 22%, var(--md-surface-container-lowest));
+  --ka-mapping-flow-tint: color-mix(in oklab, var(--tone-plum) 11%, var(--md-surface-container-lowest));
+  --ka-mapping-flow-tint-2: color-mix(in oklab, var(--tone-plum) 22%, var(--md-surface-container-lowest));
+  --ka-mapping-view-tint: color-mix(in oklab, var(--tone-indigo) 11%, var(--md-surface-container-lowest));
+  --ka-mapping-gap-tint: color-mix(in oklab, var(--tone-amber) 16%, var(--md-surface-container-lowest));
+  --ka-mapping-level: color-mix(in oklab, var(--tone-green) 34%, var(--md-surface-container-lowest));
+  --ka-mapping-veil: color-mix(in srgb, var(--md-on-surface) 4.5%, transparent);
+  --ka-mapping-veil-hover: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+  --ka-mapping-quiet: var(--md-on-surface-variant);
+  --ka-mapping-outer: 1.375rem;
+  --ka-mapping-joint: var(--mx-joint, 5px);
+  --ka-mapping-gutter: var(--mx-gap, 3px);
+  --ka-mapping-spring: var(--mx-spring, ease-out);
+  --ka-mapping-spring-dur: var(--mx-spring-dur, .32s);
+}
+:root.dark .ka-mapping-scope {
+  --ka-mapping-raised: var(--md-surface-container-high);
+  --ka-mapping-tint: color-mix(in oklab, var(--tone-green) 14%, var(--md-surface-container));
+  --ka-mapping-tint-2: color-mix(in oklab, var(--tone-green) 28%, var(--md-surface-container));
+  --ka-mapping-flow-tint: color-mix(in oklab, var(--tone-plum) 14%, var(--md-surface-container));
+  --ka-mapping-flow-tint-2: color-mix(in oklab, var(--tone-plum) 28%, var(--md-surface-container));
+  --ka-mapping-view-tint: color-mix(in oklab, var(--tone-indigo) 14%, var(--md-surface-container));
+  --ka-mapping-gap-tint: color-mix(in oklab, var(--tone-amber) 18%, var(--md-surface-container));
+  --ka-mapping-level: color-mix(in oklab, var(--tone-green) 36%, var(--md-surface-container));
+  --ka-mapping-veil: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+  --ka-mapping-veil-hover: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+}
+:root .ka-mapping-num {
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+}
+:root .ka-mapping-display {
+  font-family: var(--font-display, inherit);
+  letter-spacing: -.01em;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .ka-mapping-scope * {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+.ka-contents {
+  --ka-contents-measure: 46rem;
+  color: var(--md-on-surface);
+  padding: 1.5rem 1.25rem 3rem;
+  container-type: inline-size;
+}
+:where(.ka-contents) button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.ka-contents-head {
+  max-width: var(--ka-contents-measure);
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: .75rem 1.5rem;
+  margin: 0 auto 1.25rem;
+  display: flex;
+}
+.ka-contents[data-spread] .ka-contents-head,
+.ka-contents[data-index] .ka-contents-head {
+  max-width: none;
+}
+.ka-contents-title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1.05;
+}
+.ka-contents-sub {
+  color: var(--md-on-surface-variant);
+  margin: .25rem 0 0;
+  font-size: .8125rem;
+}
+.ka-contents-tools {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  display: inline-flex;
+}
+.ka-contents-depth {
+  gap: var(--ka-mapping-gutter);
+  display: inline-flex;
+}
+.ka-contents-depth button {
+  border-radius: var(--ka-mapping-joint);
+  background: var(--ka-mapping-veil);
+  border: 0;
+  min-height: 2.25rem;
+  padding: 0 .875rem;
+  font-size: .8125rem;
+  font-weight: 500;
+}
+.ka-contents-depth button:first-child {
+  border-radius: 1.125rem var(--ka-mapping-joint) var(--ka-mapping-joint) 1.125rem;
+}
+.ka-contents-depth button:last-child {
+  border-radius: var(--ka-mapping-joint) 1.125rem 1.125rem var(--ka-mapping-joint);
+}
+.ka-contents-depth button:hover {
+  background: var(--ka-mapping-veil-hover);
+}
+.ka-contents-depth button[aria-pressed="true"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-radius: 1.125rem;
+}
+.ka-contents :where(ol, ul) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ka-contents-chapters,
+.ka-contents-appendices {
+  max-width: var(--ka-contents-measure);
+  margin: 0 auto;
+}
+.ka-contents[data-spread] :is(.ka-contents-chapters, .ka-contents-appendices) {
+  columns: 2 22rem;
+  column-gap: 3rem;
+  max-width: none;
+}
+.ka-contents-chapter {
+  break-inside: avoid;
+  padding-block: .25rem .5rem;
+}
+.ka-contents-chapter[data-level="1"] {
+  padding-inline-start: 1.75rem;
+}
+.ka-contents-chapter[data-level="2"] {
+  padding-inline-start: 3.5rem;
+}
+.ka-contents-appendices {
+  background: linear-gradient(to right, var(--md-outline-variant) 50%, transparent 0) top / 8px 1.5px repeat-x;
+  margin-top: 1rem;
+  padding-top: .75rem;
+}
+.ka-contents-row,
+.ka-contents-line {
+  text-align: start;
+  background: none;
+  border: 0;
+  border-radius: .5rem;
+  align-items: baseline;
+  gap: .5rem;
+  width: 100%;
+  display: flex;
+}
+.ka-contents-row {
+  padding: .3125rem .625rem;
+}
+.ka-contents-row:is(button):hover,
+.ka-contents-line:hover {
+  background: var(--ka-mapping-veil-hover);
+  border-radius: 1rem;
+}
+.ka-contents :is(.ka-contents-row, .ka-contents-line, .ka-contents-depth button, .ka-contents-letters button, .ka-contents-locs button, .ka-contents-entry-name):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: -2px;
+}
+.ka-contents-row[data-kind="chapter"] {
+  font-size: 1.0625rem;
+  font-weight: 500;
+}
+.ka-contents-row[data-kind="chapter"] .ka-contents-name {
+  font-family: var(--font-display, inherit);
+  letter-spacing: -.01em;
+}
+.ka-contents-num {
+  min-width: 2.25rem;
+  color: var(--ka-mapping-flow);
+  flex: none;
+  font-weight: 600;
+}
+.ka-contents-chapter[data-appendix] .ka-contents-num {
+  color: var(--md-on-surface-variant);
+}
+.ka-contents-name {
+  align-items: baseline;
+  gap: .375rem;
+  min-width: 0;
+  display: inline-flex;
+}
+.ka-contents-dots {
+  background: radial-gradient(circle, var(--md-outline-variant) 1px, transparent 1.4px) 0 100% / 6px 4px repeat-x;
+  flex: 1;
+  min-width: 1rem;
+  height: .5rem;
+}
+.ka-contents-n {
+  color: var(--md-on-surface-variant);
+  flex: none;
+  font-size: .75rem;
+  font-weight: 600;
+}
+.ka-contents-gap {
+  background: var(--ka-mapping-gap);
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+  width: .4375rem;
+  height: .4375rem;
+}
+.ka-contents-screens {
+  padding-inline-start: 2.75rem;
+}
+.ka-contents-row[data-kind="screen"] {
+  color: var(--md-on-surface);
+  padding-block: .1875rem;
+  font-size: .875rem;
+}
+.ka-contents-row[data-kind="screen"] .ka-contents-name:before {
+  content: "";
+  background: var(--ka-mapping-view);
+  opacity: .7;
+  border-radius: 2px;
+  flex: none;
+  align-self: center;
+  width: .375rem;
+  height: .375rem;
+}
+.ka-contents-row[data-self] .ka-contents-name {
+  color: var(--md-on-surface-variant);
+  font-style: italic;
+}
+.ka-contents-note {
+  color: var(--md-on-surface-variant);
+  margin: .125rem 0 0;
+  padding-inline-start: 3.375rem;
+  font-size: .75rem;
+}
+.ka-contents-promises {
+  padding: .125rem 0 .375rem 1.25rem;
+}
+.ka-contents-line {
+  color: var(--md-on-surface-variant);
+  align-items: center;
+  padding: .1875rem .625rem;
+  font-size: .8125rem;
+}
+.ka-contents-line .ka-contents-name {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  overflow: hidden;
+}
+:is(.ka-contents-line, .ka-contents-entry) {
+  position: relative;
+}
+:is(.ka-contents-line, .ka-contents-entry)[data-ac-gap="true"]:before {
+  content: "";
+  background: var(--ka-mapping-gap);
+  border-radius: 2px;
+  width: 3px;
+  position: absolute;
+  inset-block: .375rem;
+  inset-inline-start: .125rem;
+}
+.ka-contents-letters {
+  top: var(--surface-sticky-top, 0px);
+  z-index: 2;
+  gap: var(--ka-mapping-gutter);
+  background: var(--ka-mapping-card);
+  flex-wrap: wrap;
+  margin: 0 -.25rem 1rem;
+  padding: .375rem .25rem;
+  display: flex;
+  position: sticky;
+}
+.ka-contents-letters button {
+  background: var(--ka-mapping-veil);
+  border: 0;
+  border-radius: .625rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  font-size: .8125rem;
+  font-weight: 600;
+}
+.ka-contents-letters button:hover {
+  background: var(--ka-mapping-veil-hover);
+  border-radius: 1rem;
+}
+.ka-contents-index {
+  columns: 2 24rem;
+  column-gap: 3rem;
+}
+.ka-contents-letter {
+  break-inside: avoid-column;
+  scroll-margin-top: calc(var(--surface-sticky-top, 0px) + 3.5rem);
+  padding-bottom: .75rem;
+}
+.ka-contents-letter-h {
+  color: var(--ka-mapping-ink);
+  margin: 0 0 .25rem;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+.ka-contents-entry {
+  break-inside: avoid;
+  border-radius: .5rem;
+  align-items: center;
+  gap: .5rem;
+  padding: .125rem .375rem;
+  display: flex;
+}
+.ka-contents-entry:hover {
+  background: var(--ka-mapping-veil);
+}
+.ka-contents-entry-name {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+  background: none;
+  border: 0;
+  min-width: 0;
+  padding: .125rem 0;
+  font-size: .875rem;
+  overflow: hidden;
+}
+.ka-contents-entry-name:hover {
+  text-underline-offset: 3px;
+  text-decoration: underline;
+}
+.ka-contents-locs {
+  flex: none;
+  gap: 2px;
+  display: inline-flex;
+}
+.ka-contents-locs > * {
+  background: var(--ka-mapping-flow-tint);
+  min-width: 1.75rem;
+  height: 1.5rem;
+  color: var(--ka-mapping-flow);
+  font-variant-numeric: tabular-nums;
+  border: 0;
+  border-radius: .75rem;
+  padding: 0 .375rem;
+  font-size: .75rem;
+  font-weight: 600;
+}
+.ka-contents-locs button:hover {
+  background: var(--ka-mapping-flow-tint-2);
+  border-radius: .375rem;
+}
+@media (width <= 40rem) {
+  .ka-contents {
+    padding-inline: .75rem;
+  }
+}
+@container (width <= 34rem) {
+  .ka-contents-title {
+    font-size: 1.625rem;
+  }
+  .ka-contents-screens {
+    padding-inline-start: 1rem;
+  }
+  .ka-contents-promises {
+    padding-inline-start: .5rem;
+  }
+  .ka-contents-num {
+    min-width: 1.75rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ka-contents :is(.ka-contents-row, .ka-contents-line, .ka-contents-depth button, .ka-contents-letters button, .ka-contents-locs button) {
+    transition: border-radius var(--ka-mapping-spring-dur) var(--ka-mapping-spring), background-color .12s;
+  }
+}
+@media (forced-colors: active) {
+  .ka-contents-depth button,
+  .ka-contents-letters button,
+  .ka-contents-locs button {
+    border: 1px solid buttontext;
+  }
+  .ka-contents-gap {
+    background: mark;
+  }
+}
+:root .ka-views-box {
+  flex: 1;
+  min-width: 0;
+  container: ka-views / inline-size;
+}
+:root .ka-views {
+  gap: var(--ka-views-gap);
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  display: grid;
+}
+:root .ka-views-ask {
+  border-radius: var(--ka-views-joint);
+  background: var(--ka-views-veil);
+  min-height: 3.5rem;
+  color: var(--md-on-surface);
+  text-align: left;
+  cursor: pointer;
+  border: 0;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: .0625rem .5rem;
+  padding: .5rem 1rem .5rem 1.125rem;
+  display: grid;
+}
+:root .ka-views-ask:first-child {
+  border-radius: 1.75rem var(--ka-views-joint) var(--ka-views-joint) 1.75rem;
+}
+:root .ka-views-ask:last-child {
+  border-radius: var(--ka-views-joint) 1.75rem 1.75rem var(--ka-views-joint);
+}
+:root .ka-views-ask:hover {
+  background: var(--ka-views-veil-2);
+}
+:root .ka-views-ask-l {
+  font-family: var(--font-display, inherit);
+  letter-spacing: 0;
+  grid-column: 1;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+:root .ka-views-ask-q {
+  opacity: .75;
+  text-wrap: balance;
+  grid-area: 2 / 1;
+  font-size: .6875rem;
+  line-height: 1.25;
+}
+:root .ka-views-ask-n {
+  background: var(--ka-views-veil-2);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  border-radius: .875rem;
+  flex-direction: column;
+  grid-area: 1 / 2 / span 2;
+  align-items: center;
+  min-width: 2.75rem;
+  padding: .25rem .5rem;
+  font-size: .625rem;
+  font-weight: 650;
+  line-height: 1.1;
+  display: inline-flex;
+}
+:root .ka-views-ask-n b {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  font-size: 1.125rem;
+}
+:root .ka-views-ask-n[data-zero="true"] {
+  opacity: .55;
+}
+:root .ka-views-ask[aria-pressed="true"] {
+  background: var(--md-primary-container, var(--md-secondary-container));
+  color: var(--md-on-primary-container, var(--md-on-secondary-container));
+  border-radius: 1.75rem;
+}
+:root .ka-views-ask[aria-pressed="true"] .ka-views-ask-n {
+  background: color-mix(in oklab, currentColor 14%, transparent);
+}
+@container ka-views (width <= 60rem) {
+  :root .ka-views-ask {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 3rem;
+    padding-block: .375rem;
+  }
+  :root .ka-views-ask-q {
+    display: none;
+  }
+  :root .ka-views-ask-l {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  :root .ka-views-ask-n {
+    flex-direction: row;
+    grid-row: 1;
+    align-items: baseline;
+    gap: .25rem;
+  }
+}
+@container ka-views (width <= 46rem) {
+  :root .ka-views-ask {
+    gap: .375rem;
+    padding-inline: 1rem .5rem;
+  }
+  :root .ka-views-ask-l {
+    text-overflow: clip;
+    overflow: visible;
+  }
+  :root .ka-views-ask-n {
+    min-width: 0;
+    padding: .25rem .5rem;
+  }
+  :root .ka-views-ask-n span {
+    display: none;
+  }
+}
+@container ka-views (width <= 27rem) {
+  :root .ka-views-ask {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    min-height: 2.75rem;
+    padding-inline: .5rem;
+  }
+  :root .ka-views-ask-l {
+    font-size: .9375rem;
+  }
+  :root .ka-views-ask-n {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root .ka-views-ask {
+    transition: border-radius var(--mx-spring-fast-dur, .44s) var(--mx-spring-fast, ease), background-color .2s var(--mx-effects, ease);
+  }
+}
+@media (forced-colors: active) {
+  :root .ka-views-ask {
+    border: 1px solid canvastext;
+  }
+}
+
+/* the view switch's own tokens (the veil is the card's tint over its surface) */
+:root {
+  --ka-views-veil: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+  --ka-views-veil-2: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+  --ka-views-joint: var(--mx-joint, 5px);
+  --ka-views-gap: var(--mx-gap, 3px);
+}
+:root.dark {
+  --ka-views-veil: color-mix(in srgb, var(--md-on-surface) 9%, transparent);
+  --ka-views-veil-2: color-mix(in srgb, var(--md-on-surface) 14%, transparent);
+}
+:root .ka-views-ask:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+
+/* Index locators read as plain chips until the page gives them somewhere to go. */
+.ka-contents-locs > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

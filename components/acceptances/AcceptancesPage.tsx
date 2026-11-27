@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { Node as DataNode, NodeMetadata } from "@/lib/data/types";
@@ -11,12 +12,15 @@ import { useProjectPanels } from "@/lib/hooks/useProjectPanels";
 import { useProject } from "@/lib/hooks/useProject";
 import { useAcceptanceIntake } from "@/lib/hooks/useAcceptanceIntake";
 import { useNodeRelations } from "@/lib/hooks/useNodeRelations";
+import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import { useEffectiveProduct, useProductList } from "@/lib/hooks/useProductScope";
 import { useAcceptanceFilters } from "@/components/acceptances/acceptance-filters";
 import { filterAcceptances } from "@/lib/utils/acceptance-matrix";
 import { AcceptanceFilterBar } from "@/components/acceptances/AcceptanceFilterBar";
 import { PageSurface } from "@/components/layout/PageSurface";
-import { AcceptanceMatrix } from "@/components/acceptances/AcceptanceMatrix";
+import { AcceptancesDirectory } from "@/components/acceptances/AcceptancesDirectory";
+import { DEFAULT_VIEW, DIRECTORY_VIEWS, viewFromParam, type DirectoryViewId } from "@/components/acceptances/directory-views";
+import { ViewSwitch } from "@/components/acceptances/ViewSwitch";
 import { ParityMonitor, ParityQuickChips } from "@/components/acceptances/ParityMonitor";
 import { buildAcceptancesModel } from "@/lib/utils/acceptances-model";
 import { PageError } from "@/components/layout/PageError";
@@ -55,10 +59,15 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
   });
   const { filters, setFilters } = useAcceptanceFilters();
   const [newAcceptanceOpen, setNewAcceptanceOpen] = useState(false);
-  // Collapsed is the landing state: you arrive at the list of anchors, then open
-  // the one you came for. The toolbar toggle owns the baseline; the matrix owns
-  // the per-heading exceptions to it.
-  const [allExpanded, setAllExpanded] = useState(false);
+  // The directory's view is page state, read off the URL (`?view=`; Contents is its absence).
+  const searchParams = useSearchParams();
+  const writeQuery = useQueryWriter();
+  const view = viewFromParam(searchParams.get("view"));
+  const setView = (next: DirectoryViewId) =>
+    writeQuery((params) => {
+      if (next === DEFAULT_VIEW) params.delete("view");
+      else params.set("view", next);
+    });
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -173,8 +182,8 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
     return <PageLoading label={mode === "monitor" ? "parity" : "acceptances"} />;
   }
 
-  // Before the matrix, never after (#362): with no nodes the header reads
-  // "0 total · 0 shown" and the matrix draws its own empty body — a project
+  // Before the directory, never after (#362): with no nodes the header reads
+  // "0 total · 0 shown" and the directory draws its own empty body — a project
   // whose entire acceptance coverage looks deleted rather than unread.
   const loadError = nodesError ?? edgesError ?? projectError;
   if (loadError) {
@@ -227,24 +236,17 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
         relations={relations}
       >
         <PageSurface
-          /* The matrix is the surface: flush anchor groups running to the
-             panel's edges, each heading pinning as you scroll past it. It needs
-             the scrollport to be the pane rather than a padded column, or the
-             headings would pin against a padding edge instead of the toolbar's
-             hairline. */
+          /* The directory is the surface: its views run to the panel's edges and
+             their headings pin as you scroll past them. It needs the scrollport
+             to be the pane rather than a padded column, or they would pin against
+             a padding edge instead of the toolbar's hairline. */
           fill
           contentClassName="overflow-y-auto"
           toolbar={
             <>
+              {mode === "directory" && <ViewSwitch views={DIRECTORY_VIEWS} view={view} onViewChange={setView} model={model} />}
               {mode === "monitor" && <ParityQuickChips parity={model.parity} filters={filters} onFiltersChange={setFilters} />}
-              <AcceptanceFilterBar
-                filters={filters}
-                onChange={setFilters}
-                anchorOptions={anchorOptions}
-                projectId={id}
-                project={projectBundle}
-                {...(mode === "directory" ? { allExpanded, onToggleExpandAll: () => setAllExpanded((prev) => !prev) } : {})}
-              />
+              <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} projectId={id} project={projectBundle} />
             </>
           }
         >
@@ -253,15 +255,7 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
               <ParityMonitor parity={model.parity} onSelect={handleSelectNode} />
             </div>
           ) : (
-            <AcceptanceMatrix
-              acceptances={filtered}
-              edges={dataEdges}
-              nodesById={nodesById}
-              onSelect={handleSelectNode}
-              projectId={id}
-              project={projectBundle}
-              allExpanded={allExpanded}
-            />
+            <AcceptancesDirectory model={model} view={view} onSelect={handleSelectNode} />
           )}
         </PageSurface>
       </PageShell>
