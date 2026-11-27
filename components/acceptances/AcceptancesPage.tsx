@@ -22,6 +22,7 @@ import { AcceptancesDirectory } from "@/components/acceptances/AcceptancesDirect
 import { DEFAULT_VIEW, DIRECTORY_VIEWS, viewFromParam, type DirectoryViewId } from "@/components/acceptances/directory-views";
 import { ViewSwitch } from "@/components/acceptances/ViewSwitch";
 import { ParityMonitor, ParityQuickChips } from "@/components/acceptances/ParityMonitor";
+import { ValueLens } from "@/components/acceptances/ValueView";
 import { buildAcceptancesModel } from "@/lib/utils/acceptances-model";
 import { PageError } from "@/components/layout/PageError";
 import { PageLoading } from "@/components/layout/PageLoading";
@@ -262,6 +263,7 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
                 project={projectBundle}
                 {...(mode === "directory" && folds ? { allExpanded, onToggleExpandAll: () => setExpandOverride(!allExpanded) } : {})}
               />
+              {mode === "directory" && view === "value" && <ValueLens value={model.value} filters={filters} onFiltersChange={setFilters} />}
             </>
           }
         >

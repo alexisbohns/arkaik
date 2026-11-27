@@ -1,0 +1,678 @@
+/* Acceptances · Value view — "do we deliver the value we stand for?" The tier
+ * strip, the served | cost rows, the dense promise line and its peek card, and
+ * the element lens. Prefix `ka-value-`; markup in components/acceptances/
+ * ValueView.tsx, vocabulary in value-kit.tsx. One grammar: solid = weighed,
+ * hatched = a guess, dashed amber = owed, red = cost (never netted against
+ * what is served). Ported from the 2026-11 tweaker exploration (owner's recipe
+ * "lead-owner-2"), so declarations read machine-ordered. */
+:root {
+  --ka-value-veil: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+  --ka-value-veil-2: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+  --ka-value-raise: var(--md-surface-container-lowest);
+  --ka-value-outer: 1.375rem;
+  --ka-value-joint: var(--mx-joint, 5px);
+  --ka-value-gap: var(--mx-gap, 3px);
+}
+:root.dark {
+  --ka-value-veil: color-mix(in srgb, var(--md-on-surface) 9%, transparent);
+  --ka-value-veil-2: color-mix(in srgb, var(--md-on-surface) 14%, transparent);
+  --ka-value-raise: var(--md-surface-container-high);
+}
+:root [data-vt="served"],
+:root [data-sign="plus"] {
+  --vt-hue: var(--tone-green);
+}
+:root [data-vt="cost"],
+:root [data-sign="minus"] {
+  --vt-hue: var(--tone-red);
+}
+:root [data-vt="owed"] {
+  --vt-hue: var(--tone-amber);
+}
+:root [data-vt="review"] {
+  --vt-hue: var(--tone-indigo);
+}
+:root [data-sign="zero"] {
+  --vt-hue: var(--tone-neutral);
+}
+:root :is([data-vt], [data-sign]) {
+  --vt-tint: color-mix(in oklab, var(--vt-hue) 12%, var(--md-surface-container-lowest));
+  --vt-tint-2: color-mix(in oklab, var(--vt-hue) 24%, var(--md-surface-container-lowest));
+  --vt-ink: var(--vt-hue);
+  --vt-on: var(--md-surface-container-lowest);
+  --vt-hatch: repeating-linear-gradient(135deg, var(--vt-hue) 0 1.5px, transparent 1.5px 4.5px);
+}
+:root.dark :is([data-vt], [data-sign]) {
+  --vt-tint: color-mix(in oklab, var(--vt-hue) 15%, var(--md-surface-container));
+  --vt-tint-2: color-mix(in oklab, var(--vt-hue) 30%, var(--md-surface-container));
+  --vt-on: var(--md-surface);
+}
+:root .ka-value-meter {
+  --vm-h: .5rem;
+  width: 100%;
+  height: var(--vm-h);
+  border-radius: calc(var(--vm-h) / 2);
+  background: var(--ka-value-veil);
+  align-items: center;
+  display: flex;
+  overflow: hidden;
+}
+:root .ka-value-meter[data-size="xs"] {
+  --vm-h: .25rem;
+}
+:root .ka-value-meter[data-size="sm"] {
+  --vm-h: .375rem;
+}
+:root .ka-value-meter[data-size="lg"] {
+  --vm-h: .875rem;
+}
+:root .ka-value-meter-fill {
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: 3px;
+  height: 100%;
+  display: flex;
+}
+:root .ka-value-meter-solid {
+  background: var(--vt-hue);
+  flex-grow: 0;
+  flex-shrink: 0;
+  height: 100%;
+}
+:root .ka-value-meter-guess {
+  background: var(--vt-hatch);
+  height: 100%;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--vt-hue) 70%, transparent);
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+:root .ka-value-meter-owed {
+  box-sizing: border-box;
+  border: 1.5px dashed var(--tone-amber);
+  border-radius: 0 calc(var(--vm-h) / 2) calc(var(--vm-h) / 2) 0;
+  background: color-mix(in oklab, var(--tone-amber) 14%, transparent);
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: 4px;
+  height: 100%;
+}
+:root .ka-value-meter[data-size="xs"] .ka-value-meter-owed {
+  border-width: 1px;
+}
+:root .ka-value-guesstag {
+  white-space: nowrap;
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  align-items: center;
+  gap: .375rem;
+  font-size: .75rem;
+  line-height: 1;
+  display: inline-flex;
+}
+:root .ka-value-swatch {
+  opacity: .8;
+  background: repeating-linear-gradient(135deg, currentColor 0 1.5px, #0000 1.5px 4px);
+  border-radius: 3px;
+  flex: none;
+  width: .875rem;
+  height: .625rem;
+  box-shadow: inset 0 0 0 1px;
+}
+:root .ka-value-level {
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+  border-radius: .75rem;
+  flex: none;
+  justify-content: center;
+  align-items: center;
+  min-width: 2.125rem;
+  height: 1.5rem;
+  padding: 0 .5rem;
+  font-size: .75rem;
+  font-weight: 650;
+  line-height: 1;
+  display: inline-flex;
+}
+:root .ka-value-level[data-size="sm"] {
+  border-radius: .625rem;
+  min-width: 1.75rem;
+  height: 1.25rem;
+  padding: 0 .375rem;
+  font-size: .6875rem;
+}
+:root .ka-value-level[data-who="person"] {
+  background: var(--vt-hue);
+  color: var(--vt-on);
+}
+:root .ka-value-level[data-who="agent"] {
+  background: var(--vt-tint-2);
+  color: var(--vt-ink);
+}
+:root .ka-value-level[data-who="guess"] {
+  background: var(--vt-hatch), transparent;
+  color: var(--vt-ink);
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--vt-hue) 60%, transparent);
+  background-size: auto;
+}
+:root .ka-value-level[data-who="guess"] .ka-value-level-n {
+  background: var(--md-surface-container-lowest);
+  border-radius: .375rem;
+  padding: .0625rem .25rem;
+}
+:root.dark .ka-value-level[data-who="guess"] .ka-value-level-n {
+  background: var(--md-surface-container);
+}
+:root .ka-value-level[data-sign="zero"][data-who="person"] {
+  background: var(--md-on-surface-variant);
+}
+:root .ka-value-empty {
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  padding: 3.5rem 1.5rem;
+  font-size: .9375rem;
+  display: flex;
+}
+:root .ka-value-empty p {
+  text-wrap: balance;
+  max-width: 28rem;
+}
+:root .ka-value-empty-mark {
+  background: var(--tone-green);
+  opacity: .18;
+  border-radius: 1.25rem 1.25rem 1.25rem .375rem;
+  width: 3.5rem;
+  height: 3.5rem;
+}
+:root :is(.ka-value-press, .ka-value-press-row):focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  :root :is(.ka-value-meter, .ka-value-level) {
+    border: 1px solid canvastext;
+  }
+  :root .ka-value-meter-owed {
+    border-color: canvastext;
+  }
+}
+:root .ka-value-hero {
+  flex-direction: column;
+  gap: .875rem;
+  padding: 1rem 1rem .5rem;
+  display: flex;
+}
+:root .ka-value-gl {
+  color: var(--md-on-surface-variant);
+  text-wrap: pretty;
+  align-items: center;
+  gap: .625rem;
+  margin: 0;
+  font-size: .8125rem;
+  line-height: 1.4;
+  display: flex;
+}
+:root .ka-value-gl b {
+  color: var(--md-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+:root .ka-value-hero [data-vt="cost"] {
+  color: var(--tone-red);
+}
+:root .ka-value-ts-strip {
+  gap: var(--ka-value-gap);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .ka-value-ts-seg {
+  border-radius: var(--ka-value-joint);
+  background: color-mix(in oklab, var(--tone-green) 9%, var(--md-surface-container-lowest));
+  flex-direction: column;
+  gap: .4375rem;
+  min-width: min(100%, 11rem);
+  padding: .875rem 1rem 1rem;
+  display: flex;
+}
+:root.dark .ka-value-ts-seg {
+  background: color-mix(in oklab, var(--tone-green) 11%, var(--md-surface-container));
+}
+:root .ka-value-ts-seg:first-child {
+  border-radius: 1.375rem var(--ka-value-joint) var(--ka-value-joint) 1.375rem;
+}
+:root .ka-value-ts-seg:last-child {
+  border-radius: var(--ka-value-joint) 1.375rem 1.375rem var(--ka-value-joint);
+}
+:root .ka-value-ts-name {
+  font-family: var(--font-display, inherit);
+  letter-spacing: 0;
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+:root .ka-value-ts-fig {
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+  font-size: .8125rem;
+}
+:root .ka-value-ts-fig b {
+  color: var(--md-on-surface);
+  font-size: 1.375rem;
+}
+:root .ka-value-ts-foot {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .25rem .5rem;
+  margin: 0;
+  font-size: .75rem;
+  display: flex;
+}
+@media (forced-colors: active) {
+  :root .ka-value-ts-seg {
+    border: 1px solid canvastext;
+  }
+}
+:root .ka-value-split {
+  flex-direction: column;
+  padding-bottom: 2rem;
+  display: flex;
+}
+:root .ka-value-sp-legend {
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: .25rem 1rem .5rem;
+  font-size: .75rem;
+  font-weight: 650;
+  display: grid;
+}
+:root .ka-value-sp-legend [data-vt="cost"] {
+  color: var(--vt-ink);
+  text-align: left;
+}
+:root .ka-value-sp-legend [data-vt="served"] {
+  color: var(--vt-ink);
+  text-align: right;
+}
+:root .ka-value-sp-legend i {
+  opacity: .8;
+  font-style: normal;
+}
+:root .ka-value-sp-list {
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .ka-value-sp-item {
+  border-bottom: 1px solid var(--ka-value-veil);
+}
+:root .ka-value-sp-item[data-open="true"] {
+  background: color-mix(in oklab, var(--tone-green) 5%, transparent);
+}
+:root .ka-value-sp-row {
+  cursor: pointer;
+  width: 100%;
+  color: var(--md-on-surface);
+  text-align: left;
+  background: none;
+  border: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 11rem) minmax(0, 2.4fr);
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem 1rem;
+  display: grid;
+}
+:root .ka-value-sp-row:hover {
+  background: var(--ka-value-veil);
+}
+:root .ka-value-sp-cost {
+  justify-content: flex-end;
+  align-items: center;
+  gap: .5rem;
+  display: flex;
+}
+:root .ka-value-sp-cost .ka-value-sp-bar {
+  flex: 1;
+  transform: scaleX(-1);
+}
+:root .ka-value-sp-cost[data-empty="true"] .ka-value-sp-bar {
+  opacity: .3;
+}
+:root .ka-value-sp-served {
+  align-items: center;
+  gap: .5rem;
+  display: flex;
+}
+:root .ka-value-sp-bar {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+:root .ka-value-sp-n {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: .75rem;
+}
+:root .ka-value-sp-n[data-k="cost"] {
+  text-align: right;
+  min-width: 1.75rem;
+  color: var(--tone-red);
+  font-weight: 650;
+}
+:root .ka-value-sp-n[data-k="served"] i {
+  color: var(--tone-amber);
+  font-style: normal;
+}
+:root .ka-value-sp-name {
+  color: var(--md-on-surface);
+  align-items: center;
+  gap: .375rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  display: flex;
+}
+:root .ka-value-sp-name > span {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+:root .ka-value-sp-chev {
+  opacity: .5;
+  margin-inline-start: auto;
+}
+:root .ka-value-sp-item[data-open="true"] .ka-value-sp-chev {
+  transform: rotate(180deg);
+}
+:root .ka-value-sp-foot {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  padding: .75rem 1rem;
+  font-size: .75rem;
+}
+@media (width <= 40rem) {
+  :root .ka-value-sp-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  :root .ka-value-sp-name {
+    grid-area: 1 / 1 / auto / -1;
+  }
+}
+:root .ka-value-ep {
+  flex-direction: column;
+  gap: .75rem;
+  padding: .25rem 0 .75rem;
+  display: flex;
+}
+:root .ka-value-ep-block ul {
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .ka-value-ep-h {
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--vt-ink);
+  align-items: center;
+  gap: .5rem;
+  margin: 0;
+  padding: .25rem 1rem;
+  font-size: .75rem;
+  font-weight: 650;
+  display: flex;
+}
+:root .ka-value-ep-h b {
+  background: var(--vt-tint-2);
+  font-variant-numeric: tabular-nums;
+  border-radius: .625rem;
+  justify-content: center;
+  align-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 .375rem;
+  display: inline-flex;
+}
+:root .ka-value-ep-none {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  padding: .25rem 1rem;
+  font-size: .8125rem;
+}
+:root .ka-value-ep-more {
+  background: var(--ka-value-veil);
+  color: var(--md-on-surface);
+  cursor: pointer;
+  border: 0;
+  border-radius: 1rem;
+  align-self: flex-start;
+  margin: .25rem 1rem 0;
+  padding: .375rem .875rem;
+  font-size: .8125rem;
+  font-weight: 600;
+}
+:root .ka-value-ep-more:hover {
+  background: var(--ka-value-veil-2);
+}
+:root .ka-value-press-row {
+  text-align: left;
+  cursor: pointer;
+  color: var(--md-on-surface);
+}
+:root .ka-value-pp[data-ac-gap="true"] {
+  box-shadow: inset 3px 0 0 var(--tone-amber);
+}
+:root .ka-value-pp {
+  border: 0;
+  border-bottom: 1px solid var(--ka-value-veil);
+  background: none;
+  align-items: center;
+  gap: .625rem;
+  width: 100%;
+  padding: .4375rem 1rem .4375rem 1.25rem;
+  display: flex;
+}
+:root .ka-value-pp:hover {
+  background: var(--ka-value-veil);
+}
+:root .ka-value-pp-dot {
+  background: none;
+  border-radius: 50%;
+  flex: none;
+  width: .5rem;
+  height: .5rem;
+}
+:root .ka-value-pp-dot[data-on="true"] {
+  background: var(--vt-hue, var(--tone-amber));
+}
+:root .ka-value-pp-dot[data-on="true"]:not([data-vt]) {
+  background: var(--tone-amber);
+}
+:root .ka-value-pp-title {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-size: .875rem;
+  overflow: hidden;
+}
+:root .ka-value-pp-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface-variant);
+  flex: none;
+  align-items: baseline;
+  gap: .375rem;
+  font-size: .75rem;
+  display: inline-flex;
+}
+:root .ka-value-pp-n [data-k="cost"] {
+  color: var(--tone-red);
+  font-weight: 650;
+}
+:root .ka-value-pp-guess {
+  background: repeating-linear-gradient(135deg, currentColor 0 1.5px, #0000 1.5px 4px);
+  border-radius: 2px;
+  align-self: center;
+  width: .75rem;
+  height: .5rem;
+  box-shadow: inset 0 0 0 1px;
+}
+:root .ka-value-pp-card {
+  flex-direction: column;
+  gap: .625rem;
+  width: min(22rem, 100vw - 2rem);
+  padding: 1rem 1.125rem;
+  display: flex;
+}
+:root .ka-value-pp-card p {
+  margin: 0;
+}
+:root .ka-value-pp-card-t {
+  font-size: .9375rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+:root .ka-value-pp-card-v,
+:root .ka-value-pp-card-hint {
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+}
+:root .ka-value-pp-card-f {
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+  gap: .25rem 1rem;
+  font-size: .8125rem;
+  display: flex;
+}
+:root .ka-value-pp-card-f b {
+  color: var(--vt-ink, var(--md-on-surface));
+  font-size: 1.125rem;
+}
+:root .ka-value-pp-card-cells {
+  flex-direction: column;
+  gap: .3125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .ka-value-pp-card-cells li {
+  align-items: center;
+  gap: .5rem;
+  font-size: .8125rem;
+  display: flex;
+}
+:root .ka-value-pp-card-cells i {
+  color: var(--md-on-surface-variant);
+  margin-inline-start: auto;
+  font-size: .6875rem;
+  font-style: normal;
+}
+:root .ka-value-pp-card-flag {
+  background: var(--vt-tint-2);
+  color: var(--vt-ink);
+  border-radius: .75rem;
+  align-items: flex-start;
+  gap: .4375rem;
+  padding: .4375rem .625rem;
+  font-size: .75rem;
+  line-height: 1.4;
+  display: flex;
+}
+:root .ka-value-pp-card-flag svg {
+  flex: none;
+  margin-top: .125rem;
+}
+@media (forced-colors: active) {
+  :root .ka-value-pp-card {
+    border: 1px solid canvastext;
+  }
+}
+:root .ka-value-lens {
+  align-items: center;
+  gap: .625rem;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+}
+:root .ka-value-lens-k {
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--md-on-surface-variant);
+  flex: none;
+  font-size: .75rem;
+  font-weight: 650;
+}
+:root .ka-value-lens-row {
+  gap: var(--ka-value-gap);
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  scrollbar-width: thin;
+  flex: 1;
+  min-width: 0;
+  padding: .125rem .125rem .25rem;
+  display: flex;
+  overflow-x: auto;
+}
+:root .ka-value-lens-chip {
+  border-radius: var(--ka-value-joint);
+  background: var(--ka-value-veil);
+  height: 2rem;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  cursor: pointer;
+  border: 0;
+  flex: none;
+  align-items: center;
+  gap: .375rem;
+  padding: 0 .75rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  display: inline-flex;
+}
+:root .ka-value-lens-chip:first-child {
+  border-start-start-radius: 1rem;
+  border-end-start-radius: 1rem;
+}
+:root .ka-value-lens-chip:last-child {
+  border-start-end-radius: 1rem;
+  border-end-end-radius: 1rem;
+}
+:root .ka-value-lens-chip:hover {
+  background: var(--ka-value-veil-2);
+}
+:root .ka-value-lens-chip b {
+  background: color-mix(in oklab, var(--tone-amber) 28%, transparent);
+  min-width: 1.25rem;
+  height: 1.25rem;
+  color: var(--tone-amber);
+  font-variant-numeric: tabular-nums;
+  border-radius: .625rem;
+  place-items: center;
+  padding: 0 .3125rem;
+  font-size: .6875rem;
+  display: inline-grid;
+}
+:root .ka-value-lens-chip[aria-pressed="true"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-radius: 1rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root .ka-value-lens-chip {
+    transition: border-radius var(--mx-spring-fast-dur, .44s) var(--mx-spring-fast, ease), background-color .2s var(--mx-effects, ease);
+  }
+}
+@media (forced-colors: active) {
+  :root .ka-value-lens-chip {
+    border: 1px solid canvastext;
+  }
+}
