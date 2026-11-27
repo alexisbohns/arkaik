@@ -379,6 +379,22 @@
 :root:not([data-panel-look="calm"]) header .np-chip {
   flex-shrink: 0;
 }
+/* A narrow panel (a 1024px window with a panel open leaves the header row ~270px) used to
+   push the actions under the close button. The row measures itself: at 26rem the species
+   word goes — the seal beside it already says it — and the product chip may shrink to its
+   mark and chevron rather than crowd the actions out. */
+:root:not([data-panel-look="calm"]) :has(> [data-node-panel-header]) {
+  container: np-head / inline-size;
+}
+@container np-head (max-width: 26rem) {
+  :root:not([data-panel-look="calm"]) [data-node-panel-header] > abbr {
+    display: none;
+  }
+  :root:not([data-panel-look="calm"]) header [data-node-panel-header] > .np-chip {
+    flex-shrink: 1;
+    min-width: 3.5rem;
+  }
+}
 :root:not([data-panel-look="calm"]) .np-connected {
   display: flex;
   width: 100%;
