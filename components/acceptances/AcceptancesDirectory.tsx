@@ -15,6 +15,7 @@ import type { AcceptancesModel } from "@/lib/utils/acceptances-model";
 import { useQueryWriter } from "@/lib/hooks/useQueryWriter";
 import type { DirectoryViewId } from "./directory-views";
 import { ContentsView } from "./ContentsView";
+import { ValueView } from "./ValueView";
 import { MappingView } from "./MappingView";
 
 function useExceptions(allExpanded: boolean) {
@@ -60,7 +61,9 @@ export function AcceptancesDirectory({
 
   return (
     <div data-acceptances-page data-acceptances-view={view} className="flex min-h-full flex-col">
-      {view === "mapping" ? (
+      {view === "value" ? (
+        <ValueView value={model.value} onSelect={onSelect} />
+      ) : view === "mapping" ? (
         <MappingView mapping={model.mapping} onSelect={onSelect} isCollapsed={journeys.isCollapsed} onToggleJourney={journeys.toggle} />
       ) : (
         <ContentsView mapping={model.mapping} onSelect={onSelect} onOpenJourney={openJourney} />

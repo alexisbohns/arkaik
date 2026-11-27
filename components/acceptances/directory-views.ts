@@ -5,7 +5,7 @@ import type { AcceptancesModel } from "@/lib/utils/acceptances-model";
  * view is one entry here, one branch in `AcceptancesDirectory`, and its component.
  * The view lives in `?view=`; Contents is the default, so it is the absence.
  */
-export type DirectoryViewId = "contents" | "mapping";
+export type DirectoryViewId = "contents" | "mapping" | "value";
 
 export interface DirectoryView {
   id: DirectoryViewId;
@@ -35,6 +35,16 @@ export const DIRECTORY_VIEWS: readonly DirectoryView[] = [
     question: "What does the product promise, journey by journey?",
     count: (model) => ({ n: model.mapping.totals.journeys, word: model.mapping.totals.journeys === 1 ? "journey" : "journeys" }),
     folds: { openByDefault: true },
+  },
+  {
+    id: "value",
+    label: "Value",
+    question: "Do we deliver the value we stand for?",
+    // What the weighing found to look at: flags (unsupported claims, unclaimed value or cost).
+    count: (model) => {
+      const finds = model.value.available ? model.value.flagged.length : 0;
+      return { n: finds, word: finds === 1 ? "find" : "finds" };
+    },
   },
 ];
 
