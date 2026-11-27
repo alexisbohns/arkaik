@@ -19,6 +19,8 @@ import { PlatformRollupTiles } from "@/components/panels/PlatformRollupTiles";
 import { PlaylistEditor } from "@/components/panels/PlaylistEditor";
 import { AcceptanceAuthoredFields } from "@/components/panels/AcceptanceAuthoredFields";
 import { AcceptancePlatformsSection } from "@/components/panels/AcceptancePlatformsSection";
+import { AcceptanceHeaderMarks } from "@/components/panels/AcceptanceHeaderMarks";
+import { AcceptanceWhere } from "@/components/panels/AcceptanceWhere";
 import { WeighingGroup } from "@/components/panels/WeighingGroup";
 import { DecisionEditor, DecisionReasoning, DecisionVerdict, useDecisionEditor } from "@/components/panels/DecisionEditor";
 import { DecisionLineage } from "@/components/panels/DecisionLineage";
@@ -814,6 +816,9 @@ export function NodeDetailPanelHeader({
             showLabel={false}
           />
           <CopyIdChip id={node.id} />
+          {node.species === "acceptance" && (
+            <AcceptanceHeaderMarks node={node} allNodes={allNodes} allEdges={allEdges} scope={scope} readOnly={!onUpdate} />
+          )}
           {showProduct && (
             <span className="np-calm-header-product">
               <span className="np-calm-header-in" aria-hidden="true">
@@ -860,7 +865,7 @@ export function NodeDetailPanelHeader({
   // read-only chip — the control is the verdict in the body.
   const decisionStatus = node.species === "decision" ? decisionStatusOf(node) : null;
 
-  return (
+  const header = (
     <span
       data-node-panel-header
       data-species={node.species}
@@ -901,6 +906,17 @@ export function NodeDetailPanelHeader({
       )}
     </span>
   );
+  // An acceptance says where it stands beside its id: its marks ride after the
+  // header row, as a sibling the stylesheet wraps with it when the panel is narrow.
+  if (node.species === "acceptance") {
+    return (
+      <>
+        {header}
+        <AcceptanceHeaderMarks node={node} allNodes={allNodes} allEdges={allEdges} scope={scope} readOnly={!onUpdate} />
+      </>
+    );
+  }
+  return header;
 }
 
 /**
@@ -1020,9 +1036,7 @@ export function NodeDetailPanel({
           node={node}
           onUpdate={onUpdate}
           authored={
-            node.species === "acceptance" && onUpdate ? (
-              <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} />
-            ) : undefined
+            node.species === "acceptance" ? <AcceptanceAuthoredFields node={node} onUpdate={onUpdate} /> : undefined
           }
         />
       )}
@@ -1038,27 +1052,20 @@ export function NodeDetailPanel({
       {/* Groups live in a column of their own, spaced by the group style
           (panels.css): the body's `gap-4` is the intro's rhythm, not theirs. */}
       <div className="flex flex-col">
-        {/* The only one of the three platform regions whose bar is opened out
-            here rather than by the section itself. `AcceptancePlatformsSection`
-            is the `Field` body lifted verbatim out of the old `AcceptanceEditor` and
-            nothing more — it renders one `PlatformVariants` and holds no state
-            — so giving it a group of its own would have been a second change
-            smuggled into the move. The two below own their bars because each is
-            already a whole region: a local component with state, handlers and a
-            condition. Nothing depends on the asymmetry — the semantics test
-            sweeps the whole panels directory, so this bar can move into the
-            section the day the section grows enough to deserve it. */}
-        {node.species === "acceptance" && onUpdate && (
-          <PanelGroup key={`platforms-${node.id}`} title="Platforms">
-            <div className={PANEL_GUTTER}>
-              <AcceptancePlatformsSection
-                node={node}
-                scope={scope}
-                onUpdate={onUpdate}
-                onScreenshot={onScreenshot}
-              />
-            </div>
-          </PanelGroup>
+        {/* The acceptance's Platforms: a quiet list of rows, one per platform, with
+            the status select when there is a save path. Read-only surfaces (the
+            Changelog) get the same rows as words, and the notes and shots that
+            exist. It opens its own bar, like the view's and the flow's. */}
+        {node.species === "acceptance" && (
+          <AcceptancePlatformsSection
+            key={`platforms-${node.id}`}
+            node={node}
+            scope={scope}
+            allNodes={allNodes}
+            allEdges={allEdges}
+            onUpdate={onUpdate}
+            onScreenshot={onScreenshot}
+          />
         )}
         {/* What the promise is worth: a signed level per element of value, how
             sure the scorer is and why, and what that adds up to. A group of its
@@ -1099,6 +1106,19 @@ export function NodeDetailPanel({
         )}
         {decisionPanel && decisionPanel.lineage.length > 1 && (
           <DecisionLineage key={`lineage-${node.id}`} model={decisionPanel} onNavigate={onNavigate} />
+        )}
+        {/* Where the promise lives — journey › screen — above the links that
+            are added and removed in Relations. */}
+        {node.species === "acceptance" && (
+          <AcceptanceWhere
+            key={`where-${node.id}`}
+            node={node}
+            scope={scope}
+            allNodes={allNodes}
+            allEdges={allEdges}
+            onNavigate={onNavigate}
+            readOnly={!onUpdate}
+          />
         )}
         <RelationsGroup
           key={`relations-${node.id}`}

@@ -353,6 +353,29 @@ assert(
   "Relations is not also opened inline — one component owns that bar",
 );
 
+// A read-only surface (the Changelog) opens an acceptance with no save path, and
+// the panel shows what the promise says there: its Gherkin and its Platforms are
+// mounted whatever `onUpdate` is, and each one draws itself without controls. A
+// mount that waits for `onUpdate` makes both vanish — the bug this pins.
+{
+  const mounted = (tag) => elements(nodePanel).find((element) => element.tag === tag);
+  const platformsMount = mounted("AcceptancePlatformsSection");
+  assert(platformsMount !== undefined, "the node panel mounts the acceptance's Platforms");
+  assert(
+    platformsMount !== undefined && !/onUpdate\s*&&/.test(nodePanelSource.slice(Math.max(0, platformsMount.opening.getStart() - 120), platformsMount.opening.getStart())),
+    "…whether or not there is a save path (Platforms reads on the Changelog)",
+  );
+  const authoredMount = mounted("AcceptanceAuthoredFields");
+  assert(authoredMount !== undefined, "the node panel mounts the acceptance's How and Why");
+  assert(
+    !/node\.species === "acceptance" && onUpdate/.test(nodePanelSource),
+    "…whether or not there is a save path (the Gherkin reads on the Changelog)",
+  );
+  const fields = fs.readFileSync(path.join(PANELS_DIR, "AcceptanceAuthoredFields.tsx"), "utf8");
+  const platforms = fs.readFileSync(path.join(PANELS_DIR, "AcceptancePlatformsSection.tsx"), "utf8");
+  assert(/onUpdate\?:/.test(fields) && /onUpdate\?:/.test(platforms), "…so both take an optional save path, and draw without controls when it is absent");
+}
+
 // One title across three species: the group is an outline entry, and a reader
 // walking an acceptance, a view and a flow should meet one name for one shelf.
 //

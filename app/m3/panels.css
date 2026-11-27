@@ -481,94 +481,6 @@
   outline: 3px solid var(--md-secondary);
   outline-offset: 2px;
 }
-:root:not([data-panel-look="calm"]) .np-authored {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: 0.5rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-mark {
-  align-self: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  color: var(--np-ink);
-}
-:root:not([data-panel-look="calm"]) .np-authored-title {
-  font-size: 1rem;
-  font-weight: 650;
-  color: var(--md-on-surface);
-}
-:root:not([data-panel-look="calm"]) .np-authored-sub {
-  font-size: 0.75rem;
-  color: var(--md-on-surface-variant);
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field {
-  display: grid;
-  border-radius: 1.25rem;
-  background: var(--np-tint);
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field:focus-within {
-  outline: 3px solid var(--md-secondary);
-  outline-offset: 2px;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field > * {
-  grid-area: 1 / 1;
-  margin: 0;
-  padding: 0.875rem 1rem;
-  border: 0;
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1.6;
-  letter-spacing: normal;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-mirror {
-  color: var(--md-on-surface);
-  pointer-events: none;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-input {
-  min-height: calc(3 * 1.6em + 1.75rem);
-  field-sizing: content;
-  resize: none;
-  overflow: hidden;
-  background: transparent;
-  color: var(--md-on-surface);
-  caret-color: var(--md-on-surface);
-  outline: none;
-}
-:root:not([data-panel-look="calm"])
-  .np-gherkin-field[data-lit]
-  .np-gherkin-input {
-  color: transparent;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-input::placeholder {
-  color: var(--md-on-surface-variant);
-}
-:root:not([data-panel-look="calm"])
-  .np-gherkin-field[data-lit]
-  .np-gherkin-input::selection {
-  color: transparent;
-  background: color-mix(in srgb, var(--md-secondary) 30%, transparent);
-}
-:root:not([data-panel-look="calm"]) .np-kw {
-  font-weight: inherit;
-  color: var(--np-ink);
-  background: var(--np-tint-2);
-  border-radius: 0.3rem;
-  box-shadow: 0 0 0 0.15rem var(--np-tint-2);
-}
 :root:not([data-panel-look="calm"]) .np-values > div > div:first-child {
   min-height: 2.75rem;
   padding: 0.375rem 0.5rem;
@@ -1548,7 +1460,6 @@
   :root:not([data-panel-look="calm"]) .np-chip,
   :root:not([data-panel-look="calm"]) .np-connected > button,
   :root [data-np-status],
-  :root:not([data-panel-look="calm"]) .np-gherkin-field,
   :root:not([data-panel-look="calm"]) .np-values > div > div:first-child,
   :root
     :is(.np-pv-shot-frame, .np-pv-drop, .np-pv-notes textarea, .np-deck-tile),
@@ -1565,16 +1476,6 @@
     background: Highlight;
     color: HighlightText;
     forced-color-adjust: none;
-  }
-  :root:not([data-panel-look="calm"])
-    .np-gherkin-field[data-lit]
-    .np-gherkin-mirror {
-    display: none;
-  }
-  :root:not([data-panel-look="calm"])
-    .np-gherkin-field[data-lit]
-    .np-gherkin-input {
-    color: CanvasText;
   }
   :root [data-node-panel] [data-history-feed] > [data-feed-row]::before,
   :root:not([data-panel-groups="cards"]) .np-group-title::before {
@@ -1663,36 +1564,6 @@
 }
 [class*="calm-"][hidden] {
   display: none !important;
-}
-.np-calm-props {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.np-calm-prop {
-  display: grid;
-  grid-template-columns: clamp(4.5rem, 28%, 6.5rem) minmax(0, 1fr);
-  column-gap: 0.75rem;
-  align-items: center;
-  min-height: 2rem;
-}
-.np-calm-prop-top {
-  align-items: start;
-}
-.np-calm-prop-top > .np-calm-prop-label {
-  padding-top: 0.375rem;
-}
-.np-calm-prop-label {
-  font-size: 13px;
-  line-height: 1.25rem;
-  font-weight: 400;
-  color: var(--md-on-surface-variant);
-}
-.np-calm-prop-value {
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
-  min-width: 0;
 }
 .np-calm-value {
   display: inline-flex;
@@ -1822,11 +1693,7 @@
   min-height: 2rem;
   max-height: 18rem;
 }
-:is(
-  .np-calm-text-button,
-  .np-calm-gherkin-read,
-  .np-calm-header-actions
-):focus-visible {
+:is(.np-calm-text-button, .np-calm-header-actions):focus-visible {
   outline: 3px solid var(--md-secondary);
   outline-offset: 2px;
 }
@@ -1986,43 +1853,6 @@
   background: var(--md-secondary-container);
   color: var(--md-on-secondary-container);
 }
-.np-calm-prop-top .np-calm-values {
-  width: 100%;
-}
-.np-calm-gherkin-read {
-  display: block;
-  width: calc(100% + 1.5rem);
-  margin-inline: -0.75rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: var(--md-shape-md);
-  text-align: left;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--md-on-surface);
-  cursor: text;
-}
-.np-calm-gherkin-read:hover {
-  background: var(--m3-hover);
-}
-.np-calm-gherkin-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.np-calm-gherkin-line {
-  display: block;
-}
-.np-calm-gherkin-line:has(> .np-calm-gherkin-kw) {
-  display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
-}
-.np-calm-gherkin-kw {
-  display: inline-block;
-  min-width: 3.25rem;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--md-on-surface-variant);
-}
 :root[data-panel-look="calm"] [data-node-panel] .uppercase {
   text-transform: none;
   letter-spacing: 0;
@@ -2041,27 +1871,16 @@
       rotate var(--mx-spring-fast-dur, 440ms) var(--mx-spring-fast, ease-out),
       opacity 200ms var(--mx-effects, ease);
   }
-  .np-calm-textarea,
-  .np-calm-gherkin-read {
+  .np-calm-textarea {
     transition: background-color 200ms var(--mx-effects, ease);
   }
 }
 @media (forced-colors: active) {
   .np-calm-textarea,
   .np-calm-chip-static,
-  .np-calm-gherkin-read,
   .np-calm-values > div > div:first-child {
     border: 1px solid ButtonText;
   }
-}
-.np-calm-prop-value > .np-calm-gherkin-read {
-  width: calc(100% + 0.5rem);
-  margin-inline: -0.5rem 0;
-  padding-inline: 0.5rem;
-}
-.np-calm-props > .np-calm-prop-top + .np-calm-prop,
-.np-calm-props > .np-calm-prop + .np-calm-prop-top {
-  margin-top: 0.375rem;
 }
 
 /* Calm — the playlist as a dense, quiet rail: numerals without their circle,

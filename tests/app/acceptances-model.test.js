@@ -102,6 +102,19 @@ check("no assessment: every promise is unweighed, served nothing", m.value.unwei
 const panel = buildAcceptancePanel({ node: nodesById.get("AC-gap"), nodes, edges, scope: multi, weighingSection: undefined, readOnly: true });
 check("the panel model carries the same promise and says read-only", panel.promise.hasGap === true && panel.readOnly === true);
 
+// where a promise lives: journey › screen, the journeys above, and what stands beside it
+check("the panel says where a promise lives: its journey and the screen in it", panel.where.places.map((x) => x.journey.id).join() === "F-record" && panel.where.places[0].screens.map((s) => s.id).join() === "V-detail" && panel.where.screen.id === "V-detail");
+const panelOf = (id, extra = {}) => buildAcceptancePanel({ node: nodesById.get(id), nodes: extra.nodes ?? nodes, edges: extra.edges ?? edges, scope: multi, weighingSection: undefined, readOnly: false });
+check("a promise on a screen no journey holds is placed outside", panelOf("AC-outside").where.outside.map((s) => s.id).join() === "V-lonely" && panelOf("AC-outside").where.places.length === 0 && panelOf("AC-outside").where.screen.id === "V-lonely");
+check("a promise covering nothing is unanchored, with no screen", panelOf("AC-free").where.unanchored === true && panelOf("AC-free").where.screen === null);
+check("a promise covering a flow itself is direct, with no screen of its own", panelOf("AC-home").where.places[0].direct === true);
+const crowded = [...edges, covers("AC-web", "V-detail")];
+check("the promises beside it are the others covering the same screen", panelOf("AC-gap", { edges: crowded }).where.beside.map((n) => n.id).join() === "AC-web");
+const nested = [...nodes, flow("F-parent", "Parent", []), flow("F-grand", "Grand", [])];
+nested.find((n) => n.id === "F-parent").metadata.playlist.entries = [{ type: "flow", flow_id: "F-record" }];
+nested.find((n) => n.id === "F-grand").metadata.playlist.entries = [{ type: "flow", flow_id: "F-parent" }];
+check("the journeys above a journey are its trail, outermost first", panelOf("AC-gap", { nodes: nested }).where.places[0].trail.map((n) => n.id).join() === "F-grand,F-parent");
+
 fs.rmSync(BUILD_DIR, { recursive: true, force: true });
 if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1); }
 console.log("\nall acceptances-model tests passed");
