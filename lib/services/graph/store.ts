@@ -37,6 +37,7 @@ import {
 import { ADVISORY_LOCK, getUserTier, query, withTransaction } from "@/lib/services/db";
 import { checkHostedEntityLimit, classifyIfMatch, computeBundleDelta, type BundleDelta } from "@/lib/services/graph/restore";
 import { getHostedLimitsForTier } from "@/lib/services/limits";
+import type { ProjectAnatomy } from "@/lib/data/project-anatomy";
 
 /**
  * The hosted graph store (db/migrations/008_graph_projects.sql).
@@ -232,6 +233,70 @@ export async function listProjects(ownerIds: readonly string[]): Promise<GraphPr
     updatedAt: row.updated_at.toISOString(),
     archivedAt: row.archived_at ? row.archived_at.toISOString() : null,
   }));
+}
+
+/**
+ * Each listed project's anatomy (lib/data/project-anatomy.ts) — the species and
+ * platforms of its snapshot's nodes, and its journal's events per "YYYY-MM"
+ * month for the last 13 months — keyed by project id, owner-scoped like the
+ * listing it decorates.
+ *
+ * A separate statement from `listProjects` on purpose: the GET route merges it
+ * in and drops it if it fails, so a card losing its anatomy can never cost
+ * anyone their project list.
+ *
+ * Months come off the event's own ISO `ts` (its first seven characters), the
+ * same rule the browser backends apply; the reader buckets them against its
+ * today. `platforms` is only expanded when it IS an array, so one malformed
+ * node cannot fail the statement.
+ */
+export async function listProjectAnatomy(ownerIds: readonly string[]): Promise<Map<string, ProjectAnatomy>> {
+  const { rows } = await query<{
+    id: string;
+    species: Record<string, number> | null;
+    platforms: Record<string, number> | null;
+    months: Record<string, number> | null;
+    last_at: string | null;
+    event_total: string | number;
+  }>(
+    `select p.id,
+            (select jsonb_object_agg(sp, c) from (
+               select n->>'species' as sp, count(*) as c
+                 from jsonb_array_elements(case when jsonb_typeof(p.snapshot->'nodes') = 'array'
+                                                then p.snapshot->'nodes' else '[]'::jsonb end) n
+                where n->>'species' is not null
+                group by 1) s) as species,
+            (select jsonb_object_agg(pf, c) from (
+               select pf, count(*) as c
+                 from jsonb_array_elements(case when jsonb_typeof(p.snapshot->'nodes') = 'array'
+                                                then p.snapshot->'nodes' else '[]'::jsonb end) n
+                 cross join lateral jsonb_array_elements_text(case when jsonb_typeof(n->'platforms') = 'array'
+                                                                   then n->'platforms' else '[]'::jsonb end) pf
+                group by 1) f) as platforms,
+            (select jsonb_object_agg(m, c) from (
+               select left(e.event->>'ts', 7) as m, count(*) as c
+                 from graph_events e
+                where e.project_id = p.id
+                  and e.event->>'ts' >= to_char(now() at time zone 'utc' - interval '13 months', 'YYYY-MM')
+                group by 1) j) as months,
+            (select max(e.event->>'ts') from graph_events e where e.project_id = p.id) as last_at,
+            (select count(*) from graph_events e where e.project_id = p.id) as event_total
+       from graph_projects p
+      where p.owner_id = any($1::text[]) and p.archived_at is null`,
+    [ownerIds],
+  );
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        species: (row.species ?? {}) as ProjectAnatomy["species"],
+        platforms: (row.platforms ?? {}) as ProjectAnatomy["platforms"],
+        journal: row.last_at
+          ? { months: row.months ?? {}, lastAt: row.last_at, total: Number(row.event_total) }
+          : null,
+      },
+    ]),
+  );
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * Loads lib/data/project-sections.ts and lib/data/create-target.ts into a
+ * Loads lib/data/project-sections.ts, create-target.ts and project-anatomy.ts into a
  * running Node process without a bundler — same transpile-on-the-fly approach
  * as the other tests/data loaders.
  *
@@ -41,12 +41,21 @@ function loadProjectSections() {
     transpile(path.join(ROOT, "lib", "data", "create-target.ts"), "create-target.ts")
   );
 
+  write(
+    "project-anatomy.js",
+    transpile(path.join(ROOT, "lib", "data", "project-anatomy.ts"), "project-anatomy.ts")
+  );
+
   for (const name of fs.readdirSync(BUILD_DIR)) {
     if (name.endsWith(".js")) delete require.cache[path.join(BUILD_DIR, name)];
   }
 
   const req = (name) => require(path.join(BUILD_DIR, name));
-  return { sections: req("project-sections.js"), createTarget: req("create-target.js") };
+  return {
+    sections: req("project-sections.js"),
+    createTarget: req("create-target.js"),
+    anatomy: req("project-anatomy.js"),
+  };
 }
 
 module.exports = { loadProjectSections, BUILD_DIR };

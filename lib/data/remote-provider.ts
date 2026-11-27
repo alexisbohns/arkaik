@@ -13,6 +13,7 @@ import type {
   ReplaceProjectOptions,
 } from "./data-provider";
 import type { Edge, JournalEvent, Node, Project, ProjectBundle } from "./types";
+import type { ProjectAnatomy } from "./project-anatomy";
 
 /**
  * `DataProvider` over the hosted graph API (app/api/graph/**).
@@ -203,7 +204,15 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
 
     async listProjects(): Promise<ProjectSummary[]> {
       const { projects } = await request<{
-        projects: Array<{ id: string; title: string; nodeCount: number; edgeCount: number; createdAt: string; updatedAt: string }>;
+        projects: Array<{
+          id: string;
+          title: string;
+          nodeCount: number;
+          edgeCount: number;
+          createdAt: string;
+          updatedAt: string;
+          anatomy?: ProjectAnatomy;
+        }>;
       }>("/projects");
       return projects.map((p) => ({
         project: {
@@ -215,6 +224,7 @@ export function createRemoteProvider(options: RemoteProviderOptions = {}): DataP
         nodeCount: p.nodeCount,
         edgeCount: p.edgeCount,
         hosted: true,
+        ...(p.anatomy ? { anatomy: p.anatomy } : {}),
       }));
     },
 

@@ -1,6 +1,7 @@
 import type { JournalFamilyId, JournalPage, MutationOp, ReleaseEventCount, WeighingEventInput } from "@arkaik/schema";
 
 import type { Node, Edge, Project, ProjectBundle, JournalEvent } from "./types";
+import type { ProjectAnatomy } from "./project-anatomy";
 
 /**
  * What a project listing needs, without loading every project's whole graph.
@@ -19,6 +20,12 @@ export interface ProjectSummary {
   hosted: boolean;
   /** True for the built-in public seed project (the Arkaik self-map, cycle 4). */
   seed?: boolean;
+  /**
+   * What the graph is made of and how alive its journal is — drawn on the
+   * project's card (lib/data/project-anatomy.ts). Absent when a backend could
+   * not say; the card then draws without it.
+   */
+  anatomy?: ProjectAnatomy;
 }
 
 /**

@@ -214,6 +214,36 @@ async function main() {
     const firstJournal = await (await api.GET_JOURNAL(new Request(ORIGIN), ctx(firstId))).json();
     check("the first import still has its journal", firstJournal.journal.length === 1);
 
+    // --- The listing carries each project's anatomy (lib/data/project-anatomy.ts)
+    // Species and platforms from the snapshot, the journal's events per
+    // "YYYY-MM" month. Months are a rolling 13-month window, so the check on
+    // them is shape-only: the 2026-01 event drops out of it as time passes.
+    const listedA = (await (await api.LIST_PROJECTS(new Request(`${ORIGIN}/api/graph/projects`))).json()).projects;
+    const firstListed = listedA.find((p) => p.id === firstId);
+    check(
+      "the listing carries species and platform counts",
+      JSON.stringify(firstListed?.anatomy?.species) === '{"view":1}' &&
+        JSON.stringify(firstListed?.anatomy?.platforms) === '{"web":1}',
+      JSON.stringify(firstListed?.anatomy),
+    );
+    check(
+      "the listing carries the journal's newest event and total",
+      firstListed?.anatomy?.journal?.lastAt === "2026-01-01T00:00:00.000Z" && firstListed.anatomy.journal.total === 1,
+      JSON.stringify(firstListed?.anatomy?.journal),
+    );
+    const months = firstListed?.anatomy?.journal?.months ?? {};
+    check(
+      "journal months are YYYY-MM keys with counts",
+      Object.entries(months).every(([k, v]) => /^\d{4}-\d{2}$/.test(k) && v === 1) && Object.keys(months).length <= 1,
+      JSON.stringify(months),
+    );
+    const plainListed = listedA.find((p) => p.id === projectId);
+    check(
+      "a project with no journal lists a null journal",
+      plainListed?.anatomy && (plainListed.anatomy.journal === null || plainListed.anatomy.journal.total >= 0),
+      JSON.stringify(plainListed?.anatomy),
+    );
+
     // --- Owner scoping ------------------------------------------------------
     setSession(sessionFor(userB));
     const otherList = await api.LIST_PROJECTS(new Request(`${ORIGIN}/api/graph/projects`));

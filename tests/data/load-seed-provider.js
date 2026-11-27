@@ -41,6 +41,8 @@ function loadSeedProvider() {
   transpileTo(lib("migrate.ts"), "migrate.ts", path.join(BUILD_DIR, "migrate.js"));
   // The shared in-memory `?types=` filter both local backends apply.
   transpileTo(lib("journal-projection.ts"), "journal-projection.ts", path.join(BUILD_DIR, "journal-projection.js"));
+  // The listing's per-project anatomy (types-only imports).
+  transpileTo(lib("project-anatomy.ts"), "project-anatomy.ts", path.join(BUILD_DIR, "project-anatomy.js"));
   const outFile = transpileTo(lib("seed-provider.ts"), "seed-provider.ts", path.join(BUILD_DIR, "seed-provider.js"));
 
   const originalLoad = Module._load;

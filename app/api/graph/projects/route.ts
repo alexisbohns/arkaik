@@ -1,6 +1,6 @@
 import { getCaller, hasScope } from "@/lib/services/auth";
 import { MAX_BUNDLE_BYTES, servicesConfigured, servicesUnavailable } from "@/lib/services/db";
-import { createProject, getUserTier, listProjects } from "@/lib/services/graph/store";
+import { createProject, getUserTier, listProjectAnatomy, listProjects } from "@/lib/services/graph/store";
 
 /**
  * Hosted graph projects — collection (docs/spec/services.md § Hosted Graph
@@ -28,7 +28,18 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    return Response.json({ projects: await listProjects(caller.ownerIds) }, { status: 200 });
+    const [projects, anatomy] = await Promise.all([
+      listProjects(caller.ownerIds),
+      // A card's anatomy is decoration: if it fails, the list still lands.
+      listProjectAnatomy(caller.ownerIds).catch((err) => {
+        console.error("[graph] project anatomy failed:", err instanceof Error ? err.message : "unknown error");
+        return null;
+      }),
+    ]);
+    return Response.json(
+      { projects: projects.map((p) => (anatomy?.has(p.id) ? { ...p, anatomy: anatomy.get(p.id) } : p)) },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("[graph] GET projects failed:", err instanceof Error ? err.message : "unknown error");
     return Response.json({ error: "internal_error", message: "Failed to list projects." }, { status: 500 });
