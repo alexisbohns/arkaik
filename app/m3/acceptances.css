@@ -1,0 +1,554 @@
+/* Acceptances surfaces — the Parity monitor (and, later in this stack, the
+ * directory and the acceptance panel). Prefix `ka-`; the grammar lives in
+ * components/acceptances/kit.tsx: colour = status, platform = glyph,
+ * not applicable = absence. Ported from the 2026-11 tweaker exploration
+ * (owner's recipe "lead-owner-2"), so declarations read machine-ordered. */
+.ka-parity-tone[data-status="idea"],
+.ka-parity-mk[data-status="idea"] {
+  --ka-parity-hue: var(--tone-neutral);
+}
+.ka-parity-tone[data-status="discovery"],
+.ka-parity-mk[data-status="discovery"] {
+  --ka-parity-hue: var(--tone-ember);
+}
+.ka-parity-tone[data-status="backlog"],
+.ka-parity-mk[data-status="backlog"] {
+  --ka-parity-hue: var(--tone-slate);
+}
+.ka-parity-tone[data-status="development"],
+.ka-parity-mk[data-status="development"] {
+  --ka-parity-hue: var(--tone-indigo);
+}
+.ka-parity-tone[data-status="releasing"],
+.ka-parity-mk[data-status="releasing"] {
+  --ka-parity-hue: var(--tone-plum);
+}
+.ka-parity-tone[data-status="live"],
+.ka-parity-mk[data-status="live"] {
+  --ka-parity-hue: var(--tone-green);
+}
+.ka-parity-tone[data-status="archived"],
+.ka-parity-mk[data-status="archived"] {
+  --ka-parity-hue: var(--tone-neutral);
+}
+.ka-parity-tone,
+.ka-parity-mk {
+  --ka-parity-wash: color-mix(in oklab, var(--ka-parity-hue) 11%, var(--md-surface-container-lowest, #fff));
+  --ka-parity-tint: color-mix(in oklab, var(--ka-parity-hue) 22%, var(--md-surface-container-lowest, #fff));
+  --ka-parity-line: color-mix(in oklab, var(--ka-parity-hue) 42%, transparent);
+  --ka-parity-on: var(--md-surface-container-lowest, #fff);
+}
+:root.dark .ka-parity-tone,
+:root.dark .ka-parity-mk {
+  --ka-parity-wash: color-mix(in oklab, var(--ka-parity-hue) 14%, var(--md-surface-container, #222));
+  --ka-parity-tint: color-mix(in oklab, var(--ka-parity-hue) 28%, var(--md-surface-container, #222));
+  --ka-parity-on: var(--md-surface, #111);
+}
+:is(.ka-parity-mk, .ka-parity-na) {
+  --ka-parity-s: 1.375rem;
+}
+:is(.ka-parity-mk, .ka-parity-na)[data-size="md"] {
+  --ka-parity-s: 1.875rem;
+}
+:is(.ka-parity-mk, .ka-parity-na)[data-size="lg"] {
+  --ka-parity-s: 2.75rem;
+}
+.ka-parity-mk {
+  width: var(--ka-parity-s);
+  height: var(--ka-parity-s);
+  color: var(--ka-parity-hue);
+  vertical-align: middle;
+  --ka-parity-ring-w: 3px;
+  flex: none;
+  place-items: center;
+  display: inline-grid;
+  position: relative;
+}
+.ka-parity-mk[data-size="md"] {
+  --ka-parity-ring-w: 4px;
+}
+.ka-parity-mk[data-size="lg"] {
+  --ka-parity-ring-w: 5px;
+}
+.ka-parity-glyph-wrap {
+  z-index: 1;
+  grid-area: 1 / 1;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  position: relative;
+}
+.ka-parity-glyph {
+  width: calc(var(--ka-parity-s) * .54);
+  height: calc(var(--ka-parity-s) * .54);
+  stroke-width: 2.1px;
+}
+.ka-parity-glyph-solo {
+  color: var(--ka-parity-hue);
+}
+.ka-parity-na {
+  width: var(--ka-parity-s);
+  height: var(--ka-parity-s);
+  vertical-align: middle;
+  flex: none;
+  display: inline-block;
+  position: relative;
+}
+.ka-parity-na:after {
+  content: "";
+  border-top: 2px dotted color-mix(in srgb, var(--md-outline, #888) 65%, transparent);
+  position: absolute;
+  inset: 50% 30% auto;
+}
+.ka-parity-mk[data-kind="meter"] {
+  height: auto;
+  width: var(--ka-parity-s);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  display: inline-flex;
+}
+.ka-parity-mk[data-kind="meter"] .ka-parity-glyph-wrap {
+  width: auto;
+  height: auto;
+}
+.ka-parity-mk[data-kind="meter"] .ka-parity-glyph {
+  width: calc(var(--ka-parity-s) * .56);
+  height: calc(var(--ka-parity-s) * .56);
+}
+.ka-parity-meter {
+  background: var(--ka-parity-tint);
+  border-radius: 3px;
+  width: 86%;
+  height: 3px;
+  display: block;
+  overflow: hidden;
+}
+.ka-parity-mk[data-size="lg"] .ka-parity-meter {
+  height: 5px;
+}
+.ka-parity-mk[data-size="md"] .ka-parity-meter {
+  height: 4px;
+}
+.ka-parity-meter-fill {
+  height: 100%;
+  width: calc(var(--ka-parity-p) * 100%);
+  border-radius: inherit;
+  background: var(--ka-parity-hue);
+  display: block;
+}
+.ka-parity-marks {
+  flex: none;
+  align-items: center;
+  gap: .25rem;
+  display: inline-flex;
+}
+.ka-parity-marks[data-size="md"] {
+  gap: .375rem;
+}
+.ka-parity-marks[data-size="lg"] {
+  gap: .5rem;
+}
+.ka-parity-marks[data-vertical] {
+  flex-direction: column;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ka-parity-glyph-wrap {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .ka-parity-na:after {
+    border-top-color: graytext;
+  }
+  .ka-parity-meter-fill {
+    background: highlight;
+  }
+}
+.ka-parity-card {
+  gap: .5rem;
+  width: min(19rem, 100vw - 2rem);
+  padding: 1rem 1.125rem;
+  display: grid;
+}
+.ka-parity-card-title {
+  text-wrap: balance;
+  margin: 0;
+  font-size: .9375rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.ka-parity-card-id {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--md-on-surface-variant);
+  word-break: break-all;
+  margin: -.25rem 0 0;
+  font-size: .6875rem;
+}
+.ka-parity-card-list {
+  gap: 3px;
+  margin: .25rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+.ka-parity-card-line {
+  background: color-mix(in oklab, var(--md-on-surface) 4.5%, transparent);
+  border-radius: .75rem;
+  align-items: center;
+  gap: .6rem;
+  padding: .25rem .5rem .25rem .25rem;
+  display: flex;
+}
+.ka-parity-card-line:first-child {
+  border-radius: 1rem .75rem .75rem;
+}
+.ka-parity-card-plat {
+  font-size: .8125rem;
+  font-weight: 600;
+}
+.ka-parity-card-state {
+  color: var(--md-on-surface-variant);
+  margin-inline-start: auto;
+  font-size: .8125rem;
+}
+.ka-parity-card-line[data-status="none"] .ka-parity-card-state {
+  opacity: .7;
+}
+.ka-parity-card-gap {
+  color: var(--md-on-surface);
+  margin: .25rem 0 0;
+  font-size: .8125rem;
+  font-weight: 600;
+}
+.ka-parity-card-then {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .8125rem;
+  line-height: 1.4;
+}
+.ka-parity-card-then b {
+  color: var(--tone-green);
+  font-weight: 650;
+}
+.ka-parity-card-hint {
+  color: var(--md-on-surface-variant);
+  letter-spacing: .02em;
+  margin: .125rem 0 0;
+  font-size: .6875rem;
+}
+.ka-parity-hero {
+  --ka-parity-hero-bg: color-mix(in oklab, var(--tone-green) 10%, var(--md-surface-container-lowest, #fff));
+  --ka-parity-hero-ink: var(--md-on-surface);
+  color: var(--md-on-surface);
+  margin: .75rem 1rem 1rem;
+}
+:root.dark .ka-parity-hero {
+  --ka-parity-hero-bg: color-mix(in oklab, var(--tone-green) 13%, var(--md-surface-container, #222));
+}
+.ka-parity-hero-head {
+  gap: .25rem;
+  margin-bottom: 1rem;
+  display: grid;
+}
+.ka-parity-hero-title {
+  font-family: var(--font-display, inherit);
+  letter-spacing: -.01em;
+  text-wrap: balance;
+  margin: 0;
+  font-size: clamp(1.375rem, 1rem + 1.6vw, 2rem);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.ka-parity-hero-sub {
+  color: var(--md-on-surface-variant);
+  text-wrap: pretty;
+  max-width: 60ch;
+  margin: 0;
+  font-size: .875rem;
+}
+.ka-parity-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--tone-green);
+}
+.ka-parity-legend {
+  color: var(--md-on-surface-variant);
+  flex-wrap: wrap;
+  gap: .25rem 1rem;
+  margin: .75rem 0 0;
+  padding: 0;
+  font-size: .75rem;
+  list-style: none;
+  display: flex;
+}
+.ka-parity-legend li {
+  align-items: center;
+  gap: .375rem;
+  display: inline-flex;
+}
+.ka-parity-legend i {
+  background: var(--ka-parity-hue);
+  border-radius: 4px;
+  width: .75rem;
+  height: .75rem;
+  display: inline-block;
+}
+.ka-parity-legend-na i {
+  border-top: 2px dotted var(--md-outline);
+  background: none;
+  border-radius: 0;
+  width: .875rem;
+  height: 0;
+}
+.ka-parity-weave {
+  background: var(--ka-parity-hero-bg);
+  border-radius: 1.75rem;
+  padding: 1.25rem 1.375rem 1rem;
+}
+.ka-parity-weave-scroll {
+  overscroll-behavior-x: contain;
+  padding-bottom: .25rem;
+  position: relative;
+  overflow-x: auto;
+}
+.ka-parity-weave-lanes {
+  min-width: max(100%, calc(var(--ka-parity-n) * 3px + 2rem));
+  gap: 4px;
+  display: grid;
+}
+.ka-parity-weave-lane {
+  grid-template-columns: 1.5rem repeat(var(--ka-parity-n), minmax(0, 1fr));
+  align-items: stretch;
+  gap: 1px;
+  height: 1.75rem;
+  display: grid;
+}
+.ka-parity-weave-tag {
+  color: var(--md-on-surface-variant);
+  place-items: center;
+  display: grid;
+}
+.ka-parity-weave-tick {
+  all: unset;
+  cursor: pointer;
+  background: var(--ka-parity-hue);
+  border-radius: 1px;
+  min-width: 0;
+  display: block;
+}
+.ka-parity-weave-tick[data-status="none"] {
+  cursor: default;
+  background: none;
+  position: relative;
+}
+.ka-parity-weave-tick[data-status="none"]:after {
+  content: "";
+  border-top: 1px dotted color-mix(in srgb, var(--md-outline) 70%, transparent);
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+}
+.ka-parity-weave-tick[data-status="live"] {
+  background: color-mix(in oklab, var(--ka-parity-hue) 55%, var(--md-surface-container-lowest));
+}
+.ka-parity-weave-band {
+  height: 1.5rem;
+  margin-bottom: 2px;
+}
+.ka-parity-weave-bracket {
+  border: 2px solid var(--tone-amber);
+  border-bottom: 0;
+  border-radius: .5rem .5rem 0 0;
+  min-width: 1rem;
+  display: block;
+  position: relative;
+}
+.ka-parity-weave-bracket i {
+  color: var(--tone-amber);
+  white-space: nowrap;
+  font-size: .6875rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  position: absolute;
+  top: .1875rem;
+  left: .5rem;
+}
+.ka-parity-weave-tick:hover {
+  filter: brightness(1.15) saturate(1.2);
+  outline: 2px solid var(--md-on-surface);
+  z-index: 2;
+  position: relative;
+}
+.ka-parity-empty {
+  border: 2px dashed color-mix(in oklab, var(--md-outline) 80%, transparent);
+  text-align: center;
+  border-radius: 1.75rem;
+  gap: .25rem;
+  margin: 1rem;
+  padding: 2rem 1.5rem;
+  display: grid;
+}
+.ka-parity-empty-title {
+  font-family: var(--font-display, inherit);
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.ka-parity-empty-sub {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .875rem;
+}
+.ka-parity-chip {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  background: color-mix(in oklab, var(--md-on-surface) 7%, transparent);
+  min-height: 2.25rem;
+  color: var(--md-on-surface-variant);
+  border: 0;
+  border-radius: 1rem;
+  align-items: center;
+  gap: .4rem;
+  padding-inline: .875rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  display: inline-flex;
+}
+.ka-parity-chip b {
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface);
+}
+.ka-parity-chip[aria-pressed="true"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-radius: .625rem;
+}
+.ka-parity-chip:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ka-parity-chip {
+    transition: border-radius var(--mx-spring-fast-dur, .3s) var(--mx-spring-fast, ease), background-color .16s;
+  }
+  .ka-parity-chip:hover {
+    border-radius: .625rem;
+  }
+}
+.ka-parity-flat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ka-parity-flat-bar {
+  top: var(--surface-sticky-top, 0px);
+  z-index: 11;
+  background: var(--md-surface-container-lowest);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  padding: .75rem 1rem .5rem;
+  display: flex;
+  position: sticky;
+}
+:root.dark .ka-parity-flat-bar {
+  background: var(--md-surface-container);
+}
+.ka-parity-flat-note {
+  color: var(--md-on-surface-variant);
+  margin-inline-start: .5rem;
+  font-size: .75rem;
+}
+.ka-parity-flat-list > li {
+  border-bottom: 1px solid color-mix(in oklab, var(--md-on-surface) 7%, transparent);
+}
+.ka-parity-flat-list > li > [data-ac-row] {
+  border-bottom: 0;
+}
+:root {
+  --ka-parity-gap: var(--tone-amber);
+  --ka-parity-gap-wash: color-mix(in oklab, var(--tone-amber) 16%, var(--md-surface-container-lowest));
+  --ka-parity-joint: var(--mx-joint, 5px);
+  --ka-parity-outer: 1.375rem;
+}
+:root.dark {
+  --ka-parity-gap-wash: color-mix(in oklab, var(--tone-amber) 18%, var(--md-surface-container));
+}
+[data-ac-group] button:focus-visible,
+[data-ac-row]:focus-visible {
+  outline: 3px solid var(--md-secondary, currentColor);
+  outline-offset: -3px;
+}
+[data-ac-group] ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ka-parity-rdense {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  align-items: center;
+  gap: .625rem;
+  width: 100%;
+  min-height: 2.125rem;
+  padding: .125rem 1rem .125rem 2rem;
+  display: flex;
+}
+.ka-parity-rdense:hover {
+  background: color-mix(in oklab, var(--md-on-surface) 6%, transparent);
+}
+.ka-parity-rdense-title {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 auto;
+  min-width: 0;
+  font-size: .875rem;
+  overflow: hidden;
+}
+.ka-parity-rdense-lag {
+  color: var(--tone-amber);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex: 0 auto;
+  margin-inline-start: auto;
+  font-size: .75rem;
+  font-weight: 550;
+  overflow: hidden;
+}
+.ka-parity-rdense[data-ac-gap="true"] .ka-parity-rdense-title {
+  font-weight: 600;
+}
+@media (width <= 36rem) {
+  .ka-parity-rdense-lag {
+    display: none;
+  }
+}
+.ka-parity-qc {
+  flex-wrap: wrap;
+  gap: 3px;
+  display: flex;
+}
+.ka-parity-qc-gaps[aria-pressed="true"] {
+  background: var(--tone-amber);
+  color: var(--md-surface-container-lowest);
+}
+.ka-parity-qc-gaps[aria-pressed="true"] b {
+  color: inherit;
+}
+:root.dark .ka-parity-qc-gaps[aria-pressed="true"] {
+  color: var(--md-surface);
+}
+.ka-rdense[data-state="open"] {
+  background: color-mix(in oklab, var(--md-on-surface) 6%, transparent);
+}
+.ka-rdense:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: -3px;
+  border-radius: .5rem;
+}
