@@ -12,6 +12,8 @@
     "lint": "eslint",
     "generate": "node scripts/generate/index.js",
     "db:migrate": "node db/migrate.mjs",
+    "db:copy": "node scripts/db/copy.js",
+    "test:pg-config": "node tests/services/pg-config.test.js",
     "arkademy": "node scripts/arkademy/upload.js",
     "validate:seeds": "node docs/arkaik-skill/scripts/validate-bundle.js seed/pebbles.json && node docs/arkaik-skill/scripts/validate-bundle.js seed/arkaik-self-map.json && node docs/arkaik-skill/scripts/validate-bundle.js public/schema/example-bundle.json",
     "test:fixtures": "node tests/fixtures/run-fixture-tests.js",

@@ -112,6 +112,13 @@ jobs:
       - name: Publik default withholds (journal + quality strips)
         run: npm run test:publik-strip
 
+      # In `build` because it needs no database: which server the app trusts is
+      # decided by the connection config alone. It stands up a TLS stand-in with
+      # a private CA (as a Coolify-hosted Postgres has) and proves the pinned CA
+      # wins over the URL's sslmode, and that any other CA or host is refused.
+      - name: Postgres TLS pinning to a private CA (DATABASE_CA_CERT)
+        run: npm run test:pg-config
+
       - name: Deterministic id generator tests
         run: npm run test:id-gen
 

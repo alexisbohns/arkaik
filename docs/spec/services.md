@@ -69,7 +69,7 @@ Three hard boundaries, inherited from [vision.md](../vision.md) and [journal.md]
 - Consequence, recorded honestly: the original "Inkognito = BYO Supabase provider" framing is superseded, because there is no Supabase implementation to point a sovereign user at. Inkognito is redefined below.
 - Everything under `app/api/`, `db/`, and `lib/services/` is **AGPL-3.0** (services side of the license split, [toolchain.md](toolchain.md) § Licensing).
 
-**Environment variables** (all server-only, none `NEXT_PUBLIC_`): `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`. The app MUST boot and serve every existing local-first surface when they are unset — services degrade to absent, never break the client-only app.
+**Environment variables** (all server-only, none `NEXT_PUBLIC_`): `DATABASE_URL`, `DATABASE_CA_CERT` (optional, see § Self-hosted Postgres with a private CA), `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`. The app MUST boot and serve every existing local-first surface when they are unset — services degrade to absent, never break the client-only app.
 
 **Migrations**: plain SQL files in `db/migrations/NNN_name.sql`, applied by a small idempotent runner (`npm run db:migrate`) that records applied migrations in a `_migrations` table. Committed, ordered, append-only — the same files are the self-hosting setup scripts (Inkognito).
 
@@ -367,6 +367,40 @@ The original framing ("local-first backed by the user's own Supabase project") a
 - Sovereignty comes from owning the deployment, not from a bespoke provider: same code, same features (minus arkaik-operated AI), zero arkaik infra involvement.
 
 This supersedes issues #49 (SupabaseProvider) as originally framed. What remains true from that framing: the `DataProvider` seam stays backend-agnostic, and nothing in M4 precludes a future third-party provider implementation if demand exists.
+
+### Self-hosted Postgres with a private CA
+
+A Postgres on Coolify, or on any box that issues its own certificates, signs its TLS certificate with that box's own CA. No system trust store knows that CA, so a plain `?sslmode=require` URL fails with `unable to verify the first certificate`.
+
+Set **`DATABASE_CA_CERT`** to the CA certificate's PEM text. A Coolify host keeps it under `/data/coolify/ssl/`. Literal `\n` escapes are accepted for single-line env stores; a base64-encoded copy is not.
+
+Every `pg` client then verifies the server against that CA only, chain and host/IP both. That covers the app's pool, the migration runner and the scripts, all through `db/pg-config.js` and its twin `pgConfig` in `lib/services/db.ts`.
+
+The URL's own ssl parameters are dropped, because node-postgres lets them override the config. Unset, the URL is used as-is.
+
+Turning verification off (`rejectUnauthorized: false`) is never the answer. It keeps the traffic encrypted but lets anyone on the path pose as the database and collect its password.
+
+The app connects with its **own role**, never the superuser. As the superuser, once:
+
+```sql
+CREATE ROLE arkaik_app LOGIN PASSWORD '…';  -- a long random one
+ALTER DATABASE arkaik OWNER TO arkaik_app;
+\c arkaik
+ALTER SCHEMA public OWNER TO arkaik_app;
+REVOKE CONNECT ON DATABASE arkaik FROM PUBLIC;
+GRANT CONNECT ON DATABASE arkaik TO arkaik_app;
+```
+
+### Moving to another Postgres
+
+`npm run db:copy` copies a whole arkaik database from `SOURCE_DATABASE_URL` to an empty `TARGET_DATABASE_URL`, verifying the target against `TARGET_CA_FILE`. It dumps with `--no-owner`, so connect to the target as the app role and that role owns everything restored. It then restores in one transaction and compares every table's row count and the `_migrations` ledger. The header of `scripts/db/copy.js` has the details.
+
+Rehearse it against a scratch database first. Then cut over:
+
+1. Pause writes.
+2. Run the final copy, or `--verify-only` after it.
+3. Swap `DATABASE_URL` and `DATABASE_CA_CERT` in the deployment, and `PROD_DATABASE_URL` in the repository secrets.
+4. Redeploy, then keep the old database read-only until the new one has proved itself.
 
 ## Security & Privacy
 

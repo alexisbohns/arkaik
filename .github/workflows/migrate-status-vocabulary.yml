@@ -50,3 +50,5 @@ jobs:
         run: node scripts/migrate/status-vocabulary.js ${{ !inputs.apply && '--dry-run' || '' }}
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          # Optional: the PEM of a private CA (a self-hosted Postgres). Unset or empty, nothing changes.
+          DATABASE_CA_CERT: ${{ secrets.PROD_DATABASE_CA_CERT }}

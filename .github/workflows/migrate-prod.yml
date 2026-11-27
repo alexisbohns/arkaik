@@ -15,6 +15,9 @@
 # production Postgres connection string (the same value as Vercel's prod
 # DATABASE_URL). Settings → Secrets and variables → Actions → New repository
 # secret. Without it, `db:migrate` exits with a clear "DATABASE_URL is not set".
+# For a Postgres whose certificate comes from a private CA (Coolify), also add
+# PROD_DATABASE_CA_CERT holding that CA's PEM, the same value as Vercel's
+# DATABASE_CA_CERT (docs/spec/services.md § Self-hosted Postgres with a private CA).
 
 name: Migrate (production)
 
@@ -57,3 +60,5 @@ jobs:
         run: npm run db:migrate
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          # Optional: the PEM of a private CA (a self-hosted Postgres). Unset or empty, nothing changes.
+          DATABASE_CA_CERT: ${{ secrets.PROD_DATABASE_CA_CERT }}

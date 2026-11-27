@@ -20,7 +20,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
+import pgConfigModule from "./pg-config.js";
+
 const { Client } = pg;
+const { pgConfig } = pgConfigModule;
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "migrations");
 
@@ -54,7 +57,7 @@ async function listMigrationFiles() {
 async function main() {
   const files = await listMigrationFiles();
 
-  const client = new Client({ connectionString });
+  const client = new Client(pgConfig(connectionString));
   try {
     await client.connect();
   } catch (err) {
