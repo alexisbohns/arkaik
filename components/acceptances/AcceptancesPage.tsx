@@ -67,7 +67,15 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
     writeQuery((params) => {
       if (next === DEFAULT_VIEW) params.delete("view");
       else params.set("view", next);
+      // `mj` is the journey Contents opened in Mapping: it must not outlive that jump.
+      params.delete("mj");
     });
+  // Expansion, for the views whose parts fold: a view lands the way it says
+  // (Mapping opens every journey, as its rail is the index), and the toolbar's
+  // expand-all overrides that either way.
+  const folds = DIRECTORY_VIEWS.find((v) => v.id === view)?.folds;
+  const [expandOverride, setExpandOverride] = useState<boolean | null>(null);
+  const allExpanded = expandOverride ?? folds?.openByDefault ?? false;
 
   const acceptances = useMemo(
     () => dataNodes.filter((node) => node.species === "acceptance"),
@@ -246,7 +254,14 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
             <>
               {mode === "directory" && <ViewSwitch views={DIRECTORY_VIEWS} view={view} onViewChange={setView} model={model} />}
               {mode === "monitor" && <ParityQuickChips parity={model.parity} filters={filters} onFiltersChange={setFilters} />}
-              <AcceptanceFilterBar filters={filters} onChange={setFilters} anchorOptions={anchorOptions} projectId={id} project={projectBundle} />
+              <AcceptanceFilterBar
+                filters={filters}
+                onChange={setFilters}
+                anchorOptions={anchorOptions}
+                projectId={id}
+                project={projectBundle}
+                {...(mode === "directory" && folds ? { allExpanded, onToggleExpandAll: () => setExpandOverride(!allExpanded) } : {})}
+              />
             </>
           }
         >
@@ -255,7 +270,7 @@ export function AcceptancesPage({ mode }: { mode: "directory" | "monitor" }) {
               <ParityMonitor parity={model.parity} onSelect={handleSelectNode} />
             </div>
           ) : (
-            <AcceptancesDirectory model={model} view={view} onSelect={handleSelectNode} />
+            <AcceptancesDirectory model={model} view={view} allExpanded={allExpanded} onSelect={handleSelectNode} />
           )}
         </PageSurface>
       </PageShell>

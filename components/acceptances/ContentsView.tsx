@@ -21,7 +21,7 @@ import type { Journey, JourneyScreen, MappingModel, PromiseModel } from "@/lib/u
 import { MAPPING_FONT, OUTSIDE_KEY, UNANCHORED_KEY, journeyTree, plural } from "./journey-kit";
 import { PromiseMarks } from "./kit";
 
-export type OpenJourney = (key: string, title?: string) => void;
+export type OpenJourney = (key: string) => void;
 
 interface ContentsProps {
   mapping: MappingModel;
@@ -153,7 +153,7 @@ function Book({ mapping, onSelect, onOpenJourney, arrange }: ContentsProps & { a
   for (const p of mapping.unanchored) if (p.hasGap) gapIds.add(p.id);
   const gaps = gapIds.size;
   const outsideCount = mapping.outside.reduce((n, s) => n + s.promises.length, 0);
-  const door = (key: string, title: string) => (onOpenJourney ? () => onOpenJourney(key, title) : undefined);
+  const door = (key: string) => (onOpenJourney ? () => onOpenJourney(key) : undefined);
 
   return (
     <article className={`${MAPPING_FONT} ka-mapping-scope ka-contents`} data-spread="" aria-label="Contents">
@@ -179,7 +179,7 @@ function Book({ mapping, onSelect, onOpenJourney, arrange }: ContentsProps & { a
 
       <ol className="ka-contents-chapters">
         {chapters.map(({ journey: j, number, depth: level }) => {
-          const open = door(j.id, j.title);
+          const open = door(j.id);
           return (
             <li key={j.id} className="ka-contents-chapter" data-level={Math.min(level, 2)} data-gap={j.gaps > 0 ? "" : undefined}>
               <Row
@@ -220,17 +220,17 @@ function Book({ mapping, onSelect, onOpenJourney, arrange }: ContentsProps & { a
         <ol className="ka-contents-appendices" aria-label="Appendices">
           {mapping.outside.length > 0 && (
             <li className="ka-contents-chapter" data-appendix="">
-              <Row kind="chapter" onOpen={door(OUTSIDE_KEY, "Outside any journey")}>
+              <Row kind="chapter" onOpen={door(OUTSIDE_KEY)}>
                 <span className="ka-contents-num" aria-hidden="true">A</span>
                 <span className="ka-contents-name">Outside any journey</span>
                 <Leader>{outsideCount}</Leader>
               </Row>
-              {depth !== "chapters" && <Screens screens={mapping.outside} depth={depth} onOpen={door(OUTSIDE_KEY, "Outside any journey")} onSelect={onSelect} />}
+              {depth !== "chapters" && <Screens screens={mapping.outside} depth={depth} onOpen={door(OUTSIDE_KEY)} onSelect={onSelect} />}
             </li>
           )}
           {mapping.unanchored.length > 0 && (
             <li className="ka-contents-chapter" data-appendix="">
-              <Row kind="chapter" onOpen={door(UNANCHORED_KEY, "Unanchored")}>
+              <Row kind="chapter" onOpen={door(UNANCHORED_KEY)}>
                 <span className="ka-contents-num" aria-hidden="true">{mapping.outside.length > 0 ? "B" : "A"}</span>
                 <span className="ka-contents-name">Unanchored — covers nothing</span>
                 <Leader>{mapping.unanchored.length}</Leader>
@@ -251,8 +251,6 @@ interface Locator {
   label: string;
   title: string;
 }
-
-const locatorTitle = (x: Locator) => (x.key === OUTSIDE_KEY ? "Outside any journey" : x.key === UNANCHORED_KEY ? "Unanchored" : x.title.split(" › ")[0]);
 
 function Index({ mapping, onSelect, onOpenJourney, arrange }: ContentsProps & { arrange: ReactNode }) {
   if (mapping.empty) return <p className="p-6 text-sm text-muted-foreground">{mapping.emptyMessage}</p>;
@@ -319,7 +317,7 @@ function Index({ mapping, onSelect, onOpenJourney, arrange }: ContentsProps & { 
                   <span className="ka-contents-locs">
                     {at.map((x) =>
                       onOpenJourney ? (
-                        <button key={x.key} type="button" title={x.title} aria-label={`Open ${x.title} in Mapping`} onClick={() => onOpenJourney(x.key, locatorTitle(x))}>
+                        <button key={x.key} type="button" title={x.title} aria-label={`Open ${x.title} in Mapping`} onClick={() => onOpenJourney(x.key)}>
                           {x.label}
                         </button>
                       ) : (
