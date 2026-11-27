@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { SectionCreateMenu } from "./SectionCreateMenu";
+import { FONT, KINDS, KindMark } from "./project-ui";
 import type { CardModel, SectionModel } from "@/lib/data/project-page-model";
 
 interface ProjectSectionProps {
@@ -23,15 +24,18 @@ interface ProjectSectionProps {
    * about seeds, the one section that has something more to say passes it in.
    */
   emptyExtra?: ReactNode;
+  /** Inside the kind tabs the tab already names the section: its head is left out. */
+  headless?: boolean;
 }
 
 /**
- * One section of the projects page: a heading, a count, that section's creation
- * controls, and either its cards or an empty state.
+ * One section of the projects page: a head (the kind's mark, its name, a count
+ * and where it lives, the round create plus), then its projects as rows — or
+ * an empty state.
  *
  * An empty section still renders. It is how the page teaches what the three
- * kinds ARE, and the empty state carries the same create control as the header
- * so the explanation and the action sit together.
+ * kinds ARE — in a line and as two facts — and the empty state carries its own
+ * create control so the explanation and the action sit together.
  *
  * The section takes its model rather than a count plus an already built grid:
  * with two inputs, a caller whose filter changed one but not the other would
@@ -46,42 +50,61 @@ export function ProjectSection({
   onRestore,
   disabled,
   emptyExtra,
+  headless = false,
 }: ProjectSectionProps) {
   const { target, items, title, blurb } = section;
+  const k = KINDS[target];
+  const menu = (context: "head" | "empty", primaryLabel?: string) => (
+    <SectionCreateMenu
+      target={target}
+      onCreate={onCreate}
+      onImport={onImport}
+      onRestore={onRestore}
+      disabled={disabled}
+      context={context}
+      primaryLabel={primaryLabel}
+    />
+  );
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-baseline gap-2 text-lg font-semibold">
-          {title}
-          <span className="text-sm font-normal text-muted-foreground">{items.length}</span>
-        </h2>
-        <SectionCreateMenu
-          target={target}
-          onCreate={onCreate}
-          onImport={onImport}
-          onRestore={onRestore}
-          disabled={disabled}
-        />
-      </div>
+    <section data-projects-section={target} className="pj-section">
+      {headless ? null : (
+        <div className={`pj-sechead ${FONT}`} data-pj-hue={k.hue}>
+          <KindMark kind={target} />
+          <div className="pj-sechead-text">
+            <h2 className="pj-sechead-title">
+              {title}
+              <span className="pj-sechead-count">{items.length}</span>
+            </h2>
+            <p className="pj-sechead-where">{k.where}</p>
+          </div>
+          <div className="pj-sechead-create">{menu("head")}</div>
+        </div>
+      )}
 
       {items.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
-          <p className="max-w-sm text-sm text-muted-foreground">{blurb}</p>
-          {/* A distinct label, so an empty section does not announce two
-              identically-named create buttons to a screen reader. */}
-          <SectionCreateMenu
-            target={target}
-            onCreate={onCreate}
-            onImport={onImport}
-            onRestore={onRestore}
-            disabled={disabled}
-            primaryLabel={`Create your first ${title} project`}
-          />
-          {emptyExtra ? <div className="flex items-center gap-2">{emptyExtra}</div> : null}
+        <div data-projects-empty="" data-pj-empty="teach" data-pj-hue={k.hue} className={`pj-empty ${FONT}`}>
+          <KindMark kind={target} size="xl" />
+          <div className="pj-empty-text">
+            <p className="pj-empty-title">No {title} projects yet</p>
+            <p className="pj-empty-blurb">{blurb}</p>
+            <ul className="pj-facts">
+              {k.facts.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="pj-empty-ways">
+            {/* A distinct label, so an empty section does not announce two
+                identically-named create controls to a screen reader. */}
+            {menu("empty", `Create your first ${title} project`)}
+            {emptyExtra ? <div className="pj-empty-extra">{emptyExtra}</div> : null}
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items.map(renderCard)}</div>
+        <div data-projects-grid="" data-projects-target={target}>
+          {items.map(renderCard)}
+        </div>
       )}
     </section>
   );

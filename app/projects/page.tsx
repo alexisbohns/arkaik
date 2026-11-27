@@ -23,6 +23,9 @@ import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { ProjectSection } from "@/components/projects/ProjectSection";
+import { ProjectsHero } from "@/components/projects/ProjectsHero";
+import { ProjectsLayout } from "@/components/projects/ProjectsLayout";
+import { SectionCreateMenu } from "@/components/projects/SectionCreateMenu";
 import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
 import { buildCardModel, buildPageModel, type CardModel } from "@/lib/data/project-page-model";
 import { groupBySection } from "@/lib/data/project-sections";
@@ -82,7 +85,7 @@ const targetDeps = {
  */
 export default function ProjectsPage() {
   return (
-    <div className="flex flex-1 flex-col font-sans">
+    <div data-projects-page="" className="flex flex-1 flex-col font-sans">
       <ProjectsHeader />
       <Suspense
         fallback={
@@ -99,7 +102,7 @@ export default function ProjectsPage() {
 
 function ProjectsHeader() {
   return (
-    <header className="flex items-center justify-between border-b px-6 py-3">
+    <header data-projects-topbar="" className="flex items-center justify-between border-b px-6 py-3">
       <Link href="/" aria-label="Go to home" className="inline-flex items-center">
         <ArkaikLogo className="w-20 shrink-0" />
       </Link>
@@ -108,27 +111,6 @@ function ProjectsHeader() {
         <ThemeToggle />
       </div>
     </header>
-  );
-}
-
-/** The Explore section: the built-in public project(s), for everyone —
- *  signed-in or out. No create controls: nothing can be created here. */
-function ExploreSection({
-  items,
-  renderCard,
-}: {
-  items: CardModel[];
-  renderCard: (card: CardModel) => React.ReactNode;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="flex items-baseline gap-2 text-lg font-semibold">
-        Explore
-        <span className="text-sm font-normal text-muted-foreground">{items.length}</span>
-      </h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items.map(renderCard)}</div>
-    </section>
   );
 }
 
@@ -504,43 +486,49 @@ function ProjectsPageBody() {
   });
   const section = (target: CreateTarget) => page.sections.find((s) => s.target === target)!;
 
-  // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
+  // Sections and Explore call this via `items.map(renderCard)`, so it must set the key.
   const renderCard = (card: CardModel) => <ProjectCard key={card.id} card={card} />;
+
+  const renderSection = (target: CreateTarget, { headless }: { headless: boolean }) => (
+    <ProjectSection
+      key={target}
+      section={section(target)}
+      renderCard={renderCard}
+      headless={headless}
+      disabled={importing}
+      onCreate={() => openCreateDialog(target)}
+      onImport={() => openImportPicker(target)}
+      onRestore={target === "synked" ? () => setRestoreOpen(true) : undefined}
+      emptyExtra={target === "lokal" ? examplePicker : undefined}
+    />
+  );
+
+  /* Signed out there is only one kind of project, so its ways in sit in the
+     hero rather than under a heading that says nothing. Signed in, the layout
+     carries them (the "New project" door, each section's plus). */
+  const heroCreate =
+    !showLoading && !signedIn ? (
+      <SectionCreateMenu
+        target="lokal"
+        context="hero"
+        disabled={importing}
+        onCreate={() => openCreateDialog("lokal")}
+        onImport={() => openImportPicker("lokal")}
+      />
+    ) : null;
 
   return (
     <>
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Projects</h1>
-          {/* One shared picker: `importTargetRef` carries which section asked. */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImportFileChange}
-            className="hidden"
-          />
-          {/* Signed out there is only one kind of project, so the sole control
-              sits up here rather than under a heading that says nothing. */}
-          {!showLoading && !signedIn && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                className="cursor-pointer"
-                disabled={importing}
-                onClick={() => openImportPicker("lokal")}
-              >
-                {importing ? "Importing..." : "Import JSON"}
-              </Button>
-              <Button variant="secondary" className="cursor-pointer" asChild>
-                <Link href="/generate?target=lokal">Generate with AI</Link>
-              </Button>
-              <Button className="cursor-pointer" onClick={() => openCreateDialog("lokal")}>
-                Create project
-              </Button>
-            </div>
-          )}
-        </div>
+      <main data-projects-main="" className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 p-6">
+        {/* One shared picker: `importTargetRef` carries which section asked. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={handleImportFileChange}
+          className="hidden"
+        />
+        <ProjectsHero page={page} create={heroCreate} />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -613,15 +601,17 @@ function ProjectsPageBody() {
             onRetry={() => void loadProjects()}
             className="flex-1"
           />
-        ) : !signedIn ? (
-          /* Signed out: no sections for the user's OWN projects. Hosted and
-             Synked are impossible without an account, and the local-first
-             promise is that signing in ADDS things rather than rearranging
-             what was already there. Explore is not theirs — it is the standing
-             public fixture — so it renders above regardless of sign-in. */
-          <>
-            <ExploreSection items={page.explore} renderCard={renderCard} />
-            {grouped.lokal.length === 0 ? (
+        ) : (
+          /* Signed out there are no sections for the user's OWN projects:
+             Hosted and Synked are impossible without an account, and the
+             local-first promise is that signing in ADDS things rather than
+             rearranging what was already there. Explore is not theirs — it is
+             the standing public fixture — so it renders regardless. */
+          <ProjectsLayout
+            page={page}
+            renderSection={renderSection}
+            renderCard={renderCard}
+            firstRun={
               <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
                 <p className="max-w-xs text-sm text-muted-foreground">
                   No projects yet. Create one, import your JSON, or load an example project.
@@ -630,42 +620,8 @@ function ProjectsPageBody() {
                     for — without this the empty state is a dead end. */}
                 {examplePicker}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {section("lokal").items.map(renderCard)}
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <ProjectSection
-              section={section("hosted")}
-              renderCard={renderCard}
-              disabled={importing}
-              onCreate={() => openCreateDialog("hosted")}
-              onImport={() => openImportPicker("hosted")}
-            />
-
-            <ProjectSection
-              section={section("synked")}
-              renderCard={renderCard}
-              disabled={importing}
-              onCreate={() => openCreateDialog("synked")}
-              onImport={() => openImportPicker("synked")}
-              onRestore={() => setRestoreOpen(true)}
-            />
-
-            <ProjectSection
-              section={section("lokal")}
-              renderCard={renderCard}
-              disabled={importing}
-              onCreate={() => openCreateDialog("lokal")}
-              onImport={() => openImportPicker("lokal")}
-              emptyExtra={examplePicker}
-            />
-
-            <ExploreSection items={page.explore} renderCard={renderCard} />
-          </>
+            }
+          />
         )}
       </main>
 
