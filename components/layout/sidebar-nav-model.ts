@@ -3,6 +3,7 @@ import type { MouseEvent, ReactNode } from "react";
 import {
   BookOpenIcon,
   GalleryHorizontalEndIcon,
+  GaugeIcon,
   GemIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
@@ -94,6 +95,8 @@ export function buildSidebarNav({
         { id: "overview", href: `${base}/overview`, label: "Overview", tooltip: "Overview", Icon: LayoutDashboardIcon, active: currentView === "overview", shortcutId: "nav-overview" },
         { id: "pyramid", href: `${base}/pyramid`, label: "Pyramid", tooltip: "Value pyramid", Icon: PyramidIcon, active: currentView === "pyramid", shortcutId: "nav-pyramid" },
         { id: "delivery", href: `${base}/delivery`, label: "Delivery", tooltip: "Delivery board", Icon: SquareKanbanIcon, active: currentView === "delivery", shortcutId: "nav-delivery" },
+        // Parity is delivery monitoring, not a directory: it sits beside Delivery, not in the Library.
+        { id: "parity", href: `${base}/parity`, label: "Parity", tooltip: "Platform parity", Icon: GaugeIcon, active: currentView === "parity" },
         { id: "design", href: `${base}/design`, label: "Design", tooltip: "Design funnel", Icon: PencilRulerIcon, active: currentView === "design" },
         { id: "changelog", href: `${base}/changelog`, label: "Changelog", tooltip: "Changelog", Icon: ScrollTextIcon, active: currentView === "changelog", shortcutId: "nav-changelog" },
       ],

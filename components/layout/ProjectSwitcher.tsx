@@ -53,6 +53,7 @@ export type ProjectView =
   | "maps"
   | "library"
   | "delivery"
+  | "parity"
   | "design"
   | "changelog"
   | "quality"
@@ -71,6 +72,7 @@ export const PROJECT_VIEW_SEGMENTS = [
   "overview",
   "library",
   "delivery",
+  "parity",
   "design",
   "changelog",
   "quality",

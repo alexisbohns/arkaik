@@ -42,10 +42,13 @@ interface AcceptanceFilterBarProps {
   projectId: string;
   /** The bundle products live on. `undefined` until `useProject` resolves. */
   project: ProjectBundle | undefined;
-  /** Whether the matrix's anchor groups are open. Groups start collapsed. */
-  allExpanded: boolean;
-  onToggleExpandAll: () => void;
+  /** Whether the page's groups are open. Groups start collapsed. */
+  allExpanded?: boolean;
+  /** Absent on a surface with nothing to fold (the Parity monitor's flat list): no button, no key. */
+  onToggleExpandAll?: () => void;
 }
+
+const noop = () => {};
 
 const ALL = "all";
 
@@ -78,7 +81,7 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
     onChange(EMPTY_FILTERS);
   };
   useShortcut("clear-filters", toolbarKey(clearFilters), { ...GUARDED_HOTKEY, enabled: isFiltered });
-  useShortcut("toggle-expand", toolbarKey(onToggleExpandAll), GUARDED_HOTKEY);
+  useShortcut("toggle-expand", toolbarKey(onToggleExpandAll ?? noop), { ...GUARDED_HOTKEY, enabled: !!onToggleExpandAll });
   const [syncedSearch, setSyncedSearch] = useState(filters.search);
   // What we last wrote ourselves via the debounced onChange below. Tracked as
   // state (not a ref) because it must be *read* during the render-time draft
@@ -238,26 +241,28 @@ export function AcceptanceFilterBar({ filters, onChange, anchorOptions, projectI
           </Tooltip>
         )}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-pressed={allExpanded}
-              aria-label={allExpanded ? "Collapse all groups" : "Expand all groups"}
-              onClick={onToggleExpandAll}
-              // The filter menus beside it say "a value is set" with the cookie
-              // shape; this button sets no value — it opens and shuts the
-              // groups — so it stays a tonal pill, a squircle while on.
-            >
-              {allExpanded
-                ? <ListChevronsUpDownIcon className="size-4" />
-                : <ListChevronsDownUpIcon className="size-4" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{allExpanded ? "Collapse all groups" : "Expand all groups"}</TooltipContent>
-        </Tooltip>
+        {onToggleExpandAll && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-pressed={allExpanded}
+                aria-label={allExpanded ? "Collapse all groups" : "Expand all groups"}
+                onClick={onToggleExpandAll}
+                // The filter menus beside it say "a value is set" with the cookie
+                // shape; this button sets no value — it opens and shuts the
+                // groups — so it stays a tonal pill, a squircle while on.
+              >
+                {allExpanded
+                  ? <ListChevronsUpDownIcon className="size-4" />
+                  : <ListChevronsDownUpIcon className="size-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{allExpanded ? "Collapse all groups" : "Expand all groups"}</TooltipContent>
+          </Tooltip>
+        )}
 
         {isFiltered && (
           <Button
