@@ -46,6 +46,26 @@ function Steps({ text }: { text: string }) {
   );
 }
 
+/** Calm's Gherkin: the same steps as plain lines, the keyword in a quiet column of its own. */
+function GherkinLines({ text }: { text: string }) {
+  return (
+    <>
+      {gherkinSteps(text).map((step, i) => (
+        <span key={i} className="np-calm-gherkin-line">
+          {step.kw ? (
+            <>
+              <span className="np-calm-gherkin-kw">{step.kw}</span>
+              <span>{step.body}</span>
+            </>
+          ) : (
+            step.body
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function Head({ shape, title, sub, htmlFor, id }: { shape: "clover4" | "flower"; title: string; sub: string; htmlFor?: string; id: string }) {
   const body = (
     <>
@@ -84,7 +104,7 @@ function ReadValues({ values }: { values: ValueId[] }) {
 
 /**
  * What an acceptance itself says — the How and the Why, last in the intro
- * block, on both looks.
+ * block. Calm draws them as label-left rows (below); Expressive as titled blocks.
  *
  * The Gherkin reads as one line per step, its keyword a sticker in a column of
  * its own and the Then in bold. With a save path it is a button: a click (or
@@ -157,6 +177,78 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
     <Steps text={gherkin} />
   );
 
+  // Calm: two label-left rows, as the rest of Calm reads. The Gherkin is one line
+  // per step; a click (or Enter) turns it into a textarea, and Escape (or leaving
+  // it) returns to the read view with focus back on it, without closing the
+  // panel. Same draft, same save as Expressive.
+  if (look === "calm") {
+    return (
+      <div className="np-calm-props" data-readonly={readOnly ? "" : undefined}>
+        <div className="np-calm-prop np-calm-prop-top">
+          <span className="np-calm-prop-label" id={`${fieldId}-how`}>
+            How
+          </span>
+          <div className="np-calm-prop-value">
+            {readOnly ? (
+              <div className="np-calm-gherkin-body">
+                {empty ? <span className="np-calm-value-empty">No Given / When / Then written.</span> : <GherkinLines text={gherkin} />}
+              </div>
+            ) : editing ? (
+              <textarea
+                ref={areaRef}
+                id={`${fieldId}-gherkin`}
+                aria-labelledby={`${fieldId}-how`}
+                className="np-calm-textarea np-calm-textarea-grow"
+                value={gherkin}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={() => setEditing(false)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    // Stopped here: the panel stack also listens for Escape.
+                    event.preventDefault();
+                    event.stopPropagation();
+                    returnFocus.current = true;
+                    setEditing(false);
+                  }
+                }}
+                rows={2}
+                placeholder="When I'm on …, Then …"
+              />
+            ) : (
+              <button
+                ref={readRef}
+                type="button"
+                className="np-calm-gherkin-read"
+                aria-labelledby={`${fieldId}-how ${fieldId}-how-body`}
+                aria-describedby={`${fieldId}-how-edit`}
+                onClick={() => setEditing(true)}
+              >
+                <span id={`${fieldId}-how-body`} className="np-calm-gherkin-body">
+                  {empty ? <span className="np-calm-value-empty">Add a Given / When / Then…</span> : <GherkinLines text={gherkin} />}
+                </span>
+                <span id={`${fieldId}-how-edit`} className="sr-only">
+                  Edit
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="np-calm-prop np-calm-prop-top">
+          <span className="np-calm-prop-label">Why</span>
+          <div className="np-calm-prop-value">
+            {readOnly ? (
+              <ReadValues values={values} />
+            ) : (
+              <div className="np-calm-values">
+                <ValuePicker selected={values} onChange={setValues} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="kap-scope kap-au" data-readonly={readOnly ? "" : undefined}>
       <div className="kap-au-block" data-block="how">
@@ -211,7 +303,7 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
         {readOnly ? (
           <ReadValues values={values} />
         ) : (
-          <div className={look === "calm" ? "np-calm-values" : "np-values"}>
+          <div className="np-values">
             <ValuePicker selected={values} onChange={setValues} />
           </div>
         )}

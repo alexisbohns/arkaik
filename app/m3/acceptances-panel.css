@@ -1112,3 +1112,83 @@
     order: 31;
   }
 }
+
+/* ── Calm: the same sections, in Calm's idiom (owner's pick "D", 2026-11-27) ──
+ * Same content and controls as Expressive, drawn quieter: no tinted tiles or
+ * pills, figures in the body face, the platform status as plain text beside
+ * its glyph meter, the "also on" promises as one underlined line, and the
+ * level stops bare until one is chosen. How / Why are label-left rows
+ * (AcceptanceAuthoredFields' Calm branch, styled in panels.css). */
+:root[data-panel-look="calm"] [data-node-panel] .kap-gap-chip {
+  background: none;
+  box-shadow: none;
+  padding-inline: 0;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow {
+  min-height: 2.25rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow-name {
+  font-size: .875rem;
+  font-weight: 400;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow [data-np-status][data-slot="select-trigger"]:not(:hover, [aria-expanded="true"]) {
+  background: none;
+  box-shadow: none;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf {
+  gap: 0 1.5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile {
+  background: none;
+  border-radius: 0;
+  padding: 0 0 .5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile dt {
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+  font-weight: 400;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile dd {
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-lg-name {
+  font-size: .875rem;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-st-stop:not([data-on="true"]) .kap-st-n {
+  background: none;
+  box-shadow: none;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-st-stop:not([data-on="true"]):hover .kap-st-n {
+  background: var(--m3-hover, color-mix(in oklab, var(--md-on-surface) 8%, transparent));
+  color: var(--md-on-surface);
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-trail-step {
+  background: none;
+  padding-inline: 0;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs ul {
+  gap: .125rem .5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li > :is(button, span) {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--md-on-surface);
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li > button {
+  text-decoration: underline;
+  text-decoration-color: var(--md-outline-variant);
+  text-underline-offset: 3px;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li:not(:last-child)::after {
+  content: "·";
+  margin-inline-start: .5rem;
+  color: var(--md-outline);
+}
