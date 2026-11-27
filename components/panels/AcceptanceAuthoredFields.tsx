@@ -1,97 +1,121 @@
 "use client";
 
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { PencilIcon } from "lucide-react";
 import type { Node } from "@/lib/data/types";
 import type { ValueId } from "@arkaik/schema";
 import { ExpressiveShape } from "@/components/arkademy/ExpressiveShape";
 import { ValuePicker } from "@/components/values/ValuePicker";
+import { ValueBadge } from "@/components/values/ValueBadge";
 import { usePanelPreferences } from "@/lib/hooks/usePanelPreferences";
 
 interface AcceptanceAuthoredFieldsProps {
   node: Node;
+  /** No save path (the Changelog, Design): the Gherkin and the values are shown, never offered for editing. */
+  onUpdate?: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
   // No `allNodes` / `allEdges`: they were only ever the split dialog's anchor
   // count, and the dialog now lives above the panel — `ProjectPanels` mounts
   // one for the whole stack. Nothing authored here reads the graph.
-  onUpdate: (id: string, patch: Partial<Omit<Node, "id" | "project_id">>) => Promise<void> | void;
 }
 
-const KEYWORD = /\b(Given|When|Then|And|But)\b/g;
+const STEP = /\b(Given|When|Then|And|But)\b/;
 
-/**
- * The Gherkin with its keywords lit, drawn under a transparent textarea that
- * does the typing. Same font, size and wrapping as the textarea, so every
- * character sits exactly over its twin.
- */
-function LitGherkin({ text }: { text: string }) {
-  const parts: ReactNode[] = [];
-  let last = 0;
-  for (const match of text.matchAll(KEYWORD)) {
-    const at = match.index ?? 0;
-    parts.push(<Fragment key={`t${at}`}>{text.slice(last, at)}</Fragment>);
-    parts.push(
-      <b key={`k${at}`} className="np-kw">
-        {match[0]}
-      </b>,
-    );
-    last = at + match[0].length;
-  }
-  parts.push(<Fragment key="end">{text.slice(last)}</Fragment>);
-  // A trailing newline in a textarea opens a line the mirror would otherwise drop.
+/** One step per line: "When x, Then y" is two. A line with no keyword is a step with none. */
+export function gherkinSteps(text: string): { kw: string; body: string }[] {
+  return text
+    .split(/\n|(?=\b(?:Given|When|Then|And|But)\b)/)
+    .map((line) => line.trim().replace(/,$/, ""))
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(new RegExp(`^${STEP.source}`));
+      return match ? { kw: match[1], body: line.slice(match[0].length).trim() } : { kw: "", body: line };
+    });
+}
+
+/** The Gherkin as keyword stickers, one per step; the Then in bold. */
+function Steps({ text }: { text: string }) {
+  return (
+    <span className="kap-au-steps">
+      {gherkinSteps(text).map((step, i) => (
+        <span key={i} className="kap-au-step" data-kw={step.kw || undefined}>
+          <b>{step.kw || "·"}</b>
+          <span>{step.body}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Calm's Gherkin: the same steps as plain lines, the keyword in a quiet column of its own. */
+function GherkinLines({ text }: { text: string }) {
   return (
     <>
-      {parts}
-      {"​"}
+      {gherkinSteps(text).map((step, i) => (
+        <span key={i} className="np-calm-gherkin-line">
+          {step.kw ? (
+            <>
+              <span className="np-calm-gherkin-kw">{step.kw}</span>
+              <span>{step.body}</span>
+            </>
+          ) : (
+            step.body
+          )}
+        </span>
+      ))}
     </>
   );
 }
 
-const LINE_KEYWORD = /^(\s*)(Given|When|Then|And|But)\b/;
-
-/**
- * The Gherkin as lines: one per step, its keyword in a column of its own. A
- * one-line "When …, Then …" is split on the keywords too, so it reads as two.
- */
-function GherkinLines({ text }: { text: string }) {
-  const lines = text
-    .split(/\n|(?=\b(?:Given|When|Then|And|But)\b)/)
-    .map((line) => line.trim().replace(/,$/, ""))
-    .filter(Boolean);
-  return (
+function Head({ shape, title, sub, htmlFor, id }: { shape: "clover4" | "flower"; title: string; sub: string; htmlFor?: string; id: string }) {
+  const body = (
     <>
-      {lines.map((line, i) => {
-        const match = line.match(LINE_KEYWORD);
-        return (
-          <span key={i} className="np-calm-gherkin-line">
-            {match ? (
-              <>
-                <span className="np-calm-gherkin-kw">{match[2]}</span>
-                <span>{line.slice(match[0].length).trim()}</span>
-              </>
-            ) : (
-              line
-            )}
-          </span>
-        );
-      })}
+      <span className="kap-au-mark" aria-hidden="true">
+        <ExpressiveShape shape={shape} className="size-full" />
+      </span>
+      <span className="kap-au-title">{title}</span>
+      <span className="kap-au-sub">{sub}</span>
     </>
+  );
+  return htmlFor ? (
+    // A real label while the textarea is open: this is the acceptance's central
+    // field, and a screen reader must announce it by name (audit `shadcn-4`).
+    <label id={id} htmlFor={htmlFor} className="kap-au-head">
+      {body}
+    </label>
+  ) : (
+    <span id={id} className="kap-au-head">
+      {body}
+    </span>
+  );
+}
+
+function ReadValues({ values }: { values: ValueId[] }) {
+  if (values.length === 0) return <p className="kap-au-none">No values claimed yet.</p>;
+  return (
+    <ul className="kap-au-values" aria-label="Values this promise serves">
+      {values.map((value) => (
+        <li key={value}>
+          <ValueBadge valueId={value} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 /**
  * What an acceptance itself says — the How and the Why, last in the intro
- * block.
+ * block. Calm draws them as label-left rows (below); Expressive as titled blocks.
  *
- * Expressive: two titled blocks, each with a small shape mark. The Gherkin sits in a tonal
- * well with its Given / When / Then lit up in the species ink as you type, so
- * the sentence's skeleton reads at a glance. The lighting is a mirror drawn
- * under a transparent textarea: the field stays a real textarea (caret,
- * selection, undo, IME), and the mirror is `aria-hidden`.
+ * The Gherkin reads as one line per step, its keyword a sticker in a column of
+ * its own and the Then in bold. With a save path it is a button: a click (or
+ * Enter) opens the textarea, Escape or leaving it closes it again without
+ * closing the panel — and an empty Gherkin opens straight to the textarea, so
+ * there is never a dead "add" button. Without a save path (the Changelog) the
+ * same reading is plain text and the values are badges: nothing dead, and
+ * nothing missing.
  *
- * Calm: two label-left rows; the Gherkin reads as one line per step until it is
- * clicked (or reached with the keyboard and Enter), then it is a textarea.
- *
- * Both looks share one draft and one debounced save, so switching looks never
- * drops a keystroke.
+ * One draft, one debounced save (350 ms, reading the LATEST node through a ref
+ * at fire time so a concurrent status or values edit is not clobbered).
  *
  * Passed to `NodeFields` as the `authored` slot, so it renders into that
  * component's gutter and `gap-5` column and must not carry a gutter of its own.
@@ -102,30 +126,30 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
   // one's label pointing at the first one's control.
   const fieldId = useId();
   const { look } = usePanelPreferences();
-  const [gherkin, setGherkin] = useState(node.metadata?.gherkin ?? "");
+  const readOnly = !onUpdate;
+  const [draft, setDraft] = useState(node.metadata?.gherkin ?? "");
   const nodeRef = useRef(node);
   useEffect(() => {
     nodeRef.current = node;
   }, [node]);
-  // Debounce-save gherkin. The effect reschedules on every keystroke and clears
-  // its timer on rechange/unmount, so the save closure is always fresh. It reads
-  // the LATEST node via nodeRef at fire time, so a concurrent values/status edit
-  // isn't clobbered by the provider's shallow metadata merge (mirrors NodeFields).
+  // Debounce-save the Gherkin. The effect reschedules on every keystroke and
+  // clears its timer on rechange/unmount, so the save closure is always fresh.
+  // It reads the LATEST node via nodeRef at fire time, so a concurrent
+  // values/status edit isn't clobbered by the provider's shallow metadata merge
+  // (mirrors NodeFields).
   useEffect(() => {
-    if (gherkin === (nodeRef.current.metadata?.gherkin ?? "")) return;
+    if (!onUpdate) return;
+    if (draft === (nodeRef.current.metadata?.gherkin ?? "")) return;
     const t = setTimeout(() => {
-      onUpdate(nodeRef.current.id, { metadata: { ...nodeRef.current.metadata, gherkin } });
+      onUpdate(nodeRef.current.id, { metadata: { ...nodeRef.current.metadata, gherkin: draft } });
     }, 350);
     return () => clearTimeout(t);
-  }, [gherkin, onUpdate]);
+  }, [draft, onUpdate]);
 
   function setValues(values: ValueId[]) {
-    onUpdate(node.id, { metadata: { ...node.metadata, values } });
+    onUpdate?.(node.id, { metadata: { ...node.metadata, values } });
   }
 
-  // Calm: label-left rows. The Gherkin reads as Given / When / Then lines and
-  // turns into a textarea on click or Enter; Escape (or leaving it) returns to
-  // the read view with focus back on it, without closing the panel.
   const [editing, setEditing] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const readRef = useRef<HTMLButtonElement>(null);
@@ -141,22 +165,42 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
     }
   }, [editing]);
 
+  // Read-only shows what is committed; editable shows the draft.
+  const gherkin = readOnly ? (node.metadata?.gherkin ?? "") : draft;
+  const values = (node.metadata?.values ?? []) as ValueId[];
+  const empty = gherkin.trim() === "";
+  const open = !readOnly && (editing || empty);
+
+  const reading: ReactNode = empty ? (
+    <p className="kap-au-none">{readOnly ? "No Given / When / Then written." : "Add a Given / When / Then…"}</p>
+  ) : (
+    <Steps text={gherkin} />
+  );
+
+  // Calm: two label-left rows, as the rest of Calm reads. The Gherkin is one line
+  // per step; a click (or Enter) turns it into a textarea, and Escape (or leaving
+  // it) returns to the read view with focus back on it, without closing the
+  // panel. Same draft, same save as Expressive.
   if (look === "calm") {
     return (
-      <div className="np-calm-props">
+      <div className="np-calm-props" data-readonly={readOnly ? "" : undefined}>
         <div className="np-calm-prop np-calm-prop-top">
           <span className="np-calm-prop-label" id={`${fieldId}-how`}>
             How
           </span>
           <div className="np-calm-prop-value">
-            {editing ? (
+            {readOnly ? (
+              <div className="np-calm-gherkin-body">
+                {empty ? <span className="np-calm-value-empty">No Given / When / Then written.</span> : <GherkinLines text={gherkin} />}
+              </div>
+            ) : editing ? (
               <textarea
                 ref={areaRef}
                 id={`${fieldId}-gherkin`}
                 aria-labelledby={`${fieldId}-how`}
                 className="np-calm-textarea np-calm-textarea-grow"
                 value={gherkin}
-                onChange={(event) => setGherkin(event.target.value)}
+                onChange={(event) => setDraft(event.target.value)}
                 onBlur={() => setEditing(false)}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
@@ -180,11 +224,7 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
                 onClick={() => setEditing(true)}
               >
                 <span id={`${fieldId}-how-body`} className="np-calm-gherkin-body">
-                  {gherkin.trim() ? (
-                    <GherkinLines text={gherkin} />
-                  ) : (
-                    <span className="np-calm-value-empty">Add a Given / When / Then…</span>
-                  )}
+                  {empty ? <span className="np-calm-value-empty">Add a Given / When / Then…</span> : <GherkinLines text={gherkin} />}
                 </span>
                 <span id={`${fieldId}-how-edit`} className="sr-only">
                   Edit
@@ -196,9 +236,13 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
         <div className="np-calm-prop np-calm-prop-top">
           <span className="np-calm-prop-label">Why</span>
           <div className="np-calm-prop-value">
-            <div className="np-calm-values">
-              <ValuePicker selected={node.metadata?.values ?? []} onChange={setValues} />
-            </div>
+            {readOnly ? (
+              <ReadValues values={values} />
+            ) : (
+              <div className="np-calm-values">
+                <ValuePicker selected={values} onChange={setValues} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -206,44 +250,63 @@ export function AcceptanceAuthoredFields({ node, onUpdate }: AcceptanceAuthoredF
   }
 
   return (
-    <div data-np-authored="lit" className="np-authored">
-      <div className="np-authored-block">
-        {/* A real label: this textarea is the acceptance's central field, and
-            a screen reader must announce it by name (audit `shadcn-4`). */}
-        <label htmlFor={`${fieldId}-gherkin`} className="np-authored-head">
-          <span className="np-authored-mark" aria-hidden="true">
-            <ExpressiveShape shape="clover4" className="size-full" />
-          </span>
-          <span className="np-authored-title">How</span>
-          <span className="np-authored-sub">one Given / When / Then</span>
-        </label>
-        <div className="np-gherkin-field" data-lit>
-          <div className="np-gherkin-mirror" aria-hidden="true">
-            <LitGherkin text={gherkin} />
-          </div>
+    <div className="kap-scope kap-au" data-readonly={readOnly ? "" : undefined}>
+      <div className="kap-au-block" data-block="how">
+        <Head shape="clover4" title="How" sub="one Given / When / Then" htmlFor={open ? `${fieldId}-gherkin` : undefined} id={`${fieldId}-how`} />
+        {open ? (
           <textarea
+            ref={areaRef}
             id={`${fieldId}-gherkin`}
+            className="kap-au-area"
             value={gherkin}
-            onChange={(event) => setGherkin(event.target.value)}
-            rows={3}
+            rows={4}
             placeholder="When I'm on …, Then …"
-            className="np-gherkin-input"
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !empty) {
+                // Stopped here: the panel stack also listens for Escape.
+                event.preventDefault();
+                event.stopPropagation();
+                returnFocus.current = true;
+                setEditing(false);
+              }
+            }}
           />
-        </div>
+        ) : readOnly ? (
+          <div className="kap-au-read">{reading}</div>
+        ) : (
+          <button
+            ref={readRef}
+            type="button"
+            className="kap-au-read kap-au-editable"
+            aria-labelledby={`${fieldId}-how ${fieldId}-how-body`}
+            aria-describedby={`${fieldId}-how-edit`}
+            onClick={() => setEditing(true)}
+          >
+            <span id={`${fieldId}-how-body`} className="kap-au-body">
+              {reading}
+            </span>
+            <span className="kap-au-pencil" aria-hidden="true">
+              <PencilIcon />
+            </span>
+            <span id={`${fieldId}-how-edit`} className="sr-only">
+              Edit
+            </span>
+          </button>
+        )}
       </div>
-      <div className="np-authored-block">
+      <div className="kap-au-block" data-block="why">
         {/* Not a `<label>`: `ValuePicker` is a combobox that names itself, so
             there is no single control a label here should point at. */}
-        <span className="np-authored-head">
-          <span className="np-authored-mark" aria-hidden="true">
-            <ExpressiveShape shape="flower" className="size-full" />
-          </span>
-          <span className="np-authored-title">Why</span>
-          <span className="np-authored-sub">the values it serves</span>
-        </span>
-        <div className="np-values">
-          <ValuePicker selected={node.metadata?.values ?? []} onChange={setValues} />
-        </div>
+        <Head shape="flower" title="Why" sub="the values it serves" id={`${fieldId}-why`} />
+        {readOnly ? (
+          <ReadValues values={values} />
+        ) : (
+          <div className="np-values">
+            <ValuePicker selected={values} onChange={setValues} />
+          </div>
+        )}
       </div>
     </div>
   );

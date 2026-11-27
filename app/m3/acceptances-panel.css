@@ -1,0 +1,1194 @@
+/* The acceptance panel — the header's marks, the Platforms list, the authored
+ * How / Why, the Value ledger and the "You are here" trail. Prefix `kap-`; the
+ * marks themselves are `ka-parity-*` (acceptances.css), drawn through
+ * components/acceptances/kit.tsx. Ported from the 2026-11 tweaker exploration
+ * (owner's recipe "lead-owner-2"), so declarations read machine-ordered.
+ *
+ * The picks were never keyed to a panel look, so these sections draw the same on
+ * Expressive and Calm; only the header's wrapping rules are Expressive-only, as
+ * the header itself is. */
+/* One scope for the panel sections: the green of "kept", the flow and view hues
+ * the trail names its steps with, and the weighing's signed hues (green serves,
+ * red costs, amber owed, indigo to review). */
+:root .kap-scope {
+  --kap-ink: var(--tone-green);
+  --kap-flow: var(--tone-plum);
+  --kap-view: var(--tone-indigo);
+  --kap-tint: color-mix(in oklab, var(--tone-green) 11%, var(--md-surface-container-lowest));
+  --kap-tint-2: color-mix(in oklab, var(--tone-green) 22%, var(--md-surface-container-lowest));
+  --kap-flow-tint-2: color-mix(in oklab, var(--tone-plum) 22%, var(--md-surface-container-lowest));
+  --kap-view-tint: color-mix(in oklab, var(--tone-indigo) 11%, var(--md-surface-container-lowest));
+  --kap-veil: color-mix(in srgb, var(--md-on-surface) 4.5%, transparent);
+  --kap-spring: var(--mx-spring, ease-out);
+  --kap-spring-dur: var(--mx-spring-dur, .32s);
+  --kap-v-veil: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+  --kap-v-veil-2: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+  --kap-v-raise: var(--md-surface-container-lowest);
+  --kap-v-joint: var(--mx-joint, 5px);
+  --kap-v-gap: var(--mx-gap, 3px);
+}
+:root.dark .kap-scope {
+  --kap-tint: color-mix(in oklab, var(--tone-green) 14%, var(--md-surface-container));
+  --kap-tint-2: color-mix(in oklab, var(--tone-green) 28%, var(--md-surface-container));
+  --kap-flow-tint-2: color-mix(in oklab, var(--tone-plum) 28%, var(--md-surface-container));
+  --kap-view-tint: color-mix(in oklab, var(--tone-indigo) 14%, var(--md-surface-container));
+  --kap-veil: color-mix(in srgb, var(--md-on-surface) 6%, transparent);
+  --kap-v-veil: color-mix(in srgb, var(--md-on-surface) 9%, transparent);
+  --kap-v-veil-2: color-mix(in srgb, var(--md-on-surface) 14%, transparent);
+  --kap-v-raise: var(--md-surface-container-high);
+}
+.kap-scope [data-vt="served"],
+.kap-scope [data-sign="plus"] {
+  --kap-vt-hue: var(--tone-green);
+}
+.kap-scope [data-vt="cost"],
+.kap-scope [data-sign="minus"] {
+  --kap-vt-hue: var(--tone-red);
+}
+.kap-scope [data-vt="owed"] {
+  --kap-vt-hue: var(--tone-amber);
+}
+.kap-scope [data-vt="review"] {
+  --kap-vt-hue: var(--tone-indigo);
+}
+.kap-scope [data-sign="zero"] {
+  --kap-vt-hue: var(--tone-neutral);
+}
+.kap-scope :is([data-vt], [data-sign]) {
+  --kap-vt-tint-2: color-mix(in oklab, var(--kap-vt-hue) 24%, var(--md-surface-container-lowest));
+  --kap-vt-ink: var(--kap-vt-hue);
+  --kap-vt-on: var(--md-surface-container-lowest);
+  --kap-vt-hatch: repeating-linear-gradient(135deg, var(--kap-vt-hue) 0 1.5px, transparent 1.5px 4.5px);
+}
+:root.dark .kap-scope :is([data-vt], [data-sign]) {
+  --kap-vt-tint-2: color-mix(in oklab, var(--kap-vt-hue) 30%, var(--md-surface-container));
+  --kap-vt-on: var(--md-surface);
+}
+:root .kap-focusable:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .kap-scope * {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+:root .kap-meter {
+  --vm-h: .375rem;
+  width: 100%;
+  height: var(--vm-h);
+  border-radius: calc(var(--vm-h) / 2);
+  background: var(--kap-v-veil);
+  align-items: center;
+  display: flex;
+  overflow: hidden;
+}
+:root .kap-meter-fill {
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: 3px;
+  height: 100%;
+  display: flex;
+}
+:root .kap-meter-solid {
+  background: var(--kap-vt-hue);
+  flex-grow: 0;
+  flex-shrink: 0;
+  height: 100%;
+}
+:root .kap-meter-guess {
+  background: var(--kap-vt-hatch);
+  height: 100%;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--kap-vt-hue) 70%, transparent);
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+:root .kap-guesstag {
+  white-space: nowrap;
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  align-items: center;
+  gap: .375rem;
+  font-size: .75rem;
+  line-height: 1;
+  display: inline-flex;
+}
+:root .kap-swatch {
+  opacity: .8;
+  background: repeating-linear-gradient(135deg, currentColor 0 1.5px, #0000 1.5px 4px);
+  border-radius: 3px;
+  flex: none;
+  width: .875rem;
+  height: .625rem;
+  box-shadow: inset 0 0 0 1px;
+}
+:root .kap-press:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  :root .kap-meter {
+    border: 1px solid canvastext;
+  }
+}
+/* The header's marks: a sibling of the header row, after the id. Expressive
+ * orders it after the row's own pieces and the action group after it. */
+.kap-hdr {
+  flex: none;
+  align-items: center;
+  min-width: 0;
+  display: inline-flex;
+}
+:root:not([data-panel-look="calm"]) .kap-hdr {
+  order: 10;
+}
+:root [data-node-panel-header][data-species="acceptance"] .np-action-group {
+  order: 20;
+}
+/* The Platforms bar's "N behind". */
+.kap-gap-chip {
+  white-space: nowrap;
+  background: var(--ka-parity-gap-wash);
+  color: var(--tone-amber);
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--tone-amber) 55%, transparent);
+  border-radius: .75rem;
+  align-items: center;
+  height: 1.5rem;
+  padding-inline: .625rem;
+  font-size: .75rem;
+  font-weight: 650;
+  display: inline-flex;
+}
+@media (forced-colors: active) {
+  .kap-gap-chip {
+    border: 1px solid canvastext;
+  }
+}
+.kap-pdeck {
+  border-radius: 1rem;
+  margin-top: .75rem;
+}
+.kap-pdeck > summary {
+  cursor: pointer;
+  color: var(--md-on-surface-variant);
+  background: color-mix(in oklab, var(--md-on-surface) 5%, transparent);
+  border-radius: .875rem;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+  font-weight: 650;
+  list-style: none;
+  display: inline-flex;
+}
+.kap-pdeck > summary::-webkit-details-marker {
+  display: none;
+}
+.kap-pdeck > summary:before {
+  content: "+";
+  text-align: center;
+  width: 1em;
+  font-weight: 700;
+}
+.kap-pdeck[open] > summary:before {
+  content: "–";
+}
+.kap-pdeck > summary:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+.kap-pdeck-body {
+  margin-top: .5rem;
+}
+.kap-qlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kap-qrow {
+  border-bottom: 1px solid color-mix(in oklab, var(--md-on-surface) 8%, transparent);
+  align-items: center;
+  gap: .75rem;
+  min-height: 2.75rem;
+  padding: .375rem 0;
+  display: flex;
+}
+.kap-qrow-name {
+  flex: 1;
+  font-weight: 600;
+}
+.kap-qrow-state {
+  color: var(--md-on-surface-variant);
+  font-size: .875rem;
+}
+.kap-qrow[data-na] {
+  opacity: .65;
+}
+.kap-pnotes {
+  gap: 3px;
+  margin: .75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+.kap-pnote {
+  background: color-mix(in oklab, var(--md-on-surface) 5%, transparent);
+  border-radius: .75rem;
+  gap: .375rem;
+  padding: .75rem .875rem;
+  display: grid;
+}
+.kap-pnote-name {
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+  font-weight: 700;
+}
+.kap-pnote-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: .9375rem;
+  line-height: 1.45;
+}
+.kap-pnote-shot {
+  object-fit: contain;
+  border-radius: 1rem;
+  justify-self: start;
+  max-width: 100%;
+  max-height: 14rem;
+}
+/* How / Why: a block each, headed by a small shape, the shape's name and what it holds. */
+:root .kap-au {
+  color: var(--md-on-surface);
+  flex-direction: column;
+  gap: 1.25rem;
+  display: flex;
+}
+:root .kap-au-block {
+  flex-direction: column;
+  gap: .5rem;
+  display: flex;
+}
+:root .kap-au-head {
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: .5rem;
+  display: flex;
+}
+:root .kap-au-mark {
+  align-self: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--kap-ink);
+}
+:root .kap-au-title {
+  color: var(--md-on-surface);
+  font-size: 1rem;
+  font-weight: 650;
+}
+:root .kap-au-sub {
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+}
+:root .kap-au-body {
+  display: block;
+}
+:root .kap-au-none {
+  color: var(--md-on-surface-variant);
+  outline: 1.5px dashed var(--md-outline-variant);
+  outline-offset: -1.5px;
+  border-radius: .75rem;
+  margin: 0;
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+}
+:root .kap-au-values {
+  flex-wrap: wrap;
+  gap: .375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .kap-au-values .rounded-full {
+  background: var(--kap-tint);
+  color: color-mix(in oklab, var(--kap-ink) 75%, var(--md-on-surface));
+  border: 0;
+  padding: .25rem .625rem;
+  font-size: .75rem;
+  font-weight: 500;
+}
+:root .kap-au-read {
+  background: var(--kap-tint);
+  width: 100%;
+  color: var(--md-on-surface);
+  font: inherit;
+  text-align: start;
+  border: 0;
+  border-radius: 1rem;
+  margin: 0;
+  padding: .75rem .875rem;
+  display: block;
+}
+:root .kap-au-editable {
+  cursor: pointer;
+  transition: border-radius var(--kap-spring-dur) var(--kap-spring), background-color .14s;
+  position: relative;
+}
+:root .kap-au-editable:hover {
+  background: var(--kap-tint-2);
+  border-radius: 1.375rem;
+}
+:root .kap-au-editable:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-au-pencil {
+  opacity: 0;
+  color: var(--md-on-surface-variant);
+  position: absolute;
+  inset-block-start: .625rem;
+  inset-inline-end: .625rem;
+}
+:root .kap-au-editable:is(:hover, :focus-visible) .kap-au-pencil {
+  opacity: 1;
+}
+:root .kap-au-pencil svg {
+  width: .875rem;
+  height: .875rem;
+}
+:root .kap-au-area {
+  resize: vertical;
+  background: var(--kap-tint-2);
+  width: 100%;
+  color: var(--md-on-surface);
+  font: inherit;
+  border: 0;
+  border-radius: 1rem;
+  padding: .75rem .875rem;
+  font-size: .875rem;
+  line-height: 1.5;
+  display: block;
+}
+:root .kap-au-area:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-au-steps {
+  gap: .375rem;
+  display: grid;
+}
+:root .kap-au-step {
+  color: var(--md-on-surface-variant);
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: .625rem;
+  font-size: .875rem;
+  line-height: 1.45;
+  display: grid;
+}
+:root .kap-au-step b {
+  background: var(--kap-tint-2);
+  color: var(--kap-ink);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-radius: .5rem;
+  justify-self: start;
+  padding: .125rem .5rem;
+  font-size: .625rem;
+  font-weight: 700;
+}
+:root .kap-au-step[data-kw="Then"] {
+  color: var(--md-on-surface);
+  font-weight: 600;
+}
+:root .kap-au-step[data-kw="Then"] b {
+  background: var(--kap-ink);
+  color: var(--md-surface-container-lowest);
+}
+@media (forced-colors: active) {
+  :root :is(.kap-au-read, .kap-au-area) {
+    outline: 1px solid canvastext;
+  }
+}
+:root .kap-rel {
+  color: var(--md-on-surface);
+  padding-block: .25rem .75rem;
+}
+:root .kap-trail-step {
+  max-width: 100%;
+  font: inherit;
+  text-align: start;
+  color: var(--md-on-surface);
+  background: var(--kap-veil);
+  transition: border-radius var(--kap-spring-dur) var(--kap-spring), background-color .14s;
+  border: 0;
+  border-radius: .625rem;
+  align-items: center;
+  gap: .375rem;
+  padding: .25rem .625rem;
+  font-size: .8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  display: inline-flex;
+}
+:root button.kap-trail-step {
+  cursor: pointer;
+}
+:root button.kap-trail-step:hover {
+  border-radius: 1rem;
+}
+:root .kap-trail-step svg {
+  flex-shrink: 0;
+  width: .8125rem;
+  height: .8125rem;
+}
+:root .kap-trail-step > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+:root .kap-trail-step[data-kind="journey"] {
+  background: var(--kap-flow-tint-2);
+  color: color-mix(in oklab, var(--kap-flow) 80%, var(--md-on-surface));
+}
+:root .kap-trail-step[data-kind="screen"] {
+  background: var(--kap-view-tint);
+  color: color-mix(in oklab, var(--kap-view) 80%, var(--md-on-surface));
+}
+:root .kap-trail-step[data-kind="outside"] {
+  outline: 1.5px dashed var(--md-outline);
+  outline-offset: -1.5px;
+  color: var(--md-on-surface-variant);
+  background: none;
+}
+:root .kap-trail-step:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-lives-note {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .75rem;
+}
+:root .kap-trail {
+  gap: .375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+:root .kap-trail > li {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  margin-inline-start: calc(var(--kap-depth, 0) * 1rem);
+  display: flex;
+  position: relative;
+}
+:root .kap-trail > li:not(:first-child):before {
+  content: "";
+  border-inline-start: 2px solid var(--kap-flow-tint-2);
+  border-block-end: 2px solid var(--kap-flow-tint-2);
+  border-end-start-radius: .5rem;
+  width: .5rem;
+  height: 1.25rem;
+  position: absolute;
+  inset-block-start: -.5rem;
+  inset-inline-start: -.625rem;
+}
+:root .kap-trail-count {
+  color: var(--md-on-surface-variant);
+  font-size: .6875rem;
+}
+:root .kap-trail-here {
+  font-size: .875rem;
+  font-weight: 600;
+}
+:root .kap-trail-dot {
+  background: var(--kap-ink);
+  outline: 3px solid var(--kap-tint-2);
+  border-radius: 50%;
+  width: .625rem;
+  height: .625rem;
+}
+:root .kap-trail-more {
+  color: var(--md-on-surface-variant);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem;
+  margin: .625rem 0 0;
+  font-size: .75rem;
+  display: flex;
+}
+:root .kap-trail-more > span {
+  align-items: center;
+  gap: .25rem;
+  display: inline-flex;
+}
+:root .kap-sibs {
+  margin-top: .75rem;
+}
+:root .kap-sibs > p {
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--md-on-surface-variant);
+  margin: 0 0 .375rem;
+  font-size: .6875rem;
+  font-weight: 700;
+}
+:root .kap-sibs ul {
+  flex-wrap: wrap;
+  gap: .25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .kap-sibs li > :is(button, span) {
+  background: var(--kap-tint);
+  max-width: 100%;
+  color: color-mix(in oklab, var(--kap-ink) 70%, var(--md-on-surface));
+  font: inherit;
+  text-align: start;
+  border: 0;
+  border-radius: .625rem;
+  padding: .25rem .625rem;
+  font-size: .75rem;
+  line-height: 1.3;
+  display: inline-block;
+}
+:root .kap-sibs li > button {
+  cursor: pointer;
+  transition: border-radius var(--kap-spring-dur) var(--kap-spring);
+}
+:root .kap-sibs li > button:hover {
+  background: var(--kap-tint-2);
+  border-radius: 1rem;
+}
+:root .kap-sibs li > button:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-sibs-more {
+  color: var(--md-on-surface-variant);
+  align-self: center;
+  padding-inline: .25rem;
+  font-size: .75rem;
+}
+@media (forced-colors: active) {
+  :root .kap-trail-step {
+    outline: 1px solid canvastext;
+  }
+}
+:root .kap-w {
+  flex-direction: column;
+  gap: 1rem;
+  display: flex;
+}
+:root .kap-w-empty {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .875rem;
+}
+:root .kap-ws {
+  flex-direction: column;
+  gap: .75rem;
+  display: flex;
+}
+:root .kap-wf {
+  gap: var(--kap-v-gap);
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  display: grid;
+}
+:root .kap-wf-tile {
+  border-radius: var(--kap-v-joint);
+  background: var(--kap-vt-tint-2);
+  flex-direction: column;
+  gap: .25rem;
+  margin: 0;
+  padding: .5rem .875rem .625rem;
+  display: flex;
+}
+:root .kap-wf-tile:first-child {
+  border-radius: 1.375rem var(--kap-v-joint) var(--kap-v-joint) 1.375rem;
+}
+:root .kap-wf-tile:nth-child(2) {
+  border-radius: var(--kap-v-joint) 1.375rem 1.375rem var(--kap-v-joint);
+}
+:root .kap-wf-tile[data-zero="true"] {
+  opacity: .6;
+}
+:root .kap-wf-tile dt {
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--kap-vt-ink);
+  font-size: .6875rem;
+  font-weight: 650;
+}
+:root .kap-wf-tile dd {
+  font-family: var(--font-display, inherit);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--kap-vt-ink);
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+}
+:root .kap-wf-line {
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .125rem .75rem;
+  margin: 0;
+  font-size: .8125rem;
+  display: flex;
+}
+:root .kap-wf-line dt {
+  color: var(--md-on-surface-variant);
+}
+:root .kap-wf-line dd {
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .375rem;
+  margin: 0;
+  display: inline-flex;
+}
+:root .kap-ws-note {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .75rem;
+}
+:root .kap-wfl {
+  flex-direction: column;
+  gap: .1875rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .kap-wfl-item {
+  background: var(--kap-vt-tint-2);
+  color: var(--kap-vt-ink);
+  border-radius: .875rem;
+  align-items: flex-start;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+  line-height: 1.4;
+  display: flex;
+}
+:root .kap-wfl-item > svg {
+  flex: none;
+  margin-top: .125rem;
+}
+:root .kap-st {
+  grid-template-columns: repeat(7, 1.625rem);
+  align-items: center;
+  display: inline-grid;
+  position: relative;
+}
+:root .kap-st-stop {
+  height: 1.875rem;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  place-items: center;
+  padding: 0;
+  display: grid;
+  position: relative;
+}
+:root .kap-st[data-readonly] .kap-st-stop {
+  cursor: default;
+}
+:root .kap-st-n {
+  box-sizing: border-box;
+  background: var(--kap-v-raise);
+  width: 1.5rem;
+  height: 1.5rem;
+  box-shadow: inset 0 0 0 1.5px var(--kap-v-veil-2);
+  font-variant-numeric: tabular-nums;
+  border-radius: .5rem;
+  place-items: center;
+  font-size: .6875rem;
+  font-weight: 600;
+  line-height: 1;
+  display: grid;
+}
+:root .kap-st-stop:hover .kap-st-n {
+  box-shadow: inset 0 0 0 1.5px var(--kap-vt-hue);
+  color: var(--kap-vt-ink);
+}
+:root .kap-st-stop[data-on="true"] .kap-st-n {
+  font-weight: 700;
+}
+:root .kap-st-stop[data-on="true"][data-who="person"] .kap-st-n {
+  background: var(--kap-vt-hue);
+  color: var(--kap-vt-on);
+  box-shadow: none;
+}
+:root .kap-st-stop[data-on="true"][data-who="agent"] .kap-st-n {
+  background: var(--kap-vt-tint-2);
+  color: var(--kap-vt-ink);
+  box-shadow: inset 0 0 0 2px var(--kap-vt-hue);
+}
+:root .kap-st-stop[data-on="true"][data-who="guess"] .kap-st-n {
+  background: var(--kap-vt-hatch), var(--kap-v-raise);
+  color: var(--kap-vt-ink);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--kap-vt-hue) 70%, transparent);
+  text-shadow: 0 0 3px var(--kap-v-raise), 0 0 3px var(--kap-v-raise), 0 0 4px var(--kap-v-raise);
+}
+:root .kap-st-stop[data-sign="zero"][data-on="true"][data-who="person"] .kap-st-n {
+  background: var(--md-on-surface-variant);
+}
+:root .kap-st-other {
+  box-sizing: border-box;
+  border-radius: 50%;
+  width: .4375rem;
+  height: .4375rem;
+  margin-left: -.21875rem;
+  position: absolute;
+  bottom: -.0625rem;
+  left: 50%;
+}
+:root .kap-st-other[data-who="person"] {
+  background: var(--md-on-surface);
+}
+:root .kap-st-other[data-who="agent"] {
+  border: 1.5px solid var(--md-on-surface);
+  background: var(--kap-v-raise);
+}
+:root .kap-cf-wrap {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .375rem .625rem;
+  display: flex;
+}
+:root .kap-cf-k {
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+}
+:root .kap-cf {
+  gap: var(--kap-v-gap);
+  display: inline-flex;
+}
+:root .kap-cf-btn {
+  border-radius: var(--kap-v-joint);
+  background: var(--kap-v-veil);
+  height: 1.75rem;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  border: 0;
+  align-items: center;
+  gap: .3125rem;
+  padding: 0 .625rem 0 .5rem;
+  font-size: .75rem;
+  font-weight: 600;
+  display: inline-flex;
+}
+:root .kap-cf-btn:first-child {
+  border-radius: .875rem var(--kap-v-joint) var(--kap-v-joint) .875rem;
+}
+:root .kap-cf-btn:last-child {
+  border-radius: var(--kap-v-joint) .875rem .875rem var(--kap-v-joint);
+}
+:root .kap-cf-btn[data-on="true"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+:root .kap-cf-btn[aria-pressed="true"] {
+  background: var(--md-secondary);
+  color: var(--md-on-secondary);
+  border-radius: .875rem;
+}
+:root .kap-cf-btn[aria-pressed="true"][data-zero="true"] {
+  background: var(--kap-v-veil-2);
+  color: var(--md-on-surface);
+  box-shadow: inset 0 0 0 1.5px var(--md-on-surface-variant);
+}
+:root .kap-cf-pip {
+  opacity: .55;
+  background: currentColor;
+  border-radius: 50%;
+  width: .5rem;
+  height: .5rem;
+}
+:root .kap-cf-btn[aria-pressed="true"] .kap-cf-pip {
+  opacity: 1;
+}
+:root .kap-cf-words {
+  color: var(--md-on-surface-variant);
+  flex-basis: 100%;
+  font-size: .75rem;
+}
+:root .kap-cf-ro {
+  color: var(--md-on-surface-variant);
+  align-items: flex-start;
+  gap: .5rem;
+  margin: 0;
+  font-size: .75rem;
+  line-height: 1.4;
+  display: flex;
+}
+:root .kap-cf-ro i {
+  font-style: normal;
+}
+:root .kap-cf[data-readonly] {
+  flex: none;
+  gap: 2px;
+  margin-top: .1875rem;
+}
+:root .kap-cf[data-readonly] .kap-cf-pip {
+  background: var(--kap-v-veil-2);
+  opacity: 1;
+  width: .5rem;
+  height: .5rem;
+}
+:root .kap-cf[data-readonly] .kap-cf-pip[data-on="true"] {
+  background: var(--md-secondary);
+}
+:root .kap-cf[data-readonly] .kap-cf-pip[data-zero="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--md-on-surface-variant);
+  background: none;
+}
+:root .kap-q {
+  color: var(--md-on-surface-variant);
+  text-wrap: pretty;
+  margin: 0;
+  font-size: .8125rem;
+  line-height: 1.4;
+}
+:root .kap-who,
+:root .kap-ot {
+  color: var(--md-on-surface-variant);
+  margin: 0;
+  font-size: .75rem;
+  line-height: 1.4;
+}
+:root .kap-ev {
+  white-space: pre-wrap;
+  text-wrap: pretty;
+  margin: 0;
+  font-size: .8125rem;
+  line-height: 1.45;
+}
+:root .kap-ev-k {
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--md-on-surface-variant);
+  margin-inline-end: .25rem;
+  font-size: .6875rem;
+  font-weight: 650;
+}
+:root .kap-ev-box summary {
+  background: var(--kap-v-veil);
+  width: fit-content;
+  color: var(--md-on-surface);
+  cursor: pointer;
+  border-radius: .75rem;
+  padding: .25rem .625rem;
+  font-size: .75rem;
+  font-weight: 600;
+}
+:root .kap-ev-box[open] summary {
+  margin-bottom: .5rem;
+}
+:root .kap-ev-box summary:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-bd {
+  flex-wrap: wrap;
+  gap: .25rem;
+  display: inline-flex;
+}
+:root .kap-bd-i {
+  background: var(--kap-v-veil);
+  height: 1.25rem;
+  color: var(--md-on-surface-variant);
+  border-radius: .625rem;
+  align-items: center;
+  padding: 0 .5rem;
+  font-size: .6875rem;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+}
+:root .kap-bd-i[data-k="guess"] {
+  background: repeating-linear-gradient(135deg, var(--md-on-surface-variant) 0 1.5px, transparent 1.5px 4.5px);
+  box-shadow: inset 0 0 0 1px var(--md-on-surface-variant);
+  color: var(--md-on-surface);
+  text-shadow: 0 0 3px var(--kap-v-raise), 0 0 3px var(--kap-v-raise);
+}
+:root .kap-bd-i[data-k="review"] {
+  background: color-mix(in oklab, var(--tone-indigo) 22%, var(--kap-v-raise));
+  color: var(--tone-indigo);
+}
+:root .kap-bd-i[data-k="stale"] {
+  background: color-mix(in oklab, var(--tone-amber) 22%, var(--kap-v-raise));
+  color: var(--tone-amber);
+}
+:root .kap-bd-i[data-k="claimed"] {
+  box-shadow: inset 0 0 0 1px var(--kap-v-veil-2);
+  background: none;
+}
+:root .kap-fold {
+  margin-top: .75rem;
+}
+:root .kap-fold > summary {
+  background: var(--md-secondary-container);
+  width: fit-content;
+  color: var(--md-on-secondary-container);
+  cursor: pointer;
+  border-radius: 1rem;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+  padding: .4375rem .875rem;
+  font-size: .8125rem;
+  font-weight: 650;
+  display: flex;
+}
+:root .kap-fold > summary b {
+  background: color-mix(in oklab, var(--md-on-secondary-container) 14%, transparent);
+  border-radius: .625rem;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 .3125rem;
+  font-size: .6875rem;
+  display: inline-grid;
+}
+:root .kap-fold > summary:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .kap-add {
+  margin-top: .75rem;
+}
+:root .kap-lg-wrap {
+  flex-direction: column;
+  display: flex;
+}
+:root .kap-lg-scale {
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  grid-template-columns: repeat(7, 1.625rem);
+  justify-content: end;
+  margin-bottom: .25rem;
+  font-size: .625rem;
+  display: grid;
+}
+:root .kap-lg-list {
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+}
+:root .kap-lg {
+  border-top: 1px solid var(--kap-v-veil-2);
+  flex-direction: column;
+  gap: .1875rem;
+  padding: .375rem 0 .5rem;
+  display: flex;
+}
+:root .kap-lg-line {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .25rem .75rem;
+  display: flex;
+}
+:root .kap-lg-name {
+  min-width: 0;
+  color: var(--md-on-surface);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: .5rem;
+  align-items: center;
+  gap: .4375rem;
+  padding: .1875rem .375rem .1875rem 0;
+  font-size: .875rem;
+  font-weight: 600;
+  display: inline-flex;
+}
+:root .kap-lg-name:hover {
+  background: var(--kap-v-veil);
+}
+:root .kap-lg-name > span {
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+:root .kap-lg-sub {
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .25rem .5rem;
+  display: flex;
+}
+:root .kap-lg-rung {
+  color: var(--md-on-surface-variant);
+  text-wrap: pretty;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+:root .kap-lg-rung b {
+  color: var(--md-on-surface);
+}
+:root .kap-lg-more {
+  flex-direction: column;
+  gap: .5rem;
+  padding: .375rem 0 .25rem;
+  display: flex;
+}
+:root .kap-lg[aria-busy="true"] {
+  opacity: .75;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes kap-pop {
+    from {
+      transform: scale(.78);
+    }
+
+    to {
+      transform: scale(1);
+    }
+  }
+  :root .kap-st-stop[data-on="true"] .kap-st-n {
+    animation: kap-pop var(--mx-spring-fast-dur, .44s) var(--mx-spring-fast, ease);
+  }
+  :root .kap-st-n {
+    transition: width .16s var(--mx-effects, ease), height .16s var(--mx-effects, ease), box-shadow .16s var(--mx-effects, ease);
+  }
+  :root .kap-cf-btn {
+    transition: border-radius var(--mx-spring-fast-dur, .44s) var(--mx-spring-fast, ease), background-color .16s var(--mx-effects, ease);
+  }
+}
+@media (forced-colors: active) {
+  :root :is(.kap-wf-tile, .kap-wfl-item, .kap-st-n, .kap-bd-i) {
+    border: 1px solid canvastext;
+  }
+}
+/* A panel's header holds the species seal, the id, the marks and the actions. The
+ * marks sit after the row, so the row wraps to give them room; in a very narrow
+ * panel a header WITH marks breaks onto two lines — seal and id above, the marks
+ * below, indented under the seal — and the actions stay up beside the close
+ * button. (The plain header's narrow rules live in panels.css.) */
+:root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) {
+  flex-wrap: wrap;
+  row-gap: .375rem;
+}
+@container np-head (width <= 22rem) {
+  :root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) [data-node-panel-header] > .np-action-group {
+    order: 20;
+  }
+  :root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) [data-node-panel-header]:after {
+    content: "";
+    flex-basis: 100%;
+    order: 25;
+    height: 0;
+  }
+  :root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) [data-node-panel-header]:before {
+    content: "";
+    flex: none;
+    order: 26;
+    width: 2.5rem;
+  }
+  :root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) [data-node-panel-header] > :is(.np-chip, .dc-header-mark) {
+    order: 30;
+  }
+  :root:not([data-panel-look="calm"]) :has( > [data-node-panel-header]):has( > [data-acceptance-marks]) > [data-acceptance-marks] {
+    order: 31;
+  }
+}
+
+/* ── Calm: the same sections, in Calm's idiom (owner's pick "D", 2026-11-27) ──
+ * Same content and controls as Expressive, drawn quieter: no tinted tiles or
+ * pills, figures in the body face, the platform status as plain text beside
+ * its glyph meter, the "also on" promises as one underlined line, and the
+ * level stops bare until one is chosen. How / Why are label-left rows
+ * (AcceptanceAuthoredFields' Calm branch, styled in panels.css). */
+:root[data-panel-look="calm"] [data-node-panel] .kap-gap-chip {
+  background: none;
+  box-shadow: none;
+  padding-inline: 0;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow {
+  min-height: 2.25rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow-name {
+  font-size: .875rem;
+  font-weight: 400;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-qrow [data-np-status][data-slot="select-trigger"]:not(:hover, [aria-expanded="true"]) {
+  background: none;
+  box-shadow: none;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf {
+  gap: 0 1.5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile {
+  background: none;
+  border-radius: 0;
+  padding: 0 0 .5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile dt {
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+  font-weight: 400;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-wf-tile dd {
+  font-family: inherit;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-lg-name {
+  font-size: .875rem;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-st-stop:not([data-on="true"]) .kap-st-n {
+  background: none;
+  box-shadow: none;
+  font-weight: 500;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-st-stop:not([data-on="true"]):hover .kap-st-n {
+  background: var(--m3-hover, color-mix(in oklab, var(--md-on-surface) 8%, transparent));
+  color: var(--md-on-surface);
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-trail-step {
+  background: none;
+  padding-inline: 0;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs ul {
+  gap: .125rem .5rem;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li > :is(button, span) {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--md-on-surface);
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li > button {
+  text-decoration: underline;
+  text-decoration-color: var(--md-outline-variant);
+  text-underline-offset: 3px;
+}
+:root[data-panel-look="calm"] [data-node-panel] .kap-sibs li:not(:last-child)::after {
+  content: "·";
+  margin-inline-start: .5rem;
+  color: var(--md-outline);
+}

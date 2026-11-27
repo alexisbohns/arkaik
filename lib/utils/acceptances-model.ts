@@ -576,12 +576,37 @@ export function buildAcceptancesModel(params: {
 
 // ── the acceptance panel ────────────────────────────────────────────────────
 
+/** One journey this promise lives in, and where inside it. */
+export interface AcceptancePlace {
+  journey: Node;
+  /** The journeys above it, outermost first (the first parent each time). */
+  trail: Node[];
+  /** The screens this promise covers that the journey holds. */
+  screens: Node[];
+  /** The promise covers the journey (the flow) itself. */
+  direct: boolean;
+}
+
+/** WHERE a promise lives, as journey › screen, and what stands beside it. */
+export interface AcceptanceWhere {
+  /** Covers no screen or flow at all. */
+  unanchored: boolean;
+  places: AcceptancePlace[];
+  /** Screens the promise covers that no journey holds. */
+  outside: Node[];
+  /** The screen the panel orients by: the first screen of the first journey, else the first outside one. */
+  screen: Node | null;
+  /** Other promises covering that screen. */
+  beside: Node[];
+}
+
 export interface AcceptancePanelModel {
   promise: PromiseModel;
   /** No save path (e.g. opened from the Changelog): show, offer nothing. */
   readOnly: boolean;
   /** The scope's platforms (the Platforms section edits one row per platform). */
   platforms: readonly PlatformId[];
+  where: AcceptanceWhere;
 }
 
 export function buildAcceptancePanel(params: {
@@ -599,5 +624,42 @@ export function buildAcceptancePanel(params: {
   const journeys = buildJourneyIndex(nodes, edges, nodesById);
   const columns: (PlatformId | null)[] = scope.isMultiPlatform ? [...scope.platforms] : [scope.platforms[0] ?? null];
   const promise = buildPromise(node, { columns, edges, nodesById, journeys, weighingById });
-  return { promise, readOnly, platforms: scope.platforms };
+  return { promise, readOnly, platforms: scope.platforms, where: buildWhere(promise, edges, nodesById, journeys) };
+}
+
+function buildWhere(promise: PromiseModel, edges: readonly Edge[], nodesById: ReadonlyMap<string, Node>, index: JourneyIndex): AcceptanceWhere {
+  const chain = (id: string): Node[] => {
+    const out: Node[] = [];
+    const seen = new Set([id]);
+    let cur = [...(index.parentsOf.get(id) ?? [])][0];
+    while (cur && !seen.has(cur)) {
+      const n = nodesById.get(cur);
+      if (!n) break;
+      out.unshift(n);
+      seen.add(cur);
+      cur = [...(index.parentsOf.get(cur) ?? [])][0];
+    }
+    return out;
+  };
+  const views = promise.anchors.filter((a) => a.species === "view");
+  const nodeOf = (a: { id: string }) => nodesById.get(a.id);
+  const isNode = (n: Node | undefined): n is Node => !!n;
+  const places: AcceptancePlace[] = promise.journeys
+    .map((j) => nodesById.get(j.id))
+    .filter(isNode)
+    .map((journey) => ({
+      journey,
+      trail: chain(journey.id),
+      screens: views.filter((a) => index.viewsOf.get(journey.id)?.has(a.id)).map(nodeOf).filter(isNode),
+      direct: promise.anchors.some((a) => a.id === journey.id),
+    }));
+  const outside = views.filter((a) => !index.flowsOfView.has(a.id)).map(nodeOf).filter(isNode);
+  const screen = places[0]?.screens[0] ?? outside[0] ?? null;
+  const beside = screen
+    ? edges
+        .filter((e) => e.edge_type === "covers" && e.target_id === screen.id && e.source_id !== promise.id)
+        .map((e) => nodesById.get(e.source_id))
+        .filter((n): n is Node => !!n && n.species === "acceptance")
+    : [];
+  return { unanchored: promise.anchors.length === 0, places, outside, screen, beside };
 }

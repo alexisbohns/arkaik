@@ -12,6 +12,7 @@
 @import "./m3/acceptances-directory.css";
 @import "./m3/acceptances-mapping.css";
 @import "./m3/acceptances-value.css";
+@import "./m3/acceptances-panel.css";
 @source not "../kits";
 
 @custom-variant dark (&:is(.dark *));

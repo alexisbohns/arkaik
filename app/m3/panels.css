@@ -481,94 +481,6 @@
   outline: 3px solid var(--md-secondary);
   outline-offset: 2px;
 }
-:root:not([data-panel-look="calm"]) .np-authored {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: 0.5rem;
-}
-:root:not([data-panel-look="calm"]) .np-authored-mark {
-  align-self: center;
-  width: 1.125rem;
-  height: 1.125rem;
-  color: var(--np-ink);
-}
-:root:not([data-panel-look="calm"]) .np-authored-title {
-  font-size: 1rem;
-  font-weight: 650;
-  color: var(--md-on-surface);
-}
-:root:not([data-panel-look="calm"]) .np-authored-sub {
-  font-size: 0.75rem;
-  color: var(--md-on-surface-variant);
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field {
-  display: grid;
-  border-radius: 1.25rem;
-  background: var(--np-tint);
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field:focus-within {
-  outline: 3px solid var(--md-secondary);
-  outline-offset: 2px;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-field > * {
-  grid-area: 1 / 1;
-  margin: 0;
-  padding: 0.875rem 1rem;
-  border: 0;
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1.6;
-  letter-spacing: normal;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-mirror {
-  color: var(--md-on-surface);
-  pointer-events: none;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-input {
-  min-height: calc(3 * 1.6em + 1.75rem);
-  field-sizing: content;
-  resize: none;
-  overflow: hidden;
-  background: transparent;
-  color: var(--md-on-surface);
-  caret-color: var(--md-on-surface);
-  outline: none;
-}
-:root:not([data-panel-look="calm"])
-  .np-gherkin-field[data-lit]
-  .np-gherkin-input {
-  color: transparent;
-}
-:root:not([data-panel-look="calm"]) .np-gherkin-input::placeholder {
-  color: var(--md-on-surface-variant);
-}
-:root:not([data-panel-look="calm"])
-  .np-gherkin-field[data-lit]
-  .np-gherkin-input::selection {
-  color: transparent;
-  background: color-mix(in srgb, var(--md-secondary) 30%, transparent);
-}
-:root:not([data-panel-look="calm"]) .np-kw {
-  font-weight: inherit;
-  color: var(--np-ink);
-  background: var(--np-tint-2);
-  border-radius: 0.3rem;
-  box-shadow: 0 0 0 0.15rem var(--np-tint-2);
-}
 :root:not([data-panel-look="calm"]) .np-values > div > div:first-child {
   min-height: 2.75rem;
   padding: 0.375rem 0.5rem;
@@ -1548,7 +1460,6 @@
   :root:not([data-panel-look="calm"]) .np-chip,
   :root:not([data-panel-look="calm"]) .np-connected > button,
   :root [data-np-status],
-  :root:not([data-panel-look="calm"]) .np-gherkin-field,
   :root:not([data-panel-look="calm"]) .np-values > div > div:first-child,
   :root
     :is(.np-pv-shot-frame, .np-pv-drop, .np-pv-notes textarea, .np-deck-tile),
@@ -1565,16 +1476,6 @@
     background: Highlight;
     color: HighlightText;
     forced-color-adjust: none;
-  }
-  :root:not([data-panel-look="calm"])
-    .np-gherkin-field[data-lit]
-    .np-gherkin-mirror {
-    display: none;
-  }
-  :root:not([data-panel-look="calm"])
-    .np-gherkin-field[data-lit]
-    .np-gherkin-input {
-    color: CanvasText;
   }
   :root [data-node-panel] [data-history-feed] > [data-feed-row]::before,
   :root:not([data-panel-groups="cards"]) .np-group-title::before {
@@ -2008,6 +1909,14 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+/* Read-only (the Changelog): the same reading as the button, with nothing to press. */
+.np-calm-prop-value > .np-calm-gherkin-body {
+  width: 100%;
+  padding-block: 0.375rem;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--md-on-surface);
 }
 .np-calm-gherkin-line {
   display: block;
