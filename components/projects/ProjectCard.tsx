@@ -13,16 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
-import type { ProjectSummary } from "@/lib/data/data-provider";
+import type { CardModel } from "@/lib/data/project-page-model";
 
 interface ProjectCardProps {
-  summary: ProjectSummary;
-  /** True when the signed-in user has somewhere to move a local project to. */
-  canHost: boolean;
-  /** True while THIS project is being copied into the account. */
-  moving: boolean;
-  onMoveToAccount: () => void;
+  /** The card's model: whether it can move and whether it syncs are already decided there. */
+  card: CardModel;
 }
 
 /**
@@ -48,30 +43,26 @@ interface ProjectCardProps {
  * The seed card — the public self-map — suppresses its footer for the same
  * reason a hosted one does: nothing to sync, move, or delete.
  */
-export function ProjectCard({ summary, canHost, moving, onMoveToAccount }: ProjectCardProps) {
-  const isSeed = Boolean(summary.seed);
-  const showMove = !summary.hosted && !isSeed && canHost;
+export function ProjectCard({ card }: ProjectCardProps) {
 
   return (
     <Card className="relative gap-4 transition-colors hover:border-foreground/20 hover:bg-accent/40 focus-within:border-foreground/20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 truncate">
           <Link
-            href={`/project/${summary.project.id}`}
+            href={card.href}
             className="min-w-0 truncate outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
           >
-            {summary.project.title}
+            {card.title}
           </Link>
-          {isSeed && <Badge variant="secondary">Public</Badge>}
+          {card.isSeed && <Badge variant="secondary">Public</Badge>}
         </CardTitle>
-        {summary.project.description && (
-          <CardDescription>{summary.project.description}</CardDescription>
-        )}
+        {card.description && <CardDescription>{card.description}</CardDescription>}
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          {summary.nodeCount} node{summary.nodeCount !== 1 ? "s" : ""} ·{" "}
-          {summary.edgeCount} edge{summary.edgeCount !== 1 ? "s" : ""}
+          {card.nodeCount} node{card.nodeCount !== 1 ? "s" : ""} ·{" "}
+          {card.edgeCount} edge{card.edgeCount !== 1 ? "s" : ""}
         </p>
       </CardContent>
       {/* Synk backs up browser-held projects; a hosted project is already on the
@@ -80,19 +71,19 @@ export function ProjectCard({ summary, canHost, moving, onMoveToAccount }: Proje
           and the card is nothing but its link. `empty:hidden` covers the
           signed-out case, where both children render nothing and the bare
           footer would otherwise show as padding under the counts. */}
-      {summary.hosted || isSeed ? null : (
+      {card.syncNode === null && card.move === null ? null : (
         <CardFooter className="relative z-10 flex flex-wrap items-center gap-2 empty:hidden">
-          <ProjectSyncControl projectId={summary.project.id} />
-          {showMove ? (
+          {card.syncNode}
+          {card.move ? (
             <Button
               size="sm"
               variant="outline"
               className="cursor-pointer"
-              disabled={moving}
-              onClick={onMoveToAccount}
+              disabled={card.move.moving}
+              onClick={card.move.onMove}
             >
               <CloudUploadIcon />
-              {moving ? "Moving…" : "Move to account"}
+              {card.move.moving ? "Moving…" : "Move to account"}
             </Button>
           ) : null}
         </CardFooter>

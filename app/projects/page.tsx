@@ -23,6 +23,8 @@ import { RestoreDialog } from "@/components/sync/RestoreDialog";
 import { SynkOnboardingBanner } from "@/components/sync/SynkOnboardingBanner";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { ProjectSection } from "@/components/projects/ProjectSection";
+import { ProjectSyncControl } from "@/components/sync/ProjectSyncControl";
+import { buildCardModel, buildPageModel, type CardModel } from "@/lib/data/project-page-model";
 import { groupBySection } from "@/lib/data/project-sections";
 import {
   createInTarget,
@@ -115,8 +117,8 @@ function ExploreSection({
   items,
   renderCard,
 }: {
-  items: ProjectSummary[];
-  renderCard: (summary: ProjectSummary) => React.ReactNode;
+  items: CardModel[];
+  renderCard: (card: CardModel) => React.ReactNode;
 }) {
   if (items.length === 0) return null;
   return (
@@ -476,20 +478,34 @@ function ProjectsPageBody() {
     </Select>
   );
 
+  // The page as data (lib/data/project-page-model.ts): which section each
+  // project is in, whether it can move or sync, the totals. The card is a link
+  // to the project; publishing, repository links and deletion all live inside
+  // it (the sidebar footer and the Settings page), so the listing has nothing
+  // left to wire but the one thing you cannot do from inside a local project —
+  // moving it into the account.
+  const page = buildPageModel({
+    signedIn,
+    importing,
+    grouped,
+    card: (summary, section) =>
+      buildCardModel(summary, section, {
+        canHost,
+        moving: moving === summary.project.id,
+        onMove: () => void moveToAccount(summary),
+        syncNode: <ProjectSyncControl projectId={summary.project.id} />,
+      }),
+    actions: {
+      create: openCreateDialog,
+      import: openImportPicker,
+      restore: () => setRestoreOpen(true),
+      generateHref: (target) => `/generate?target=${target}`,
+    },
+  });
+  const section = (target: CreateTarget) => page.sections.find((s) => s.target === target)!;
+
   // `ProjectSection` calls this via `items.map(renderCard)`, so it must set the key.
-  // The card is a link to the project now; publishing, repository links and
-  // deletion all live inside it (the sidebar footer and the Settings page), so
-  // the listing has nothing left to wire but the one thing you cannot do from
-  // inside a local project — moving it into the account.
-  const renderCard = (summary: ProjectSummary) => (
-    <ProjectCard
-      key={summary.project.id}
-      summary={summary}
-      canHost={canHost}
-      moving={moving === summary.project.id}
-      onMoveToAccount={() => void moveToAccount(summary)}
-    />
-  );
+  const renderCard = (card: CardModel) => <ProjectCard key={card.id} card={card} />;
 
   return (
     <>
@@ -604,7 +620,7 @@ function ProjectsPageBody() {
              what was already there. Explore is not theirs — it is the standing
              public fixture — so it renders above regardless of sign-in. */
           <>
-            <ExploreSection items={grouped.explore} renderCard={renderCard} />
+            <ExploreSection items={page.explore} renderCard={renderCard} />
             {grouped.lokal.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
                 <p className="max-w-xs text-sm text-muted-foreground">
@@ -616,15 +632,14 @@ function ProjectsPageBody() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {grouped.lokal.map(renderCard)}
+                {section("lokal").items.map(renderCard)}
               </div>
             )}
           </>
         ) : (
           <>
             <ProjectSection
-              target="hosted"
-              items={grouped.hosted}
+              section={section("hosted")}
               renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("hosted")}
@@ -632,8 +647,7 @@ function ProjectsPageBody() {
             />
 
             <ProjectSection
-              target="synked"
-              items={grouped.synked}
+              section={section("synked")}
               renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("synked")}
@@ -642,8 +656,7 @@ function ProjectsPageBody() {
             />
 
             <ProjectSection
-              target="lokal"
-              items={grouped.lokal}
+              section={section("lokal")}
               renderCard={renderCard}
               disabled={importing}
               onCreate={() => openCreateDialog("lokal")}
@@ -651,7 +664,7 @@ function ProjectsPageBody() {
               emptyExtra={examplePicker}
             />
 
-            <ExploreSection items={grouped.explore} renderCard={renderCard} />
+            <ExploreSection items={page.explore} renderCard={renderCard} />
           </>
         )}
       </main>

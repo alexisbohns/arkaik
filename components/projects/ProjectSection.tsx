@@ -3,15 +3,13 @@
 import type { ReactNode } from "react";
 
 import { SectionCreateMenu } from "./SectionCreateMenu";
-import type { CreateTarget } from "@/lib/data/create-target";
-import type { ProjectSummary } from "@/lib/data/data-provider";
+import type { CardModel, SectionModel } from "@/lib/data/project-page-model";
 
 interface ProjectSectionProps {
-  target: CreateTarget;
-  /** This section's projects. The count and the empty state are both derived from it. */
-  items: ProjectSummary[];
+  /** This section, as a model: its target, its copy and its cards. The count and the empty state both derive from it. */
+  section: SectionModel;
   /** Renders one card. The section owns the grid; the caller owns the card's wiring. */
-  renderCard: (summary: ProjectSummary) => ReactNode;
+  renderCard: (card: CardModel) => ReactNode;
   onCreate: () => void;
   onImport: () => void;
   onRestore?: () => void;
@@ -27,21 +25,6 @@ interface ProjectSectionProps {
   emptyExtra?: ReactNode;
 }
 
-const SECTION_COPY: Record<CreateTarget, { title: string; empty: string }> = {
-  hosted: {
-    title: "Hosted",
-    empty: "Projects that live in your account, reachable from any device.",
-  },
-  synked: {
-    title: "Synked",
-    empty: "Projects that stay on this device and keep a backup in Synk.",
-  },
-  lokal: {
-    title: "Lokal",
-    empty: "Projects that live only in this browser. Nothing leaves the device.",
-  },
-};
-
 /**
  * One section of the projects page: a heading, a count, that section's creation
  * controls, and either its cards or an empty state.
@@ -50,14 +33,13 @@ const SECTION_COPY: Record<CreateTarget, { title: string; empty: string }> = {
  * kinds ARE, and the empty state carries the same create control as the header
  * so the explanation and the action sit together.
  *
- * The section takes the projects themselves rather than a count plus an already
- * built grid: with two inputs, a caller whose filter changed one but not the
- * other would show an empty state on top of real projects. One input cannot
- * disagree with itself.
+ * The section takes its model rather than a count plus an already built grid:
+ * with two inputs, a caller whose filter changed one but not the other would
+ * show an empty state on top of real projects. One input cannot disagree with
+ * itself.
  */
 export function ProjectSection({
-  target,
-  items,
+  section,
   renderCard,
   onCreate,
   onImport,
@@ -65,13 +47,13 @@ export function ProjectSection({
   disabled,
   emptyExtra,
 }: ProjectSectionProps) {
-  const copy = SECTION_COPY[target];
+  const { target, items, title, blurb } = section;
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-baseline gap-2 text-lg font-semibold">
-          {copy.title}
+          {title}
           <span className="text-sm font-normal text-muted-foreground">{items.length}</span>
         </h2>
         <SectionCreateMenu
@@ -85,7 +67,7 @@ export function ProjectSection({
 
       {items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
-          <p className="max-w-sm text-sm text-muted-foreground">{copy.empty}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{blurb}</p>
           {/* A distinct label, so an empty section does not announce two
               identically-named create buttons to a screen reader. */}
           <SectionCreateMenu
@@ -94,7 +76,7 @@ export function ProjectSection({
             onImport={onImport}
             onRestore={onRestore}
             disabled={disabled}
-            primaryLabel={`Create your first ${copy.title} project`}
+            primaryLabel={`Create your first ${title} project`}
           />
           {emptyExtra ? <div className="flex items-center gap-2">{emptyExtra}</div> : null}
         </div>
