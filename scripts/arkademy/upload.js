@@ -409,9 +409,10 @@ function databaseTarget(connectionString = process.env.DATABASE_URL) {
     );
   }
   const { Client } = require("pg");
+  const { pgConfig } = require("../../db/pg-config");
   let client;
   try {
-    client = new Client({ connectionString });
+    client = new Client(pgConfig(connectionString));
   } catch (err) {
     throw new ScriptExit(`DATABASE_URL cannot be used: ${describeError(err)}`);
   }

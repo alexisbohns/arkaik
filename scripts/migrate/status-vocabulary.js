@@ -22,6 +22,7 @@
  */
 
 const { Client } = require("pg");
+const { pgConfig } = require("../../db/pg-config");
 const { loadSchemaPackage, cleanup } = require("../generate/load-schema-package");
 
 const dryRun = process.argv.includes("--dry-run");
@@ -42,7 +43,7 @@ if (!connectionString) {
 
 async function main() {
   const { migrateStatusVocabulary, STATUS_VOCABULARY_VERSION } = loadSchemaPackage();
-  const client = new Client({ connectionString });
+  const client = new Client(pgConfig(connectionString));
   await client.connect();
   try {
     // One transaction around the whole run, with SELECT … FOR UPDATE: every

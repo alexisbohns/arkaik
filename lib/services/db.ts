@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Socket } from "node:net";
+import { checkServerIdentity, type PeerCertificate } from "node:tls";
 
 import { Client, Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
@@ -62,6 +63,58 @@ export function servicesUnavailable(service: string): Response {
  */
 export const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
 
+const SSL_PARAMS = ["ssl", "sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "uselibpqcompat"];
+
+/**
+ * The `pg` config for a connection string, with TLS pinned to the private CA in
+ * DATABASE_CA_CERT when one is set. TypeScript twin of db/pg-config.js — read
+ * the reasoning there; tests/services/pg-config.test.js holds the two to the
+ * same behaviour. In short: without the variable the string passes through
+ * untouched (Neon, CI, localhost); with it, the URL's ssl parameters are
+ * stripped (node-postgres would let them override `ssl`) and the connection
+ * verifies the server against that CA only, its identity checked against the
+ * URL's host (an IP included) — never `rejectUnauthorized: false`.
+ */
+export function pgConfig(
+  connectionString: string,
+  env: Record<string, string | undefined> = process.env,
+): {
+  connectionString: string;
+  ssl?: {
+    ca: string;
+    rejectUnauthorized: true;
+    checkServerIdentity: (servername: string, cert: PeerCertificate) => Error | undefined;
+  };
+} {
+  const caRaw = env.DATABASE_CA_CERT;
+  if (!caRaw || !caRaw.trim()) return { connectionString };
+  const ca = caRaw.trim().replace(/\\n/g, "\n");
+  if (!ca.includes("-----BEGIN CERTIFICATE-----")) {
+    throw new Error(
+      "DATABASE_CA_CERT must be the CA certificate's PEM text, including the " +
+        '"-----BEGIN CERTIFICATE-----" and "-----END CERTIFICATE-----" lines ' +
+        "(literal \\n escapes are accepted; a base64-encoded copy is not).",
+    );
+  }
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error("DATABASE_URL must be a postgres:// URL when DATABASE_CA_CERT is set.");
+  }
+  for (const name of SSL_PARAMS) url.searchParams.delete(name);
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  return {
+    connectionString: url.toString(),
+    ssl: {
+      ca: `${ca}\n`,
+      rejectUnauthorized: true,
+      // No SNI for an IP host means Node would check against "localhost".
+      checkServerIdentity: (_servername, cert) => checkServerIdentity(host, cert),
+    },
+  };
+}
+
 let pool: Pool | undefined;
 
 /**
@@ -80,7 +133,7 @@ export function getPool(): Pool {
           "connection; the local-first app runs without one. See .env.example.",
       );
     }
-    pool = new Pool({ connectionString });
+    pool = new Pool(pgConfig(connectionString));
   }
   return pool;
 }
@@ -121,7 +174,7 @@ export async function queryWithin<T extends QueryResultRow = QueryResultRow>(
   // Our own socket, so the deadline can destroy it: `client.end()` only
   // half-closes, and a server that never reads never closes its side.
   const socket = new Socket();
-  const client = new Client({ connectionString, stream: () => socket });
+  const client = new Client({ ...pgConfig(connectionString), stream: () => socket });
   // A socket error after the deadline has no caller left to tell.
   client.on("error", () => {});
   const work = client.connect().then(() => client.query<T>(text, params as unknown[] | undefined));
