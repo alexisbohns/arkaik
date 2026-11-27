@@ -1,0 +1,1024 @@
+/* The Acceptances directory's Mapping view — what does the product promise,
+ * journey by journey? The Ribbon (the product as one bar), the Atlas (a rail that
+ * follows the scroll, beside every journey and the two shelves), each journey as a
+ * route of stops, each promise as a dense line with a preview card. Tokens, the
+ * display face and tabular numbers come from acceptances-directory.css. Components:
+ * components/acceptances/Mapping*.tsx, journey-kit.tsx. Prefix `ka-mapping-`.
+ *
+ * Shelves are dashed on purpose (docs/arkademy-design.md § 2.12): open, never
+ * hidden. Springs sit behind `prefers-reduced-motion: no-preference`; borderless
+ * surfaces get an edge under `forced-colors`; sticky things pin at
+ * `top: var(--surface-sticky-top, 0px)`. Ported from the 2026-11 tweaker
+ * exploration (owner's recipe "lead-owner-2"), so declarations read
+ * machine-ordered. */
+:root .ka-mapping-anchor {
+  scroll-margin-top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + 3.25rem);
+  outline: none;
+}
+:root .ka-mapping-bar {
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 3rem;
+  display: flex;
+}
+:root .ka-mapping-bar-track {
+  background: var(--ka-mapping-veil);
+  border-radius: .25rem;
+  height: .5rem;
+  display: block;
+  overflow: hidden;
+}
+:root .ka-mapping-bar-fill {
+  border-radius: .25rem;
+  gap: 1px;
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+:root .ka-mapping-bar-fill > i {
+  flex-basis: 0;
+  min-width: 0;
+  display: block;
+}
+:root .ka-mapping-bar-kept {
+  background: var(--ka-mapping-ink);
+}
+:root .ka-mapping-bar-gap {
+  background: var(--ka-mapping-gap);
+}
+:root .ka-mapping-bar-rest {
+  background: color-mix(in oklab, var(--ka-mapping-ink) 32%, var(--ka-mapping-raised));
+}
+:root .ka-mapping-bar-guess {
+  background: repeating-linear-gradient(135deg,
+    color-mix(in oklab, var(--ka-mapping-ink) 55%, var(--ka-mapping-raised)) 0 2px,
+    transparent 2px 4px);
+}
+:root .ka-mapping-bar-cost {
+  background: var(--ka-mapping-cost);
+  border-radius: 1px;
+  height: 2px;
+  display: block;
+}
+:root .ka-mapping-sizeby {
+  color: var(--ka-mapping-quiet);
+  align-items: center;
+  gap: .5rem;
+  font-size: .75rem;
+  display: inline-flex;
+}
+:root .ka-mapping-sizeby-keys {
+  gap: var(--ka-mapping-gutter);
+  display: inline-flex;
+}
+:root .ka-mapping-sizeby-keys button {
+  cursor: pointer;
+  height: 1.75rem;
+  font: inherit;
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-container-high);
+  border-radius: var(--ka-mapping-joint);
+  transition: border-radius var(--ka-mapping-spring-dur) var(--ka-mapping-spring), background-color .16s;
+  border: 0;
+  padding-inline: .75rem;
+  font-weight: 500;
+}
+:root .ka-mapping-sizeby-keys button:first-child {
+  border-start-start-radius: .875rem;
+  border-end-start-radius: .875rem;
+}
+:root .ka-mapping-sizeby-keys button:last-child {
+  border-start-end-radius: .875rem;
+  border-end-end-radius: .875rem;
+}
+:root .ka-mapping-sizeby-keys button[aria-pressed="true"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-radius: .875rem;
+}
+:root .ka-mapping-sizeby-keys button:focus-visible,
+:root .ka-mapping-focusable:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .ka-mapping-preview {
+  color: var(--md-on-surface);
+  flex-direction: column;
+  gap: .625rem;
+  font-size: .8125rem;
+  display: flex;
+}
+:root .ka-mapping-preview-title {
+  font-size: .9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+:root .ka-mapping-preview-id {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--md-on-surface-variant);
+  word-break: break-all;
+  margin-top: -.5rem;
+  font-size: .6875rem;
+}
+:root .ka-mapping-preview-then {
+  color: var(--md-on-surface-variant);
+  line-height: 1.45;
+}
+:root .ka-mapping-preview-then b {
+  color: var(--ka-mapping-ink);
+  margin-inline-end: .25rem;
+  font-weight: 700;
+}
+:root .ka-mapping-preview-foot {
+  justify-content: space-between;
+  align-items: center;
+  gap: .75rem;
+  display: flex;
+}
+:root .ka-mapping-preview-where {
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-bar-track,
+  :root .ka-mapping-sizeby-keys button {
+    outline: 1px solid canvastext;
+  }
+}
+:root .ka-mapping-ribbon {
+  color: var(--md-on-surface);
+  padding: 1.25rem 1.25rem 1rem;
+  container-type: inline-size;
+}
+:root .ka-mapping-ribbon-seg {
+  font: inherit;
+  cursor: pointer;
+}
+:root .ka-mapping-ribbon-top {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: .75rem 1.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+}
+:root .ka-mapping-ribbon-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+:root .ka-mapping-ribbon-big {
+  color: var(--ka-mapping-ink);
+  margin-inline-end: .125rem;
+  font-size: 3rem;
+  font-weight: 600;
+}
+:root .ka-mapping-ribbon-bar {
+  gap: var(--ka-mapping-gutter);
+  border-radius: var(--ka-mapping-outer);
+  flex-wrap: wrap;
+  display: flex;
+  overflow: clip;
+}
+:root .ka-mapping-ribbon-seg {
+  flex: var(--ka-mapping-grow, .1) 1 8.5rem;
+  border-radius: var(--ka-mapping-joint);
+  min-width: 0;
+  min-height: 4.25rem;
+  color: var(--md-on-surface);
+  text-align: start;
+  background: linear-gradient(to top,
+    var(--ka-mapping-level) var(--ka-mapping-kept, 0%),
+    var(--ka-mapping-gap-fill) var(--ka-mapping-kept, 0%) var(--ka-mapping-gapped, 0%),
+    var(--ka-mapping-tint) var(--ka-mapping-gapped, 0%));
+  --ka-mapping-gap-fill: color-mix(in oklab, var(--ka-mapping-gap) 55%, var(--ka-mapping-tint));
+  transition: flex-grow var(--ka-mapping-spring-dur) var(--ka-mapping-spring), border-radius var(--ka-mapping-spring-dur) var(--ka-mapping-spring);
+  border: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .25rem;
+  padding: .5rem .625rem .4rem;
+  display: flex;
+  overflow: hidden;
+}
+:root .ka-mapping-ribbon-seg[data-shelf] {
+  background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--md-outline) 35%, transparent) 4px 5px);
+  outline: 1.5px dashed var(--md-outline-variant);
+  outline-offset: -1.5px;
+}
+:root .ka-mapping-ribbon-seg:is(:hover, :focus-visible) {
+  border-radius: 1.25rem;
+}
+:root .ka-mapping-ribbon-seg:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: -3px;
+  z-index: 1;
+}
+:root .ka-mapping-ribbon-name {
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-width: 100%;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  display: -webkit-box;
+  overflow: hidden;
+}
+:root .ka-mapping-ribbon-seg b {
+  font-size: .75rem;
+  font-weight: 700;
+}
+@container (width <= 34rem) {
+  :root .ka-mapping-ribbon-seg {
+    flex-basis: 6.25rem;
+    min-height: 3rem;
+    padding: .375rem .5rem .3rem;
+  }
+  :root .ka-mapping-ribbon-name {
+    -webkit-line-clamp: 1;
+  }
+}
+:root .ka-mapping-ribbon-caption {
+  min-height: 1.25rem;
+  margin: .75rem 0 .25rem;
+  font-size: .875rem;
+  font-weight: 500;
+}
+:root .ka-mapping-ribbon-key {
+  color: var(--md-on-surface-variant);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem .5rem;
+  margin: 0;
+  font-size: .75rem;
+  display: flex;
+}
+:root .ka-mapping-ribbon-key i {
+  border-radius: 3px;
+  width: .75rem;
+  height: .75rem;
+  margin-inline-start: .5rem;
+  display: inline-block;
+}
+:root .ka-mapping-ribbon-key i:first-child {
+  margin-inline-start: 0;
+}
+:root .ka-mapping-ribbon-key i[data-k="kept"] {
+  background: var(--ka-mapping-tint-2);
+  outline: 1px solid var(--ka-mapping-ink);
+  outline-offset: -1px;
+  background: var(--ka-mapping-level);
+  outline: 0;
+}
+:root .ka-mapping-ribbon-key i[data-k="gap"] {
+  background: color-mix(in oklab, var(--ka-mapping-gap) 55%, var(--ka-mapping-tint));
+}
+:root .ka-mapping-ribbon-key i[data-k="rest"] {
+  background: var(--ka-mapping-tint);
+  outline: 1px solid var(--md-outline-variant);
+  outline-offset: -1px;
+}
+:root .ka-mapping-ribbon-key i[data-k="shelf"] {
+  outline: 1.5px dashed var(--md-outline);
+  outline-offset: -1.5px;
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-ribbon-seg {
+    outline: 1px solid canvastext;
+  }
+}
+:root .ka-mapping-empty {
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  gap: .25rem;
+  padding: 3rem 1.5rem;
+  display: grid;
+}
+:root .ka-mapping-empty .ka-mapping-display {
+  color: var(--md-on-surface);
+  font-size: 1.5rem;
+}
+:root .ka-mapping-atlas {
+  color: var(--md-on-surface);
+  container-type: inline-size;
+}
+:root .ka-mapping-atlas {
+  padding: .5rem;
+}
+:root .ka-mapping-atlas-grid {
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: .5rem;
+  display: grid;
+}
+:root .ka-mapping-atlas-body {
+  min-width: 0;
+  padding-bottom: 2rem;
+}
+:root .ka-mapping-atlas-body .ka-mapping-anchor {
+  scroll-margin-top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + .25rem);
+}
+:root .ka-mapping-rail {
+  top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + .25rem);
+  max-height: calc(100dvh - 11.5rem - var(--ka-mapping-hero-pin, 0px));
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-radius: var(--ka-mapping-outer);
+  background: var(--md-surface-container-low);
+  z-index: 4;
+  padding: .75rem .5rem;
+  position: sticky;
+  overflow-y: auto;
+}
+:root .ka-mapping-rail-head {
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 .625rem .5rem;
+  font-size: 1.125rem;
+  display: flex;
+}
+:root .ka-mapping-rail-head b {
+  color: var(--md-on-surface-variant);
+  font-size: .75rem;
+  font-weight: 600;
+}
+:root .ka-mapping-rail-list {
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+:root .ka-mapping-rail-shelves {
+  background: linear-gradient(to right, var(--md-outline-variant) 50%, transparent 0) top / 8px 1.5px repeat-x;
+  border-top: 0;
+  margin-top: .625rem;
+  padding-top: .5rem;
+}
+:root .ka-mapping-rail-item {
+  width: 100%;
+  color: var(--md-on-surface);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-radius var(--ka-mapping-spring-dur) var(--ka-mapping-spring), background-color .14s;
+  background: none;
+  border: 0;
+  border-radius: .75rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .125rem .5rem;
+  padding: .375rem .625rem;
+  font-size: .8125rem;
+  display: grid;
+}
+:root .ka-mapping-rail-item:hover {
+  background: var(--ka-mapping-veil-hover);
+  border-radius: 1rem;
+}
+:root .ka-mapping-rail-item[aria-current="location"] {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-radius: 1rem;
+  font-weight: 600;
+}
+:root .ka-mapping-rail-item svg {
+  width: .875rem;
+  height: .875rem;
+  color: var(--md-on-surface-variant);
+}
+:root .ka-mapping-rail-name {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+:root .ka-mapping-rail-item b {
+  color: var(--md-on-surface-variant);
+  font-size: .6875rem;
+  font-weight: 600;
+}
+:root .ka-mapping-rail-dot {
+  background: var(--ka-mapping-flow);
+  border-radius: 50%;
+  width: .5rem;
+  height: .5rem;
+}
+:root .ka-mapping-rail-dot[data-gap] {
+  background: var(--ka-mapping-gap);
+}
+:root .ka-mapping-rail-bar {
+  grid-column: 2 / -1;
+  display: block;
+}
+:root .ka-mapping-rail-bar .ka-mapping-bar-track {
+  height: 3px;
+}
+:root li[data-depth="1"] > .ka-mapping-rail-item {
+  width: calc(100% - .875rem);
+  margin-inline-start: .875rem;
+}
+:root li[data-depth="2"] > .ka-mapping-rail-item,
+:root li[data-depth="3"] > .ka-mapping-rail-item {
+  width: calc(100% - 1.75rem);
+  margin-inline-start: 1.75rem;
+}
+:root li[data-empty] > .ka-mapping-rail-item {
+  opacity: .6;
+}
+:root li[data-empty] .ka-mapping-rail-dot {
+  outline: 1.5px dashed var(--md-outline);
+  outline-offset: -1.5px;
+  background: none;
+}
+:root li[data-repeat] .ka-mapping-rail-name {
+  font-style: italic;
+}
+:root .ka-mapping-rail-size {
+  gap: .375rem;
+  padding: .75rem .5rem .25rem;
+  display: grid;
+}
+:root .ka-mapping-rail-size .ka-mapping-sizeby-keys {
+  width: fit-content;
+}
+@container (width <= 54rem) {
+  :root .ka-mapping-atlas-grid {
+    --ka-mapping-pin: 3.25rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root .ka-mapping-atlas-body .ka-mapping-anchor {
+    scroll-margin-top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + 3.5rem);
+  }
+  :root .ka-mapping-rail {
+    max-height: none;
+    top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + .125rem);
+    scrollbar-width: none;
+    border-radius: 1.5rem;
+    align-items: center;
+    gap: .25rem;
+    padding: .375rem;
+    display: flex;
+    overflow: auto hidden;
+  }
+  :root :is(.ka-mapping-rail-head, .ka-mapping-rail-bar, .ka-mapping-rail-size) {
+    display: none;
+  }
+  :root .ka-mapping-rail-list {
+    gap: 3px;
+    display: flex;
+  }
+  :root .ka-mapping-rail-shelves {
+    background: none;
+    margin: 0;
+    padding: 0 0 0 .375rem;
+  }
+  :root .ka-mapping-rail-list > li {
+    flex-shrink: 0;
+  }
+  :root .ka-mapping-rail-item {
+    white-space: nowrap;
+    background: var(--md-surface-container-high);
+    border-radius: 1rem;
+    width: auto !important;
+    margin-inline-start: 0 !important;
+  }
+  :root .ka-mapping-rail-item[aria-current="location"] {
+    background: var(--md-secondary-container);
+  }
+  :root .ka-mapping-rail-name {
+    overflow: visible;
+  }
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-rail {
+    outline: 1px solid canvastext;
+  }
+  :root .ka-mapping-rail-item[aria-current] {
+    outline: 2px solid highlight;
+  }
+}
+:root .ka-mapping-j {
+  color: var(--md-on-surface);
+  position: relative;
+  container-type: inline-size;
+}
+:root .ka-mapping-j-h {
+  font: inherit;
+  margin: 0;
+}
+:root .ka-mapping-j[data-open] > .ka-mapping-j-h {
+  top: calc(var(--surface-sticky-top, 0px) + var(--ka-mapping-hero-pin, 0px) + var(--ka-mapping-pin, 0px));
+  z-index: 3;
+  position: sticky;
+}
+:root .ka-mapping-j-head {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  grid-template-columns: auto minmax(0, 1fr) minmax(5rem, 13rem) auto;
+  align-items: center;
+  gap: .5rem .875rem;
+  padding: .75rem 1rem;
+  display: grid;
+}
+:root .ka-mapping-j-head:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: -3px;
+}
+:root .ka-mapping-j-main {
+  flex-direction: column;
+  gap: .1875rem;
+  min-width: 0;
+  display: flex;
+}
+:root .ka-mapping-j-title {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+:root .ka-mapping-j-chev {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--md-on-surface-variant);
+  transition: rotate .22s var(--ka-mapping-spring);
+}
+:root .ka-mapping-j-head[aria-expanded="false"] .ka-mapping-j-chev {
+  rotate: -90deg;
+}
+@container (width <= 34rem) {
+  :root .ka-mapping-j-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  :root .ka-mapping-j-bar {
+    grid-area: 2 / 1 / auto / -1;
+  }
+}
+:root .ka-mapping-seal {
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-grid;
+  position: relative;
+}
+:root .ka-mapping-seal > * {
+  grid-area: 1 / 1;
+}
+:root .ka-mapping-seal-shape {
+  width: 100%;
+  height: 100%;
+  color: var(--ka-mapping-flow);
+}
+:root .ka-mapping-seal-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--ka-mapping-raised);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root .ka-mapping-seal-shape {
+    transition: rotate .6s var(--ka-mapping-spring);
+  }
+  :root .ka-mapping-j-head:hover .ka-mapping-seal-shape {
+    rotate: 30deg;
+  }
+}
+:root .ka-mapping-partof {
+  color: var(--md-on-surface-variant);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem .375rem;
+  padding: .5rem 1rem 0;
+  font-size: .6875rem;
+  display: flex;
+}
+:root .ka-mapping-partof svg {
+  width: .8125rem;
+  height: .8125rem;
+}
+:root .ka-mapping-partof a {
+  color: color-mix(in oklab, var(--ka-mapping-flow) 80%, var(--md-on-surface));
+  background: var(--ka-mapping-flow-tint-2);
+  border-radius: .5rem;
+  padding: .0625rem .5rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+:root .ka-mapping-partof a:hover {
+  background: color-mix(in oklab, var(--ka-mapping-flow) 30%, var(--ka-mapping-raised));
+}
+:root .ka-mapping-partof a:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .ka-mapping-meta {
+  color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .125rem .75rem;
+  font-size: .75rem;
+  display: flex;
+}
+:root .ka-mapping-meta-gap {
+  color: color-mix(in oklab, var(--ka-mapping-gap) 85%, var(--md-on-surface));
+  font-weight: 600;
+}
+:where(:root .ka-mapping-j) :where(ul, ol) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+:root .ka-mapping-j[data-depth="sub"]:before {
+  content: "";
+  background: var(--ka-mapping-flow-tint-2);
+  border-radius: 2px;
+  width: 3px;
+  position: absolute;
+  inset-block: .5rem;
+  inset-inline-start: -.75rem;
+}
+:root .ka-mapping-j-spine {
+  border-radius: var(--ka-mapping-outer);
+  background: var(--ka-mapping-flow-tint);
+  margin: .5rem 1rem;
+}
+:root .ka-mapping-j-spine > .ka-mapping-j-h {
+  background: var(--ka-mapping-flow-tint);
+  border-radius: var(--ka-mapping-outer) var(--ka-mapping-outer) 0 0;
+}
+:root .ka-mapping-j-spine:not([data-open]) > .ka-mapping-j-h {
+  border-radius: var(--ka-mapping-outer);
+}
+:root .ka-mapping-j-spine .ka-mapping-j-head {
+  border-radius: inherit;
+}
+:root .ka-mapping-j-spine .ka-mapping-j-head:hover {
+  background: color-mix(in srgb, var(--ka-mapping-flow) 6%, transparent);
+}
+:root .ka-mapping-j-spine[data-depth="sub"] {
+  margin-inline-start: 2.25rem;
+}
+:root .ka-mapping-spine {
+  padding: .25rem 1rem 1rem 1.25rem;
+}
+:root .ka-mapping-stop {
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: .875rem;
+  padding-bottom: .875rem;
+  display: grid;
+  position: relative;
+}
+:root .ka-mapping-stop:before {
+  content: "";
+  background: var(--ka-mapping-view-tint);
+  background: color-mix(in oklab, var(--ka-mapping-view) 28%, var(--ka-mapping-flow-tint));
+  border-radius: 2px;
+  width: 3px;
+  position: absolute;
+  inset-block: 2.125rem .125rem;
+  inset-inline-start: calc(1rem - 1.5px);
+}
+:root .ka-mapping-stop:last-child {
+  padding-bottom: 0;
+}
+:root .ka-mapping-stop:last-child:before {
+  display: none;
+}
+:root .ka-mapping-stop-node {
+  background: var(--ka-mapping-view);
+  width: 2rem;
+  height: 2rem;
+  color: var(--ka-mapping-raised);
+  font-variant-numeric: tabular-nums;
+  border-radius: 50%;
+  place-items: center;
+  font-family: inherit;
+  font-size: .8125rem;
+  font-weight: 700;
+  display: grid;
+}
+:root .ka-mapping-stop[data-kind="flow"] .ka-mapping-stop-node {
+  background: var(--ka-mapping-flow);
+}
+:root .ka-mapping-stop[data-empty] .ka-mapping-stop-node {
+  color: var(--md-on-surface-variant);
+  outline: 1.5px dashed var(--md-outline);
+  outline-offset: -1.5px;
+  background: none;
+}
+:root .ka-mapping-stop-name {
+  color: color-mix(in oklab, var(--ka-mapping-view) 75%, var(--md-on-surface));
+  padding-block: .3125rem .375rem;
+  font-size: .9375rem;
+  font-weight: 600;
+  display: block;
+}
+:root .ka-mapping-stop[data-kind="flow"] .ka-mapping-stop-name {
+  color: color-mix(in oklab, var(--ka-mapping-flow) 80%, var(--md-on-surface));
+}
+:root .ka-mapping-stop[data-empty] .ka-mapping-stop-name {
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+}
+:root .ka-mapping-stop-name i {
+  font-size: .75rem;
+  font-style: normal;
+  font-weight: 400;
+}
+:root .ka-mapping-stop-body {
+  min-width: 0;
+}
+:root .ka-mapping-stop-node svg {
+  width: 1rem;
+  height: 1rem;
+}
+:root .ka-mapping-stop-n {
+  vertical-align: .0625rem;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  font-variant-numeric: tabular-nums;
+  border-radius: .625rem;
+  place-items: center;
+  min-width: 1.375rem;
+  height: 1.25rem;
+  margin-inline-start: .5rem;
+  padding-inline: .375rem;
+  font-size: .6875rem;
+  font-weight: 700;
+  display: inline-grid;
+}
+:root .ka-mapping-j-spine[data-empty] {
+  outline: 1.5px dashed var(--md-outline-variant);
+  outline-offset: -1.5px;
+  background: none;
+}
+:root .ka-mapping-j-spine[data-empty] > .ka-mapping-j-h {
+  opacity: .72;
+  background: none;
+}
+@container (width <= 34rem) {
+  :root .ka-mapping-j-spine {
+    margin-inline: 0;
+  }
+  :root .ka-mapping-j-spine[data-depth="sub"] {
+    margin-inline-start: .75rem;
+  }
+  :root .ka-mapping-spine {
+    padding: .25rem .5rem .75rem .875rem;
+  }
+  :root .ka-mapping-stop {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: .5rem;
+  }
+  :root .ka-mapping-stop-node {
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: .6875rem;
+  }
+  :root .ka-mapping-stop:before {
+    inset-block-start: 1.625rem;
+    inset-inline-start: calc(.75rem - 1.5px);
+  }
+  :root .ka-mapping-stop-name {
+    padding-block: .125rem .25rem;
+  }
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-j-spine {
+    outline: 1px solid canvastext;
+  }
+}
+:root .ka-mapping-dense {
+  text-align: start;
+  cursor: pointer;
+  width: 100%;
+  font: inherit;
+  color: var(--md-on-surface);
+  background: var(--ka-mapping-veil);
+  border-radius: var(--ka-mapping-joint);
+  transition: border-radius var(--ka-mapping-spring-dur) var(--ka-mapping-spring),
+    background-color .14s;
+  border: 0;
+  margin-block-end: var(--ka-mapping-gutter);
+  display: flex;
+}
+:root li:first-child > .ka-mapping-dense {
+  border-start-start-radius: 1.125rem;
+  border-start-end-radius: 1.125rem;
+}
+:root li:last-child > .ka-mapping-dense {
+  border-end-end-radius: 1.125rem;
+  border-end-start-radius: 1.125rem;
+  margin-block-end: 0;
+}
+:root .ka-mapping-dense:is(:hover, :focus-visible) {
+  background: var(--ka-mapping-veil-hover);
+  border-radius: 1.125rem;
+}
+:root .ka-mapping-dense[data-ac-gap="true"] {
+  box-shadow: inset 3px 0 0 var(--ka-mapping-gap);
+}
+:root .ka-mapping-dense {
+  background: none;
+  border-radius: .5rem;
+  align-items: center;
+  gap: .625rem;
+  min-height: 2.125rem;
+  margin-block-end: 0;
+  padding: .25rem .875rem;
+}
+:root li:first-child > .ka-mapping-dense,
+:root li:last-child > .ka-mapping-dense {
+  border-radius: .5rem;
+}
+:root .ka-mapping-dense:is(:hover, :focus-visible) {
+  background: var(--ka-mapping-veil-hover);
+  border-radius: 1rem;
+}
+:root .ka-mapping-dense-marks {
+  flex-shrink: 0;
+}
+:root .ka-mapping-dense-title {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-size: .875rem;
+  overflow: hidden;
+}
+:root .ka-mapping-dense {
+  position: relative;
+}
+:root .ka-mapping-dense[data-ac-gap="true"] {
+  box-shadow: none;
+}
+:root .ka-mapping-dense[data-ac-gap="true"]:before {
+  content: "";
+  background: var(--ka-mapping-gap);
+  border-radius: 2px;
+  width: 3px;
+  position: absolute;
+  inset-block: .5rem;
+  inset-inline-start: .25rem;
+}
+:root .ka-mapping-dense[data-ac-gap="true"] .ka-mapping-dense-title {
+  font-weight: 600;
+}
+@container (width <= 34rem) {
+  :root .ka-mapping-dense {
+    padding-inline: .625rem .5rem;
+  }
+  :root .ka-mapping-dense-title {
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+    display: -webkit-box;
+  }
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-dense[data-ac-gap="true"] {
+    border-inline-start: 3px solid highlight;
+  }
+}
+:root .ka-mapping-shelf {
+  container-type: inline-size;
+  margin: 0.75rem 1rem;
+  border-radius: var(--ka-mapping-outer);
+  outline: 1.5px dashed var(--md-outline-variant);
+  outline-offset: -1.5px;
+  background: transparent;
+  color: var(--md-on-surface);
+}
+:root .ka-mapping-shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  border-radius: var(--ka-mapping-outer);
+  font: inherit;
+}
+:root .ka-mapping-shelf-head:hover {
+  background: var(--ka-mapping-veil);
+}
+:root .ka-mapping-shelf-head:focus-visible {
+  outline: 3px solid var(--md-secondary);
+  outline-offset: 2px;
+}
+:root .ka-mapping-shelf-seal {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  outline: 1.5px dashed var(--md-outline);
+  outline-offset: -1.5px;
+  color: var(--md-on-surface-variant);
+}
+:root .ka-mapping-shelf-seal svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+:root .ka-mapping-shelf-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+:root .ka-mapping-shelf-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+:root .ka-mapping-shelf-sub {
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+}
+:root .ka-mapping-shelf-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 1rem;
+  background: var(--ka-mapping-veil-hover);
+}
+:root .ka-mapping-shelf-chev {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--md-on-surface-variant);
+  transition: rotate 200ms;
+}
+:root .ka-mapping-shelf-head[aria-expanded="false"] .ka-mapping-shelf-chev {
+  rotate: -90deg;
+}
+:root .ka-mapping-shelf-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem 0.875rem;
+}
+@container (min-width: 46rem) {
+  :root .ka-mapping-shelf-body:not([data-single]) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+:root .ka-mapping-shelf-screen {
+  min-width: 0;
+  border-radius: 1rem;
+  background: var(--ka-mapping-raised);
+  padding: 0.5rem 0.25rem 0.375rem;
+}
+:root .ka-mapping-shelf-screen-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.25rem 0.75rem 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ka-mapping-view);
+}
+:root .ka-mapping-shelf-screen-name svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+}
+:root .ka-mapping-shelf-screen-name span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root .ka-mapping-shelf-screen-name b {
+  font-weight: 600;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface-variant);
+}
+:root .ka-mapping-shelf ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (forced-colors: active) {
+  :root .ka-mapping-shelf,
+  :root .ka-mapping-shelf-screen {
+    outline: 1px dashed CanvasText;
+  }
+}
